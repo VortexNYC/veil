@@ -34,13 +34,19 @@ export default defineRailway(() => {
   // variables — an apply will silently drop one). Local recovery copy:
   // ~/.config/vortex/pwm-master-key and ~/.veil/wraps on the founder's Mac.
   const pwmVolume = volume("pwm-volume", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
+  // Replica budget (VEIL-5, docs/scale.md): each origin replica holds
+  // VEIL_PG_MAX_CONNS (default 20) + VEIL_PG_AUDIT_CONNS (default 2) backend
+  // connections against the shared Postgres. At the stock
+  // max_connections=100 that fits ~4 replicas with headroom for migrations
+  // and ops verbs. Raising replicas past that ceiling requires PgBouncer
+  // first — do not bump this number without checking the pool math.
   const pwm = service("pwm", {
     start: "/veil mcp",
     healthcheck: "/health",
     healthcheckTimeout: 300,
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), PWM_HOME: preserve(), PWM_HYDRA_ADMIN: preserve(), PWM_HYDRA_CLIENT_ID: preserve(), PWM_HYDRA_ISSUER: preserve(), PWM_KEK: preserve(), PWM_KETO_READ: preserve(), PWM_KETO_WRITE: preserve(), PWM_KRATOS_ADMIN: preserve(), PWM_KRATOS_PUBLIC: preserve(), PWM_MCP_URL: preserve(), PWM_MASTER_KEY: preserve(), PWM_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil" },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), PWM_HOME: preserve(), PWM_HYDRA_ADMIN: preserve(), PWM_HYDRA_CLIENT_ID: preserve(), PWM_HYDRA_ISSUER: preserve(), PWM_KEK: preserve(), PWM_KETO_READ: preserve(), PWM_KETO_WRITE: preserve(), PWM_KRATOS_ADMIN: preserve(), PWM_KRATOS_PUBLIC: preserve(), PWM_MCP_URL: preserve(), PWM_MASTER_KEY: preserve(), PWM_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
