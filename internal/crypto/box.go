@@ -23,6 +23,12 @@ func NewKey() ([]byte, error) {
 // Seal returns nonce||ciphertext. key must be KeySize bytes.
 // This is also the owner-key wrap: master seals the per-owner DEK.
 func Seal(key, plaintext []byte) ([]byte, error) {
+	return SealAAD(key, plaintext, nil)
+}
+
+// SealAAD binds ciphertext to aad: OpenAAD with different data fails.
+// New formats take context (org, item) as AAD; legacy blobs predate it.
+func SealAAD(key, plaintext, aad []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, err
@@ -31,10 +37,15 @@ func Seal(key, plaintext []byte) ([]byte, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	return aead.Seal(nonce, nonce, plaintext, nil), nil
+	return aead.Seal(nonce, nonce, plaintext, aad), nil
 }
 
 func Open(key, blob []byte) ([]byte, error) {
+	return OpenAAD(key, blob, nil)
+}
+
+// OpenAAD fails with ErrAuth unless aad matches what SealAAD bound.
+func OpenAAD(key, blob, aad []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, err
@@ -43,7 +54,7 @@ func Open(key, blob []byte) ([]byte, error) {
 		return nil, ErrAuth
 	}
 	nonce, ct := blob[:aead.NonceSize()], blob[aead.NonceSize():]
-	plain, err := aead.Open(nil, nonce, ct, nil)
+	plain, err := aead.Open(nil, nonce, ct, aad)
 	if err != nil {
 		return nil, ErrAuth
 	}

@@ -55,6 +55,17 @@ func openTestPostgres(t *testing.T) *Postgres {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// key is the KEK; every test org gets its own randomly generated master,
+	// which is also the cross-org isolation proof.
+	for _, org := range []string{"org", "org-1", "o", "org-test", protocol.LocalOrgID} {
+		master, err := crypto.NewKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.EnsureOrgKey(ctx, org, master); err != nil {
+			t.Fatalf("seed org key %s: %v", org, err)
+		}
+	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
@@ -161,11 +172,11 @@ func TestPostgresPerOwnerDEK(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dekOrg, err := s.ownerDEK(org)
+	dekOrg, err := s.ownerDEK("org", org)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dekUser, err := s.ownerDEK(user)
+	dekUser, err := s.ownerDEK("org", user)
 	if err != nil {
 		t.Fatal(err)
 	}

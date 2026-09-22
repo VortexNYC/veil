@@ -135,9 +135,9 @@ var migrateTables = []migrateTable{
 	},
 	{
 		name:       "owner_keys",
-		selectCols: []string{"owner_kind", "owner_id", "wrapped"},
-		insertCols: []string{"owner_kind", "owner_id", "wrapped"},
-		convs:      []col{keep, keep, keep},
+		selectCols: []string{"org_id", "owner_kind", "owner_id", "wrapped"},
+		insertCols: []string{"org_id", "owner_kind", "owner_id", "wrapped"},
+		convs:      []col{keep, keep, keep, keep},
 	},
 	{
 		name:       "item_versions",

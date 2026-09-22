@@ -104,10 +104,24 @@ func run() error {
 		go func() { _ = upstreamSrv.Serve(upstreamLn) }()
 	}
 
+	kek := os.Getenv("VEIL_KEK")
+	if kek == "" {
+		if mode == "external" {
+			return errors.New("VEIL_KEK is required for external origin mode (must match the external origins' KEK)")
+		}
+		key, err := crypto.NewKey()
+		if err != nil {
+			return fmt.Errorf("generate KEK: %w", err)
+		}
+		kek = hex.EncodeToString(key[:])
+		if err := os.Setenv("VEIL_KEK", kek); err != nil {
+			return fmt.Errorf("set VEIL_KEK: %w", err)
+		}
+	}
 	masterKey := os.Getenv("VEIL_MASTER_KEY")
 	if masterKey == "" {
 		if mode == "external" {
-			return errors.New("VEIL_MASTER_KEY is required for external origin mode (must match the external origins' key)")
+			return errors.New("VEIL_MASTER_KEY is required for external origin mode (seeds the org master row; must match the external origins' key)")
 		}
 		key, err := crypto.NewKey()
 		if err != nil {
@@ -119,7 +133,7 @@ func run() error {
 		}
 	}
 
-	origins, err := startOrigins(dsn, masterKey, replicas)
+	origins, err := startOrigins(dsn, masterKey, kek, replicas)
 	if err != nil {
 		return err
 	}
@@ -251,13 +265,13 @@ func run() error {
 	return nil
 }
 
-func startOrigins(dsn, masterKey string, n int) ([]*origin, error) {
+func startOrigins(dsn, masterKey, kek string, n int) ([]*origin, error) {
 	mode := envOr("LOADTEST_ORIGIN_MODE", "goroutine")
 	switch mode {
 	case "goroutine":
 		return startGoroutineOrigins(dsn, masterKey, n)
 	case "process":
-		return startProcessOrigins(dsn, masterKey, n)
+		return startProcessOrigins(dsn, masterKey, kek, n)
 	case "external":
 		raw := os.Getenv("LOADTEST_ORIGINS")
 		if raw == "" {
@@ -329,7 +343,7 @@ func startGoroutineOrigins(dsn, masterKey string, n int) ([]*origin, error) {
 
 var builtOriginBinary string
 
-func startProcessOrigins(dsn, masterKey string, n int) ([]*origin, error) {
+func startProcessOrigins(dsn, masterKey, kek string, n int) ([]*origin, error) {
 	bin, err := originBinary()
 	if err != nil {
 		return nil, err
@@ -346,6 +360,7 @@ func startProcessOrigins(dsn, masterKey string, n int) ([]*origin, error) {
 		cmd := exec.Command(bin, "mcp", "--listen", "127.0.0.1:"+port)
 		cmd.Env = append(os.Environ(),
 			"VEIL_POSTGRES_DSN="+dsn,
+			"VEIL_KEK="+kek,
 			"VEIL_MASTER_KEY="+masterKey,
 			"VEIL_LOG_LEVEL=warn",
 		)

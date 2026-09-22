@@ -66,10 +66,22 @@ CREATE TABLE workloads (
 );
 
 CREATE TABLE owner_keys (
+    org_id TEXT NOT NULL,
     owner_kind TEXT NOT NULL,
     owner_id TEXT NOT NULL,
     wrapped BYTEA NOT NULL,
-    PRIMARY KEY (owner_kind, owner_id)
+    PRIMARY KEY (org_id, owner_kind, owner_id)
+);
+
+-- One master key per org, sealed by the deployment KEK. cmk_id is the hook for
+-- a per-org external CMK later; NULL means the env KEK wrapped this row.
+CREATE TABLE org_keys (
+    org_id TEXT PRIMARY KEY,
+    wrapped BYTEA NOT NULL,
+    key_version INTEGER NOT NULL DEFAULT 1,
+    cmk_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    rotated_at TIMESTAMPTZ
 );
 
 CREATE TABLE item_versions (

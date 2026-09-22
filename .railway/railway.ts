@@ -40,7 +40,7 @@ export default defineRailway(() => {
     healthcheckTimeout: 300,
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), PWM_HOME: preserve(), PWM_HYDRA_ADMIN: preserve(), PWM_HYDRA_CLIENT_ID: preserve(), PWM_HYDRA_ISSUER: preserve(), PWM_KETO_READ: preserve(), PWM_KETO_WRITE: preserve(), PWM_KRATOS_ADMIN: preserve(), PWM_KRATOS_PUBLIC: preserve(), PWM_MCP_URL: preserve(), PWM_MASTER_KEY: preserve(), PWM_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil" },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), PWM_HOME: preserve(), PWM_HYDRA_ADMIN: preserve(), PWM_HYDRA_CLIENT_ID: preserve(), PWM_HYDRA_ISSUER: preserve(), PWM_KEK: preserve(), PWM_KETO_READ: preserve(), PWM_KETO_WRITE: preserve(), PWM_KRATOS_ADMIN: preserve(), PWM_KRATOS_PUBLIC: preserve(), PWM_MCP_URL: preserve(), PWM_MASTER_KEY: preserve(), PWM_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil" },
   });
   const veilMigrate = service("veil-migrate", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },

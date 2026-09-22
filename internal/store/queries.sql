@@ -169,7 +169,7 @@ SELECT secret FROM item_versions WHERE id = @id::bigint AND item_id = @item_id::
 UPDATE items SET secret = @secret::bytea WHERE id = @id::text;
 
 -- name: ItemSecretOwner :one
-SELECT secret, owner_kind, owner_id FROM items WHERE id = @id::text;
+SELECT secret, org_id, owner_kind, owner_id FROM items WHERE id = @id::text;
 
 -- name: PutGrant :exec
 INSERT INTO grants(id, org_id, agent_id, item_id, level, actions, expires_at)
@@ -200,12 +200,26 @@ ON CONFLICT(grant_id) DO UPDATE SET
 SELECT grant_id, id, human_id, expires_at FROM approvals WHERE grant_id = @grant_id::text;
 
 -- name: OwnerWrapped :one
-SELECT wrapped FROM owner_keys WHERE owner_kind = @owner_kind::text AND owner_id = @owner_id::text;
+SELECT wrapped FROM owner_keys
+WHERE org_id = @org_id::text AND owner_kind = @owner_kind::text AND owner_id = @owner_id::text;
 
 -- name: PutOwnerWrapped :exec
-INSERT INTO owner_keys(owner_kind, owner_id, wrapped)
-VALUES(@owner_kind::text, @owner_id::text, @wrapped::bytea)
-ON CONFLICT(owner_kind, owner_id) DO NOTHING;
+INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped)
+VALUES(@org_id::text, @owner_kind::text, @owner_id::text, @wrapped::bytea)
+ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING;
+
+-- name: OrgKey :one
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
+FROM org_keys WHERE org_id = @org_id::text;
+
+-- name: PutOrgKey :execrows
+INSERT INTO org_keys(org_id, wrapped, key_version, cmk_id, created_at)
+VALUES(@org_id::text, @wrapped::bytea, @key_version::integer, sqlc.narg(cmk_id), @created_at::timestamptz)
+ON CONFLICT(org_id) DO NOTHING;
+
+-- name: BumpOrgKey :execrows
+UPDATE org_keys SET wrapped = @wrapped::bytea, key_version = key_version + 1, rotated_at = @rotated_at::timestamptz
+WHERE org_id = @org_id::text;
 
 -- name: PutAgent :exec
 INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at)
