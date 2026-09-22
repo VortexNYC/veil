@@ -83,6 +83,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(totpCmd())
 	root.AddCommand(migrateCmd(&home))
 	root.AddCommand(sweepCmd(&home))
+	root.AddCommand(keyCmd())
 	return root
 }
 

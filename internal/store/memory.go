@@ -118,6 +118,8 @@ func (m *Memory) PlantHuman(p protocol.Principal) (bool, error) {
 // Memory holds plaintext and has no key hierarchy — org keys are provisioned.
 func (m *Memory) EnsureOrgKey(context.Context, string, []byte) error { return nil }
 func (m *Memory) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
+func (m *Memory) RotateOrgKey(context.Context, string) error         { return ErrUnsupported }
+func (m *Memory) RotateKEK(context.Context, []byte) error            { return ErrUnsupported }
 
 func (m *Memory) Human(id string) (protocol.Principal, error) {
 	m.mu.Lock()
