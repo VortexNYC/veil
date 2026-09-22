@@ -157,24 +157,35 @@ func OpenPostgres(dsn string) (*App, error) {
 	}
 	cfg := config{OrgID: DefaultOrg, HumanID: DefaultHuman}
 	// Legacy seed: a pre-multi-tenant deployment still carries VEIL_MASTER_KEY.
-	// Wrap it under the KEK as this org's row. ON CONFLICT DO NOTHING — an
-	// existing row is never overwritten, so this is safe on every boot.
-	master, err := loadKeyEnv("VEIL_MASTER_KEY", false)
-	if err != nil {
+	// Wrap it under the KEK as this org's row. An existing row is verified, not
+	// overwritten — a mismatched VEIL_MASTER_KEY fails boot loudly rather than
+	// stranding the org's ciphertext under the wrong key.
+	ctx := context.Background()
+	if master, err := loadKeyEnv("VEIL_MASTER_KEY", false); err != nil {
 		_ = s.Close()
 		return nil, err
-	}
-	if master == nil {
+	} else if master != nil {
+		if err := s.EnsureOrgKey(ctx, cfg.OrgID, master); err != nil {
+			_ = s.Close()
+			return nil, fmt.Errorf("app: VEIL_MASTER_KEY does not match org_keys: %w", err)
+		}
+	} else if has, err := s.HasOrgKey(ctx, cfg.OrgID); err != nil {
+		_ = s.Close()
+		return nil, err
+	} else if !has {
 		// Fresh origin: mint the default org's master. It lands only as a
-		// wrapped org_keys row — never persisted in plaintext.
-		if master, err = crypto.NewKey(); err != nil {
+		// wrapped org_keys row — never persisted in plaintext. A concurrent
+		// replica's winning insert is authoritative; our discarded mint is
+		// fine because resolution always reads the committed row.
+		fresh, err := crypto.NewKey()
+		if err != nil {
 			_ = s.Close()
 			return nil, err
 		}
-	}
-	if err := s.EnsureOrgKey(context.Background(), cfg.OrgID, master); err != nil {
-		_ = s.Close()
-		return nil, err
+		if err := s.EnsureOrgKey(ctx, cfg.OrgID, fresh); err != nil && !errors.Is(err, store.ErrOrgKeyMismatch) {
+			_ = s.Close()
+			return nil, err
+		}
 	}
 	if _, err := s.Human(cfg.HumanID); errors.Is(err, store.ErrNotFound) {
 		if err := s.PutHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: cfg.HumanID, OrgID: cfg.OrgID}); err != nil {

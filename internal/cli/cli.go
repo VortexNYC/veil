@@ -93,8 +93,11 @@ func migrateCmd(home *string) *cobra.Command {
 		Long: "Copies every vault row from the sqlite file into the Postgres " +
 			"database named by --dsn or VEIL_POSTGRES_DSN. Secrets and wrapped " +
 			"keys are opaque ciphertext and move byte-for-byte; no master key " +
-			"is required. Inserts are ON CONFLICT DO NOTHING, so reruns only " +
-			"pick up rows written since the last pass.",
+			"is required to copy. The destination origin still needs its " +
+			"org_keys row: boot it once with VEIL_MASTER_KEY set to the source " +
+			"vault's master key so the row is sealed under VEIL_KEK. Inserts " +
+			"are ON CONFLICT DO NOTHING, so reruns only pick up rows written " +
+			"since the last pass.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if sqlitePath == "" {
 				dir, err := resolveHome(*home)

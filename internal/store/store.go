@@ -14,6 +14,13 @@ var (
 	ErrDenied         = errors.New("store: denied")
 	ErrSessionExpired = errors.New("store: session expired")
 	ErrSessionRevoked = errors.New("store: session revoked")
+	// ErrOrgKeyMissing means the org has no org_keys row — a provisioning or
+	// ops failure, distinct from a missing item so callers do not 404 a secret
+	// that exists but cannot be decrypted.
+	ErrOrgKeyMissing = errors.New("store: org has no key")
+	// ErrOrgKeyMismatch means EnsureOrgKey was handed a master that does not
+	// match the committed org_keys row — the asserted key is wrong.
+	ErrOrgKeyMismatch = errors.New("store: org key mismatch")
 )
 
 // Secret is vault material. It never lives on protocol types.

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/hmac"
 	"fmt"
 	"time"
 
@@ -74,14 +75,14 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 }
 
 // resolveOrgKey unwraps an org's master key from org_keys under the KEK.
-// Missing rows fail closed with ErrNotFound — a wrong-key decrypt attempt
+// Missing rows fail closed with ErrOrgKeyMissing — a wrong-key decrypt attempt
 // would be indistinguishable from corruption, so we never try.
 func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, error) {
 	row, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
 		return p.sqlc.OrgKey(ctx, orgID)
 	})
 	if err == pgx.ErrNoRows {
-		return nil, ErrNotFound
+		return nil, ErrOrgKeyMissing
 	}
 	if err != nil {
 		return nil, err
@@ -90,9 +91,12 @@ func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, err
 }
 
 // EnsureOrgKey seals master under the KEK and inserts the org_keys row if the
-// org has none. Idempotent: an existing row is never overwritten (rotation is
-// BumpOrgKey, a different verb). This is the provisioning hook — signup and
-// the one-time VEIL_MASTER_KEY migration both land here.
+// org has none. If a row already exists it is never overwritten — instead the
+// committed master is unwrapped and compared: an identical re-seed is a no-op,
+// a different master is ErrOrgKeyMismatch. A boot that asserts the wrong master
+// fails loud rather than stranding the org's ciphertext under a random key.
+// This is the provisioning hook — signup and the one-time VEIL_MASTER_KEY
+// migration both land here.
 func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte) error {
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
@@ -101,15 +105,51 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
-	_, err = retryOnDeadConn(func() (struct{}, error) {
-		return struct{}{}, p.sqlc.PutOrgKey(ctx, sqlc.PutOrgKeyParams{
+	n, err := retryOnDeadConn(func() (int64, error) {
+		return p.sqlc.PutOrgKey(ctx, sqlc.PutOrgKeyParams{
 			OrgID:      orgID,
 			Wrapped:    wrapped,
 			KeyVersion: 1,
 			CreatedAt:  time.Now().UTC(),
 		})
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if n == 1 {
+		return nil
+	}
+	row, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
+		return p.sqlc.OrgKey(ctx, orgID)
+	})
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("store: org_keys insert conflicted but no row for %s", orgID)
+	}
+	if err != nil {
+		return err
+	}
+	existing, err := crypto.Open(p.kek, row.Wrapped)
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	if !hmac.Equal(existing, master) {
+		return ErrOrgKeyMismatch
+	}
+	return nil
+}
+
+// HasOrgKey reports whether an org_keys row exists for orgID.
+func (p *Postgres) HasOrgKey(ctx context.Context, orgID string) (bool, error) {
+	_, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
+		return p.sqlc.OrgKey(ctx, orgID)
+	})
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // EnsurePostgresSchema creates the vault tables/indexes if missing. It is the
@@ -251,22 +291,41 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	// owner_keys predates org_id. Backfill every row to the one pre-multi-tenant
 	// org and rebuild the PK; wrapped blobs are ciphertext under that org's
-	// master and move byte-for-byte.
-	var hasOrgID bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name='owner_keys' AND column_name='org_id')`).Scan(&hasOrgID); err != nil {
+	// master and move byte-for-byte. The gate is PK membership, not column
+	// presence, and the sequence runs in one transaction — a crash mid-way
+	// rolls back and the next boot retries cleanly instead of stranding the
+	// table without a primary key.
+	var pkHasOrg bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+		WHERE n.nspname = current_schema()
+		  AND t.relname = 'owner_keys'
+		  AND c.contype = 'p'
+		  AND a.attname = 'org_id')`).Scan(&pkHasOrg); err != nil {
 		return err
 	}
-	if !hasOrgID {
+	if !pkHasOrg {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
 		for _, q := range []string{
-			`ALTER TABLE owner_keys ADD COLUMN org_id TEXT`,
+			`ALTER TABLE owner_keys ADD COLUMN IF NOT EXISTS org_id TEXT`,
 			`UPDATE owner_keys SET org_id = '` + protocol.LocalOrgID + `' WHERE org_id IS NULL`,
-			`ALTER TABLE owner_keys DROP CONSTRAINT owner_keys_pkey`,
+			`ALTER TABLE owner_keys DROP CONSTRAINT IF EXISTS owner_keys_pkey`,
 			`ALTER TABLE owner_keys ALTER COLUMN org_id SET NOT NULL`,
 			`ALTER TABLE owner_keys ADD PRIMARY KEY (org_id, owner_kind, owner_id)`,
 		} {
-			if _, err := pool.Exec(ctx, q); err != nil {
+			if _, err := tx.Exec(ctx, q); err != nil {
 				return err
 			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
 		}
 	}
 	return nil

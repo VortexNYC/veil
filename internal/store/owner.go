@@ -25,11 +25,17 @@ type ownerSource interface {
 // not depend on a particular database driver: Postgres resolves org masters by
 // unwrapping org_keys rows under the deployment KEK; the sqlite vault resolves
 // every org to its single vault key (a local vault is one tenant).
+//
+// gens is a per-org generation counter bumped by InvalidateOrg. Cache writes
+// that were resolved under an older generation are dropped, so a rotation
+// mid-resolve cannot resurrect a stale master or persist a DEK wrap under a
+// key that is no longer the org's committed master.
 type keyManager struct {
 	resolve func(ctx context.Context, orgID string) ([]byte, error)
 	mu      sync.Mutex
 	masters map[string][]byte
 	deks    map[string][]byte
+	gens    map[string]uint64
 }
 
 func newKeyManager(resolve func(ctx context.Context, orgID string) ([]byte, error)) *keyManager {
@@ -37,16 +43,19 @@ func newKeyManager(resolve func(ctx context.Context, orgID string) ([]byte, erro
 		resolve: resolve,
 		masters: map[string][]byte{},
 		deks:    map[string][]byte{},
+		gens:    map[string]uint64{},
 	}
 }
 
 // master returns the unwrapped org master, cached per org. A missing org_keys
-// row fails closed: callers get ErrNotFound, not a wrong-key decrypt attempt.
+// row fails closed: callers get ErrOrgKeyMissing, not a wrong-key decrypt
+// attempt.
 func (km *keyManager) master(ctx context.Context, orgID string) ([]byte, error) {
 	if orgID == "" {
 		return nil, fmt.Errorf("store: missing org")
 	}
 	km.mu.Lock()
+	gen := km.gens[orgID]
 	if k, ok := km.masters[orgID]; ok {
 		km.mu.Unlock()
 		return k, nil
@@ -58,7 +67,9 @@ func (km *keyManager) master(ctx context.Context, orgID string) ([]byte, error) 
 		return nil, err
 	}
 	km.mu.Lock()
-	km.masters[orgID] = k
+	if km.gens[orgID] == gen {
+		km.masters[orgID] = k
+	}
 	km.mu.Unlock()
 	return k, nil
 }
@@ -70,6 +81,7 @@ func (km *keyManager) master(ctx context.Context, orgID string) ([]byte, error) 
 func (km *keyManager) InvalidateOrg(orgID string) {
 	prefix := orgID + "\x00"
 	km.mu.Lock()
+	km.gens[orgID]++
 	delete(km.masters, orgID)
 	for k := range km.deks {
 		if strings.HasPrefix(k, prefix) {
@@ -86,33 +98,51 @@ func (km *keyManager) ownerDEK(ctx context.Context, s ownerSource, orgID string,
 		return nil, fmt.Errorf("store: missing owner")
 	}
 	k := ownerCacheKey(orgID, o)
-	km.mu.Lock()
-	if dek, ok := km.deks[k]; ok {
+	for attempt := 0; ; attempt++ {
+		km.mu.Lock()
+		gen := km.gens[orgID]
+		if dek, ok := km.deks[k]; ok {
+			km.mu.Unlock()
+			return dek, nil
+		}
 		km.mu.Unlock()
-		return dek, nil
-	}
-	km.mu.Unlock()
 
-	master, err := km.master(ctx, orgID)
-	if err != nil {
-		return nil, err
-	}
+		master, err := km.master(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
 
-	wrapped, err := s.loadOwnerWrapped(ctx, orgID, o)
-	if err == ErrNotFound {
-		dek, err := crypto.NewKey()
-		if err != nil {
-			return nil, err
-		}
-		sealed, err := crypto.Seal(master, dek)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.storeOwnerWrapped(ctx, orgID, o, sealed); err != nil {
-			return nil, err
-		}
-		wrapped, err = s.loadOwnerWrapped(ctx, orgID, o)
-		if err != nil {
+		wrapped, err := s.loadOwnerWrapped(ctx, orgID, o)
+		if err == ErrNotFound {
+			dek, err := crypto.NewKey()
+			if err != nil {
+				return nil, err
+			}
+			sealed, err := crypto.Seal(master, dek)
+			if err != nil {
+				return nil, err
+			}
+			// The org rotated mid-flight: a wrap sealed under the old master
+			// would be unreadable once committed. Retry under the new master.
+			km.mu.Lock()
+			stale := km.gens[orgID] != gen
+			km.mu.Unlock()
+			if stale {
+				if attempt >= 3 {
+					return nil, fmt.Errorf("store: org %s rotated during DEK mint", orgID)
+				}
+				continue
+			}
+			if err := s.storeOwnerWrapped(ctx, orgID, o, sealed); err != nil {
+				return nil, err
+			}
+			// ON CONFLICT DO NOTHING: a concurrent mint may have committed
+			// first. The stored row is authoritative — reload it.
+			wrapped, err = s.loadOwnerWrapped(ctx, orgID, o)
+			if err != nil {
+				return nil, err
+			}
+		} else if err != nil {
 			return nil, err
 		}
 		plain, err := crypto.Open(master, wrapped)
@@ -120,19 +150,10 @@ func (km *keyManager) ownerDEK(ctx context.Context, s ownerSource, orgID string,
 			return nil, err
 		}
 		km.mu.Lock()
-		km.deks[k] = plain
+		if km.gens[orgID] == gen {
+			km.deks[k] = plain
+		}
 		km.mu.Unlock()
 		return plain, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	plain, err := crypto.Open(master, wrapped)
-	if err != nil {
-		return nil, err
-	}
-	km.mu.Lock()
-	km.deks[k] = plain
-	km.mu.Unlock()
-	return plain, nil
 }

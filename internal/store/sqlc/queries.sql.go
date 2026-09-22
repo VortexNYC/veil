@@ -798,7 +798,7 @@ func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) error {
 	return err
 }
 
-const putOrgKey = `-- name: PutOrgKey :exec
+const putOrgKey = `-- name: PutOrgKey :execrows
 INSERT INTO org_keys(org_id, wrapped, key_version, cmk_id, created_at)
 VALUES($1::text, $2::bytea, $3::integer, $4, $5::timestamptz)
 ON CONFLICT(org_id) DO NOTHING
@@ -812,15 +812,18 @@ type PutOrgKeyParams struct {
 	CreatedAt  time.Time
 }
 
-func (q *Queries) PutOrgKey(ctx context.Context, arg PutOrgKeyParams) error {
-	_, err := q.db.Exec(ctx, putOrgKey,
+func (q *Queries) PutOrgKey(ctx context.Context, arg PutOrgKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, putOrgKey,
 		arg.OrgID,
 		arg.Wrapped,
 		arg.KeyVersion,
 		arg.CmkID,
 		arg.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const putOwnerWrapped = `-- name: PutOwnerWrapped :exec

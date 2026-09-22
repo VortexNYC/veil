@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/VortexNYC/veil/internal/crypto"
@@ -72,21 +73,33 @@ func TestPostgresOrgKeyMissingFailClosed(t *testing.T) {
 	}
 }
 
-// EnsureOrgKey never overwrites an existing row: seeding twice with different
-// masters leaves the first master authoritative.
+// EnsureOrgKey never overwrites an existing row: re-seeding with the same
+// master is a no-op, but a different master fails with ErrOrgKeyMismatch —
+// a boot asserting the wrong key must be loud, not silently lock the vault.
 func TestPostgresEnsureOrgKeyIdempotent(t *testing.T) {
 	s := openTestPostgres(t)
 	ctx := context.Background()
 
+	org := "org-seed"
+	first, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureOrgKey(ctx, org, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureOrgKey(ctx, org, first); err != nil {
+		t.Fatalf("same-master re-seed must be a no-op: %v", err)
+	}
 	other, err := crypto.NewKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.EnsureOrgKey(ctx, "org", other); err != nil {
-		t.Fatal(err)
+	if err := s.EnsureOrgKey(ctx, org, other); !errors.Is(err, ErrOrgKeyMismatch) {
+		t.Fatalf("different-master re-seed must fail, got %v", err)
 	}
 	owner := protocol.Owner{Kind: protocol.OwnerUser, ID: "self"}
-	if err := s.PutItem(protocol.Item{ID: "keep", OrgID: "org", Name: "keep", Kind: protocol.ItemAPIKey, Owner: owner}, Secret("sk")); err != nil {
+	if err := s.PutItem(protocol.Item{ID: "keep", OrgID: org, Name: "keep", Kind: protocol.ItemAPIKey, Owner: owner}, Secret("sk")); err != nil {
 		t.Fatal(err)
 	}
 	sec, err := s.Secret("keep")
@@ -133,6 +146,60 @@ func TestPostgresOwnerKeysMigration(t *testing.T) {
 	}
 	if org != protocol.LocalOrgID {
 		t.Fatalf("owner_keys row backfilled to %q, want %q", org, protocol.LocalOrgID)
+	}
+}
+
+// A crash mid-migration must not strand the table: the rebuild gate is PK
+// membership, not column presence, so a boot that finds a partial state
+// completes it instead of skipping forever.
+func TestPostgresOwnerKeysMidMigration(t *testing.T) {
+	// Full revert to the pre-org shape, then the partial prefix the crash left.
+	crashes := map[string][]string{
+		"after add column": {
+			`ALTER TABLE owner_keys DROP CONSTRAINT owner_keys_pkey`,
+			`ALTER TABLE owner_keys DROP COLUMN org_id`,
+			`ALTER TABLE owner_keys ADD PRIMARY KEY (owner_kind, owner_id)`,
+			`ALTER TABLE owner_keys ADD COLUMN org_id TEXT`,
+		},
+		"after drop constraint": {
+			`ALTER TABLE owner_keys DROP CONSTRAINT owner_keys_pkey`,
+			`ALTER TABLE owner_keys DROP COLUMN org_id`,
+			`ALTER TABLE owner_keys ADD PRIMARY KEY (owner_kind, owner_id)`,
+			`ALTER TABLE owner_keys ADD COLUMN org_id TEXT`,
+			`UPDATE owner_keys SET org_id = '` + protocol.LocalOrgID + `'`,
+			`ALTER TABLE owner_keys DROP CONSTRAINT owner_keys_pkey`,
+		},
+	}
+	for name, stmts := range crashes {
+		t.Run(name, func(t *testing.T) {
+			s := openTestPostgres(t)
+			ctx := context.Background()
+
+			owner := protocol.Owner{Kind: protocol.OwnerUser, ID: "self"}
+			if err := s.PutItem(protocol.Item{ID: "pre", OrgID: protocol.LocalOrgID, Name: "pre", Kind: protocol.ItemAPIKey, Owner: owner}, Secret("sk-pre")); err != nil {
+				t.Fatal(err)
+			}
+			for _, q := range stmts {
+				if _, err := s.pool.Exec(ctx, q); err != nil {
+					t.Fatalf("simulate mid-migration crash %q: %v", q, err)
+				}
+			}
+			if err := s.migrate(); err != nil {
+				t.Fatalf("migrate after partial state: %v", err)
+			}
+			s.km.InvalidateOrg(protocol.LocalOrgID)
+			sec, err := s.Secret("pre")
+			if err != nil || string(sec) != "sk-pre" {
+				t.Fatalf("secret unreadable after mid-migration recovery: %v", err)
+			}
+			var n int
+			if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=ANY(c.conkey) WHERE t.relname='owner_keys' AND c.contype='p' AND a.attname='org_id'`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n == 0 {
+				t.Fatal("owner_keys PK does not include org_id after recovery")
+			}
+		})
 	}
 }
 
