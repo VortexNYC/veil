@@ -60,7 +60,10 @@ export default defineRailway(() => {
     },
   });
   // Hourly cleanup of terminally-expired sessions, grants, and approvals
-  // (24h keep window). Deletes only; never decrypts, so no master key.
+  // (24h keep window). Also creates audit month partitions ~3 months ahead
+  // and detaches partitions older than --audit-keep (default 90d) into
+  // standalone tables for archival — detach, never drop. Deletes only;
+  // never decrypts, so no master key.
   const veilSweep = service("veil-sweep", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/veil sweep --keep 24h",

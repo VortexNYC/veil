@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -442,6 +443,40 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 // same DDL OpenPostgres runs at boot, exposed so the sqlite→postgres migrator
 // can prepare an empty database without a master key.
 func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	// Legacy audit migration: a plain audit table cannot become partitioned
+	// in place. Rename it aside first — the DDL below then creates the
+	// partitioned form, the copy step moves rows, and the drop frees the
+	// idx_audit_* index names before index creation runs. Detection keys on
+	// relkind: 'r' is a plain table, 'p' is already partitioned.
+	var auditIsPlain bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = current_schema() AND c.relname = 'audit' AND c.relkind = 'r')`).Scan(&auditIsPlain); err != nil {
+		return err
+	}
+	if auditIsPlain {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		// Table renames do not rename owned sequences: the legacy identity
+		// sequence keeps the name audit_id_seq. It must move aside or
+		// CREATE SEQUENCE IF NOT EXISTS binds the partitioned table's
+		// default to a sequence owned by the doomed legacy table — and the
+		// later DROP fails on the dependency.
+		for _, q := range []string{
+			`ALTER TABLE audit RENAME TO audit_legacy`,
+			`ALTER SEQUENCE IF EXISTS audit_id_seq RENAME TO audit_id_seq_legacy`,
+		} {
+			if _, err := tx.Exec(ctx, q); err != nil {
+				_ = tx.Rollback(ctx)
+				return err
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+	}
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS humans (
 			id TEXT PRIMARY KEY,
@@ -485,8 +520,13 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			human_id TEXT NOT NULL,
 			expires_at TIMESTAMPTZ NOT NULL
 		)`,
+		// Audit is range-partitioned by month on `at` (VEIL-4): retention is
+		// DETACH PARTITION, not DELETE scans. The partition key must be part
+		// of the PK, hence composite (id, at). id comes from a plain sequence
+		// — PG16 cannot declare IDENTITY columns on partitioned tables.
+		`CREATE SEQUENCE IF NOT EXISTS audit_id_seq`,
 		`CREATE TABLE IF NOT EXISTS audit (
-			id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+			id BIGINT NOT NULL DEFAULT nextval('audit_id_seq'),
 			at TIMESTAMPTZ NOT NULL,
 			org_id TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
@@ -494,8 +534,13 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			action TEXT NOT NULL,
 			decision TEXT NOT NULL,
 			reason TEXT NOT NULL,
-			approval_id TEXT NOT NULL
-		)`,
+			approval_id TEXT NOT NULL,
+			PRIMARY KEY (id, at)
+		) PARTITION BY RANGE (at)`,
+		// Catch-all: rows outside every created month land here instead of
+		// erroring. Migrated legacy rows live here permanently; retention
+		// only detaches named monthly partitions.
+		`CREATE TABLE IF NOT EXISTS audit_default PARTITION OF audit DEFAULT`,
 		`CREATE TABLE IF NOT EXISTS workloads (
 			issuer TEXT NOT NULL,
 			subject TEXT NOT NULL,
@@ -538,13 +583,6 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			max_uses INTEGER NOT NULL,
 			uses INTEGER NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_items_org_name ON items(org_id, name)`,
-		`CREATE INDEX IF NOT EXISTS idx_items_org_archived_name ON items(org_id, archived, name)`,
-		`CREATE INDEX IF NOT EXISTS idx_grants_item ON grants(item_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_agent_at ON audit(agent_id, at)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_item_versions_item ON item_versions(item_id, id)`,
 		`CREATE TABLE IF NOT EXISTS recovery_wraps (
 			org_id TEXT NOT NULL,
 			owner_kind TEXT NOT NULL,
@@ -556,6 +594,63 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			PRIMARY KEY (org_id, owner_kind, owner_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_workloads_issuer ON workloads(issuer)`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			return err
+		}
+	}
+	// Legacy audit copy: move every row from audit_legacy into the
+	// partitioned table (the DEFAULT partition catches pre-partition-era
+	// months), advance the sequence past copied ids, and drop the legacy
+	// table — freeing the idx_audit_* names for the index phase below. One
+	// transaction: a crash rolls back and the next boot retries the copy.
+	var hasLegacyAudit bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = current_schema() AND c.relname = 'audit_legacy' AND c.relkind = 'r')`).Scan(&hasLegacyAudit); err != nil {
+		return err
+	}
+	if hasLegacyAudit {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		for _, q := range []string{
+			// A legacy table from before org-carrying rows may lack the
+			// column entirely; default it so the copy backfills '' →
+			// LocalOrgID via the later org backfill pass.
+			`ALTER TABLE audit_legacy ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`,
+			`INSERT INTO audit(id, at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+			 SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit_legacy`,
+			`SELECT setval('audit_id_seq', COALESCE((SELECT max(id) FROM audit), 1))`,
+			`DROP TABLE audit_legacy`,
+		} {
+			if _, err := tx.Exec(ctx, q); err != nil {
+				_ = tx.Rollback(ctx)
+				return err
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+	}
+	// Current and next month's partitions exist after every boot — the
+	// origin self-maintains its partition horizon on deploy/restart, and
+	// `veil sweep` runs the same ensure so a never-restarting process still
+	// gets partitions.
+	if err := EnsureAuditPartitions(ctx, pool, 2); err != nil {
+		return err
+	}
+	// Index phase: after the legacy drop so the idx_audit_* names bind to
+	// the partitioned parent and propagate to every partition.
+	for _, q := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_items_org_name ON items(org_id, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_org_archived_name ON items(org_id, archived, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_grants_item ON grants(item_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_agent_at ON audit(agent_id, at)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_item_versions_item ON item_versions(item_id, id)`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err
@@ -669,6 +764,79 @@ func (p *Postgres) migrate() error {
 }
 
 func (p *Postgres) Close() error { p.pool.Close(); p.auditPool.Close(); return nil }
+
+// auditPartitionName names monthly audit partitions deterministically.
+func auditPartitionName(t time.Time) string {
+	return fmt.Sprintf("audit_%04d_%02d", t.UTC().Year(), int(t.UTC().Month()))
+}
+
+// EnsureAuditPartitions creates monthly partitions of audit covering this
+// month and ahead-1 following months. Idempotent — reruns create only the
+// missing range. Boot calls it with ahead=2; `veil sweep` calls it with a
+// wider horizon so a never-restarting origin still partitions ahead.
+func EnsureAuditPartitions(ctx context.Context, pool *pgxpool.Pool, ahead int) error {
+	now := time.Now().UTC()
+	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < ahead; i++ {
+		from := start.AddDate(0, i, 0)
+		to := from.AddDate(0, 1, 0)
+		q := fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS %s PARTITION OF audit FOR VALUES FROM ('%s') TO ('%s')`,
+			auditPartitionName(from),
+			from.Format("2006-01-02"), to.Format("2006-01-02"))
+		if _, err := pool.Exec(ctx, q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DetachAuditPartitionsBefore detaches every monthly audit partition whose
+// range ends before cutoff, returning the detached table names. Detached
+// partitions become ordinary tables — archive or drop is an ops call (e.g.
+// pg_dump -t then DROP), never an implicit data loss inside the verb.
+// audit_default is never detached: it is the catch-all, not a month.
+func DetachAuditPartitionsBefore(ctx context.Context, pool *pgxpool.Pool, cutoff time.Time) ([]string, error) {
+	rows, err := pool.Query(ctx, `SELECT c.relname
+		FROM pg_inherits i
+		JOIN pg_class p ON p.oid = i.inhparent
+		JOIN pg_class c ON c.oid = i.inhrelid
+		JOIN pg_namespace n ON n.oid = p.relnamespace
+		WHERE n.nspname = current_schema() AND p.relname = 'audit'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	monthName := regexp.MustCompile(`^audit_(\d{4})_(\d{2})$`)
+	var detach []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		m := monthName.FindStringSubmatch(name)
+		if m == nil {
+			continue // audit_default and anything not month-named
+		}
+		y, _ := strconv.Atoi(m[1])
+		mo, _ := strconv.Atoi(m[2])
+		end := time.Date(y, time.Month(mo), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+		if !end.After(cutoff) {
+			detach = append(detach, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var detached []string
+	for _, name := range detach {
+		if _, err := pool.Exec(ctx, `ALTER TABLE audit DETACH PARTITION `+name); err != nil {
+			return detached, fmt.Errorf("detach %s: %w", name, err)
+		}
+		detached = append(detached, name)
+	}
+	return detached, nil
+}
 
 func (p *Postgres) ownerDEK(orgID string, o protocol.Owner) ([]byte, error) {
 	return p.km.ownerDEK(context.Background(), p, orgID, o)

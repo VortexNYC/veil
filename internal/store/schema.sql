@@ -45,8 +45,9 @@ CREATE TABLE approvals (
     expires_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE SEQUENCE audit_id_seq;
 CREATE TABLE audit (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id BIGINT NOT NULL DEFAULT nextval('audit_id_seq'),
     at TIMESTAMPTZ NOT NULL,
     org_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
@@ -54,8 +55,9 @@ CREATE TABLE audit (
     action TEXT NOT NULL,
     decision TEXT NOT NULL,
     reason TEXT NOT NULL,
-    approval_id TEXT NOT NULL
-);
+    approval_id TEXT NOT NULL,
+    PRIMARY KEY (id, at)
+) PARTITION BY RANGE (at);
 
 CREATE TABLE workloads (
     issuer TEXT NOT NULL,
