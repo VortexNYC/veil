@@ -208,12 +208,25 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	// single-tenant vault, so they belong to LocalOrgID — the org whose
 	// wrapped master still opens their ciphertexts. Writers always stamp a
 	// non-empty org, so after this backfill strict org equality is
-	// fail-closed.
+	// fail-closed. One transaction: no half-migrated mix is ever visible.
+	// sqlite cannot ALTER ADD a CHECK; the single-process store plus the
+	// app-level empty-org denials cover what pg enforces by constraint.
 	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+		// Duplicate-column errors mean the column already exists — ignored.
 		_, _ = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN org_id TEXT NOT NULL DEFAULT ''`)
-		if _, err := s.db.Exec(`UPDATE `+table+` SET org_id = ? WHERE org_id = ''`, protocol.LocalOrgID); err != nil {
+	}
+	btx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = btx.Rollback() }()
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+		if _, err := btx.Exec(`UPDATE `+table+` SET org_id = ? WHERE org_id = ''`, protocol.LocalOrgID); err != nil {
 			return err
 		}
+	}
+	if err := btx.Commit(); err != nil {
+		return err
 	}
 	if err := s.dropItemsNameUnique(); err != nil {
 		return err

@@ -327,8 +327,8 @@ func (a *App) AddItem(name, uri string, secret []byte) (protocol.Item, error) {
 }
 
 func (a *App) PutItemFor(p protocol.Principal, opts ItemOpts) (protocol.Item, error) {
-	if p.Kind != protocol.PrincipalHuman {
-		return protocol.Item{}, fmt.Errorf("app: create is human")
+	if p.Kind != protocol.PrincipalHuman || p.OrgID == "" {
+		return protocol.Item{}, fmt.Errorf("app: create is a provisioned human")
 	}
 	ok, err := a.ownsVault(p)
 	if err != nil {
@@ -815,7 +815,7 @@ func (a *App) OwnsVault(p protocol.Principal) (bool, error) {
 }
 
 func (a *App) MayWriteItem(p protocol.Principal, item protocol.Item) (bool, error) {
-	if p.Kind != protocol.PrincipalHuman {
+	if p.Kind != protocol.PrincipalHuman || p.OrgID == "" {
 		return false, nil
 	}
 	if item.OrgID != p.OrgID {
@@ -1231,9 +1231,10 @@ func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level
 		return protocol.Grant{}, fmt.Errorf("app: item archived")
 	}
 	// The grant lives in the item's org; a grantee outside it is not a grantee,
-	// and an actor outside it is not its owner.
+	// and an actor outside it is not its owner. An empty-org actor is not a
+	// provisioned identity at all.
 	org := item.OrgID
-	if org != actor.OrgID {
+	if actor.OrgID == "" || org != actor.OrgID {
 		return protocol.Grant{}, fmt.Errorf("app: unknown item")
 	}
 	// Grants are owner-administered: a same-org member must not mint grants
@@ -1380,7 +1381,7 @@ func (a *App) ApproveOIDC(ctx context.Context, grantID, rawToken string, ttl tim
 	if err != nil {
 		return protocol.Approval{}, err
 	}
-	if g.OrgID != p.OrgID {
+	if p.OrgID == "" || g.OrgID != p.OrgID {
 		return protocol.Approval{}, fmt.Errorf("app: not a member")
 	}
 	if ttl <= 0 {
@@ -1468,6 +1469,10 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 	} else if !errors.Is(herr, store.ErrNotFound) {
 		return nil, herr
 	}
+	// An empty grantee org is an unprovisioned identity — nothing to show.
+	if granteeOrg == "" {
+		granteeKnown = false
+	}
 	grants, err := a.Store.ListGrants()
 	if err != nil {
 		return nil, err
@@ -1491,7 +1496,9 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		if item.Archived {
+		// The grant's org stamps from its item at grant time; a stored
+		// violation is corruption — hide the row rather than leak metadata.
+		if item.Archived || item.OrgID != g.OrgID {
 			continue
 		}
 		out = append(out, item)

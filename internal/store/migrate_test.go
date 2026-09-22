@@ -330,6 +330,13 @@ func TestEmptyOrgBackfill(t *testing.T) {
 	t.Run("postgres", func(t *testing.T) {
 		p := openTestPostgres(t)
 		ctx := context.Background()
+		// Simulate the pre-migration shape: drop the non-empty guard so ''
+		// rows can exist, then let EnsurePostgresSchema rebuild it.
+		for _, table := range []string{"items", "humans", "agents"} {
+			if _, err := p.pool.Exec(ctx, `ALTER TABLE `+table+` DROP CONSTRAINT IF EXISTS `+table+`_org_id_nonempty`); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if _, err := p.pool.Exec(ctx, `INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret)
 			VALUES('legacy', '', 'legacy', 'api_key', 'org', '', '[]', '\x00')`); err != nil {
 			t.Fatal(err)

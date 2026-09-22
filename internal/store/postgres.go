@@ -333,15 +333,39 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	// Rows with org_id '' predate multi-tenancy. They are the original
 	// single-tenant vault, so they belong to LocalOrgID — the org whose
 	// wrapped master still opens their ciphertexts. Any other assignment
-	// would strand them undecryptable. Writers always stamp a non-empty
-	// org, so after this backfill strict org equality is fail-closed.
+	// would strand them undecryptable. The whole loop runs in one
+	// transaction: readers never see a half-migrated mix of '' and
+	// LocalOrgID rows, and a crash rolls back cleanly for the next boot.
+	// The CHECK then makes the invariant durable — no writer can ever
+	// reintroduce an empty org, and a stale binary that tries fails loudly
+	// instead of reopening the unscoped-row hole.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
-		if _, err := pool.Exec(ctx, `ALTER TABLE `+table+` ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		if _, err := tx.Exec(ctx, `ALTER TABLE `+table+` ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
-		if _, err := pool.Exec(ctx, `UPDATE `+table+` SET org_id = $1 WHERE org_id = '' OR org_id IS NULL`, protocol.LocalOrgID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE `+table+` SET org_id = $1 WHERE org_id = '' OR org_id IS NULL`, protocol.LocalOrgID); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint c
+				JOIN pg_class t ON t.oid = c.conrelid
+				JOIN pg_namespace n ON n.oid = t.relnamespace
+				WHERE n.nspname = current_schema()
+				  AND t.relname = '`+table+`'
+				  AND c.conname = '`+table+`_org_id_nonempty') THEN
+				ALTER TABLE `+table+` ADD CONSTRAINT `+table+`_org_id_nonempty CHECK (org_id <> '');
+			END IF;
+		END $$`); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	return nil
 }
