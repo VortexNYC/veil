@@ -1,7 +1,9 @@
 package store
 
 import (
+	"context"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -45,8 +47,13 @@ func (m *Memory) Close() error { return nil }
 func (m *Memory) PutAgent(p protocol.Principal) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if existing, ok := m.agents[p.ID]; ok && p.RevokedAt == nil {
-		p.RevokedAt = existing.RevokedAt
+	if existing, ok := m.agents[p.ID]; ok {
+		// Never reassign org/owner on conflict — only revocation merges.
+		p.OrgID = existing.OrgID
+		p.Owner = existing.Owner
+		if p.RevokedAt == nil {
+			p.RevokedAt = existing.RevokedAt
+		}
 	}
 	m.agents[p.ID] = p
 	return nil
@@ -98,6 +105,20 @@ func (m *Memory) PutHuman(p protocol.Principal) error {
 	return nil
 }
 
+func (m *Memory) PlantHuman(p protocol.Principal) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.humans[p.ID]; ok {
+		return false, nil
+	}
+	m.humans[p.ID] = p
+	return true, nil
+}
+
+// Memory holds plaintext and has no key hierarchy — org keys are provisioned.
+func (m *Memory) EnsureOrgKey(context.Context, string, []byte) error { return nil }
+func (m *Memory) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
+
 func (m *Memory) Human(id string) (protocol.Principal, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -124,6 +145,11 @@ func (m *Memory) ListHumans() ([]protocol.Principal, error) {
 func (m *Memory) PutItem(item protocol.Item, secret Secret) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if existing, ok := m.items[item.ID]; ok {
+		if existing.Owner != item.Owner || existing.OrgID != item.OrgID {
+			return fmt.Errorf("store: cannot change item owner")
+		}
+	}
 	if old, ok := m.secrets[item.ID]; ok {
 		m.nextVer++
 		id := m.nextVer

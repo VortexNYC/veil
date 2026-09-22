@@ -63,6 +63,18 @@ func (c *Client) Org() string {
 	return LocalOrgID
 }
 
+// ForOrg returns a client scoped to orgID — the same connections, a different
+// org object. Membership is per-org; one deployment holds many orgs.
+func (c *Client) ForOrg(orgID string) *Client {
+	orgID = strings.TrimSpace(orgID)
+	if c == nil || orgID == "" || orgID == c.orgID {
+		return c
+	}
+	cp := *c
+	cp.orgID = orgID
+	return &cp
+}
+
 func (c *Client) On() bool {
 	return c != nil && c.read != nil && c.write != nil
 }

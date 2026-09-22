@@ -204,6 +204,30 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	_, _ = s.db.Exec(`UPDATE sessions SET created_at = expires_at WHERE created_at = 0`)
 	_, _ = s.db.Exec(`UPDATE sessions SET ttl = 900 WHERE ttl = 0`)
 	_, _ = s.db.Exec(`UPDATE sessions SET max_ttl = 3600 WHERE max_ttl = 0`)
+	// Rows with org_id '' predate multi-tenancy. They are the original
+	// single-tenant vault, so they belong to LocalOrgID — the org whose
+	// wrapped master still opens their ciphertexts. Writers always stamp a
+	// non-empty org, so after this backfill strict org equality is
+	// fail-closed. One transaction: no half-migrated mix is ever visible.
+	// sqlite cannot ALTER ADD a CHECK; the single-process store plus the
+	// app-level empty-org denials cover what pg enforces by constraint.
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+		// Duplicate-column errors mean the column already exists — ignored.
+		_, _ = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN org_id TEXT NOT NULL DEFAULT ''`)
+	}
+	btx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = btx.Rollback() }()
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+		if _, err := btx.Exec(`UPDATE `+table+` SET org_id = ? WHERE org_id = ''`, protocol.LocalOrgID); err != nil {
+			return err
+		}
+	}
+	if err := btx.Commit(); err != nil {
+		return err
+	}
 	if err := s.dropItemsNameUnique(); err != nil {
 		return err
 	}
@@ -293,8 +317,10 @@ func parseRevokedAt(s sql.NullString) (*time.Time, error) {
 
 func (s *SQLite) PutAgent(p protocol.Principal) error {
 	rv := revokedAtString(p.RevokedAt)
+	// Conflict keeps the existing org/owner — an agent id must never be
+	// reassigned across orgs by an upsert.
 	_, err := s.db.Exec(`INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at) VALUES(?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id, owner_kind=excluded.owner_kind, owner_id=excluded.owner_id, revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)`,
+		ON CONFLICT(id) DO UPDATE SET revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)`,
 		p.ID, p.OrgID, p.Owner.Kind, p.Owner.ID, rv)
 	return err
 }
@@ -399,6 +425,22 @@ func (s *SQLite) PutHuman(p protocol.Principal) error {
 	return err
 }
 
+// PlantHuman is the provisioning anchor — insert-if-absent, never overwrite.
+func (s *SQLite) PlantHuman(p protocol.Principal) (bool, error) {
+	res, err := s.db.Exec(`INSERT INTO humans(id, org_id) VALUES(?, ?)
+		ON CONFLICT(id) DO NOTHING`, p.ID, p.OrgID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// A sqlite vault is one tenant: the single vault key covers every org, so
+// org-key provisioning is a no-op here. Per-org masters are a Postgres shape.
+func (s *SQLite) EnsureOrgKey(context.Context, string, []byte) error { return nil }
+func (s *SQLite) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
+
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
 	p.Kind = protocol.PrincipalHuman
@@ -494,9 +536,10 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	}()
 
 	var existingOwner protocol.Owner
-	err = tx.QueryRow(`SELECT owner_kind, owner_id FROM items WHERE id=?`, item.ID).Scan(&existingOwner.Kind, &existingOwner.ID)
+	var existingOrg string
+	err = tx.QueryRow(`SELECT owner_kind, owner_id, org_id FROM items WHERE id=?`, item.ID).Scan(&existingOwner.Kind, &existingOwner.ID, &existingOrg)
 	if err == nil {
-		if existingOwner != item.Owner {
+		if existingOwner != item.Owner || existingOrg != item.OrgID {
 			return fmt.Errorf("store: cannot change item owner")
 		}
 	} else if err != sql.ErrNoRows {
@@ -506,17 +549,24 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	if err := s.snapshot(tx, item.ID); err != nil {
 		return err
 	}
-	_, err = tx.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
+	res, err := tx.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			org_id=excluded.org_id, name=excluded.name, kind=excluded.kind,
 			owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
 			uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
 			tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
-			login=excluded.login`,
+			login=excluded.login
+		WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
+			AND items.org_id=excluded.org_id`,
 		item.ID, item.OrgID, item.Name, item.Kind, item.Owner.Kind, item.Owner.ID, uris, blob, has, tags, arch, hf, item.Login)
 	if err != nil {
 		return err
+	}
+	// Zero rows means the row was created under another owner or org between
+	// the pre-check and this upsert.
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("store: cannot change item owner")
 	}
 	if err := tx.Commit(); err != nil {
 		return err

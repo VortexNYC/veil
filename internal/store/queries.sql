@@ -119,13 +119,13 @@ UPDATE sessions SET revoked_at = COALESCE(revoked_at, @at::timestamptz) WHERE id
 UPDATE sessions SET expires_at = @expires_at::timestamptz, renewed_at = @renewed_at::timestamptz WHERE id = @id::text;
 
 -- name: ItemOwner :one
-SELECT owner_kind, owner_id FROM items WHERE id = @id::text;
+SELECT org_id, owner_kind, owner_id FROM items WHERE id = @id::text;
 
 -- name: SnapshotItem :exec
 INSERT INTO item_versions(item_id, at, secret)
 SELECT @item_id::text, @at::timestamptz, secret FROM items WHERE id = @item_id::text;
 
--- name: PutItem :exec
+-- name: PutItem :execrows
 INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
 VALUES(@id::text, @org_id::text, @name::text, @kind::text, @owner_kind::text, @owner_id::text, @uris::text, @secret::bytea, @has_totp::bool, @tags::text, @archived::bool, @has_file::bool, @login::text)
 ON CONFLICT(id) DO UPDATE SET
@@ -133,7 +133,9 @@ ON CONFLICT(id) DO UPDATE SET
     owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
     uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
     tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
-    login=excluded.login;
+    login=excluded.login
+WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
+    AND items.org_id=excluded.org_id;
 
 -- name: ItemByID :one
 SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
@@ -225,7 +227,6 @@ WHERE org_id = @org_id::text;
 INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at)
 VALUES(@id::text, @org_id::text, @owner_kind::text, @owner_id::text, sqlc.narg(revoked_at))
 ON CONFLICT(id) DO UPDATE SET
-    org_id=excluded.org_id, owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
     revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at);
 
 -- name: AgentByID :one
@@ -240,6 +241,10 @@ UPDATE agents SET revoked_at = COALESCE(revoked_at, @at::timestamptz) WHERE id =
 -- name: PutHuman :exec
 INSERT INTO humans(id, org_id) VALUES(@id::text, @org_id::text)
 ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id;
+
+-- name: PlantHuman :execrows
+INSERT INTO humans(id, org_id) VALUES(@id::text, @org_id::text)
+ON CONFLICT(id) DO NOTHING;
 
 -- name: HumanByID :one
 SELECT id, org_id FROM humans WHERE id = @id::text;

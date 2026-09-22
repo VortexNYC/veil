@@ -257,7 +257,7 @@ func TestGrantUntilExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 	past := time.Now().Add(-time.Second)
-	if _, err := a.GrantUntil("claude", "stripe", protocol.Level2, &past); err != nil {
+	if _, err := a.GrantUntil(protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}, "claude", "stripe", protocol.Level2, &past); err != nil {
 		t.Fatal(err)
 	}
 	got, err := a.Use(context.Background(), "claude", "stripe", http.MethodGet, upstream.URL)
@@ -805,11 +805,11 @@ type fakeMembers struct {
 	members map[string]bool
 }
 
-func (f fakeMembers) IsMember(_ context.Context, id string) (bool, error) {
+func (f fakeMembers) IsMember(_ context.Context, _, id string) (bool, error) {
 	return f.members[id], nil
 }
 
-func (f fakeMembers) IsOwner(_ context.Context, id string) (bool, error) {
+func (f fakeMembers) IsOwner(_ context.Context, _, id string) (bool, error) {
 	return f.owners[id], nil
 }
 
@@ -823,6 +823,10 @@ func TestHumanGrantFillIsNotAFamilyVault(t *testing.T) {
 	a.Members = fakeMembers{
 		members: map[string]bool{familyHuman: true, "cccccccc-cccc-4ccc-8ccc-cccccccccccc": true},
 		owners:  map[string]bool{},
+	}
+	// A provisioned human always has a humans row — grant scope resolves it.
+	if err := a.Store.PutHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: familyHuman, OrgID: a.OrgID}); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := a.AddItem("stripe", "https://dashboard.stripe.com", []byte(secret)); err != nil {
 		t.Fatal(err)
@@ -859,7 +863,7 @@ func TestHumanGrantFillIsNotAFamilyVault(t *testing.T) {
 	if len(matched) != 0 {
 		t.Fatalf("member match without grant: %+v", matched)
 	}
-	if _, err := a.GrantUntil(familyHuman, "stripe", protocol.Level2, nil); err != nil {
+	if _, err := a.GrantUntil(protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}, familyHuman, "stripe", protocol.Level2, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err = a.FillLogins(member, "https://dashboard.stripe.com/login")
@@ -900,7 +904,7 @@ func TestHumanGrantFillIsNotAFamilyVault(t *testing.T) {
 	if _, err := a.FillTOTP(member, "gmail", time.Now()); err == nil {
 		t.Fatal("totp without grant")
 	}
-	if _, err := a.GrantUntil(familyHuman, "gmail", protocol.Level2, nil); err != nil {
+	if _, err := a.GrantUntil(protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}, familyHuman, "gmail", protocol.Level2, nil); err != nil {
 		t.Fatal(err)
 	}
 	code, err := a.FillTOTP(member, "gmail", time.Now())
@@ -908,7 +912,7 @@ func TestHumanGrantFillIsNotAFamilyVault(t *testing.T) {
 		t.Fatalf("granted totp %q %v", code, err)
 	}
 	past := time.Now().Add(-time.Second)
-	if _, err := a.GrantUntil(familyHuman, "stripe", protocol.Level2, &past); err != nil {
+	if _, err := a.GrantUntil(protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}, familyHuman, "stripe", protocol.Level2, &past); err != nil {
 		t.Fatal(err)
 	}
 	got, err = a.FillLogins(member, "https://dashboard.stripe.com/login")
@@ -918,7 +922,7 @@ func TestHumanGrantFillIsNotAFamilyVault(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("expired grant %+v", got)
 	}
-	if _, err := a.GrantUntil("dddddddd-dddd-4ddd-8ddd-dddddddddddd", "stripe", protocol.Level2, nil); err == nil {
+	if _, err := a.GrantUntil(protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}, "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "stripe", protocol.Level2, nil); err == nil {
 		t.Fatal("granted to non-member")
 	}
 }

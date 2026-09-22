@@ -408,7 +408,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 
 	owner, err := qtx.ItemOwner(ctx, item.ID)
 	if err == nil {
-		if owner.OwnerKind != string(item.Owner.Kind) || owner.OwnerID != item.Owner.ID {
+		if owner.OwnerKind != string(item.Owner.Kind) || owner.OwnerID != item.Owner.ID || owner.OrgID != item.OrgID {
 			return fmt.Errorf("store: cannot change item owner")
 		}
 	} else if err != pgx.ErrNoRows {
@@ -418,7 +418,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	if err := qtx.SnapshotItem(ctx, sqlc.SnapshotItemParams{ItemID: item.ID, At: time.Now().UTC()}); err != nil {
 		return err
 	}
-	err = qtx.PutItem(ctx, sqlc.PutItemParams{
+	rows, err := qtx.PutItem(ctx, sqlc.PutItemParams{
 		ID: item.ID, OrgID: item.OrgID, Name: item.Name, Kind: string(item.Kind),
 		OwnerKind: string(item.Owner.Kind), OwnerID: item.Owner.ID,
 		Uris: string(uris), Secret: blob, HasTotp: item.HasTOTP,
@@ -427,6 +427,11 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	})
 	if err != nil {
 		return err
+	}
+	// The DO UPDATE WHERE clause is the atomic backstop: a row created between
+	// ItemOwner and this upsert under another owner or org matches zero rows.
+	if rows == 0 {
+		return fmt.Errorf("store: cannot change item owner")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
@@ -761,6 +766,16 @@ func (p *Postgres) RevokeAgent(id string, at time.Time, audit ...protocol.AuditE
 
 func humanFromSqlc(h *sqlc.Human) protocol.Principal {
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: h.ID, OrgID: h.OrgID}
+}
+
+func (p *Postgres) PlantHuman(h protocol.Principal) (bool, error) {
+	n, err := retryOnDeadConn(func() (int64, error) {
+		return p.sqlc.PlantHuman(context.Background(), sqlc.PlantHumanParams{ID: h.ID, OrgID: h.OrgID})
+	})
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
 }
 
 func (p *Postgres) PutHuman(h protocol.Principal) error {

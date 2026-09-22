@@ -107,13 +107,15 @@ func (v *Verifier) AuthCodeURL(ctx context.Context, state, verifier string) (str
 	), nil
 }
 
-// Human verifies rawToken against the configured Hydra issuer. Subject is the human id.
-func (v *Verifier) Human(ctx context.Context, rawToken, orgID string) (protocol.Principal, error) {
+// Human verifies rawToken against the configured Hydra issuer. Subject is the
+// human id; org is NOT stamped here — the vault humans row is org of record,
+// resolved by the caller after the subject authenticates.
+func (v *Verifier) Human(ctx context.Context, rawToken string) (protocol.Principal, error) {
 	sub, err := v.Subject(ctx, rawToken)
 	if err != nil {
 		return protocol.Principal{}, err
 	}
-	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
+	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub}, nil
 }
 
 func (v *Verifier) Subject(ctx context.Context, rawToken string) (string, error) {

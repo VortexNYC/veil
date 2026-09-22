@@ -635,11 +635,11 @@ type fakeMembers struct {
 	members map[string]bool
 }
 
-func (f fakeMembers) IsMember(_ context.Context, id string) (bool, error) {
+func (f fakeMembers) IsMember(_ context.Context, _, id string) (bool, error) {
 	return f.members[id], nil
 }
 
-func (f fakeMembers) IsOwner(_ context.Context, id string) (bool, error) {
+func (f fakeMembers) IsOwner(_ context.Context, _, id string) (bool, error) {
 	return f.owners[id], nil
 }
 
@@ -647,6 +647,9 @@ func TestHumanGrantAPI(t *testing.T) {
 	const member = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	a := testApp(t)
 	a.Members = fakeMembers{members: map[string]bool{member: true}}
+	if err := a.Store.PutHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: member, OrgID: a.OrgID}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.AddItem("github", "https://api.github.com", []byte(secret)); err != nil {
 		t.Fatal(err)
 	}
@@ -1288,5 +1291,63 @@ func TestRevokeAgentEndpoint(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(`"revoke"`)) {
 		t.Fatalf("audit missing revoke: %s", raw)
+	}
+}
+
+type fakeSubjectVerifier struct{ sub string }
+
+func (f fakeSubjectVerifier) Subject(context.Context, string) (string, error) { return f.sub, nil }
+
+type fakeProvisioner struct{}
+
+func (fakeProvisioner) ProvisionMember(context.Context, string, string) error { return nil }
+func (fakeProvisioner) SetIdentityOrg(context.Context, string, string) error  { return nil }
+
+// POST /v1/provision is signup: subject-auth only (no member check), and a
+// repeat call returns the same org — provisioning is idempotent.
+func TestProvisionEndpoint(t *testing.T) {
+	a := testApp(t)
+	a.Human = fakeSubjectVerifier{sub: "sub-new"}
+	a.Provision = fakeProvisioner{}
+	a.Members = fakeMembers{members: map[string]bool{"sub-new": true}}
+	// No Identity seam — provisioned humans must resolve through PrincipalFromOIDC.
+	mux := http.NewServeMux()
+	(&Server{App: a}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/provision", "tok-new", nil)
+	if code != http.StatusOK {
+		t.Fatalf("provision %d %s", code, raw)
+	}
+	var out ProvisionResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Subject != "sub-new" || out.OrgID == "" {
+		t.Fatalf("provision %+v", out)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/provision", "tok-new", nil)
+	if code != http.StatusOK {
+		t.Fatalf("reprovision %d %s", code, raw)
+	}
+	var again ProvisionResponse
+	if err := json.Unmarshal(raw, &again); err != nil {
+		t.Fatal(err)
+	}
+	if again.OrgID != out.OrgID {
+		t.Fatalf("reprovision moved orgs: %q vs %q", out.OrgID, again.OrgID)
+	}
+
+	// The provisioned human's token now resolves through the humans row.
+	code, _ = doJSON(t, srv, http.MethodGet, "/v1/items", "tok-new", nil)
+	if code == http.StatusUnauthorized {
+		t.Fatal("provisioned human unauthorized on /v1/items")
+	}
+
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/provision", "", nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("no-token provision %d", code)
 	}
 }

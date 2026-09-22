@@ -1350,11 +1350,12 @@ func TestCLIOriginHumanGrant(t *testing.T) {
 func TestCLIOriginRefusesSecondVault(t *testing.T) {
 	t.Setenv("VEIL_ORIGIN", "https://veil.nyc")
 	home := t.TempDir()
+	// init against an origin provisions — it needs a human token, not a vault.
 	out, err := run(t, home, "", "init")
 	if err == nil {
 		t.Fatalf("init with origin: %s", out)
 	}
-	if !strings.Contains(err.Error(), "origin is the vault") {
+	if !strings.Contains(err.Error(), "TOKEN") {
 		t.Fatal(err)
 	}
 	out, err = run(t, home, "", "serve")
@@ -1363,6 +1364,36 @@ func TestCLIOriginRefusesSecondVault(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "origin is the vault") {
 		t.Fatal(err)
+	}
+}
+
+func TestCLIInitProvisionsOnOrigin(t *testing.T) {
+	var sawProvision bool
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/provision" {
+			sawProvision = true
+			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer tok-human") {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"subject":"sub-1","org_id":"org-1"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer origin.Close()
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HUMAN_TOKEN", "tok-human")
+	out, err := run(t, t.TempDir(), "", "init")
+	if err != nil {
+		t.Fatalf("init provision: %v %s", err, out)
+	}
+	if !sawProvision {
+		t.Fatal("init never called /v1/provision")
+	}
+	if !strings.Contains(out, "org-1") {
+		t.Fatalf("init output: %s", out)
 	}
 }
 

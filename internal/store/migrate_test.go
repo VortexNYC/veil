@@ -281,3 +281,95 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 		t.Fatalf("audit after rerun: %d, want 2", n)
 	}
 }
+
+// Legacy single-tenant rows carry org_id ”. They decrypt only under the
+// master wrapped as LocalOrgID's org_keys row, so migration assigns them to
+// that org — after which strict org equality is fail-closed everywhere.
+func TestEmptyOrgBackfill(t *testing.T) {
+	t.Run("sqlite", func(t *testing.T) {
+		s, err := OpenSQLite(filepath.Join(t.TempDir(), "v.db"), testMasterKey(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		if _, err := s.db.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret)
+			VALUES('legacy', '', 'legacy', 'api_key', 'org', '', '[]', X'00')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO humans(id, org_id) VALUES('legacy-h', '')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO agents(id, org_id) VALUES('legacy-a', '')`); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.migrate(); err != nil {
+			t.Fatal(err)
+		}
+		it, err := s.Item("legacy")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.OrgID != protocol.LocalOrgID {
+			t.Fatalf("item org %q", it.OrgID)
+		}
+		h, err := s.Human("legacy-h")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.OrgID != protocol.LocalOrgID {
+			t.Fatalf("human org %q", h.OrgID)
+		}
+		ag, err := s.Agent("legacy-a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ag.OrgID != protocol.LocalOrgID {
+			t.Fatalf("agent org %q", ag.OrgID)
+		}
+	})
+	t.Run("postgres", func(t *testing.T) {
+		p := openTestPostgres(t)
+		ctx := context.Background()
+		// Simulate the pre-migration shape: drop the non-empty guard so ''
+		// rows can exist, then let EnsurePostgresSchema rebuild it.
+		for _, table := range []string{"items", "humans", "agents"} {
+			if _, err := p.pool.Exec(ctx, `ALTER TABLE `+table+` DROP CONSTRAINT IF EXISTS `+table+`_org_id_nonempty`); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := p.pool.Exec(ctx, `INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret)
+			VALUES('legacy', '', 'legacy', 'api_key', 'org', '', '[]', '\x00')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.pool.Exec(ctx, `INSERT INTO humans(id, org_id) VALUES('legacy-h', '')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.pool.Exec(ctx, `INSERT INTO agents(id, org_id) VALUES('legacy-a', '')`); err != nil {
+			t.Fatal(err)
+		}
+		if err := EnsurePostgresSchema(ctx, p.pool); err != nil {
+			t.Fatal(err)
+		}
+		it, err := p.Item("legacy")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.OrgID != protocol.LocalOrgID {
+			t.Fatalf("item org %q", it.OrgID)
+		}
+		h, err := p.Human("legacy-h")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.OrgID != protocol.LocalOrgID {
+			t.Fatalf("human org %q", h.OrgID)
+		}
+		ag, err := p.Agent("legacy-a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ag.OrgID != protocol.LocalOrgID {
+			t.Fatalf("agent org %q", ag.OrgID)
+		}
+	})
+}

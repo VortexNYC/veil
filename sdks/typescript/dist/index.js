@@ -884,6 +884,11 @@ var listEvents = (options) => (options?.client ?? client).get({
   url: "/v1/events",
   ...options
 });
+var provision = (options) => (options?.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/provision",
+  ...options
+});
 export {
   archiveItem,
   createAgent,
@@ -900,6 +905,7 @@ export {
   listGrants,
   listItems,
   listSessions,
+  provision,
   revokeAgent,
   updateItem,
   useItem

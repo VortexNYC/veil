@@ -142,6 +142,11 @@ type SessionsResponse struct {
 	Sessions []protocol.Session `json:"sessions"`
 }
 
+type ProvisionResponse struct {
+	Subject string `json:"subject"`
+	OrgID   string `json:"org_id"`
+}
+
 type FillLoginsRequest struct {
 	URL      string `json:"url,omitempty"`
 	UUID     string `json:"uuid,omitempty"`
@@ -226,6 +231,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/agents/{name}/revoke", s.revokeAgent)
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
+	mux.HandleFunc("POST /v1/provision", s.provision)
 	mux.HandleFunc("POST /v1/use", s.useItem)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -372,7 +378,8 @@ func (s *Server) deleteItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listGrants(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireOwner(w, r); !ok {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
 		return
 	}
 	grants, err := s.App.Store.ListGrants()
@@ -382,13 +389,16 @@ func (s *Server) listGrants(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]GrantView, 0, len(grants))
 	for _, g := range grants {
-		out = append(out, grantView(g))
+		if g.OrgID == owner.OrgID {
+			out = append(out, grantView(g))
+		}
 	}
 	writeJSON(w, GrantsResponse{Grants: out})
 }
 
 func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireOwner(w, r); !ok {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
 		return
 	}
 	var in CreateGrantRequest
@@ -422,7 +432,7 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 		t := time.Now().Add(d)
 		until = &t
 	}
-	g, err := s.App.GrantUntil(grantee, in.Item, protocol.GrantLevel(in.Level), until)
+	g, err := s.App.GrantUntil(owner, grantee, in.Item, protocol.GrantLevel(in.Level), until)
 	if err != nil {
 		http.Error(w, "grant failed", http.StatusBadRequest)
 		return
@@ -431,7 +441,8 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireOwner(w, r); !ok {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
 		return
 	}
 	agents, err := s.App.Store.ListAgents()
@@ -439,14 +450,18 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "list failed", http.StatusBadRequest)
 		return
 	}
-	if agents == nil {
-		agents = []protocol.Principal{}
+	mine := make([]protocol.Principal, 0, len(agents))
+	for _, a := range agents {
+		if a.OrgID == owner.OrgID {
+			mine = append(mine, a)
+		}
 	}
-	writeJSON(w, AgentsResponse{Agents: agents})
+	writeJSON(w, AgentsResponse{Agents: mine})
 }
 
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireOwner(w, r); !ok {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
 		return
 	}
 	var in CreateAgentRequest
@@ -454,7 +469,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	p, err := s.App.AddAgent(in.Name)
+	p, err := s.App.AddAgentFor(owner, in.Name)
 	if err != nil {
 		http.Error(w, "create failed", http.StatusBadRequest)
 		return
@@ -537,6 +552,23 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, CreateSessionResponse{Session: sess, Token: token})
+}
+
+// provision is signup: the bearer token is subject-verified inside
+// ProvisionHuman — there is no member check because this call is what creates
+// the membership. Idempotent; safe to retry.
+func (s *Server) provision(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	p, err := s.App.ProvisionHuman(r.Context(), raw)
+	if err != nil {
+		http.Error(w, "provision failed", http.StatusUnauthorized)
+		return
+	}
+	writeJSON(w, ProvisionResponse{Subject: p.ID, OrgID: p.OrgID})
 }
 
 func (s *Server) useItem(w http.ResponseWriter, r *http.Request) {
@@ -632,6 +664,9 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	mine := make([]protocol.AuditEvent, 0, len(all))
 	for _, e := range all {
+		if e.OrgID != p.OrgID {
+			continue
+		}
 		if p.Kind == protocol.PrincipalHuman || e.AgentID == p.ID {
 			mine = append(mine, e)
 		}

@@ -43,6 +43,7 @@ import (
 	"github.com/VortexNYC/veil/internal/passgen"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/proxy"
+	"github.com/VortexNYC/veil/internal/publicapi"
 	"github.com/VortexNYC/veil/internal/replica"
 	"github.com/VortexNYC/veil/internal/socket"
 	"github.com/VortexNYC/veil/internal/sshagent"
@@ -275,7 +276,7 @@ func resolveHumanGrantee(ctx context.Context, raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id, err := g.IdentityID(ctx, raw)
+	id, err := g.IdentityID(ctx, raw, envOr("VEIL_ORG_ID", glue.LocalOrgID))
 	if err != nil {
 		return "", err
 	}
@@ -292,7 +293,18 @@ func openOrInitApp(home string) (*app.App, error) {
 
 func openOriginApp(home string) (*app.App, error) {
 	if dsn := os.Getenv("VEIL_POSTGRES_DSN"); dsn != "" {
-		return app.OpenPostgres(dsn)
+		a, err := app.OpenPostgres(dsn)
+		if err != nil {
+			return nil, err
+		}
+		g, err := glueFromEnv()
+		if err != nil {
+			_ = a.Close()
+			return nil, err
+		}
+		a.Members = g
+		a.Provision = g
+		return a, nil
 	}
 	return openOrInitApp(home)
 }
@@ -320,6 +332,7 @@ func loadApp(home string, initEmpty bool) (*app.App, error) {
 		return nil, err
 	}
 	a.Members = g
+	a.Provision = g
 	return a, nil
 }
 
@@ -343,7 +356,7 @@ func inviteActor(ctx context.Context, tokenFile, orgID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	p, err := v.Human(ctx, raw, orgID)
+	p, err := v.Human(ctx, raw)
 	if err != nil {
 		return "", err
 	}
@@ -351,12 +364,29 @@ func inviteActor(ctx context.Context, tokenFile, orgID string) (string, error) {
 }
 
 func initCmd(home *string) *cobra.Command {
-	return &cobra.Command{
+	var tokenFile string
+	c := &cobra.Command{
 		Use:   "init",
-		Short: "Create a local vault (org of one)",
+		Short: "Create a vault (local org of one, or provision on the origin)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if originBase() != "" {
-				return fmt.Errorf("VEIL_ORIGIN is set; origin is the vault")
+				raw, err := humanToken(tokenFile)
+				if err != nil {
+					return err
+				}
+				if raw == "" {
+					return fmt.Errorf("init: --oidc-token-file or VEIL_HUMAN_TOKEN_FILE required")
+				}
+				res, err := originDo(cmd.Context(), http.MethodPost, "/v1/provision", raw, nil)
+				if err != nil {
+					return err
+				}
+				var out publicapi.ProvisionResponse
+				if err := json.Unmarshal(res, &out); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "provisioned org %s for %s\n", out.OrgID, out.Subject)
+				return nil
 			}
 			dir, err := resolveHome(*home)
 			if err != nil {
@@ -371,6 +401,8 @@ func initCmd(home *string) *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().StringVar(&tokenFile, "oidc-token-file", "", "Hydra ID token file for VEIL_ORIGIN provisioning. Env VEIL_HUMAN_TOKEN_FILE. Never argv.")
+	return c
 }
 
 func deviceCmd(home *string) *cobra.Command {
@@ -510,7 +542,7 @@ func humanCmd(home *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			inv, err := g.InviteIdentity(cmd.Context(), args[0], actor)
+			inv, err := g.InviteIdentity(cmd.Context(), args[0], actor, envOr("VEIL_ORG_ID", glue.LocalOrgID))
 			if err != nil {
 				return err
 			}
@@ -539,9 +571,9 @@ func humanCmd(home *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			g, err := glueFromEnv()
 			if err == nil {
-				ids, err := g.ListMembers(cmd.Context())
+				org := envOr("VEIL_ORG_ID", glue.LocalOrgID)
+				ids, err := g.ListMembers(cmd.Context(), org)
 				if err == nil {
-					org := envOr("VEIL_ORG_ID", glue.LocalOrgID)
 					humans := make([]protocol.Principal, 0, len(ids))
 					for _, id := range ids {
 						humans = append(humans, protocol.Principal{Kind: protocol.PrincipalHuman, ID: id, OrgID: org})
@@ -1226,7 +1258,8 @@ func grantCmd(home *string) *cobra.Command {
 				t := time.Now().Add(expires)
 				until = &t
 			}
-			g, err := a.GrantUntil(grantee, itemName, protocol.GrantLevel(level), until)
+			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			g, err := a.GrantUntil(self, grantee, itemName, protocol.GrantLevel(level), until)
 			if err != nil {
 				return err
 			}

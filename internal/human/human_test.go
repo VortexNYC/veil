@@ -107,11 +107,11 @@ func TestHydraTokenIsTheHuman(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := iss.token(t, "id-human-1", DefaultAudience, time.Now().Add(time.Hour))
-	h, err := v.Human(context.Background(), raw, "org")
+	h, err := v.Human(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.Kind != protocol.PrincipalHuman || h.ID != "id-human-1" || h.OrgID != "org" {
+	if h.Kind != protocol.PrincipalHuman || h.ID != "id-human-1" || h.OrgID != "" {
 		t.Fatalf("%+v", h)
 	}
 }
@@ -124,7 +124,7 @@ func TestUnknownIssuerRejected(t *testing.T) {
 	}
 	other := newTestIssuer(t)
 	raw := other.token(t, "id-human-1", DefaultAudience, time.Now().Add(time.Hour))
-	if _, err := v.Human(context.Background(), raw, "org"); err == nil {
+	if _, err := v.Human(context.Background(), raw); err == nil {
 		t.Fatal("trusted a foreign issuer")
 	}
 }
@@ -136,7 +136,7 @@ func TestWrongAudienceRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := iss.token(t, "id-human-1", "someone-else", time.Now().Add(time.Hour))
-	if _, err := v.Human(context.Background(), raw, "org"); err == nil {
+	if _, err := v.Human(context.Background(), raw); err == nil {
 		t.Fatal("accepted the wrong audience")
 	}
 }
@@ -169,7 +169,7 @@ func TestExchangeReturnsIDTokenNotAccess(t *testing.T) {
 	if raw == "not-an-id-token" {
 		t.Fatal("returned the access token")
 	}
-	h, err := v.Human(context.Background(), raw, "org")
+	h, err := v.Human(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}

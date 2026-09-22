@@ -107,6 +107,9 @@ func (a *App) CreateSession(actor protocol.Principal, agentID string, ttl time.D
 	if err != nil {
 		return protocol.Session{}, "", err
 	}
+	if agent.OrgID != actor.OrgID {
+		return protocol.Session{}, "", ErrForbidden
+	}
 	if agent.RevokedAt != nil {
 		return protocol.Session{}, "", ErrForbidden
 	}
@@ -121,7 +124,7 @@ func (a *App) CreateSession(actor protocol.Principal, agentID string, ttl time.D
 	now := time.Now().UTC()
 	sess := protocol.Session{
 		ID:        sid,
-		OrgID:     a.OrgID,
+		OrgID:     actor.OrgID,
 		AgentID:   agent.ID,
 		CreatedAt: now,
 		ExpiresAt: now.Add(ttl).UTC(),
@@ -143,6 +146,13 @@ func (a *App) RevokeSession(actor protocol.Principal, id string) (protocol.Sessi
 	if !ok {
 		return protocol.Session{}, ErrForbidden
 	}
+	sess, err := a.Store.SessionByID(id)
+	if err != nil {
+		return protocol.Session{}, err
+	}
+	if sess.OrgID != actor.OrgID {
+		return protocol.Session{}, ErrForbidden
+	}
 	if err := a.Store.RevokeSession(id, time.Now()); err != nil {
 		return protocol.Session{}, err
 	}
@@ -155,6 +165,13 @@ func (a *App) RenewSession(actor protocol.Principal, id string) (protocol.Sessio
 		return protocol.Session{}, err
 	}
 	if !ok {
+		return protocol.Session{}, ErrForbidden
+	}
+	sess, err := a.Store.SessionByID(id)
+	if err != nil {
+		return protocol.Session{}, err
+	}
+	if sess.OrgID != actor.OrgID {
 		return protocol.Session{}, ErrForbidden
 	}
 	return a.Store.RenewSession(id, time.Now())
@@ -175,7 +192,7 @@ func (a *App) ListSessions(actor protocol.Principal) ([]protocol.Session, error)
 	now := time.Now()
 	out := make([]protocol.Session, 0, len(all))
 	for _, sess := range all {
-		if sess.ExpiresAt.After(now) {
+		if sess.OrgID == actor.OrgID && sess.ExpiresAt.After(now) {
 			out = append(out, sess)
 		}
 	}

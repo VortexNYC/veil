@@ -19,6 +19,7 @@ __version__ = "0.1.1"
 # Define package exports
 __all__ = [
     "AgentApi",
+    "HumanApi",
     "OwnerApi",
     "ApiResponse",
     "ApiClient",
@@ -46,6 +47,7 @@ __all__ = [
     "Item",
     "ItemsResponse",
     "Owner",
+    "ProvisionResponse",
     "Session",
     "SessionsResponse",
     "UpdateItemRequest",
@@ -55,6 +57,7 @@ __all__ = [
 
 # import apis into sdk package
 from veil.api.agent_api import AgentApi as AgentApi
+from veil.api.human_api import HumanApi as HumanApi
 from veil.api.owner_api import OwnerApi as OwnerApi
 
 # import ApiClient
@@ -86,6 +89,7 @@ from veil.models.import_response import ImportResponse as ImportResponse
 from veil.models.item import Item as Item
 from veil.models.items_response import ItemsResponse as ItemsResponse
 from veil.models.owner import Owner as Owner
+from veil.models.provision_response import ProvisionResponse as ProvisionResponse
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest
