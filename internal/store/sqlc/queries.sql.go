@@ -739,6 +739,44 @@ func (q *Queries) OrgKey(ctx context.Context, orgID string) (OrgKey, error) {
 	return i, err
 }
 
+const orgKeyForShare = `-- name: OrgKeyForShare :one
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
+FROM org_keys WHERE org_id = $1::text FOR SHARE
+`
+
+func (q *Queries) OrgKeyForShare(ctx context.Context, orgID string) (OrgKey, error) {
+	row := q.db.QueryRow(ctx, orgKeyForShare, orgID)
+	var i OrgKey
+	err := row.Scan(
+		&i.OrgID,
+		&i.Wrapped,
+		&i.KeyVersion,
+		&i.CmkID,
+		&i.CreatedAt,
+		&i.RotatedAt,
+	)
+	return i, err
+}
+
+const orgKeyForUpdate = `-- name: OrgKeyForUpdate :one
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
+FROM org_keys WHERE org_id = $1::text FOR UPDATE
+`
+
+func (q *Queries) OrgKeyForUpdate(ctx context.Context, orgID string) (OrgKey, error) {
+	row := q.db.QueryRow(ctx, orgKeyForUpdate, orgID)
+	var i OrgKey
+	err := row.Scan(
+		&i.OrgID,
+		&i.Wrapped,
+		&i.KeyVersion,
+		&i.CmkID,
+		&i.CreatedAt,
+		&i.RotatedAt,
+	)
+	return i, err
+}
+
 const ownerWrapped = `-- name: OwnerWrapped :one
 SELECT wrapped FROM owner_keys
 WHERE org_id = $1::text AND owner_kind = $2::text AND owner_id = $3::text

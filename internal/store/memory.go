@@ -127,6 +127,9 @@ func (m *Memory) OpenRecoveryWrap(context.Context, string, protocol.Owner, []byt
 	return nil, ErrUnsupported
 }
 func (m *Memory) ReseedOrgKey(context.Context, string, []byte) error { return ErrUnsupported }
+func (m *Memory) RecoverOrgKey(context.Context, string, protocol.Owner, []byte) error {
+	return ErrUnsupported
+}
 
 func (m *Memory) Human(id string) (protocol.Principal, error) {
 	m.mu.Lock()

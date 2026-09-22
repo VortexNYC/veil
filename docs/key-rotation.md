@@ -48,14 +48,20 @@ When: scheduled hygiene, suspected org-key exposure, or before offboarding
 an owner whose devices are all suspect.
 
 1. `veil key rotate-org aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`
-   - One transaction: mint new master → rewrap every `owner_keys` row →
-     `key_version++` (guarded: a concurrent rotation loses with
-     `ErrRotationConflict` — retry).
+   - One transaction: `SELECT ... FOR UPDATE` on the org's `org_keys` row →
+     mint new master → rewrap every `owner_keys` row → `key_version++`
+     (guarded: a concurrent rotation loses with `ErrRotationConflict` —
+     retry) → delete the org's recovery wraps.
+   - The row lock serializes against owner-DEK mints and recovery-wrap
+     stores (`FOR SHARE` readers), on **every** replica: a mint either lands
+     before rotation (and gets rewrapped) or waits and seals under the new
+     master. No wrap can commit under a master rotation just retired.
 2. **Redeploy every origin replica.** Key caches are per-process; only the
-   rotating process knows the master changed. Replicas keep serving under
-   stale masters until restart — writes they make are still correct (DEK
-   wraps re-resolve per mint under generation guards), but bounded staleness
-   is the contract.
+   rotating process knows the master changed. Stale replicas self-heal on
+   read — a wrap opened under the wrong master invalidates the org's cached
+   keys and re-resolves — and new DEK mints seal under the *committed*
+   master via the row lock, never a cached one. Still redeploy: bounded
+   staleness is the contract, not the goal.
 3. Verify: read one item through the API; check `org_keys.rotated_at`.
 
 Rollback: there is none by design — a rotated master is a *better* master.
@@ -71,9 +77,15 @@ When: KEK suspected-compromised, or scheduled. `VEIL_KEK_NEW` (or
    nothing — losing the new one mid-procedure is the only unrecoverable
    moment.
 2. `veil key rotate-kek`
-   - One transaction: unwrap each `org_keys` row under the old KEK → rewrap
-     under the new (AAD stays the org id). Any row that fails to unwrap
-     aborts the entire rotation.
+   - One transaction: `LOCK TABLE org_keys IN SHARE ROW EXCLUSIVE MODE` →
+     unwrap each row under the old KEK → rewrap under the new (AAD stays
+     the org id). Any row that fails to unwrap aborts the entire rotation.
+   - The table lock blocks concurrent org inserts for the rotation's
+     duration — an org provisioned mid-rotation on a same-process store
+     waits on the KEK mutex instead and seals under the adopted key. On a
+     *stale* replica (old `VEIL_KEK`, not yet redeployed) an insert can
+     still land under the retired KEK after the lock releases — another
+     reason the coordinated restart in step 3 is mandatory, not advisory.
    - `cmk_id` rows are skipped — an external CMK owns its own wrap.
 3. Set `VEIL_KEK` to the new value on every replica and redeploy **in the
    same deploy**. Mixed-KEK replicas fail closed: old-KEK replicas unwrap
@@ -90,9 +102,12 @@ deployment, so it survives the loss:
 
 1. Stand up the origin with a **new** `VEIL_KEK` (escrow it first).
 2. `veil key recover-org ORG --owner-kind user --owner-id HUMAN --recovery-file FILE`
-   — opens the wrap (single-use), re-seals the recovered master under the
-   new KEK via `ReseedOrgKey`. Every pre-loss item ciphertext decrypts
-   again — masters and DEKs never changed.
+   — `RecoverOrgKey`: opens the wrap, re-seals the recovered master under
+   the new KEK, and stamps `used_at` — **in one transaction**. A failed
+   reseed cannot burn the wrap: wrong recovery material, a missing
+   `org_keys` row, or a mid-transaction crash all leave the wrap intact
+   for retry. Every pre-loss item ciphertext decrypts again — masters and
+   DEKs never changed.
 3. The owner immediately mints a fresh recovery wrap (`store-recovery`) —
    the old one is spent.
 
@@ -118,11 +133,51 @@ deployment KEK or the database's availability guarantees.
   is AAD-bound to org+owner: a row copied to another principal opens
   nothing.
 - **Rotation interaction:** `rotate-org` **deletes** the org's recovery
-  wraps — a wrap that opens a dead master is a trap. Owners re-mint after
-  every org rotation.
-- **Use:** `recover-org` (above) consumes the wrap and re-seeds the org.
+  wraps — a wrap that opens a dead master is a trap. Minting takes `FOR
+  SHARE` on the `org_keys` row inside the same transaction, so a wrap can
+  never commit a master rotation just retired. Owners re-mint after every
+  org rotation.
+- **Use:** `recover-org` (above) consumes the wrap and re-seeds the org
+  atomically. Composing `OpenRecoveryWrap` + `ReseedOrgKey` by hand spends
+  the wrap on the first commit — don't.
 - **No plaintext, ever:** the recovery key never persists; the master never
   leaves the store unwrapped at rest.
+
+## Concurrency model
+
+One rule orders everything: **`kekMu` is always the outermost lock.** Every
+verb that reads or writes `p.kek` acquires it before beginning any
+transaction or touching a row/table lock; `rotate-kek` takes it exclusively
+(`Lock()`), everything else shared (`RLock()`). A caller can therefore never
+hold a Postgres lock while waiting on the mutex — the cycle that would
+deadlock a `FOR SHARE` reader against `rotate-kek`'s table lock cannot
+form.
+
+At the database layer, one subtlety drives the design: `SELECT ... FOR
+UPDATE` takes only `ROW SHARE` on the table — `ROW EXCLUSIVE` arrives at
+the first `UPDATE`. Any verb that both locks an `org_keys` row and later
+writes it therefore takes `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE` up
+front. Without it, the mid-transaction upgrade deadlocks against
+`rotate-kek`'s `SHARE ROW EXCLUSIVE` (it holds the table lock while
+waiting on the row lock; proven by `TestPostgresKEKVsOrgRotateCrossStore`,
+which caught the deadlock the naive design produced).
+
+- `rotate-org`, `recover-org`, `ReseedOrgKey`: `ROW EXCLUSIVE` table lock
+  → `FOR UPDATE` row lock → work. `ROW EXCLUSIVE` doesn't self-conflict,
+  so rotations on *different* orgs still run concurrently; same-org
+  serializes on the row lock.
+- DEK mints and recovery-wrap mints take `FOR SHARE` on the org row —
+  compatible with `ROW EXCLUSIVE` at the table level, conflicting at the
+  row level, so they serialize against `FOR UPDATE` writers exactly as
+  intended while never blocking each other.
+- `rotate-kek` takes `SHARE ROW EXCLUSIVE` on the whole `org_keys` table;
+  inserts and all lock-taking verbs serialize for its duration.
+- Lock order across tables is `org_keys` → `recovery_wraps` everywhere,
+  matching `rotate-org`'s row-lock-then-delete shape.
+- Cache correctness is generation-tagged per org in-process; across
+  replicas the committed row is authoritative — a stale replica that fails
+  an unwrap invalidates its cached keys and re-resolves rather than
+  serving a wrong key.
 
 ### Compromised KEK (incident)
 

@@ -449,6 +449,9 @@ func (s *SQLite) OpenRecoveryWrap(context.Context, string, protocol.Owner, []byt
 	return nil, ErrUnsupported
 }
 func (s *SQLite) ReseedOrgKey(context.Context, string, []byte) error { return ErrUnsupported }
+func (s *SQLite) RecoverOrgKey(context.Context, string, protocol.Owner, []byte) error {
+	return ErrUnsupported
+}
 
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
@@ -1371,14 +1374,19 @@ func (s *SQLite) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.
 	return wrapped, err
 }
 
-func (s *SQLite) storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error {
-	_, err := s.db.Exec(`INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped) VALUES(?,?,?,?)
-		ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING`, orgID, o.Kind, o.ID, wrapped)
+func (s *SQLite) mintOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, dek []byte) error {
+	sealed, err := crypto.Seal(s.master, dek)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped) VALUES(?,?,?,?)
+		ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING`, orgID, o.Kind, o.ID, sealed)
 	return err
 }
 
 type sqliteTxSource struct {
-	tx *sql.Tx
+	tx     *sql.Tx
+	master []byte
 }
 
 func (ts sqliteTxSource) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
@@ -1390,9 +1398,13 @@ func (ts sqliteTxSource) loadOwnerWrapped(ctx context.Context, orgID string, o p
 	return wrapped, err
 }
 
-func (ts sqliteTxSource) storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error {
-	_, err := ts.tx.ExecContext(ctx, `INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped) VALUES(?,?,?,?)
-		ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING`, orgID, o.Kind, o.ID, wrapped)
+func (ts sqliteTxSource) mintOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, dek []byte) error {
+	sealed, err := crypto.Seal(ts.master, dek)
+	if err != nil {
+		return err
+	}
+	_, err = ts.tx.ExecContext(ctx, `INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped) VALUES(?,?,?,?)
+		ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING`, orgID, o.Kind, o.ID, sealed)
 	return err
 }
 
@@ -1462,7 +1474,7 @@ func (s *SQLite) rewrapLegacy() error {
 		return err
 	}
 
-	ts := sqliteTxSource{tx: tx}
+	ts := sqliteTxSource{tx: tx, master: s.master}
 
 	// Rewrap current item secrets.
 	items, err := tx.Query(`SELECT id, org_id, owner_kind, owner_id, secret FROM items`)

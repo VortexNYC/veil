@@ -111,6 +111,11 @@ func poolSizeEnv(name string) int {
 // Missing rows fail closed with ErrOrgKeyMissing — a wrong-key decrypt attempt
 // would be indistinguishable from corruption, so we never try.
 func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, error) {
+	// RLock spans read + unwrap: a KEK rotation can never commit between
+	// them — resolving during rotate-kek waits for adoption, then reads the
+	// rewrapped row under the new KEK instead of failing on a stale blob.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	row, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
 		return p.sqlc.OrgKey(ctx, orgID)
 	})
@@ -122,8 +127,6 @@ func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, err
 	}
 	// AAD binds the wrap to this org: a row copied to another org's row does
 	// not open even under the same KEK.
-	p.kekMu.RLock()
-	defer p.kekMu.RUnlock()
 	return crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
 }
 
@@ -138,9 +141,13 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
+	// RLock spans seal + insert + verify: a KEK rotation can never commit
+	// between sealing under the old KEK and inserting — the row this writes
+	// always matches the KEK that sealed it. Outermost lock; no DB locks are
+	// held while acquiring it.
 	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -167,9 +174,7 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
-	p.kekMu.RLock()
 	existing, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
@@ -203,22 +208,37 @@ var ErrRotationConflict = errors.New("store: concurrent key rotation")
 // guard makes concurrent rotations fail one side instead of interleaving
 // rewraps under different masters.
 func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
+	// kekMu.RLock outermost — see RotateKEK for the lock-ordering rule.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// ROW EXCLUSIVE upfront: SELECT FOR UPDATE only takes ROW SHARE, and
+	// upgrading to ROW EXCLUSIVE mid-transaction (at BumpOrgKey) deadlocks
+	// against RotateKEK's SHARE ROW EXCLUSIVE — it holds the table lock
+	// while waiting on our row lock. Taking the write-level lock first
+	// turns that into clean first-statement serialization. Concurrent
+	// org rotations on different orgs still proceed (ROW EXCLUSIVE does
+	// not self-conflict); same-org serializes on the row lock below.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
 	q := p.sqlc.WithTx(tx)
-	row, err := q.OrgKey(ctx, orgID)
+	// FOR UPDATE serializes against DEK mints and recovery-wrap stores
+	// (FOR SHARE readers) and against concurrent rotations on other
+	// processes: a second rotation waits, re-reads the bumped version, and
+	// loses on the key_version guard rather than interleaving rewraps.
+	row, err := q.OrgKeyForUpdate(ctx, orgID)
 	if err == pgx.ErrNoRows {
 		return ErrOrgKeyMissing
 	}
 	if err != nil {
 		return err
 	}
-	p.kekMu.RLock()
 	oldMaster, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
@@ -249,9 +269,7 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 			return fmt.Errorf("store: owner_keys row %s/%s vanished mid-rotation", ow.OwnerKind, ow.OwnerID)
 		}
 	}
-	p.kekMu.RLock()
 	wrapped, err := crypto.SealAAD(p.kek, newMaster, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -286,20 +304,54 @@ func (p *Postgres) ReseedOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
+	// RLock spans seal + update — a KEK rotation cannot interleave between
+	// them and strand the re-seeded row under a retired KEK.
 	p.kekMu.RLock()
-	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
-	p.kekMu.RUnlock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	n, err := retryOnDeadConn(func() (int64, error) {
-		return p.sqlc.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
-	})
+	defer func() { _ = tx.Rollback(ctx) }()
+	// ROW EXCLUSIVE upfront — same upgrade-deadlock fix as RotateOrgKey:
+	// the RewrapOrgKey write below would otherwise upgrade mid-tx against
+	// RotateKEK's held SHARE ROW EXCLUSIVE while it waits on our row lock.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	q := p.sqlc.WithTx(tx)
+	// FOR UPDATE serializes against RotateOrgKey: without it a reseed of a
+	// retired master could overwrite a row rotation just committed.
+	row, err := q.OrgKeyForUpdate(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	// Refuse to overwrite a master that is alive under this KEK: reseed
+	// exists for rows sealed under a LOST KEK. An identical re-seed is a
+	// no-op; a different live master means someone rotated — regressing
+	// would strand every rewrapped DEK.
+	if existing, openErr := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID)); openErr == nil {
+		if hmac.Equal(existing, master) {
+			return tx.Commit(ctx)
+		}
+		return ErrOrgKeyMismatch
+	}
+	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	if err != nil {
+		return err
+	}
+	n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
 	if err != nil {
 		return err
 	}
 	if n != 1 {
 		return ErrOrgKeyMissing
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	p.km.InvalidateOrg(orgID)
 	return nil
@@ -312,9 +364,11 @@ func recoveryAAD(orgID string, o protocol.Owner) []byte {
 }
 
 // StoreRecoveryWrap seals the org's committed master under owner-held
-// recovery material and upserts the wrap. The recovery key never persists —
-// losing it strands the wrap, not the vault. Re-minting replaces the row and
-// clears used_at.
+// recovery material and upserts the wrap, in one transaction: the FOR SHARE
+// read of org_keys serializes against RotateOrgKey's FOR UPDATE, so a wrap
+// can never commit a dead master after rotation's delete+commit. The
+// recovery key never persists — losing it strands the wrap, not the vault.
+// Re-minting replaces the row and clears used_at.
 func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error {
 	if len(recoveryKey) != crypto.KeySize {
 		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
@@ -322,22 +376,38 @@ func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protoc
 	if o.Kind == "" || o.ID == "" {
 		return fmt.Errorf("store: missing owner")
 	}
-	master, err := p.resolveOrgKey(ctx, orgID)
+	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.OrgKeyForShare(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
 	wrapped, err := crypto.SealAAD(recoveryKey, master, recoveryAAD(orgID, o))
 	if err != nil {
 		return err
 	}
 	exp := sql.NullTime{Valid: !expiresAt.IsZero(), Time: expiresAt}
-	_, err = retryOnDeadConn(func() (struct{}, error) {
-		return struct{}{}, p.sqlc.PutRecoveryWrap(ctx, sqlc.PutRecoveryWrapParams{
-			OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
-			Wrapped: wrapped, CreatedAt: time.Now().UTC(), ExpiresAt: exp,
-		})
-	})
-	return err
+	if err := q.PutRecoveryWrap(ctx, sqlc.PutRecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
+		Wrapped: wrapped, CreatedAt: time.Now().UTC(), ExpiresAt: exp,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // OpenRecoveryWrap verifies recoveryKey against the owner's wrap and returns
@@ -388,6 +458,96 @@ func (p *Postgres) OpenRecoveryWrap(ctx context.Context, orgID string, o protoco
 	return master, nil
 }
 
+// RecoverOrgKey is the lost-KEK recovery verb and the only safe way to spend
+// a wrap for reseed: open + consume + re-wrap org_keys under this store's
+// KEK happen in ONE transaction. Composing OpenRecoveryWrap + ReseedOrgKey
+// burns the wrap on the first commit — a failed reseed would leave the org
+// sealed under the lost KEK with the wrap already spent.
+func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) error {
+	if len(recoveryKey) != crypto.KeySize {
+		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
+	}
+	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// ROW EXCLUSIVE upfront — same upgrade-deadlock fix as RotateOrgKey.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	q := p.sqlc.WithTx(tx)
+	// Global lock order is org_keys → recovery_wraps, matching
+	// RotateOrgKey/StoreRecoveryWrap — taking the wrap row first would
+	// deadlock against them. FOR UPDATE also serializes against rotation:
+	// a committed rotation deletes the wrap below, and a waiting rotation
+	// re-seals after this recovery commits.
+	orgRow, err := q.OrgKeyForUpdate(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	row, err := q.RecoveryWrap(ctx, sqlc.RecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
+	})
+	if err == pgx.ErrNoRows {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if row.UsedAt.Valid {
+		return fmt.Errorf("store: recovery wrap already used")
+	}
+	if row.ExpiresAt.Valid && time.Now().UTC().After(row.ExpiresAt.Time) {
+		return fmt.Errorf("store: recovery wrap expired")
+	}
+	master, err := crypto.OpenAAD(recoveryKey, row.Wrapped, recoveryAAD(orgID, o))
+	if err != nil {
+		return fmt.Errorf("store: recovery key does not open this wrap: %w", err)
+	}
+	// Never regress a live master: if the committed row already opens under
+	// this KEK to the same master the org is healthy — no-op, wrap unspent.
+	// A different live master means a rotation committed after the wrap was
+	// minted; regressing would strand the rewrapped DEKs.
+	if existing, openErr := crypto.OpenAAD(p.kek, orgRow.Wrapped, []byte(orgID)); openErr == nil {
+		if hmac.Equal(existing, master) {
+			return tx.Commit(ctx)
+		}
+		return ErrOrgKeyMismatch
+	}
+	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	if err != nil {
+		return err
+	}
+	n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrOrgKeyMissing
+	}
+	n, err = q.ConsumeRecoveryWrap(ctx, sqlc.ConsumeRecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID, UsedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("store: recovery wrap consumed concurrently")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	p.km.InvalidateOrg(orgID)
+	return nil
+}
+
 // RotateKEK rewraps every org master under newKEK. Masters do not change —
 // owner DEKs and item ciphertexts are untouched; only the org_keys wrap
 // moves. cmk-managed rows are skipped (an external CMK owns its own wrap).
@@ -397,18 +557,30 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 	if len(newKEK) != crypto.KeySize {
 		return fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
 	}
+	// kekMu is always the OUTERMOST lock: taken before any DB transaction or
+	// row/table lock. Every other verb takes kekMu.RLock the same way, so a
+	// reader can never hold a DB lock while waiting on kekMu — no
+	// mutex-versus-table-lock deadlock. Exclusive for the whole verb:
+	// resolveOrgKey/EnsureOrgKey readers wait rather than race the swap.
+	p.kekMu.Lock()
+	defer p.kekMu.Unlock()
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// SHARE ROW EXCLUSIVE blocks INSERTs for the tx — an org provisioned
+	// mid-rotation on a not-yet-restarted replica would otherwise land
+	// sealed under the old KEK after the snapshot. Same-process inserts
+	// serialize on kekMu instead and seal under the adopted key.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
 	q := p.sqlc.WithTx(tx)
 	rows, err := q.ListOrgKeys(ctx)
 	if err != nil {
 		return err
 	}
-	p.kekMu.RLock()
-	defer p.kekMu.RUnlock()
 	for _, row := range rows {
 		if row.CmkID.Valid {
 			continue
@@ -432,7 +604,7 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	p.kek = newKEK
+	p.kek = append([]byte(nil), newKEK...)
 	for _, row := range rows {
 		p.km.InvalidateOrg(row.OrgID)
 	}
