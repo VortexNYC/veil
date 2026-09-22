@@ -146,6 +146,13 @@ func (a *App) RevokeSession(actor protocol.Principal, id string) (protocol.Sessi
 	if !ok {
 		return protocol.Session{}, ErrForbidden
 	}
+	sess, err := a.Store.SessionByID(id)
+	if err != nil {
+		return protocol.Session{}, err
+	}
+	if sess.OrgID != actor.OrgID {
+		return protocol.Session{}, ErrForbidden
+	}
 	if err := a.Store.RevokeSession(id, time.Now()); err != nil {
 		return protocol.Session{}, err
 	}
@@ -158,6 +165,13 @@ func (a *App) RenewSession(actor protocol.Principal, id string) (protocol.Sessio
 		return protocol.Session{}, err
 	}
 	if !ok {
+		return protocol.Session{}, ErrForbidden
+	}
+	sess, err := a.Store.SessionByID(id)
+	if err != nil {
+		return protocol.Session{}, err
+	}
+	if sess.OrgID != actor.OrgID {
 		return protocol.Session{}, ErrForbidden
 	}
 	return a.Store.RenewSession(id, time.Now())

@@ -316,10 +316,11 @@ func (q *Queries) ItemByName(ctx context.Context, arg ItemByNameParams) (ItemByN
 }
 
 const itemOwner = `-- name: ItemOwner :one
-SELECT owner_kind, owner_id FROM items WHERE id = $1::text
+SELECT org_id, owner_kind, owner_id FROM items WHERE id = $1::text
 `
 
 type ItemOwnerRow struct {
+	OrgID     string
 	OwnerKind string
 	OwnerID   string
 }
@@ -327,7 +328,7 @@ type ItemOwnerRow struct {
 func (q *Queries) ItemOwner(ctx context.Context, id string) (ItemOwnerRow, error) {
 	row := q.db.QueryRow(ctx, itemOwner, id)
 	var i ItemOwnerRow
-	err := row.Scan(&i.OwnerKind, &i.OwnerID)
+	err := row.Scan(&i.OrgID, &i.OwnerKind, &i.OwnerID)
 	return i, err
 }
 
@@ -677,7 +678,6 @@ const putAgent = `-- name: PutAgent :exec
 INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at)
 VALUES($1::text, $2::text, $3::text, $4::text, $5)
 ON CONFLICT(id) DO UPDATE SET
-    org_id=excluded.org_id, owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
     revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)
 `
 

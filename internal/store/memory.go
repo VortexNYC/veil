@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -46,8 +47,13 @@ func (m *Memory) Close() error { return nil }
 func (m *Memory) PutAgent(p protocol.Principal) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if existing, ok := m.agents[p.ID]; ok && p.RevokedAt == nil {
-		p.RevokedAt = existing.RevokedAt
+	if existing, ok := m.agents[p.ID]; ok {
+		// Never reassign org/owner on conflict — only revocation merges.
+		p.OrgID = existing.OrgID
+		p.Owner = existing.Owner
+		if p.RevokedAt == nil {
+			p.RevokedAt = existing.RevokedAt
+		}
 	}
 	m.agents[p.ID] = p
 	return nil
@@ -139,6 +145,11 @@ func (m *Memory) ListHumans() ([]protocol.Principal, error) {
 func (m *Memory) PutItem(item protocol.Item, secret Secret) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if existing, ok := m.items[item.ID]; ok {
+		if existing.Owner != item.Owner || existing.OrgID != item.OrgID {
+			return fmt.Errorf("store: cannot change item owner")
+		}
+	}
 	if old, ok := m.secrets[item.ID]; ok {
 		m.nextVer++
 		id := m.nextVer

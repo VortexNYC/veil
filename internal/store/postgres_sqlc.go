@@ -408,7 +408,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 
 	owner, err := qtx.ItemOwner(ctx, item.ID)
 	if err == nil {
-		if owner.OwnerKind != string(item.Owner.Kind) || owner.OwnerID != item.Owner.ID {
+		if owner.OwnerKind != string(item.Owner.Kind) || owner.OwnerID != item.Owner.ID || owner.OrgID != item.OrgID {
 			return fmt.Errorf("store: cannot change item owner")
 		}
 	} else if err != pgx.ErrNoRows {

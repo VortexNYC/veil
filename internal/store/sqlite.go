@@ -293,8 +293,10 @@ func parseRevokedAt(s sql.NullString) (*time.Time, error) {
 
 func (s *SQLite) PutAgent(p protocol.Principal) error {
 	rv := revokedAtString(p.RevokedAt)
+	// Conflict keeps the existing org/owner — an agent id must never be
+	// reassigned across orgs by an upsert.
 	_, err := s.db.Exec(`INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at) VALUES(?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id, owner_kind=excluded.owner_kind, owner_id=excluded.owner_id, revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)`,
+		ON CONFLICT(id) DO UPDATE SET revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)`,
 		p.ID, p.OrgID, p.Owner.Kind, p.Owner.ID, rv)
 	return err
 }
@@ -510,9 +512,10 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	}()
 
 	var existingOwner protocol.Owner
-	err = tx.QueryRow(`SELECT owner_kind, owner_id FROM items WHERE id=?`, item.ID).Scan(&existingOwner.Kind, &existingOwner.ID)
+	var existingOrg string
+	err = tx.QueryRow(`SELECT owner_kind, owner_id, org_id FROM items WHERE id=?`, item.ID).Scan(&existingOwner.Kind, &existingOwner.ID, &existingOrg)
 	if err == nil {
-		if existingOwner != item.Owner {
+		if existingOwner != item.Owner || existingOrg != item.OrgID {
 			return fmt.Errorf("store: cannot change item owner")
 		}
 	} else if err != sql.ErrNoRows {

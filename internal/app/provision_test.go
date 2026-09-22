@@ -195,6 +195,11 @@ func TestProvisionCrossOrgIsolation(t *testing.T) {
 	if _, err := a.GrantUntil(p2, ag2.ID, item.ID, protocol.Level2, nil); err == nil {
 		t.Fatal("cross-org grant succeeded")
 	}
+	// An org-2 owner cannot grant org-1's item to an org-1 human — the actor's
+	// org binds the grant, not just the grantee's.
+	if _, err := a.GrantUntil(p2, "sub-1", item.ID, protocol.Level2, nil); err == nil {
+		t.Fatal("cross-org human grant succeeded")
+	}
 	// Org-2's list does not see org-1's item.
 	items, err := a.ItemsForPrincipal(p2)
 	if err != nil {
@@ -205,10 +210,36 @@ func TestProvisionCrossOrgIsolation(t *testing.T) {
 			t.Fatal("cross-org item visible")
 		}
 	}
-	// Org-2 cannot create a session for... wait — org-2 has no agent on org-1's
-	// item; session isolation is covered by CreateSession's org check.
+	// Org-2 cannot write org-1's item even as an org owner.
+	if ok, err := a.MayWriteItem(p2, item); err != nil || ok {
+		t.Fatalf("cross-org MayWriteItem: %v %v", ok, err)
+	}
+	// Org-2 cannot squat org-1's agent name.
+	ag1, err := a.AddAgentFor(p1, "shared-name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgentFor(p2, "shared-name"); err == nil {
+		t.Fatal("cross-org agent name hijack succeeded")
+	}
 	if _, _, err := a.CreateSession(p2, ag2.ID, 0, 1); err != nil {
-		// ag2 is org-2 and p2 is org-2 — this should succeed; asserts org match works.
 		t.Fatalf("same-org session failed: %v", err)
+	}
+	// Org-2 cannot revoke org-1's session by id.
+	sess, _, err := a.CreateSession(p1, ag1.ID, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.RevokeSession(p2, sess.ID); err == nil {
+		t.Fatal("cross-org session revoke succeeded")
+	}
+	// Org-2 cannot approve org-1's grant — ApproveOIDC binds grant→approver org.
+	g, err := a.GrantUntil(p1, ag1.ID, item.ID, protocol.Level1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Human = fakeVerifier{sub: "sub-2"}
+	if _, err := a.ApproveOIDC(context.Background(), g.ID, "tok-2", 0); err == nil {
+		t.Fatal("cross-org approve succeeded")
 	}
 }
