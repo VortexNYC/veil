@@ -16,8 +16,9 @@ import (
 )
 
 type SQLite struct {
-	db *sql.DB
-	km *keyManager
+	db     *sql.DB
+	master []byte
+	km     *keyManager
 }
 
 func OpenSQLite(path string, key []byte) (*SQLite, error) {
@@ -42,7 +43,11 @@ func OpenSQLite(path string, key []byte) (*SQLite, error) {
 	db.SetConnMaxLifetime(time.Hour)
 	db.SetConnMaxIdleTime(10 * time.Minute)
 
-	s := &SQLite{db: db, km: newKeyManager(key)}
+	// A local vault is one tenant: the vault key is the org master for every
+	// org_id it will ever see. The resolver keeps sqlite symmetric with the
+	// Postgres KEK→org_keys path without pretending at per-org custody.
+	s := &SQLite{db: db, master: append([]byte(nil), key...)}
+	s.km = newKeyManager(func(context.Context, string) ([]byte, error) { return key, nil })
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -143,10 +148,11 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			PRIMARY KEY (issuer, subject)
 		)`,
 		`CREATE TABLE IF NOT EXISTS owner_keys (
+			org_id TEXT NOT NULL,
 			owner_kind TEXT NOT NULL,
 			owner_id TEXT NOT NULL,
 			wrapped BLOB NOT NULL,
-			PRIMARY KEY (owner_kind, owner_id)
+			PRIMARY KEY (org_id, owner_kind, owner_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS item_versions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,6 +205,9 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	_, _ = s.db.Exec(`UPDATE sessions SET ttl = 900 WHERE ttl = 0`)
 	_, _ = s.db.Exec(`UPDATE sessions SET max_ttl = 3600 WHERE max_ttl = 0`)
 	if err := s.dropItemsNameUnique(); err != nil {
+		return err
+	}
+	if err := s.rebuildOwnerKeysOrg(); err != nil {
 		return err
 	}
 	for _, q := range []string{
@@ -452,7 +461,7 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	if item.Tags == nil {
 		tags = []byte("[]")
 	}
-	dek, err := s.ownerDEK(item.Owner)
+	dek, err := s.ownerDEK(item.OrgID, item.Owner)
 	if err != nil {
 		return err
 	}
@@ -666,14 +675,15 @@ func (s *SQLite) RestoreVersion(itemID string, versionID int64) error {
 func (s *SQLite) Secret(id string) (Secret, error) {
 	var blob []byte
 	var owner protocol.Owner
-	err := s.db.QueryRow(`SELECT secret, owner_kind, owner_id FROM items WHERE id=?`, id).Scan(&blob, &owner.Kind, &owner.ID)
+	var orgID string
+	err := s.db.QueryRow(`SELECT secret, org_id, owner_kind, owner_id FROM items WHERE id=?`, id).Scan(&blob, &orgID, &owner.Kind, &owner.ID)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	dek, err := s.ownerDEK(owner)
+	dek, err := s.ownerDEK(orgID, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -1289,22 +1299,22 @@ func (s *SQLite) RenewSession(id string, at time.Time) (protocol.Session, error)
 	return sess, nil
 }
 
-func (s *SQLite) ownerDEK(o protocol.Owner) ([]byte, error) {
-	return s.km.ownerDEK(context.Background(), s, o)
+func (s *SQLite) ownerDEK(orgID string, o protocol.Owner) ([]byte, error) {
+	return s.km.ownerDEK(context.Background(), s, orgID, o)
 }
 
-func (s *SQLite) loadOwnerWrapped(ctx context.Context, o protocol.Owner) ([]byte, error) {
+func (s *SQLite) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
 	var wrapped []byte
-	err := s.db.QueryRow(`SELECT wrapped FROM owner_keys WHERE owner_kind=? AND owner_id=?`, o.Kind, o.ID).Scan(&wrapped)
+	err := s.db.QueryRow(`SELECT wrapped FROM owner_keys WHERE org_id=? AND owner_kind=? AND owner_id=?`, orgID, o.Kind, o.ID).Scan(&wrapped)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
 	return wrapped, err
 }
 
-func (s *SQLite) storeOwnerWrapped(ctx context.Context, o protocol.Owner, wrapped []byte) error {
-	_, err := s.db.Exec(`INSERT INTO owner_keys(owner_kind, owner_id, wrapped) VALUES(?,?,?)
-		ON CONFLICT(owner_kind, owner_id) DO NOTHING`, o.Kind, o.ID, wrapped)
+func (s *SQLite) storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error {
+	_, err := s.db.Exec(`INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped) VALUES(?,?,?,?)
+		ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING`, orgID, o.Kind, o.ID, wrapped)
 	return err
 }
 
@@ -1312,19 +1322,55 @@ type sqliteTxSource struct {
 	tx *sql.Tx
 }
 
-func (ts sqliteTxSource) loadOwnerWrapped(ctx context.Context, o protocol.Owner) ([]byte, error) {
+func (ts sqliteTxSource) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
 	var wrapped []byte
-	err := ts.tx.QueryRowContext(ctx, `SELECT wrapped FROM owner_keys WHERE owner_kind=? AND owner_id=?`, o.Kind, o.ID).Scan(&wrapped)
+	err := ts.tx.QueryRowContext(ctx, `SELECT wrapped FROM owner_keys WHERE org_id=? AND owner_kind=? AND owner_id=?`, orgID, o.Kind, o.ID).Scan(&wrapped)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
 	return wrapped, err
 }
 
-func (ts sqliteTxSource) storeOwnerWrapped(ctx context.Context, o protocol.Owner, wrapped []byte) error {
-	_, err := ts.tx.ExecContext(ctx, `INSERT INTO owner_keys(owner_kind, owner_id, wrapped) VALUES(?,?,?)
-		ON CONFLICT(owner_kind, owner_id) DO NOTHING`, o.Kind, o.ID, wrapped)
+func (ts sqliteTxSource) storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error {
+	_, err := ts.tx.ExecContext(ctx, `INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped) VALUES(?,?,?,?)
+		ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING`, orgID, o.Kind, o.ID, wrapped)
 	return err
+}
+
+// rebuildOwnerKeysOrg adds org_id to owner_keys for vaults written before
+// multi-org keys. sqlite cannot ALTER a primary key, so the table is rebuilt;
+// every pre-existing row belongs to the one pre-multi-tenant org.
+func (s *SQLite) rebuildOwnerKeysOrg() error {
+	var schema string
+	if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='owner_keys'`).Scan(&schema); err != nil {
+		return err
+	}
+	if strings.Contains(strings.ReplaceAll(schema, " ", ""), `org_id`) {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`CREATE TABLE owner_keys_org (
+			org_id TEXT NOT NULL,
+			owner_kind TEXT NOT NULL,
+			owner_id TEXT NOT NULL,
+			wrapped BLOB NOT NULL,
+			PRIMARY KEY (org_id, owner_kind, owner_id)
+		)`,
+		`INSERT INTO owner_keys_org(org_id, owner_kind, owner_id, wrapped)
+			SELECT '` + protocol.LocalOrgID + `', owner_kind, owner_id, wrapped FROM owner_keys`,
+		`DROP TABLE owner_keys`,
+		`ALTER TABLE owner_keys_org RENAME TO owner_keys`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // rewrapLegacy moves secrets sealed with master onto the owner DEK.
@@ -1360,7 +1406,7 @@ func (s *SQLite) rewrapLegacy() error {
 	ts := sqliteTxSource{tx: tx}
 
 	// Rewrap current item secrets.
-	items, err := tx.Query(`SELECT id, owner_kind, owner_id, secret FROM items`)
+	items, err := tx.Query(`SELECT id, org_id, owner_kind, owner_id, secret FROM items`)
 	if err != nil {
 		return err
 	}
@@ -1373,7 +1419,7 @@ func (s *SQLite) rewrapLegacy() error {
 	}
 
 	// Rewrap historical item versions with their item's owner.
-	vers, err := tx.Query(`SELECT v.id, i.owner_kind, i.owner_id, v.secret FROM item_versions v JOIN items i ON v.item_id = i.id`)
+	vers, err := tx.Query(`SELECT v.id, i.org_id, i.owner_kind, i.owner_id, v.secret FROM item_versions v JOIN items i ON v.item_id = i.id`)
 	if err != nil {
 		return err
 	}
@@ -1405,13 +1451,14 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 	defer rows.Close()
 	type row struct {
 		id    string
+		org   string
 		owner protocol.Owner
 		blob  []byte
 	}
 	var list []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.owner.Kind, &r.owner.ID, &r.blob); err != nil {
+		if err := rows.Scan(&r.id, &r.org, &r.owner.Kind, &r.owner.ID, &r.blob); err != nil {
 			return false, 0, 0, err
 		}
 		list = append(list, r)
@@ -1426,12 +1473,12 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 	rewrapped := 0
 	resolved := 0
 	for _, r := range list {
-		plain, err := crypto.Open(s.km.key, r.blob)
+		plain, err := crypto.Open(s.master, r.blob)
 		if err == nil {
 			// Master-sealed and key is correct. Create or load the owner DEK and
 			// rewrap. ownerDEK only creates when the master key can decrypt,
 			// which we just proved.
-			dek, err := s.km.ownerDEK(context.Background(), ts, r.owner)
+			dek, err := s.km.ownerDEK(context.Background(), ts, r.org, r.owner)
 			if err != nil {
 				return false, 0, 0, err
 			}
@@ -1453,7 +1500,7 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 		// Master failed. It may be owner-sealed, or the master key may be wrong.
 		// Load the wrapped owner key without creating one, and only trust the
 		// row if the master key can unwrap it.
-		wrapped, err := ts.loadOwnerWrapped(context.Background(), r.owner)
+		wrapped, err := ts.loadOwnerWrapped(context.Background(), r.org, r.owner)
 		if err == ErrNotFound {
 			// No owner key and master cannot open; the key is likely wrong or the
 			// row is corrupt. Skip without failing so opening with a wrong key
@@ -1463,7 +1510,7 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 		if err != nil {
 			return false, 0, 0, err
 		}
-		dek, err := crypto.Open(s.km.key, wrapped)
+		dek, err := crypto.Open(s.master, wrapped)
 		if err == crypto.ErrAuth {
 			// Wrong master key. Skip this row.
 			continue

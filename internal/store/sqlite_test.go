@@ -287,11 +287,11 @@ func TestSQLiteOwnerKeysDifferAndGrantHasNoDEK(t *testing.T) {
 	if err := s.PutItem(protocol.Item{ID: "gmail", OrgID: "org", Name: "gmail", Kind: protocol.ItemAPIKey, Owner: user}, Secret("sk_user")); err != nil {
 		t.Fatal(err)
 	}
-	dekOrg, err := s.ownerDEK(org)
+	dekOrg, err := s.ownerDEK("org", org)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dekUser, err := s.ownerDEK(user)
+	dekUser, err := s.ownerDEK("org", user)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -74,7 +74,17 @@ type ItemVersion struct {
 	Secret []byte
 }
 
+type OrgKey struct {
+	OrgID      string
+	Wrapped    []byte
+	KeyVersion int32
+	CmkID      sql.NullString
+	CreatedAt  time.Time
+	RotatedAt  sql.NullTime
+}
+
 type OwnerKey struct {
+	OrgID     string
 	OwnerKind string
 	OwnerID   string
 	Wrapped   []byte

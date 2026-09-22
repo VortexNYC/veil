@@ -384,7 +384,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	if item.Tags == nil {
 		tags = []byte("[]")
 	}
-	dek, err := p.ownerDEK(item.Owner)
+	dek, err := p.ownerDEK(item.OrgID, item.Owner)
 	if err != nil {
 		return err
 	}
@@ -559,7 +559,7 @@ func (p *Postgres) Secret(id string) (Secret, error) {
 	if err != nil {
 		return nil, err
 	}
-	dek, err := p.ownerDEK(protocol.Owner{Kind: protocol.OwnerKind(r.OwnerKind), ID: r.OwnerID})
+	dek, err := p.ownerDEK(r.OrgID, protocol.Owner{Kind: protocol.OwnerKind(r.OwnerKind), ID: r.OwnerID})
 	if err != nil {
 		return nil, err
 	}
@@ -651,9 +651,10 @@ func (p *Postgres) LiveApproval(grantID string, now time.Time) (*protocol.Approv
 	return &a, nil
 }
 
-func (p *Postgres) loadOwnerWrapped(ctx context.Context, o protocol.Owner) ([]byte, error) {
+func (p *Postgres) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
 	wrapped, err := retryOnDeadConn(func() ([]byte, error) {
 		return p.sqlc.OwnerWrapped(ctx, sqlc.OwnerWrappedParams{
+			OrgID:     orgID,
 			OwnerKind: string(o.Kind),
 			OwnerID:   o.ID,
 		})
@@ -664,8 +665,9 @@ func (p *Postgres) loadOwnerWrapped(ctx context.Context, o protocol.Owner) ([]by
 	return wrapped, err
 }
 
-func (p *Postgres) storeOwnerWrapped(ctx context.Context, o protocol.Owner, wrapped []byte) error {
+func (p *Postgres) storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error {
 	return p.sqlc.PutOwnerWrapped(ctx, sqlc.PutOwnerWrappedParams{
+		OrgID:     orgID,
 		OwnerKind: string(o.Kind),
 		OwnerID:   o.ID,
 		Wrapped:   wrapped,

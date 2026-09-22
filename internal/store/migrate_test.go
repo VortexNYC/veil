@@ -206,6 +206,11 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 		t.Fatalf("open migrated store: %v", err)
 	}
 	defer dst.Close()
+	// key doubles as the KEK here; the migrated vault's master is the same
+	// bytes, so org-test's wrapped DEKs still unwrap.
+	if err := dst.EnsureOrgKey(context.Background(), "org-test", key); err != nil {
+		t.Fatalf("seed org key: %v", err)
+	}
 	for id, want := range wantSecrets {
 		sec, err := dst.Secret(id)
 		if err != nil {

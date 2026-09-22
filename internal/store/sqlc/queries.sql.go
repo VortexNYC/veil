@@ -56,6 +56,25 @@ func (q *Queries) ArchiveItem(ctx context.Context, id string) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const bumpOrgKey = `-- name: BumpOrgKey :execrows
+UPDATE org_keys SET wrapped = $1::bytea, key_version = key_version + 1, rotated_at = $2::timestamptz
+WHERE org_id = $3::text
+`
+
+type BumpOrgKeyParams struct {
+	Wrapped   []byte
+	RotatedAt time.Time
+	OrgID     string
+}
+
+func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bumpOrgKey, arg.Wrapped, arg.RotatedAt, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const consumeSession = `-- name: ConsumeSession :one
 UPDATE sessions s
 SET uses = uses + 1
@@ -313,11 +332,12 @@ func (q *Queries) ItemOwner(ctx context.Context, id string) (ItemOwnerRow, error
 }
 
 const itemSecretOwner = `-- name: ItemSecretOwner :one
-SELECT secret, owner_kind, owner_id FROM items WHERE id = $1::text
+SELECT secret, org_id, owner_kind, owner_id FROM items WHERE id = $1::text
 `
 
 type ItemSecretOwnerRow struct {
 	Secret    []byte
+	OrgID     string
 	OwnerKind string
 	OwnerID   string
 }
@@ -325,7 +345,12 @@ type ItemSecretOwnerRow struct {
 func (q *Queries) ItemSecretOwner(ctx context.Context, id string) (ItemSecretOwnerRow, error) {
 	row := q.db.QueryRow(ctx, itemSecretOwner, id)
 	var i ItemSecretOwnerRow
-	err := row.Scan(&i.Secret, &i.OwnerKind, &i.OwnerID)
+	err := row.Scan(
+		&i.Secret,
+		&i.OrgID,
+		&i.OwnerKind,
+		&i.OwnerID,
+	)
 	return i, err
 }
 
@@ -593,17 +618,38 @@ func (q *Queries) ListSessions(ctx context.Context, maxResults int64) ([]Session
 	return items, nil
 }
 
+const orgKey = `-- name: OrgKey :one
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
+FROM org_keys WHERE org_id = $1::text
+`
+
+func (q *Queries) OrgKey(ctx context.Context, orgID string) (OrgKey, error) {
+	row := q.db.QueryRow(ctx, orgKey, orgID)
+	var i OrgKey
+	err := row.Scan(
+		&i.OrgID,
+		&i.Wrapped,
+		&i.KeyVersion,
+		&i.CmkID,
+		&i.CreatedAt,
+		&i.RotatedAt,
+	)
+	return i, err
+}
+
 const ownerWrapped = `-- name: OwnerWrapped :one
-SELECT wrapped FROM owner_keys WHERE owner_kind = $1::text AND owner_id = $2::text
+SELECT wrapped FROM owner_keys
+WHERE org_id = $1::text AND owner_kind = $2::text AND owner_id = $3::text
 `
 
 type OwnerWrappedParams struct {
+	OrgID     string
 	OwnerKind string
 	OwnerID   string
 }
 
 func (q *Queries) OwnerWrapped(ctx context.Context, arg OwnerWrappedParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, ownerWrapped, arg.OwnerKind, arg.OwnerID)
+	row := q.db.QueryRow(ctx, ownerWrapped, arg.OrgID, arg.OwnerKind, arg.OwnerID)
 	var wrapped []byte
 	err := row.Scan(&wrapped)
 	return wrapped, err
@@ -752,20 +798,51 @@ func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) error {
 	return err
 }
 
+const putOrgKey = `-- name: PutOrgKey :exec
+INSERT INTO org_keys(org_id, wrapped, key_version, cmk_id, created_at)
+VALUES($1::text, $2::bytea, $3::integer, $4, $5::timestamptz)
+ON CONFLICT(org_id) DO NOTHING
+`
+
+type PutOrgKeyParams struct {
+	OrgID      string
+	Wrapped    []byte
+	KeyVersion int32
+	CmkID      sql.NullString
+	CreatedAt  time.Time
+}
+
+func (q *Queries) PutOrgKey(ctx context.Context, arg PutOrgKeyParams) error {
+	_, err := q.db.Exec(ctx, putOrgKey,
+		arg.OrgID,
+		arg.Wrapped,
+		arg.KeyVersion,
+		arg.CmkID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const putOwnerWrapped = `-- name: PutOwnerWrapped :exec
-INSERT INTO owner_keys(owner_kind, owner_id, wrapped)
-VALUES($1::text, $2::text, $3::bytea)
-ON CONFLICT(owner_kind, owner_id) DO NOTHING
+INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped)
+VALUES($1::text, $2::text, $3::text, $4::bytea)
+ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING
 `
 
 type PutOwnerWrappedParams struct {
+	OrgID     string
 	OwnerKind string
 	OwnerID   string
 	Wrapped   []byte
 }
 
 func (q *Queries) PutOwnerWrapped(ctx context.Context, arg PutOwnerWrappedParams) error {
-	_, err := q.db.Exec(ctx, putOwnerWrapped, arg.OwnerKind, arg.OwnerID, arg.Wrapped)
+	_, err := q.db.Exec(ctx, putOwnerWrapped,
+		arg.OrgID,
+		arg.OwnerKind,
+		arg.OwnerID,
+		arg.Wrapped,
+	)
 	return err
 }
 

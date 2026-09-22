@@ -4,6 +4,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,17 +142,40 @@ func OpenOrInit(dir string) (*App, error) {
 }
 
 // OpenPostgres opens a stateless origin backed by a Postgres DSN.
-// The master key is read from the VEIL_MASTER_KEY environment variable (hex).
+// The deployment KEK is read from the VEIL_KEK environment variable (hex) and
+// seals per-org master keys in org_keys. VEIL_MASTER_KEY is the pre-multi-org
+// legacy: when set, it is seeded once as this org's wrapped master and can be
+// removed afterward.
 func OpenPostgres(dsn string) (*App, error) {
-	key, err := loadMasterFromEnv()
+	kek, err := loadKeyEnv("VEIL_KEK", true)
 	if err != nil {
 		return nil, err
 	}
-	s, err := store.OpenPostgres(dsn, key)
+	s, err := store.OpenPostgres(dsn, kek)
 	if err != nil {
 		return nil, err
 	}
 	cfg := config{OrgID: DefaultOrg, HumanID: DefaultHuman}
+	// Legacy seed: a pre-multi-tenant deployment still carries VEIL_MASTER_KEY.
+	// Wrap it under the KEK as this org's row. ON CONFLICT DO NOTHING — an
+	// existing row is never overwritten, so this is safe on every boot.
+	master, err := loadKeyEnv("VEIL_MASTER_KEY", false)
+	if err != nil {
+		_ = s.Close()
+		return nil, err
+	}
+	if master == nil {
+		// Fresh origin: mint the default org's master. It lands only as a
+		// wrapped org_keys row — never persisted in plaintext.
+		if master, err = crypto.NewKey(); err != nil {
+			_ = s.Close()
+			return nil, err
+		}
+	}
+	if err := s.EnsureOrgKey(context.Background(), cfg.OrgID, master); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
 	if _, err := s.Human(cfg.HumanID); errors.Is(err, store.ErrNotFound) {
 		if err := s.PutHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: cfg.HumanID, OrgID: cfg.OrgID}); err != nil {
 			_ = s.Close()
@@ -169,12 +193,22 @@ func OpenPostgres(dsn string) (*App, error) {
 	return finish("", cfg, s, &audit.Sync{Store: s})
 }
 
-func loadMasterFromEnv() ([]byte, error) {
-	env := os.Getenv("VEIL_MASTER_KEY")
+func loadKeyEnv(name string, required bool) ([]byte, error) {
+	env := os.Getenv(name)
 	if env == "" {
-		return nil, fmt.Errorf("app: VEIL_MASTER_KEY is required for stateless origin")
+		if !required {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("app: %s is required for stateless origin", name)
 	}
-	return decodeMasterEnv(env)
+	key, err := hex.DecodeString(env)
+	if err != nil {
+		return nil, fmt.Errorf("app: %s is not valid hex: %w", name, err)
+	}
+	if len(key) != crypto.KeySize {
+		return nil, fmt.Errorf("app: %s must be %d bytes (got %d)", name, crypto.KeySize, len(key))
+	}
+	return key, nil
 }
 
 func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App, error) {
