@@ -56,6 +56,30 @@ func TestPostgresOrgKeyIsolation(t *testing.T) {
 	}
 }
 
+// PlantHuman is the signup anchor: insert-if-absent, never overwrite org_id,
+// so a racing second provision converges on the winner's org.
+func TestPostgresPlantHumanIdempotent(t *testing.T) {
+	s := openTestPostgres(t)
+	first, err := s.PlantHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: "sub-1", OrgID: "org-a"})
+	if err != nil || !first {
+		t.Fatalf("first plant: %v %v", first, err)
+	}
+	second, err := s.PlantHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: "sub-1", OrgID: "org-b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second {
+		t.Fatal("second plant claimed the row")
+	}
+	h, err := s.Human("sub-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.OrgID != "org-a" {
+		t.Fatalf("org overwritten: %q", h.OrgID)
+	}
+}
+
 // An item write into an org with no org_keys row fails closed — no DEK is
 // minted under a wrong key and nothing is persisted.
 func TestPostgresOrgKeyMissingFailClosed(t *testing.T) {

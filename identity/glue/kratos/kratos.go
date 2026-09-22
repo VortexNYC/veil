@@ -129,6 +129,28 @@ func (c *Client) IdentityByEmail(ctx context.Context, email, orgID string) (stri
 	return "", fmt.Errorf("kratos: identity not found")
 }
 
+// SetOrganization binds an identity to an org. Provisioning owns this write:
+// a signup gets its org stamped here, matching the vault humans row and the
+// Keto object. JSON patch "add" is insert-or-replace for object members.
+func (c *Client) SetOrganization(ctx context.Context, identityID, orgID string) error {
+	if c == nil || c.admin == nil {
+		return fmt.Errorf("kratos: admin is required")
+	}
+	identityID = strings.TrimSpace(identityID)
+	if identityID == "" || strings.TrimSpace(orgID) == "" {
+		return fmt.Errorf("kratos: identity and org required")
+	}
+	patch := ory.NewJsonPatch("add", "/organization_id")
+	patch.SetValue(orgID)
+	_, _, err := c.admin.IdentityAPI.PatchIdentity(ctx, identityID).
+		JsonPatch([]ory.JsonPatch{*patch}).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("kratos: set organization: %w", err)
+	}
+	return nil
+}
+
 func (c *Client) Organization(ctx context.Context, identityID string) (string, error) {
 	if c == nil || c.admin == nil {
 		return "", fmt.Errorf("kratos: admin is required")

@@ -241,6 +241,10 @@ UPDATE agents SET revoked_at = COALESCE(revoked_at, @at::timestamptz) WHERE id =
 INSERT INTO humans(id, org_id) VALUES(@id::text, @org_id::text)
 ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id;
 
+-- name: PlantHuman :execrows
+INSERT INTO humans(id, org_id) VALUES(@id::text, @org_id::text)
+ON CONFLICT(id) DO NOTHING;
+
 -- name: HumanByID :one
 SELECT id, org_id FROM humans WHERE id = @id::text;
 

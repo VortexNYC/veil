@@ -763,6 +763,16 @@ func humanFromSqlc(h *sqlc.Human) protocol.Principal {
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: h.ID, OrgID: h.OrgID}
 }
 
+func (p *Postgres) PlantHuman(h protocol.Principal) (bool, error) {
+	n, err := retryOnDeadConn(func() (int64, error) {
+		return p.sqlc.PlantHuman(context.Background(), sqlc.PlantHumanParams{ID: h.ID, OrgID: h.OrgID})
+	})
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}
+
 func (p *Postgres) PutHuman(h protocol.Principal) error {
 	return p.sqlc.PutHuman(context.Background(), sqlc.PutHumanParams{ID: h.ID, OrgID: h.OrgID})
 }

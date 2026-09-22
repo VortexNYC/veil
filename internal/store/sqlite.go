@@ -399,6 +399,22 @@ func (s *SQLite) PutHuman(p protocol.Principal) error {
 	return err
 }
 
+// PlantHuman is the provisioning anchor — insert-if-absent, never overwrite.
+func (s *SQLite) PlantHuman(p protocol.Principal) (bool, error) {
+	res, err := s.db.Exec(`INSERT INTO humans(id, org_id) VALUES(?, ?)
+		ON CONFLICT(id) DO NOTHING`, p.ID, p.OrgID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// A sqlite vault is one tenant: the single vault key covers every org, so
+// org-key provisioning is a no-op here. Per-org masters are a Postgres shape.
+func (s *SQLite) EnsureOrgKey(context.Context, string, []byte) error { return nil }
+func (s *SQLite) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
+
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
 	p.Kind = protocol.PrincipalHuman

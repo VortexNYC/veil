@@ -30,6 +30,7 @@ from veil.models.import_response import ImportResponse
 from veil.models.item import Item
 from veil.models.items_response import ItemsResponse
 from veil.models.owner import Owner
+from veil.models.provision_response import ProvisionResponse
 from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -53,8 +54,19 @@ type Store interface {
 	RevokeAgent(id string, at time.Time, audit ...protocol.AuditEvent) error
 
 	PutHuman(protocol.Principal) error
+	// PlantHuman inserts a humans row only if the id is absent — the
+	// provisioning anchor that makes signup idempotent. Returns true when
+	// this call created the row.
+	PlantHuman(protocol.Principal) (bool, error)
 	Human(id string) (protocol.Principal, error)
 	ListHumans() ([]protocol.Principal, error)
+
+	// EnsureOrgKey seals master as the org's org_keys row if absent; an
+	// existing row under a different master fails ErrOrgKeyMismatch.
+	// HasOrgKey reports whether the row exists. Single-key stores (sqlite,
+	// memory) cover every org by construction.
+	EnsureOrgKey(ctx context.Context, orgID string, master []byte) error
+	HasOrgKey(ctx context.Context, orgID string) (bool, error)
 
 	PutItem(protocol.Item, Secret) error
 	Item(id string) (protocol.Item, error)

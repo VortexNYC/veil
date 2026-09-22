@@ -138,7 +138,7 @@ func TestLiveAuthorize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := hv.Human(context.Background(), idTok, protocol.LocalOrgID)
+	p, err := hv.Human(context.Background(), idTok)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestLiveInvite(t *testing.T) {
 		t.Fatal(err)
 	}
 	email := fmt.Sprintf("invite-%d@example.com", time.Now().UnixNano())
-	inv, err := g.InviteIdentity(context.Background(), email, "")
+	inv, err := g.InviteIdentity(context.Background(), email, "", protocol.LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestLiveInvite(t *testing.T) {
 			t.Fatal("kratos id cached in sqlite")
 		}
 	}
-	ids, err := g.ListMembers(context.Background())
+	ids, err := g.ListMembers(context.Background(), protocol.LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,21 +248,21 @@ func TestLiveInvite(t *testing.T) {
 	if !found {
 		t.Fatal("member not in kratos list")
 	}
-	member, err := g.Allowed(context.Background(), relMembers, inv.IdentityID)
+	member, err := g.Allowed(context.Background(), protocol.LocalOrgID, relMembers, inv.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !member {
 		t.Fatal("keto denied the invited member")
 	}
-	owner, err := g.Allowed(context.Background(), relOwners, inv.IdentityID)
+	owner, err := g.Allowed(context.Background(), protocol.LocalOrgID, relOwners, inv.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !owner {
 		t.Fatal("first invite is not keto owner")
 	}
-	stranger, err := g.Allowed(context.Background(), relMembers, "00000000-0000-4000-8000-000000000000")
+	stranger, err := g.Allowed(context.Background(), protocol.LocalOrgID, relMembers, "00000000-0000-4000-8000-000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,21 +277,21 @@ func TestLiveInvite(t *testing.T) {
 		t.Fatalf("organization_id %q", org)
 	}
 	email2 := fmt.Sprintf("invite2-%d@example.com", time.Now().UnixNano())
-	if _, err := g.InviteIdentity(context.Background(), email2, ""); err == nil {
+	if _, err := g.InviteIdentity(context.Background(), email2, "", protocol.LocalOrgID); err == nil {
 		t.Fatal("second invite without owner")
 	}
-	second, err := g.InviteIdentity(context.Background(), email2, inv.IdentityID)
+	second, err := g.InviteIdentity(context.Background(), email2, inv.IdentityID, protocol.LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ok, err := g.IsMember(context.Background(), second.IdentityID)
+	ok, err := g.IsMember(context.Background(), protocol.LocalOrgID, second.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("second invite is not a member")
 	}
-	owner2, err := g.Allowed(context.Background(), relOwners, second.IdentityID)
+	owner2, err := g.Allowed(context.Background(), protocol.LocalOrgID, relOwners, second.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}

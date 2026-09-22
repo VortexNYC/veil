@@ -655,6 +655,24 @@ func (q *Queries) OwnerWrapped(ctx context.Context, arg OwnerWrappedParams) ([]b
 	return wrapped, err
 }
 
+const plantHuman = `-- name: PlantHuman :execrows
+INSERT INTO humans(id, org_id) VALUES($1::text, $2::text)
+ON CONFLICT(id) DO NOTHING
+`
+
+type PlantHumanParams struct {
+	ID    string
+	OrgID string
+}
+
+func (q *Queries) PlantHuman(ctx context.Context, arg PlantHumanParams) (int64, error) {
+	result, err := q.db.Exec(ctx, plantHuman, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const putAgent = `-- name: PutAgent :exec
 INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at)
 VALUES($1::text, $2::text, $3::text, $4::text, $5)

@@ -36,6 +36,18 @@ func NewItem() (string, error) {
 	return s, nil
 }
 
+// NewOrg is a uuid v4 — the same join-key shape Kratos organization_id and
+// the Keto object use.
+func NewOrg() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
+}
+
 // NewSession is a random row id for a sandbox session. Not the bearer token.
 func NewSession() (string, error) {
 	var b [8]byte

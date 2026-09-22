@@ -94,7 +94,7 @@ func TestLoginHTTPPasswordThenTOTP(t *testing.T) {
 	if err := RequireTOTP(raw); err != nil {
 		t.Fatal(err)
 	}
-	h, err := v.Human(context.Background(), raw, "org")
+	h, err := v.Human(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}

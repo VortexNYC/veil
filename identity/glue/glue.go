@@ -79,7 +79,7 @@ func NewHydra(admin string) (*Glue, error) {
 	return &Glue{tokens: tokens}, nil
 }
 
-func (g *Glue) org() string {
+func (g *Glue) DefaultOrg() string {
 	if g.members != nil {
 		return g.members.Org()
 	}
@@ -133,41 +133,53 @@ func AgentClientID(agentID string) string {
 	return hydra.AgentClientID(agentID)
 }
 
-func (g *Glue) Allowed(ctx context.Context, relation, subject string) (bool, error) {
+func (g *Glue) Allowed(ctx context.Context, orgID, relation, subject string) (bool, error) {
 	if g.members == nil {
 		return false, fmt.Errorf("glue: keto is required")
 	}
-	return g.members.Allowed(ctx, relation, subject)
+	return g.members.ForOrg(orgID).Allowed(ctx, relation, subject)
 }
 
-func (g *Glue) IsMember(ctx context.Context, identityID string) (bool, error) {
+func (g *Glue) IsMember(ctx context.Context, orgID, identityID string) (bool, error) {
 	if g.members == nil {
 		return false, fmt.Errorf("glue: keto is required")
 	}
-	return g.members.IsMember(ctx, identityID)
+	return g.members.ForOrg(orgID).IsMember(ctx, identityID)
 }
 
-func (g *Glue) IsOwner(ctx context.Context, identityID string) (bool, error) {
+func (g *Glue) IsOwner(ctx context.Context, orgID, identityID string) (bool, error) {
 	if g.members == nil {
 		return false, fmt.Errorf("glue: keto is required")
 	}
-	return g.members.IsOwner(ctx, identityID)
+	return g.members.ForOrg(orgID).IsOwner(ctx, identityID)
+}
+
+// ProvisionMember plants owner+member tuples for an identity in orgID.
+// Provisioning calls this once the org exists in the vault; first member of a
+// fresh org becomes owner (Keto AddMember bootstrap semantics).
+func (g *Glue) ProvisionMember(ctx context.Context, orgID, identityID string) error {
+	if g.members == nil {
+		return fmt.Errorf("glue: keto is required")
+	}
+	return g.members.ForOrg(orgID).AddMember(ctx, identityID)
+}
+
+// SetIdentityOrg stamps a Kratos identity with its org — the same join key as
+// the vault humans row and the Keto object.
+func (g *Glue) SetIdentityOrg(ctx context.Context, identityID, orgID string) error {
+	if g.humans == nil {
+		return fmt.Errorf("glue: kratos admin is required")
+	}
+	return g.humans.SetOrganization(ctx, identityID, orgID)
 }
 
 // IdentityID is the Kratos id for an email. CLI grant --human. Broker never
 // calls this. Email stays in Kratos.
-func (g *Glue) IdentityID(ctx context.Context, email string) (string, error) {
+func (g *Glue) IdentityID(ctx context.Context, email, orgID string) (string, error) {
 	if g.humans == nil {
 		return "", fmt.Errorf("glue: kratos admin is required")
 	}
-	return g.humans.IdentityByEmail(ctx, email, g.org())
-}
-
-func (g *Glue) addOrgMember(ctx context.Context, identityID string) error {
-	if g.members == nil {
-		return nil
-	}
-	return g.members.AddMember(ctx, identityID)
+	return g.humans.IdentityByEmail(ctx, email, orgID)
 }
 
 func (g *Glue) IdentityOrg(ctx context.Context, identityID string) (string, error) {

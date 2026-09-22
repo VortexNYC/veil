@@ -251,6 +251,10 @@ export type ImportResponse = {
     names: Array<string>;
     count: number;
 };
+export type ProvisionResponse = {
+    subject: string;
+    org_id: string;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -663,3 +667,22 @@ export type ListEventsResponses = {
     200: EventsResponse;
 };
 export type ListEventsResponse = ListEventsResponses[keyof ListEventsResponses];
+export type ProvisionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/provision';
+};
+export type ProvisionErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+};
+export type ProvisionResponses = {
+    /**
+     * Provisioned principal
+     */
+    200: ProvisionResponse;
+};
+export type ProvisionResponse2 = ProvisionResponses[keyof ProvisionResponses];

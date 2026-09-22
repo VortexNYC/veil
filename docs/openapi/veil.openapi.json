@@ -10,7 +10,8 @@
   ],
   "tags": [
     { "name": "Agent", "description": "Bearer is the agent. listItems is metadata. useItem injects. Never GetSecret." },
-    { "name": "Owner", "description": "Bearer is a Keto member human. Create items and grants. Secret may be sent, never returned." }
+    { "name": "Owner", "description": "Bearer is a Keto member human. Create items and grants. Secret may be sent, never returned." },
+    { "name": "Human", "description": "Bearer is a verified human ID token. Pre-membership — provision creates the membership." }
   ],
   "security": [{ "bearerAuth": [] }],
   "paths": {
@@ -396,6 +397,24 @@
           "401": { "description": "missing or invalid Bearer" }
         }
       }
+    },
+    "/v1/provision": {
+      "post": {
+        "operationId": "provision",
+        "tags": ["Human"],
+        "summary": "Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Provisioned principal",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProvisionResponse" }
+              }
+            }
+          },
+          "401": { "description": "missing or invalid human token" }
+        }
+      }
     }
   },
   "components": {
@@ -704,6 +723,15 @@
         "properties": {
           "names": { "type": "array", "items": { "type": "string" } },
           "count": { "type": "integer" }
+        }
+      },
+      "ProvisionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "org_id"],
+        "properties": {
+          "subject": { "type": "string" },
+          "org_id": { "type": "string" }
         }
       }
     }

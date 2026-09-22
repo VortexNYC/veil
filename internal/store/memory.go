@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/hex"
 	"sync"
 	"time"
@@ -97,6 +98,20 @@ func (m *Memory) PutHuman(p protocol.Principal) error {
 	m.humans[p.ID] = p
 	return nil
 }
+
+func (m *Memory) PlantHuman(p protocol.Principal) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.humans[p.ID]; ok {
+		return false, nil
+	}
+	m.humans[p.ID] = p
+	return true, nil
+}
+
+// Memory holds plaintext and has no key hierarchy — org keys are provisioned.
+func (m *Memory) EnsureOrgKey(context.Context, string, []byte) error { return nil }
+func (m *Memory) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
 
 func (m *Memory) Human(id string) (protocol.Principal, error) {
 	m.mu.Lock()

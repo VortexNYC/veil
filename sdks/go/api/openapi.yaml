@@ -16,6 +16,9 @@ tags:
 - description: "Bearer is a Keto member human. Create items and grants. Secret may\
     \ be sent, never returned."
   name: Owner
+- description: Bearer is a verified human ID token. Pre-membership — provision creates
+    the membership.
+  name: Human
 paths:
   /health:
     get:
@@ -398,6 +401,25 @@ paths:
         \ Not MCP."
       tags:
       - Agent
+  /v1/provision:
+    post:
+      operationId: provision
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvisionResponse"
+          description: Provisioned principal
+        "401":
+          description: missing or invalid human token
+      summary: "Signup provisioning. Subject-authenticated — the bearer is a verified\
+        \ human ID token, not a member yet. Creates the org, seals the org master\
+        \ under the deployment KEK, plants the humans row, and writes the Keto owner/member\
+        \ tuples plus the Kratos organization_id stamp. Idempotent; safe to retry.\
+        \ Not MCP."
+      tags:
+      - Human
 components:
   schemas:
     Item:
@@ -1153,6 +1175,19 @@ components:
       required:
       - count
       - names
+    ProvisionResponse:
+      additionalProperties: false
+      example:
+        subject: subject
+        org_id: org_id
+      properties:
+        subject:
+          type: string
+        org_id:
+          type: string
+      required:
+      - org_id
+      - subject
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

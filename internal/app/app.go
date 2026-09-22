@@ -38,8 +38,15 @@ const (
 
 // MemberCheck is identity-plane owner/member. Keto via glue. Not grants.
 type MemberCheck interface {
-	IsMember(ctx context.Context, identityID string) (bool, error)
-	IsOwner(ctx context.Context, identityID string) (bool, error)
+	IsMember(ctx context.Context, orgID, identityID string) (bool, error)
+	IsOwner(ctx context.Context, orgID, identityID string) (bool, error)
+}
+
+// Provisioner plants a human's membership in their org: Keto tuples plus the
+// Kratos organization_id stamp. glue.Glue satisfies it; nil in local vaults.
+type Provisioner interface {
+	ProvisionMember(ctx context.Context, orgID, identityID string) error
+	SetIdentityOrg(ctx context.Context, identityID, orgID string) error
 }
 
 var ErrExists = errors.New("app: vault already exists")
@@ -49,6 +56,12 @@ type config struct {
 	HumanID string `json:"human_id"`
 }
 
+// HumanVerifier verifies a human bearer token down to its subject.
+// *human.Verifier is the production impl.
+type HumanVerifier interface {
+	Subject(ctx context.Context, rawToken string) (string, error)
+}
+
 type App struct {
 	Dir      string
 	OrgID    string
@@ -56,9 +69,10 @@ type App struct {
 	Store    store.Store
 	Auditor  audit.Auditor
 	Broker   *broker.Broker
-	Human    *human.Verifier
+	Human    HumanVerifier
 	Workload *workload.Checker
 	Members  MemberCheck
+	Provision Provisioner
 }
 
 func Init(dir string) (*App, error) {
@@ -303,6 +317,9 @@ type ItemOpts struct {
 	File         []byte
 	Passkey      []byte
 	Owner        protocol.Owner
+	// OrgID is the caller's org. Empty falls back to the deployment default —
+	// the local vault path; the origin always sets it from the principal.
+	OrgID        string
 }
 
 func (a *App) AddItem(name, uri string, secret []byte) (protocol.Item, error) {
@@ -320,6 +337,7 @@ func (a *App) PutItemFor(p protocol.Principal, opts ItemOpts) (protocol.Item, er
 	if !ok {
 		opts.Owner = protocol.Owner{Kind: protocol.OwnerUser, ID: p.ID}
 	}
+	opts.OrgID = p.OrgID
 	return a.PutItem(opts)
 }
 
@@ -359,13 +377,17 @@ func (a *App) PutItem(opts ItemOpts) (protocol.Item, error) {
 	if opts.URI != "" {
 		uris = append([]string{opts.URI}, uris...)
 	}
+	org := opts.OrgID
+	if org == "" {
+		org = a.OrgID
+	}
 	owner := opts.Owner
 	if owner.Kind == "" {
-		owner = protocol.Owner{Kind: protocol.OwnerOrg, ID: a.OrgID}
+		owner = protocol.Owner{Kind: protocol.OwnerOrg, ID: org}
 	}
 	item := protocol.Item{
 		ID:      itemID,
-		OrgID:   a.OrgID,
+		OrgID:   org,
 		Name:    name,
 		Kind:    kind,
 		Owner:   owner,
@@ -526,15 +548,28 @@ func (a *App) WriteFile(name, dest string) error {
 
 func secretBytes(s store.Secret) []byte { return []byte(s) }
 
+// AddAgent registers an agent under the local vault's planted human.
 func (a *App) AddAgent(name string) (protocol.Principal, error) {
+	return a.addAgent(name, a.OrgID, a.HumanID)
+}
+
+// AddAgentFor registers an agent owned by the calling human, in their org.
+func (a *App) AddAgentFor(owner protocol.Principal, name string) (protocol.Principal, error) {
+	if owner.Kind != protocol.PrincipalHuman || owner.OrgID == "" {
+		return protocol.Principal{}, fmt.Errorf("app: agent owner is a provisioned human")
+	}
+	return a.addAgent(name, owner.OrgID, owner.ID)
+}
+
+func (a *App) addAgent(name, orgID, humanID string) (protocol.Principal, error) {
 	if !id.Valid(name) {
 		return protocol.Principal{}, fmt.Errorf("app: invalid agent name %q", name)
 	}
 	p := protocol.Principal{
 		Kind:  protocol.PrincipalAgent,
 		ID:    name,
-		OrgID: a.OrgID,
-		Owner: protocol.Owner{Kind: protocol.OwnerUser, ID: a.HumanID},
+		OrgID: orgID,
+		Owner: protocol.Owner{Kind: protocol.OwnerUser, ID: humanID},
 	}
 	if err := a.Store.PutAgent(p); err != nil {
 		return protocol.Principal{}, err
@@ -564,8 +599,18 @@ func (a *App) RevokeAgent(actor protocol.Principal, agentID string) error {
 	if err != nil {
 		return err
 	}
-	if agent.OrgID != a.OrgID || agent.Owner.Kind != protocol.OwnerUser || agent.Owner.ID != a.HumanID {
+	if agent.OrgID != actor.OrgID {
 		return ErrForbidden
+	}
+	if agent.Owner.Kind != protocol.OwnerUser || agent.Owner.ID != actor.ID {
+		// An org owner may revoke a member's agent; a member only their own.
+		own, err := a.ownsVault(actor)
+		if err != nil {
+			return err
+		}
+		if !own {
+			return ErrForbidden
+		}
 	}
 	if agent.RevokedAt != nil {
 		return nil
@@ -633,14 +678,24 @@ func (a *App) PrincipalFromOIDC(ctx context.Context, rawToken string) (protocol.
 	if a.Human == nil {
 		return protocol.Principal{}, err
 	}
-	p, herr := a.Human.Human(ctx, rawToken, a.OrgID)
+	sub, herr := a.Human.Subject(ctx, rawToken)
 	if herr != nil {
 		return protocol.Principal{}, err
 	}
+	// The humans row is org of record — a valid token without one is a signup
+	// that has not provisioned yet, not a member of the default org.
+	h, herr := a.Store.Human(sub)
+	if errors.Is(herr, store.ErrNotFound) {
+		return protocol.Principal{}, fmt.Errorf("app: not provisioned")
+	}
+	if herr != nil {
+		return protocol.Principal{}, herr
+	}
+	p := protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: h.OrgID}
 	if a.Members == nil {
 		return protocol.Principal{}, fmt.Errorf("app: not a member")
 	}
-	ok, merr := a.Members.IsMember(ctx, p.ID)
+	ok, merr := a.Members.IsMember(ctx, p.OrgID, p.ID)
 	if merr != nil {
 		return protocol.Principal{}, merr
 	}
@@ -648,6 +703,73 @@ func (a *App) PrincipalFromOIDC(ctx context.Context, rawToken string) (protocol.
 		return protocol.Principal{}, fmt.Errorf("app: not a member")
 	}
 	return p, nil
+}
+
+// ProvisionHuman is signup. A verified human with no vault row gets an org
+// (new UUID), an org master minted and sealed under the KEK via EnsureOrgKey,
+// Keto owner+member tuples, and the Kratos organization_id stamp — all the
+// same join key. Idempotent: a planted human returns their existing org, and
+// a retry after a mid-flight failure resumes from the anchored humans row
+// rather than minting a second org.
+func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Principal, error) {
+	if a.Human == nil {
+		return protocol.Principal{}, fmt.Errorf("app: human verifier not configured")
+	}
+	sub, err := a.Human.Subject(ctx, rawToken)
+	if err != nil {
+		return protocol.Principal{}, err
+	}
+
+	orgID := ""
+	if h, herr := a.Store.Human(sub); herr == nil {
+		orgID = h.OrgID
+	} else if errors.Is(herr, store.ErrNotFound) {
+		orgID, err = id.NewOrg()
+		if err != nil {
+			return protocol.Principal{}, err
+		}
+		planted, perr := a.Store.PlantHuman(protocol.Principal{
+			Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID,
+		})
+		if perr != nil {
+			return protocol.Principal{}, perr
+		}
+		if !planted {
+			// Concurrent provision won the anchor — converge on its org.
+			h, rerr := a.Store.Human(sub)
+			if rerr != nil {
+				return protocol.Principal{}, rerr
+			}
+			orgID = h.OrgID
+		}
+	} else {
+		return protocol.Principal{}, herr
+	}
+
+	// The key check is what makes "already provisioned" honest — a humans row
+	// without a sealed master is a dead attempt, not a finished signup.
+	if has, herr := a.Store.HasOrgKey(ctx, orgID); herr != nil {
+		return protocol.Principal{}, herr
+	} else if !has {
+		master, kerr := crypto.NewKey()
+		if kerr != nil {
+			return protocol.Principal{}, kerr
+		}
+		if err := a.Store.EnsureOrgKey(ctx, orgID, master); err != nil {
+			return protocol.Principal{}, err
+		}
+	}
+	// External tuples always run — they are idempotent (Keto 409 → nil) and a
+	// prior attempt may have died after the key landed but before they did.
+	if a.Provision != nil {
+		if err := a.Provision.ProvisionMember(ctx, orgID, sub); err != nil {
+			return protocol.Principal{}, err
+		}
+		if err := a.Provision.SetIdentityOrg(ctx, sub, orgID); err != nil {
+			return protocol.Principal{}, err
+		}
+	}
+	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
 }
 
 func (a *App) ownsVault(p protocol.Principal) (bool, error) {
@@ -660,7 +782,7 @@ func (a *App) ownsVault(p protocol.Principal) (bool, error) {
 	if a.Members == nil {
 		return false, nil
 	}
-	return a.Members.IsOwner(context.Background(), p.ID)
+	return a.Members.IsOwner(context.Background(), p.OrgID, p.ID)
 }
 
 func (a *App) CanCreateGrant(p protocol.Principal) (bool, error) {
@@ -711,6 +833,9 @@ func (a *App) ItemsForPrincipal(p protocol.Principal) ([]protocol.Item, error) {
 		out = append(out, item)
 	}
 	for _, item := range all {
+		if item.OrgID != p.OrgID {
+			continue
+		}
 		if item.Owner.Kind == protocol.OwnerUser && item.Owner.ID == p.ID {
 			add(item)
 			continue
@@ -720,6 +845,9 @@ func (a *App) ItemsForPrincipal(p protocol.Principal) ([]protocol.Item, error) {
 		}
 	}
 	for _, item := range granted {
+		if item.OrgID != p.OrgID {
+			continue
+		}
 		add(item)
 	}
 	return out, nil
@@ -1057,30 +1185,46 @@ func (a *App) passkeyRecords(p protocol.Principal) ([]passkey.Record, error) {
 }
 
 func (a *App) AddGrant(agentID, itemID string, level protocol.GrantLevel) (protocol.Grant, error) {
-	return a.GrantUntil(agentID, itemID, level, nil)
+	self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+	return a.GrantUntil(self, agentID, itemID, level, nil)
 }
 
-func (a *App) GrantUntil(grantee, itemID string, level protocol.GrantLevel, expires *time.Time) (protocol.Grant, error) {
+// GrantUntil grants grantee access to itemID on behalf of actor. The grant
+// lives in the item's org; a grantee outside it is not a grantee, and an
+// agent owned by a different human is not the actor's to delegate.
+func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level protocol.GrantLevel, expires *time.Time) (protocol.Grant, error) {
 	if !id.Principal(grantee) || !id.Valid(itemID) {
 		return protocol.Grant{}, fmt.Errorf("app: invalid agent or item")
 	}
 	if level != protocol.Level1 && level != protocol.Level2 {
 		return protocol.Grant{}, fmt.Errorf("app: level must be level1 or level2")
 	}
+	item, err := a.Store.Item(itemID)
+	if err != nil {
+		return protocol.Grant{}, err
+	}
+	if item.Archived {
+		return protocol.Grant{}, fmt.Errorf("app: item archived")
+	}
+	// The grant lives in the item's org; a grantee outside it is not a grantee.
+	org := item.OrgID
 	agent, err := a.Store.Agent(grantee)
 	switch {
 	case err == nil:
 		if agent.RevokedAt != nil {
 			return protocol.Grant{}, ErrAgentRevoked
 		}
-		if agent.Owner.ID != "" && agent.Owner.ID != a.HumanID {
-			return protocol.Grant{}, fmt.Errorf("app: not the owner")
+		if agent.OrgID != org {
+			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
+		}
+		if agent.Owner.Kind == protocol.OwnerUser && agent.Owner.ID != actor.ID {
+			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
 		}
 	case errors.Is(err, store.ErrNotFound):
 		if a.Members == nil {
 			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
 		}
-		ok, merr := a.Members.IsMember(context.Background(), grantee)
+		ok, merr := a.Members.IsMember(context.Background(), org, grantee)
 		if merr != nil {
 			return protocol.Grant{}, merr
 		}
@@ -1090,16 +1234,9 @@ func (a *App) GrantUntil(grantee, itemID string, level protocol.GrantLevel, expi
 	default:
 		return protocol.Grant{}, err
 	}
-	item, err := a.Store.Item(itemID)
-	if err != nil {
-		return protocol.Grant{}, err
-	}
-	if item.Archived {
-		return protocol.Grant{}, fmt.Errorf("app: item archived")
-	}
 	g := protocol.Grant{
 		ID:        id.Grant(grantee, itemID),
-		OrgID:     a.OrgID,
+		OrgID:     org,
 		AgentID:   grantee,
 		ItemID:    itemID,
 		Level:     level,
@@ -1186,11 +1323,16 @@ func (a *App) ApproveOIDC(ctx context.Context, grantID, rawToken string, ttl tim
 	if a.Members == nil {
 		return protocol.Approval{}, fmt.Errorf("app: not a member")
 	}
-	p, err := a.Human.Human(ctx, rawToken, a.OrgID)
+	sub, err := a.Human.Subject(ctx, rawToken)
 	if err != nil {
 		return protocol.Approval{}, err
 	}
-	ok, err := a.Members.IsMember(ctx, p.ID)
+	h, err := a.Store.Human(sub)
+	if err != nil {
+		return protocol.Approval{}, fmt.Errorf("app: not provisioned")
+	}
+	p := protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: h.OrgID}
+	ok, err := a.Members.IsMember(ctx, p.OrgID, p.ID)
 	if err != nil {
 		return protocol.Approval{}, err
 	}
@@ -1281,6 +1423,9 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 	var out []protocol.Item
 	for _, g := range grants {
 		if g.AgentID != agentID {
+			continue
+		}
+		if agent.OrgID != "" && g.OrgID != agent.OrgID {
 			continue
 		}
 		if g.ExpiresAt != nil && !now.Before(*g.ExpiresAt) {

@@ -304,7 +304,7 @@ func TestInviteIdentityUsesKratosRecoveryCode(t *testing.T) {
 	ory := &fakeOry{}
 	k, h := ory.start(t)
 	g := newGlue(t, k, h)
-	got, err := g.InviteIdentity(context.Background(), "second@example.com", "")
+	got, err := g.InviteIdentity(context.Background(), "second@example.com", "", LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestInviteIdentityRejectsBadEmail(t *testing.T) {
 	ory := &fakeOry{}
 	k, h := ory.start(t)
 	g := newGlue(t, k, h)
-	if _, err := g.InviteIdentity(context.Background(), "not-an-email", ""); err == nil {
+	if _, err := g.InviteIdentity(context.Background(), "not-an-email", "", LocalOrgID); err == nil {
 		t.Fatal("accepted")
 	}
 }
@@ -419,28 +419,28 @@ func TestInviteWritesKetoOwnerAndMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := g.InviteIdentity(context.Background(), "second@example.com", "")
+	got, err := g.InviteIdentity(context.Background(), "second@example.com", "", LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ory.inviteOrg != LocalOrgID {
 		t.Fatalf("org %q", ory.inviteOrg)
 	}
-	member, err := g.Allowed(context.Background(), relMembers, got.IdentityID)
+	member, err := g.Allowed(context.Background(), LocalOrgID, relMembers, got.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !member {
 		t.Fatal("invited human is not a member")
 	}
-	owner, err := g.Allowed(context.Background(), relOwners, got.IdentityID)
+	owner, err := g.Allowed(context.Background(), LocalOrgID, relOwners, got.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !owner {
 		t.Fatal("first human is not the owner")
 	}
-	stranger, err := g.Allowed(context.Background(), relMembers, "stranger")
+	stranger, err := g.Allowed(context.Background(), LocalOrgID, relMembers, "stranger")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,31 +463,31 @@ func TestInviteSecondRequiresOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := g.InviteIdentity(context.Background(), "owner@example.com", "")
+	first, err := g.InviteIdentity(context.Background(), "owner@example.com", "", LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.InviteIdentity(context.Background(), "second@example.com", ""); err == nil {
+	if _, err := g.InviteIdentity(context.Background(), "second@example.com", "", LocalOrgID); err == nil {
 		t.Fatal("second invite without owner")
 	}
-	if _, err := g.InviteIdentity(context.Background(), "second@example.com", "stranger"); err == nil {
+	if _, err := g.InviteIdentity(context.Background(), "second@example.com", "stranger", LocalOrgID); err == nil {
 		t.Fatal("stranger invited")
 	}
-	second, err := g.InviteIdentity(context.Background(), "second@example.com", first.IdentityID)
+	second, err := g.InviteIdentity(context.Background(), "second@example.com", first.IdentityID, LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.IdentityID == first.IdentityID {
 		t.Fatal("second invite reused the owner id")
 	}
-	owner, err := g.Allowed(context.Background(), relOwners, second.IdentityID)
+	owner, err := g.Allowed(context.Background(), LocalOrgID, relOwners, second.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if owner {
 		t.Fatal("second human is an owner")
 	}
-	member, err := g.IsMember(context.Background(), second.IdentityID)
+	member, err := g.IsMember(context.Background(), LocalOrgID, second.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,11 +507,11 @@ func TestListMembersReturnsIDsNotEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := g.InviteIdentity(context.Background(), "second@example.com", "")
+	got, err := g.InviteIdentity(context.Background(), "second@example.com", "", LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := g.ListMembers(context.Background())
+	ids, err := g.ListMembers(context.Background(), LocalOrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
