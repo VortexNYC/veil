@@ -90,6 +90,16 @@ type OwnerKey struct {
 	Wrapped   []byte
 }
 
+type RecoveryWrap struct {
+	OrgID     string
+	OwnerKind string
+	OwnerID   string
+	Wrapped   []byte
+	CreatedAt time.Time
+	ExpiresAt sql.NullTime
+	UsedAt    sql.NullTime
+}
+
 type Session struct {
 	ID         string
 	OrgID      string

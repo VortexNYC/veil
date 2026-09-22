@@ -84,6 +84,20 @@ CREATE TABLE org_keys (
     rotated_at TIMESTAMPTZ
 );
 
+-- Per-owner wrapped copy of the org master under owner-held recovery
+-- material. KEK-independent escrow: a lost KEK or lost devices recover via
+-- the owner's recovery secret, never via stored plaintext.
+CREATE TABLE recovery_wraps (
+    org_id TEXT NOT NULL,
+    owner_kind TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    wrapped BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ,
+    used_at TIMESTAMPTZ,
+    PRIMARY KEY (org_id, owner_kind, owner_id)
+);
+
 CREATE TABLE item_versions (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     item_id TEXT NOT NULL,

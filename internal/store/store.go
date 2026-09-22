@@ -78,6 +78,17 @@ type Store interface {
 	RotateOrgKey(ctx context.Context, orgID string) error
 	RotateKEK(ctx context.Context, newKEK []byte) error
 
+	// StoreRecoveryWrap seals the org master under owner-held recoveryKey —
+	// KEK-independent escrow for lost devices or a lost deployment KEK.
+	// OpenRecoveryWrap verifies recoveryKey and returns the master; it is
+	// single-use (used_at stamps on first open) and fails closed on wrong
+	// material, expiry, or replay. ReseedOrgKey re-anchors that master under
+	// the current KEK after the old KEK is lost. Single-key stores return
+	// ErrUnsupported.
+	StoreRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error
+	OpenRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) ([]byte, error)
+	ReseedOrgKey(ctx context.Context, orgID string, master []byte) error
+
 	PutItem(protocol.Item, Secret) error
 	Item(id string) (protocol.Item, error)
 	ItemByName(orgID, name string) (protocol.Item, error)

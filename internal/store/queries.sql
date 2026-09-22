@@ -236,6 +236,27 @@ SELECT org_id, owner_kind, owner_id, wrapped FROM owner_keys WHERE org_id = @org
 UPDATE owner_keys SET wrapped = @wrapped::bytea
 WHERE org_id = @org_id::text AND owner_kind = @owner_kind::text AND owner_id = @owner_id::text;
 
+-- name: PutRecoveryWrap :exec
+INSERT INTO recovery_wraps(org_id, owner_kind, owner_id, wrapped, created_at, expires_at)
+VALUES(@org_id::text, @owner_kind::text, @owner_id::text, @wrapped::bytea, @created_at::timestamptz, sqlc.narg(expires_at))
+ON CONFLICT(org_id, owner_kind, owner_id) DO UPDATE SET
+  wrapped = EXCLUDED.wrapped, created_at = EXCLUDED.created_at,
+  expires_at = EXCLUDED.expires_at, used_at = NULL;
+
+-- name: RecoveryWrap :one
+SELECT org_id, owner_kind, owner_id, wrapped, created_at, expires_at, used_at
+FROM recovery_wraps
+WHERE org_id = @org_id::text AND owner_kind = @owner_kind::text AND owner_id = @owner_id::text
+FOR UPDATE;
+
+-- name: ConsumeRecoveryWrap :execrows
+UPDATE recovery_wraps SET used_at = @used_at::timestamptz
+WHERE org_id = @org_id::text AND owner_kind = @owner_kind::text AND owner_id = @owner_id::text
+  AND used_at IS NULL;
+
+-- name: DeleteRecoveryWrapsForOrg :exec
+DELETE FROM recovery_wraps WHERE org_id = @org_id::text;
+
 -- name: PutAgent :exec
 INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at)
 VALUES(@id::text, @org_id::text, @owner_kind::text, @owner_id::text, sqlc.narg(revoked_at))

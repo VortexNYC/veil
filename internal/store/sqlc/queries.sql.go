@@ -81,6 +81,32 @@ func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const consumeRecoveryWrap = `-- name: ConsumeRecoveryWrap :execrows
+UPDATE recovery_wraps SET used_at = $1::timestamptz
+WHERE org_id = $2::text AND owner_kind = $3::text AND owner_id = $4::text
+  AND used_at IS NULL
+`
+
+type ConsumeRecoveryWrapParams struct {
+	UsedAt    time.Time
+	OrgID     string
+	OwnerKind string
+	OwnerID   string
+}
+
+func (q *Queries) ConsumeRecoveryWrap(ctx context.Context, arg ConsumeRecoveryWrapParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeRecoveryWrap,
+		arg.UsedAt,
+		arg.OrgID,
+		arg.OwnerKind,
+		arg.OwnerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const consumeSession = `-- name: ConsumeSession :one
 UPDATE sessions s
 SET uses = uses + 1
@@ -147,6 +173,15 @@ DELETE FROM item_versions WHERE item_id = $1::text
 
 func (q *Queries) DeleteItemVersions(ctx context.Context, itemID string) error {
 	_, err := q.db.Exec(ctx, deleteItemVersions, itemID)
+	return err
+}
+
+const deleteRecoveryWrapsForOrg = `-- name: DeleteRecoveryWrapsForOrg :exec
+DELETE FROM recovery_wraps WHERE org_id = $1::text
+`
+
+func (q *Queries) DeleteRecoveryWrapsForOrg(ctx context.Context, orgID string) error {
+	_, err := q.db.Exec(ctx, deleteRecoveryWrapsForOrg, orgID)
 	return err
 }
 
@@ -938,6 +973,35 @@ func (q *Queries) PutOwnerWrapped(ctx context.Context, arg PutOwnerWrappedParams
 	return err
 }
 
+const putRecoveryWrap = `-- name: PutRecoveryWrap :exec
+INSERT INTO recovery_wraps(org_id, owner_kind, owner_id, wrapped, created_at, expires_at)
+VALUES($1::text, $2::text, $3::text, $4::bytea, $5::timestamptz, $6)
+ON CONFLICT(org_id, owner_kind, owner_id) DO UPDATE SET
+  wrapped = EXCLUDED.wrapped, created_at = EXCLUDED.created_at,
+  expires_at = EXCLUDED.expires_at, used_at = NULL
+`
+
+type PutRecoveryWrapParams struct {
+	OrgID     string
+	OwnerKind string
+	OwnerID   string
+	Wrapped   []byte
+	CreatedAt time.Time
+	ExpiresAt sql.NullTime
+}
+
+func (q *Queries) PutRecoveryWrap(ctx context.Context, arg PutRecoveryWrapParams) error {
+	_, err := q.db.Exec(ctx, putRecoveryWrap,
+		arg.OrgID,
+		arg.OwnerKind,
+		arg.OwnerID,
+		arg.Wrapped,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const putSession = `-- name: PutSession :exec
 INSERT INTO sessions(id, org_id, agent_id, secret_hash, expires_at, created_at, revoked_at, renewed_at, ttl, max_ttl, max_uses, uses)
 VALUES($1::text, $2::text, $3::text, $4::bytea, $5::timestamptz, $6::timestamptz, $7, $8, $9::bigint, $10::bigint, $11::integer, $12::integer)
@@ -1010,6 +1074,34 @@ func (q *Queries) PutWorkload(ctx context.Context, arg PutWorkloadParams) error 
 		arg.Audience,
 	)
 	return err
+}
+
+const recoveryWrap = `-- name: RecoveryWrap :one
+SELECT org_id, owner_kind, owner_id, wrapped, created_at, expires_at, used_at
+FROM recovery_wraps
+WHERE org_id = $1::text AND owner_kind = $2::text AND owner_id = $3::text
+FOR UPDATE
+`
+
+type RecoveryWrapParams struct {
+	OrgID     string
+	OwnerKind string
+	OwnerID   string
+}
+
+func (q *Queries) RecoveryWrap(ctx context.Context, arg RecoveryWrapParams) (RecoveryWrap, error) {
+	row := q.db.QueryRow(ctx, recoveryWrap, arg.OrgID, arg.OwnerKind, arg.OwnerID)
+	var i RecoveryWrap
+	err := row.Scan(
+		&i.OrgID,
+		&i.OwnerKind,
+		&i.OwnerID,
+		&i.Wrapped,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.UsedAt,
+	)
+	return i, err
 }
 
 const renewSession = `-- name: RenewSession :exec

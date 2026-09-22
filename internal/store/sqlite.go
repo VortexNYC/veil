@@ -442,6 +442,13 @@ func (s *SQLite) EnsureOrgKey(context.Context, string, []byte) error { return ni
 func (s *SQLite) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
 func (s *SQLite) RotateOrgKey(context.Context, string) error         { return ErrUnsupported }
 func (s *SQLite) RotateKEK(context.Context, []byte) error            { return ErrUnsupported }
+func (s *SQLite) StoreRecoveryWrap(context.Context, string, protocol.Owner, []byte, time.Time) error {
+	return ErrUnsupported
+}
+func (s *SQLite) OpenRecoveryWrap(context.Context, string, protocol.Owner, []byte) ([]byte, error) {
+	return nil, ErrUnsupported
+}
+func (s *SQLite) ReseedOrgKey(context.Context, string, []byte) error { return ErrUnsupported }
 
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
