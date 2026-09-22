@@ -647,6 +647,9 @@ func TestHumanGrantAPI(t *testing.T) {
 	const member = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	a := testApp(t)
 	a.Members = fakeMembers{members: map[string]bool{member: true}}
+	if err := a.Store.PutHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: member, OrgID: a.OrgID}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.AddItem("github", "https://api.github.com", []byte(secret)); err != nil {
 		t.Fatal(err)
 	}

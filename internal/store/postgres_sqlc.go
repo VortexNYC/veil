@@ -418,7 +418,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	if err := qtx.SnapshotItem(ctx, sqlc.SnapshotItemParams{ItemID: item.ID, At: time.Now().UTC()}); err != nil {
 		return err
 	}
-	err = qtx.PutItem(ctx, sqlc.PutItemParams{
+	rows, err := qtx.PutItem(ctx, sqlc.PutItemParams{
 		ID: item.ID, OrgID: item.OrgID, Name: item.Name, Kind: string(item.Kind),
 		OwnerKind: string(item.Owner.Kind), OwnerID: item.Owner.ID,
 		Uris: string(uris), Secret: blob, HasTotp: item.HasTOTP,
@@ -427,6 +427,11 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	})
 	if err != nil {
 		return err
+	}
+	// The DO UPDATE WHERE clause is the atomic backstop: a row created between
+	// ItemOwner and this upsert under another owner or org matches zero rows.
+	if rows == 0 {
+		return fmt.Errorf("store: cannot change item owner")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err

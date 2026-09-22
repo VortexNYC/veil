@@ -824,6 +824,10 @@ func TestHumanGrantFillIsNotAFamilyVault(t *testing.T) {
 		members: map[string]bool{familyHuman: true, "cccccccc-cccc-4ccc-8ccc-cccccccccccc": true},
 		owners:  map[string]bool{},
 	}
+	// A provisioned human always has a humans row — grant scope resolves it.
+	if err := a.Store.PutHuman(protocol.Principal{Kind: protocol.PrincipalHuman, ID: familyHuman, OrgID: a.OrgID}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.AddItem("stripe", "https://dashboard.stripe.com", []byte(secret)); err != nil {
 		t.Fatal(err)
 	}

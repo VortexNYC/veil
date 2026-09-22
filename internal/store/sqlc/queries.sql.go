@@ -770,7 +770,7 @@ func (q *Queries) PutHuman(ctx context.Context, arg PutHumanParams) error {
 	return err
 }
 
-const putItem = `-- name: PutItem :exec
+const putItem = `-- name: PutItem :execrows
 INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
 VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::bytea, $9::bool, $10::text, $11::bool, $12::bool, $13::text)
 ON CONFLICT(id) DO UPDATE SET
@@ -779,6 +779,8 @@ ON CONFLICT(id) DO UPDATE SET
     uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
     tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
     login=excluded.login
+WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
+    AND items.org_id=excluded.org_id
 `
 
 type PutItemParams struct {
@@ -797,8 +799,8 @@ type PutItemParams struct {
 	Login     string
 }
 
-func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) error {
-	_, err := q.db.Exec(ctx, putItem,
+func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) (int64, error) {
+	result, err := q.db.Exec(ctx, putItem,
 		arg.ID,
 		arg.OrgID,
 		arg.Name,
@@ -813,7 +815,10 @@ func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) error {
 		arg.HasFile,
 		arg.Login,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const putOrgKey = `-- name: PutOrgKey :execrows

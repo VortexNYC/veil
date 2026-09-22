@@ -587,6 +587,11 @@ func (a *App) addAgent(name, orgID, humanID string) (protocol.Principal, error) 
 	if err != nil {
 		return protocol.Principal{}, err
 	}
+	// A racing create under another org or owner wins the upsert as a no-op —
+	// never return that foreign row as a success.
+	if got.OrgID != orgID || got.Owner.Kind != protocol.OwnerUser || got.Owner.ID != humanID {
+		return protocol.Principal{}, fmt.Errorf("app: agent name taken")
+	}
 	if got.RevokedAt != nil {
 		return protocol.Principal{}, fmt.Errorf("%w: %s", ErrAgentRevoked, name)
 	}
@@ -1231,6 +1236,15 @@ func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level
 	if actor.OrgID != "" && org != actor.OrgID {
 		return protocol.Grant{}, fmt.Errorf("app: unknown item")
 	}
+	// Grants are owner-administered: a same-org member must not mint grants
+	// just because the HTTP layer is bypassed.
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return protocol.Grant{}, err
+	}
+	if !own {
+		return protocol.Grant{}, ErrForbidden
+	}
 	agent, err := a.Store.Agent(grantee)
 	switch {
 	case err == nil:
@@ -1443,6 +1457,17 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 	if agentFound && agent.RevokedAt != nil {
 		return []protocol.Item{}, nil
 	}
+	// A human grantee has no agent row — resolve the humans row for the org
+	// scope instead. A grantee with neither identity row is unknown and gets
+	// no visibility.
+	granteeOrg, granteeKnown := "", agentFound
+	if agentFound {
+		granteeOrg = agent.OrgID
+	} else if h, herr := a.Store.Human(agentID); herr == nil {
+		granteeOrg, granteeKnown = h.OrgID, true
+	} else if !errors.Is(herr, store.ErrNotFound) {
+		return nil, herr
+	}
 	grants, err := a.Store.ListGrants()
 	if err != nil {
 		return nil, err
@@ -1453,10 +1478,9 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 		if g.AgentID != agentID {
 			continue
 		}
-		// Grantee may be a human (no agent row) — the item-org filter in
-		// ItemsForPrincipal covers that path. For a real agent row the grant
-		// must live in the agent's org.
-		if agentFound && g.OrgID != agent.OrgID {
+		// Unknown grantee: fail closed. A known grantee with an empty org is
+		// pre-multi-org single-tenant data and stays unscoped.
+		if !granteeKnown || (granteeOrg != "" && g.OrgID != granteeOrg) {
 			continue
 		}
 		if g.ExpiresAt != nil && !now.Before(*g.ExpiresAt) {

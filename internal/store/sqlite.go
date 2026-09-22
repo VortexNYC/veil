@@ -525,17 +525,24 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	if err := s.snapshot(tx, item.ID); err != nil {
 		return err
 	}
-	_, err = tx.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
+	res, err := tx.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			org_id=excluded.org_id, name=excluded.name, kind=excluded.kind,
 			owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
 			uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
 			tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
-			login=excluded.login`,
+			login=excluded.login
+		WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
+			AND items.org_id=excluded.org_id`,
 		item.ID, item.OrgID, item.Name, item.Kind, item.Owner.Kind, item.Owner.ID, uris, blob, has, tags, arch, hf, item.Login)
 	if err != nil {
 		return err
+	}
+	// Zero rows means the row was created under another owner or org between
+	// the pre-check and this upsert.
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("store: cannot change item owner")
 	}
 	if err := tx.Commit(); err != nil {
 		return err
