@@ -204,6 +204,17 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	_, _ = s.db.Exec(`UPDATE sessions SET created_at = expires_at WHERE created_at = 0`)
 	_, _ = s.db.Exec(`UPDATE sessions SET ttl = 900 WHERE ttl = 0`)
 	_, _ = s.db.Exec(`UPDATE sessions SET max_ttl = 3600 WHERE max_ttl = 0`)
+	// Rows with org_id '' predate multi-tenancy. They are the original
+	// single-tenant vault, so they belong to LocalOrgID — the org whose
+	// wrapped master still opens their ciphertexts. Writers always stamp a
+	// non-empty org, so after this backfill strict org equality is
+	// fail-closed.
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+		_, _ = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN org_id TEXT NOT NULL DEFAULT ''`)
+		if _, err := s.db.Exec(`UPDATE `+table+` SET org_id = ? WHERE org_id = ''`, protocol.LocalOrgID); err != nil {
+			return err
+		}
+	}
 	if err := s.dropItemsNameUnique(); err != nil {
 		return err
 	}

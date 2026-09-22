@@ -330,6 +330,19 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			return err
 		}
 	}
+	// Rows with org_id '' predate multi-tenancy. They are the original
+	// single-tenant vault, so they belong to LocalOrgID — the org whose
+	// wrapped master still opens their ciphertexts. Any other assignment
+	// would strand them undecryptable. Writers always stamp a non-empty
+	// org, so after this backfill strict org equality is fail-closed.
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+		if _, err := pool.Exec(ctx, `ALTER TABLE `+table+` ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+		if _, err := pool.Exec(ctx, `UPDATE `+table+` SET org_id = $1 WHERE org_id = '' OR org_id IS NULL`, protocol.LocalOrgID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

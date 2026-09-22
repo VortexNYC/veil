@@ -2,10 +2,17 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 type fakeVerifier struct{ sub string }
@@ -241,5 +248,109 @@ func TestProvisionCrossOrgIsolation(t *testing.T) {
 	a.Human = fakeVerifier{sub: "sub-2"}
 	if _, err := a.ApproveOIDC(context.Background(), g.ID, "tok-2", 0); err == nil {
 		t.Fatal("cross-org approve succeeded")
+	}
+}
+
+// The real EnsureOrgKey race: N goroutines provision the same subject against
+// Postgres. PlantHuman is the anchor; exactly one org must emerge, and exactly
+// one wrapped master — losers hit ErrOrgKeyMismatch and converge. Memory and
+// sqlite cannot produce this path (their EnsureOrgKey is a no-op).
+func TestProvisionHumanConcurrentPostgres(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	schema := "test_" + strings.NewReplacer("/", "_", "-", "_").Replace(t.Name())
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, fmt.Sprintf(`DROP SCHEMA IF EXISTS %s CASCADE`, schema)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA %s`, schema)); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("search_path", schema)
+	u.RawQuery = q.Encode()
+	kek, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.OpenPostgres(u.String(), kek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	prov := &fakeProvision{}
+	a := &App{Store: s, Human: fakeVerifier{sub: "sub-race"}, Provision: prov}
+
+	const n = 16
+	res := make(chan protocol.Principal, n)
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			p, err := a.ProvisionHuman(ctx, "tok")
+			if err != nil {
+				errs <- err
+				return
+			}
+			res <- p
+		}()
+	}
+	org := ""
+	for i := 0; i < n; i++ {
+		select {
+		case p := <-res:
+			if p.OrgID == "" {
+				t.Fatal("empty org")
+			}
+			if org == "" {
+				org = p.OrgID
+			} else if p.OrgID != org {
+				t.Fatalf("racing provisions diverged: %q vs %q", org, p.OrgID)
+			}
+		case err := <-errs:
+			t.Fatalf("provision errored: %v", err)
+		}
+	}
+	if has, err := s.HasOrgKey(ctx, org); err != nil || !has {
+		t.Fatalf("org key missing after race: %v %v", has, err)
+	}
+
+	// Two distinct subjects get two distinct orgs with independent keys —
+	// each org's item seals and opens under its own master on real pg.
+	a.Members = orgMembers{}
+	for _, sub := range []string{"sub-a", "sub-b"} {
+		a.Human = fakeVerifier{sub: sub}
+		p, err := a.ProvisionHuman(ctx, "tok-"+sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.Members.(orgMembers)[p.OrgID+"|"+sub] = true
+		item, err := a.PutItemFor(p, ItemOpts{Name: "k-" + sub, Token: []byte("secret-" + sub)})
+		if err != nil {
+			t.Fatalf("put %s: %v", sub, err)
+		}
+		sec, err := s.Secret(item.ID)
+		if err != nil {
+			t.Fatalf("secret %s: %v", sub, err)
+		}
+		if string(sec) != "secret-"+sub {
+			t.Fatalf("roundtrip %s: %q", sub, sec)
+		}
+		if item.OrgID != p.OrgID {
+			t.Fatalf("item org %q want %q", item.OrgID, p.OrgID)
+		}
 	}
 }
