@@ -22,6 +22,9 @@ var (
 	// ErrOrgKeyMismatch means EnsureOrgKey was handed a master that does not
 	// match the committed org_keys row — the asserted key is wrong.
 	ErrOrgKeyMismatch = errors.New("store: org key mismatch")
+	// ErrUnsupported means the store backend has no such surface — e.g.
+	// key-rotation verbs on a single-key store.
+	ErrUnsupported = errors.New("store: unsupported")
 )
 
 // Secret is vault material. It never lives on protocol types.
@@ -67,6 +70,13 @@ type Store interface {
 	// memory) cover every org by construction.
 	EnsureOrgKey(ctx context.Context, orgID string, master []byte) error
 	HasOrgKey(ctx context.Context, orgID string) (bool, error)
+
+	// RotateOrgKey mints a fresh org master and rewraps every owner DEK
+	// under it (item ciphertexts are untouched). RotateKEK rewraps every
+	// org master under newKEK. Single-key stores have no rotation surface
+	// and return ErrUnsupported.
+	RotateOrgKey(ctx context.Context, orgID string) error
+	RotateKEK(ctx context.Context, newKEK []byte) error
 
 	PutItem(protocol.Item, Secret) error
 	Item(id string) (protocol.Item, error)

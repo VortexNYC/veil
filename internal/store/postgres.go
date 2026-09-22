@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"crypto/hmac"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
@@ -20,6 +22,7 @@ import (
 type Postgres struct {
 	pool      *pgxpool.Pool
 	auditPool *pgxpool.Pool
+	kekMu     sync.RWMutex
 	kek       []byte
 	km        *keyManager
 	sqlc      *sqlc.Queries
@@ -89,6 +92,8 @@ func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, err
 	}
 	// AAD binds the wrap to this org: a row copied to another org's row does
 	// not open even under the same KEK.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	return crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
 }
 
@@ -103,7 +108,9 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
+	p.kekMu.RLock()
 	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	p.kekMu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -130,7 +137,9 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
+	p.kekMu.RLock()
 	existing, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	p.kekMu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
@@ -152,6 +161,135 @@ func (p *Postgres) HasOrgKey(ctx context.Context, orgID string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// ErrRotationConflict is a concurrent rotation detected by the key_version
+// guard: another RotateOrgKey bumped the version first. Retry to converge.
+var ErrRotationConflict = errors.New("store: concurrent key rotation")
+
+// RotateOrgKey mints a fresh org master and rewraps every owner DEK under
+// it, in one transaction. Item ciphertexts seal under owner DEKs — the DEK
+// bytes do not change — so rotation never re-seals items. The key_version
+// guard makes concurrent rotations fail one side instead of interleaving
+// rewraps under different masters.
+func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	p.kekMu.RLock()
+	oldMaster, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	p.kekMu.RUnlock()
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	newMaster, err := crypto.NewKey()
+	if err != nil {
+		return err
+	}
+	owners, err := q.ListOwnerKeysForOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	for _, ow := range owners {
+		dek, err := crypto.Open(oldMaster, ow.Wrapped)
+		if err != nil {
+			return fmt.Errorf("store: owner_keys row %s/%s does not unwrap: %w", ow.OwnerKind, ow.OwnerID, err)
+		}
+		resealed, err := crypto.Seal(newMaster, dek)
+		if err != nil {
+			return err
+		}
+		n, err := q.RewrapOwnerKey(ctx, sqlc.RewrapOwnerKeyParams{
+			OrgID: orgID, OwnerKind: ow.OwnerKind, OwnerID: ow.OwnerID, Wrapped: resealed,
+		})
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("store: owner_keys row %s/%s vanished mid-rotation", ow.OwnerKind, ow.OwnerID)
+		}
+	}
+	p.kekMu.RLock()
+	wrapped, err := crypto.SealAAD(p.kek, newMaster, []byte(orgID))
+	p.kekMu.RUnlock()
+	if err != nil {
+		return err
+	}
+	n, err := q.BumpOrgKey(ctx, sqlc.BumpOrgKeyParams{
+		OrgID: orgID, Wrapped: wrapped, RotatedAt: time.Now().UTC(), KeyVersion: row.KeyVersion,
+	})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrRotationConflict
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	p.km.InvalidateOrg(orgID)
+	return nil
+}
+
+// RotateKEK rewraps every org master under newKEK. Masters do not change —
+// owner DEKs and item ciphertexts are untouched; only the org_keys wrap
+// moves. cmk-managed rows are skipped (an external CMK owns its own wrap).
+// On commit this store adopts newKEK; every cached master is invalidated so
+// the next resolve re-unwraps under it.
+func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
+	if len(newKEK) != crypto.KeySize {
+		return fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	rows, err := q.ListOrgKeys(ctx)
+	if err != nil {
+		return err
+	}
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	for _, row := range rows {
+		if row.CmkID.Valid {
+			continue
+		}
+		master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(row.OrgID))
+		if err != nil {
+			return fmt.Errorf("store: org_keys row for %s does not unwrap under the current KEK: %w", row.OrgID, err)
+		}
+		resealed, err := crypto.SealAAD(newKEK, master, []byte(row.OrgID))
+		if err != nil {
+			return err
+		}
+		n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: row.OrgID, Wrapped: resealed})
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("store: org_keys row for %s vanished mid-rotation", row.OrgID)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	p.kek = newKEK
+	for _, row := range rows {
+		p.km.InvalidateOrg(row.OrgID)
+	}
+	return nil
 }
 
 // EnsurePostgresSchema creates the vault tables/indexes if missing. It is the

@@ -221,7 +221,20 @@ ON CONFLICT(org_id) DO NOTHING;
 
 -- name: BumpOrgKey :execrows
 UPDATE org_keys SET wrapped = @wrapped::bytea, key_version = key_version + 1, rotated_at = @rotated_at::timestamptz
-WHERE org_id = @org_id::text;
+WHERE org_id = @org_id::text AND key_version = @key_version::integer;
+
+-- name: ListOrgKeys :many
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at FROM org_keys;
+
+-- name: RewrapOrgKey :execrows
+UPDATE org_keys SET wrapped = @wrapped::bytea WHERE org_id = @org_id::text;
+
+-- name: ListOwnerKeysForOrg :many
+SELECT org_id, owner_kind, owner_id, wrapped FROM owner_keys WHERE org_id = @org_id::text;
+
+-- name: RewrapOwnerKey :execrows
+UPDATE owner_keys SET wrapped = @wrapped::bytea
+WHERE org_id = @org_id::text AND owner_kind = @owner_kind::text AND owner_id = @owner_id::text;
 
 -- name: PutAgent :exec
 INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at)

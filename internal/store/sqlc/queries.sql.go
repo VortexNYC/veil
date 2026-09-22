@@ -58,17 +58,23 @@ func (q *Queries) ArchiveItem(ctx context.Context, id string) (int64, error) {
 
 const bumpOrgKey = `-- name: BumpOrgKey :execrows
 UPDATE org_keys SET wrapped = $1::bytea, key_version = key_version + 1, rotated_at = $2::timestamptz
-WHERE org_id = $3::text
+WHERE org_id = $3::text AND key_version = $4::integer
 `
 
 type BumpOrgKeyParams struct {
-	Wrapped   []byte
-	RotatedAt time.Time
-	OrgID     string
+	Wrapped    []byte
+	RotatedAt  time.Time
+	OrgID      string
+	KeyVersion int32
 }
 
 func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, bumpOrgKey, arg.Wrapped, arg.RotatedAt, arg.OrgID)
+	result, err := q.db.Exec(ctx, bumpOrgKey,
+		arg.Wrapped,
+		arg.RotatedAt,
+		arg.OrgID,
+		arg.KeyVersion,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -581,6 +587,66 @@ func (q *Queries) ListItems(ctx context.Context, maxResults int64) ([]ListItemsR
 	return items, nil
 }
 
+const listOrgKeys = `-- name: ListOrgKeys :many
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at FROM org_keys
+`
+
+func (q *Queries) ListOrgKeys(ctx context.Context) ([]OrgKey, error) {
+	rows, err := q.db.Query(ctx, listOrgKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrgKey
+	for rows.Next() {
+		var i OrgKey
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.Wrapped,
+			&i.KeyVersion,
+			&i.CmkID,
+			&i.CreatedAt,
+			&i.RotatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOwnerKeysForOrg = `-- name: ListOwnerKeysForOrg :many
+SELECT org_id, owner_kind, owner_id, wrapped FROM owner_keys WHERE org_id = $1::text
+`
+
+func (q *Queries) ListOwnerKeysForOrg(ctx context.Context, orgID string) ([]OwnerKey, error) {
+	rows, err := q.db.Query(ctx, listOwnerKeysForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OwnerKey
+	for rows.Next() {
+		var i OwnerKey
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.OwnerKind,
+			&i.OwnerID,
+			&i.Wrapped,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessions = `-- name: ListSessions :many
 SELECT id, org_id, agent_id, secret_hash, expires_at, created_at, revoked_at, renewed_at, ttl, max_ttl, max_uses, uses
 FROM sessions ORDER BY expires_at LIMIT $1::bigint
@@ -1003,6 +1069,48 @@ type RevokeSessionParams struct {
 
 func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeSession, arg.At, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rewrapOrgKey = `-- name: RewrapOrgKey :execrows
+UPDATE org_keys SET wrapped = $1::bytea WHERE org_id = $2::text
+`
+
+type RewrapOrgKeyParams struct {
+	Wrapped []byte
+	OrgID   string
+}
+
+func (q *Queries) RewrapOrgKey(ctx context.Context, arg RewrapOrgKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rewrapOrgKey, arg.Wrapped, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rewrapOwnerKey = `-- name: RewrapOwnerKey :execrows
+UPDATE owner_keys SET wrapped = $1::bytea
+WHERE org_id = $2::text AND owner_kind = $3::text AND owner_id = $4::text
+`
+
+type RewrapOwnerKeyParams struct {
+	Wrapped   []byte
+	OrgID     string
+	OwnerKind string
+	OwnerID   string
+}
+
+func (q *Queries) RewrapOwnerKey(ctx context.Context, arg RewrapOwnerKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rewrapOwnerKey,
+		arg.Wrapped,
+		arg.OrgID,
+		arg.OwnerKind,
+		arg.OwnerID,
+	)
 	if err != nil {
 		return 0, err
 	}

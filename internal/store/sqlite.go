@@ -440,6 +440,8 @@ func (s *SQLite) PlantHuman(p protocol.Principal) (bool, error) {
 // org-key provisioning is a no-op here. Per-org masters are a Postgres shape.
 func (s *SQLite) EnsureOrgKey(context.Context, string, []byte) error { return nil }
 func (s *SQLite) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
+func (s *SQLite) RotateOrgKey(context.Context, string) error         { return ErrUnsupported }
+func (s *SQLite) RotateKEK(context.Context, []byte) error            { return ErrUnsupported }
 
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
