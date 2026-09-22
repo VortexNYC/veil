@@ -87,7 +87,9 @@ func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	return crypto.Open(p.kek, row.Wrapped)
+	// AAD binds the wrap to this org: a row copied to another org's row does
+	// not open even under the same KEK.
+	return crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
 }
 
 // EnsureOrgKey seals master under the KEK and inserts the org_keys row if the
@@ -101,7 +103,7 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
-	wrapped, err := crypto.Seal(p.kek, master)
+	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
 	if err != nil {
 		return err
 	}
@@ -128,7 +130,7 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
-	existing, err := crypto.Open(p.kek, row.Wrapped)
+	existing, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
