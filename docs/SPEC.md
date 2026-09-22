@@ -290,7 +290,7 @@ The CLI planted human `self` is the laptop stand-in when Hydra is not configured
 
 Device pairing wraps master to a device public key. `Init` writes `device.key` and `wraps/`. There is no plaintext `master.key`. Copy `vault.db` yourself. That is not sync.
 
-Custody is server-side, per org. One master key per org, sealed by a KEK (`VEIL_KEK`), stored as a wrapped row — the pg dump alone is ciphertext. Item secrets keep their per-owner DEKs under the org master; rotating the org master reseals DEKs, not item ciphertexts. `VEIL_MASTER_KEY` is the single-tenant stand-in and dies before alpha. We are not zero-knowledge: the origin decrypts to inject — that is the product. No session-scoped key delegation; do not design for it. Recovery is a wrap to owner devices plus a recovery code, not an escrow service. The promise is audit, not custody: no allow leaves the origin without a committed row.
+Custody is server-side, per org. One master key per org, sealed by a KEK (`VEIL_KEK`), stored as a wrapped row. Per-org masters buy per-tenant rotation and crypto-shred on tenant delete, and leave room for a per-org external CMK later (a key id on the wrap row). They do not hide secrets from us: env + database still reads everything, and the origin decrypts to inject on every `use` — that is the product. We are not zero-knowledge. `VEIL_MASTER_KEY` is the single-tenant stand-in and dies before alpha. Recovery is a wrap to owner devices plus a recovery code; the deployment remains the recovery authority, which is escrow — say so. No session-scoped key material in the agent protocol: agents hold bearer tokens. The promise is audit, not custody: no allow leaves the origin without a committed row.
 
 ## Parts
 
