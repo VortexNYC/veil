@@ -1,6 +1,6 @@
 import { defineRailway, image, postgres, preserve, project, service, volume } from "railway/iac";
 
-// Full production plane: kratos, keto, glue, hydra, pwm, Postgres.
+// Full production plane: kratos, keto, glue, hydra, veil, Postgres.
 // Omitting a service here and applying deletes it. Secrets stay preserve().
 // Do not apply unless `railway config plan` is the change you intend.
 
@@ -24,13 +24,13 @@ export default defineRailway(() => {
     replicas: { "sfo": 1 },
     env: { DSN: preserve() },
   });
-  // Postgres is the store of record (cutover done 2026-09-18). pwm runs
+  // Postgres is the store of record (cutover done 2026-09-18). veil runs
   // stateless on PWM_POSTGRES_DSN; the `veil` database lives in the shared
   // Postgres instance. veil-migrate keeps the sqlite volume mounted at /data
   // as the rollback path — redeploy it to re-run the idempotent sync.
-  // Rollback: move the volumeMount back to pwm, delete PWM_POSTGRES_DSN,
+  // Rollback: move the volumeMount back to veil, delete PWM_POSTGRES_DSN,
   // redeploy. Drop pwm-volume only after the rollback window closes.
-  // PWM_MASTER_KEY MUST stay live on pwm (preserve() cannot read sealed
+  // PWM_MASTER_KEY MUST stay live on veil (preserve() cannot read sealed
   // variables — an apply will silently drop one). Local recovery copy:
   // ~/.config/vortex/pwm-master-key and ~/.veil/wraps on the founder's Mac.
   const pwmVolume = volume("pwm-volume", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
@@ -40,7 +40,7 @@ export default defineRailway(() => {
   // max_connections=100 that fits ~4 replicas with headroom for migrations
   // and ops verbs. Raising replicas past that ceiling requires PgBouncer
   // first — do not bump this number without checking the pool math.
-  const pwm = service("pwm", {
+  const veil = service("veil", {
     start: "/veil mcp",
     healthcheck: "/health",
     healthcheckTimeout: 300,
@@ -89,7 +89,7 @@ export default defineRailway(() => {
     env: { DSN: preserve(), HYDRA_SYSTEM_SECRET: preserve(), OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT: preserve(), OIDC_SUBJECT_IDENTIFIERS_SUPPORTED_TYPES: preserve(), PORT: preserve(), SECRETS_SYSTEM: preserve(), SERVE_ADMIN_HOST: preserve(), SERVE_ADMIN_PORT: preserve(), SERVE_COOKIES_SAME_SITE_MODE: preserve(), SERVE_PUBLIC_CORS_ALLOWED_ORIGINS: preserve(), SERVE_PUBLIC_CORS_ALLOW_CREDENTIALS: preserve(), SERVE_PUBLIC_CORS_ENABLED: preserve(), SERVE_PUBLIC_HOST: preserve(), SERVE_PUBLIC_PORT: preserve(), URLS_CONSENT: preserve(), URLS_LOGIN: preserve(), URLS_LOGOUT: preserve(), URLS_SELF_ISSUER: preserve() },
   });
 
-  return project("password-manager", {
-    resources: [kratos, keto, pwm, Postgres, glue, hydra, postgresVolume, pwmVolume, veilMigrate, veilSweep],
+  return project("veil", {
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, pwmVolume, veilMigrate, veilSweep],
   });
 });
