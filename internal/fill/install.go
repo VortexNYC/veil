@@ -1,6 +1,7 @@
 package fill
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -41,4 +42,23 @@ func InstallOrigin(env InstallEnv) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(ffDir, JSONHostName+".json"), ManifestJSONFirefox(host), 0o644)
+}
+
+// InstallExtension writes the embedded MV3 payload to dir — the stable path a
+// human "load unpacked"s in chrome://extensions. The manifest key pins the
+// extension id the native host manifest allowlists; flat files only.
+func InstallExtension(dist fs.FS, dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return fs.WalkDir(dist, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, err := fs.ReadFile(dist, path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, filepath.Base(path)), raw, 0o644)
+	})
 }

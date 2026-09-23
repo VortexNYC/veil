@@ -28,10 +28,12 @@ veil: installed — $BIN
 
 Next steps:
   1. Accept your invite — the setup link arrives by email (private alpha).
-  2. Sign in:            $BIN human login --out-file ~/.config/vortex/veil/human.jwt
-  3. Provision your org: VEIL_ORIGIN=https://veil.nyc $BIN init --oidc-token-file ~/.config/vortex/veil/human.jwt
+  2. Sign in:            $BIN human login --out-file ~/.config/veil/human.jwt
+  3. Provision your org: VEIL_ORIGIN=https://veil.nyc $BIN init --oidc-token-file ~/.config/veil/human.jwt
   4. Bind an agent:      $BIN agent hydra <name>
   5. MCP for your agent: $BIN mcp laptop
+  6. Browser fill:       VEIL_ORIGIN=https://veil.nyc $BIN fill install
+     then load unpacked at chrome://extensions (Developer mode) → ~/.veil/extension
 
 Docs: https://veil.nyc/docs · Changelog: https://veil.nyc/docs/changelog
 EOF

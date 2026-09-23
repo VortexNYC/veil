@@ -28,6 +28,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/oauth2"
 
+	fillext "github.com/VortexNYC/veil/apps/fill"
 	"github.com/VortexNYC/veil/identity/glue"
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/broker"
@@ -1810,7 +1811,12 @@ func fillCmd(home *string) *cobra.Command {
 			if err := fill.InstallOrigin(env); err != nil {
 				return err
 			}
+			extDir := filepath.Join(dir, "extension")
+			if err := fill.InstallExtension(fillext.Files, extDir); err != nil {
+				return err
+			}
 			fmt.Fprintln(cmd.OutOrStdout(), fill.JSONHostName)
+			fmt.Fprintf(cmd.OutOrStdout(), "extension: %s — load unpacked at chrome://extensions (Developer mode)\n", extDir)
 			return nil
 		},
 	})

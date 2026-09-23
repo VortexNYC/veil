@@ -87,7 +87,7 @@ Paste `mcp config` as the HTTP server block when the process has `VEIL_OIDC_TOKE
 
 `run` / `proxy` MITM: unmodified HTTP clients go through `HTTPS_PROXY`. Unknown hosts fail closed. A per-machine CA (`ca.pem`) is used for MITM — not goproxy's public default. Origin MITM with a real (non-dummy) Authorization header passes through, so Wrangler asset-upload JWTs keep working.
 
-`fill` is the native host (native messaging + nacl box). `veil fill install` registers this process. Slice 26 dogfoods store KeePassXC-Browser. Slice 31 speaks `passkeys-get` / `passkeys-register` on that host. Customers get a Veil-branded extension (SPEC slice 37). Fill writes into the page. Agents never receive the secret.
+`fill` is the native host (native messaging + nacl box). `veil fill install` registers this process and writes the Veil extension (slice 37, MV3, `nyc.veil.fill` JSON) to `~/.veil/extension` — load unpacked at chrome://extensions. Slice 26 dogfoods store KeePassXC-Browser; Slice 31 speaks `passkeys-get` / `passkeys-register` on that host. Fill writes into the page. Agents never receive the secret.
 
 `ssh` is the OpenSSH agent. Export `SSH_AUTH_SOCK` from its output. The broker signs. The private key never leaves. `item add --ssh-file` stores the PEM; never argv.
 

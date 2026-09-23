@@ -28,6 +28,12 @@ Veil is in private alpha. Breaking changes land without notice until `v1`.
   to `/registration` explain invite-only alpha instead of a raw error.
 - Keto, Hydra admin, and Kratos admin are internal-only — the stray public
   Railway domains are deleted.
+- **Invite emails carry the recovery code.** The setup page asks for a
+  one-time code; the invite now includes it alongside the link.
+- **Browser fill ships in the CLI.** `veil fill install` registers the
+  `nyc.veil.fill` native host and writes the Veil extension to
+  `~/.veil/extension` — load unpacked at chrome://extensions (Developer mode).
+  Touch ID gates every fill; secrets never sit in `browser.storage`.
 
 ## Agents
 
