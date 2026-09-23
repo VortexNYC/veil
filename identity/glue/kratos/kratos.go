@@ -51,14 +51,23 @@ func (c *Client) Invite(ctx context.Context, email, orgID string) (Invite, error
 	if orgID != "" {
 		body.SetOrganizationId(orgID)
 	}
+	identityID := ""
 	id, _, err := c.admin.IdentityAPI.CreateIdentity(ctx).CreateIdentityBody(*body).Execute()
-	if err != nil {
-		return Invite{}, fmt.Errorf("kratos: invite identity: %w", err)
-	}
-	if id == nil || id.GetId() == "" {
+	switch {
+	case err == nil && id != nil && id.GetId() != "":
+		identityID = id.GetId()
+	case err != nil:
+		// A re-invite hits the duplicate-email conflict. Converge on the
+		// existing identity and mint a fresh code — invite stays resend-able.
+		existing, lerr := c.IdentityByEmail(ctx, email, orgID)
+		if lerr != nil {
+			return Invite{}, fmt.Errorf("kratos: invite identity: %w", err)
+		}
+		identityID = existing
+	default:
 		return Invite{}, fmt.Errorf("kratos: invite identity: empty id")
 	}
-	codeBody := ory.NewCreateRecoveryCodeForIdentityBody(id.GetId())
+	codeBody := ory.NewCreateRecoveryCodeForIdentityBody(identityID)
 	got, _, err := c.admin.IdentityAPI.CreateRecoveryCodeForIdentity(ctx).
 		CreateRecoveryCodeForIdentityBody(*codeBody).
 		Execute()
@@ -69,7 +78,7 @@ func (c *Client) Invite(ctx context.Context, email, orgID string) (Invite, error
 		return Invite{}, fmt.Errorf("kratos: invite code: empty")
 	}
 	return Invite{
-		IdentityID:   id.GetId(),
+		IdentityID:   identityID,
 		RecoveryLink: got.GetRecoveryLink(),
 		Code:         got.GetRecoveryCode(),
 	}, nil

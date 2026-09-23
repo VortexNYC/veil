@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -21,18 +21,18 @@ var _ MappedNullable = &CreateItemRequest{}
 
 // CreateItemRequest struct for CreateItemRequest
 type CreateItemRequest struct {
-	Name string   `json:"name"`
-	Uri  *string  `json:"uri,omitempty"`
+	Name string `json:"name"`
+	Uri *string `json:"uri,omitempty"`
 	Uris []string `json:"uris,omitempty"`
 	Tags []string `json:"tags,omitempty"`
-	Kind *string  `json:"kind,omitempty"`
+	Kind *string `json:"kind,omitempty"`
 	// Vault material. Request only. Never returned.
 	Secret *string `json:"secret,omitempty"`
 	// TOTP seed. Request only. Never returned.
 	TotpSeed *string `json:"totp_seed,omitempty"`
 	// Fill username. Metadata on the item. Also sealed in the envelope. Not a secret.
-	Login    *string         `json:"login,omitempty"`
-	Card     *CardFields     `json:"card,omitempty"`
+	Login *string `json:"login,omitempty"`
+	Card *CardFields `json:"card,omitempty"`
 	Identity *IdentityFields `json:"identity,omitempty"`
 }
 
@@ -369,7 +369,7 @@ func (o *CreateItemRequest) SetIdentity(v IdentityFields) {
 }
 
 func (o CreateItemRequest) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -422,10 +422,10 @@ func (o *CreateItemRequest) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -481,3 +481,5 @@ func (v *NullableCreateItemRequest) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

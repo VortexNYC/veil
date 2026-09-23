@@ -255,6 +255,17 @@ export type ProvisionResponse = {
     subject: string;
     org_id: string;
 };
+export type InviteRequest = {
+    email: string;
+};
+export type InviteResponse = {
+    identity_id: string;
+    emailed: boolean;
+    /**
+     * Only present when mail delivery is not configured (local dev).
+     */
+    recovery_url?: string;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -686,3 +697,26 @@ export type ProvisionResponses = {
     200: ProvisionResponse;
 };
 export type ProvisionResponse2 = ProvisionResponses[keyof ProvisionResponses];
+export type CreateInviteData = {
+    body: InviteRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/invites';
+};
+export type CreateInviteErrors = {
+    /**
+     * missing email
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+};
+export type CreateInviteResponses = {
+    /**
+     * Invite result
+     */
+    200: InviteResponse;
+};
+export type CreateInviteResponse = CreateInviteResponses[keyof CreateInviteResponses];

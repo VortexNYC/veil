@@ -16,59 +16,59 @@ import (
 	"fmt"
 )
 
-// checks if the AgentsResponse type satisfies the MappedNullable interface at compile time
-var _ MappedNullable = &AgentsResponse{}
+// checks if the InviteRequest type satisfies the MappedNullable interface at compile time
+var _ MappedNullable = &InviteRequest{}
 
-// AgentsResponse struct for AgentsResponse
-type AgentsResponse struct {
-	Agents []Agent `json:"agents"`
+// InviteRequest struct for InviteRequest
+type InviteRequest struct {
+	Email string `json:"email"`
 }
 
-type _AgentsResponse AgentsResponse
+type _InviteRequest InviteRequest
 
-// NewAgentsResponse instantiates a new AgentsResponse object
+// NewInviteRequest instantiates a new InviteRequest object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewAgentsResponse(agents []Agent) *AgentsResponse {
-	this := AgentsResponse{}
-	this.Agents = agents
+func NewInviteRequest(email string) *InviteRequest {
+	this := InviteRequest{}
+	this.Email = email
 	return &this
 }
 
-// NewAgentsResponseWithDefaults instantiates a new AgentsResponse object
+// NewInviteRequestWithDefaults instantiates a new InviteRequest object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewAgentsResponseWithDefaults() *AgentsResponse {
-	this := AgentsResponse{}
+func NewInviteRequestWithDefaults() *InviteRequest {
+	this := InviteRequest{}
 	return &this
 }
 
-// GetAgents returns the Agents field value
-func (o *AgentsResponse) GetAgents() []Agent {
+// GetEmail returns the Email field value
+func (o *InviteRequest) GetEmail() string {
 	if o == nil {
-		var ret []Agent
+		var ret string
 		return ret
 	}
 
-	return o.Agents
+	return o.Email
 }
 
-// GetAgentsOk returns a tuple with the Agents field value
+// GetEmailOk returns a tuple with the Email field value
 // and a boolean to check if the value has been set.
-func (o *AgentsResponse) GetAgentsOk() ([]Agent, bool) {
+func (o *InviteRequest) GetEmailOk() (*string, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return o.Agents, true
+	return &o.Email, true
 }
 
-// SetAgents sets field value
-func (o *AgentsResponse) SetAgents(v []Agent) {
-	o.Agents = v
+// SetEmail sets field value
+func (o *InviteRequest) SetEmail(v string) {
+	o.Email = v
 }
 
-func (o AgentsResponse) MarshalJSON() ([]byte, error) {
+func (o InviteRequest) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
@@ -76,18 +76,18 @@ func (o AgentsResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(toSerialize)
 }
 
-func (o AgentsResponse) ToMap() (map[string]interface{}, error) {
+func (o InviteRequest) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
-	toSerialize["agents"] = o.Agents
+	toSerialize["email"] = o.Email
 	return toSerialize, nil
 }
 
-func (o *AgentsResponse) UnmarshalJSON(data []byte) (err error) {
+func (o *InviteRequest) UnmarshalJSON(data []byte) (err error) {
 	// This validates that all required properties are included in the JSON object
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
-		"agents",
+		"email",
 	}
 
 	allProperties := make(map[string]interface{})
@@ -104,53 +104,53 @@ func (o *AgentsResponse) UnmarshalJSON(data []byte) (err error) {
 		}
 	}
 
-	varAgentsResponse := _AgentsResponse{}
+	varInviteRequest := _InviteRequest{}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&varAgentsResponse)
+	err = decoder.Decode(&varInviteRequest)
 
 	if err != nil {
 		return err
 	}
 
-	*o = AgentsResponse(varAgentsResponse)
+	*o = InviteRequest(varInviteRequest)
 
 	return err
 }
 
-type NullableAgentsResponse struct {
-	value *AgentsResponse
+type NullableInviteRequest struct {
+	value *InviteRequest
 	isSet bool
 }
 
-func (v NullableAgentsResponse) Get() *AgentsResponse {
+func (v NullableInviteRequest) Get() *InviteRequest {
 	return v.value
 }
 
-func (v *NullableAgentsResponse) Set(val *AgentsResponse) {
+func (v *NullableInviteRequest) Set(val *InviteRequest) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullableAgentsResponse) IsSet() bool {
+func (v NullableInviteRequest) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullableAgentsResponse) Unset() {
+func (v *NullableInviteRequest) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullableAgentsResponse(val *AgentsResponse) *NullableAgentsResponse {
-	return &NullableAgentsResponse{value: val, isSet: true}
+func NewNullableInviteRequest(val *InviteRequest) *NullableInviteRequest {
+	return &NullableInviteRequest{value: val, isSet: true}
 }
 
-func (v NullableAgentsResponse) MarshalJSON() ([]byte, error) {
+func (v NullableInviteRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullableAgentsResponse) UnmarshalJSON(src []byte) error {
+func (v *NullableInviteRequest) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

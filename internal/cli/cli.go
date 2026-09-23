@@ -286,7 +286,20 @@ func glueFromEnv() (*glue.Glue, error) {
 		KetoRead:     envOr("VEIL_KETO_READ", "http://127.0.0.1:4466"),
 		KetoWrite:    envOr("VEIL_KETO_WRITE", "http://127.0.0.1:4467"),
 		OrgID:        envOr("VEIL_ORG_ID", glue.LocalOrgID),
+		MailURL:      envOr("VEIL_MAIL_URL", ""),
+		MailToken:    os.Getenv("VEIL_MAIL_TOKEN"),
 	})
+}
+
+// glueInviter adapts glue.Glue to app.Inviter without app importing glue.
+type glueInviter struct{ g *glue.Glue }
+
+func (a glueInviter) Invite(ctx context.Context, email, actor, orgID string) (app.InviteResult, error) {
+	inv, err := a.g.InviteIdentity(ctx, email, actor, orgID)
+	if err != nil {
+		return app.InviteResult{}, err
+	}
+	return app.InviteResult{IdentityID: inv.IdentityID, RecoveryURL: inv.RecoveryLink, Emailed: inv.Emailed}, nil
 }
 
 func resolveHumanGrantee(ctx context.Context, raw string) (string, error) {
@@ -329,6 +342,7 @@ func openOriginApp(home string) (*app.App, error) {
 		}
 		a.Members = g
 		a.Provision = g
+		a.Invites = glueInviter{g}
 		return a, nil
 	}
 	return openOrInitApp(home)
@@ -553,9 +567,35 @@ func humanCmd(home *string) *cobra.Command {
 	var codeFile, tokenFile string
 	invite := &cobra.Command{
 		Use:   "invite EMAIL",
-		Short: "Kratos identity plus recovery code. Owner-gated after bootstrap. Never argv.",
+		Short: "Invite an email into your org. Sends the setup link by email. Owner-gated.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				raw, err := humanToken(tokenFile)
+				if err != nil {
+					return err
+				}
+				if raw == "" {
+					return fmt.Errorf("invite: --oidc-token-file or VEIL_HUMAN_TOKEN_FILE required")
+				}
+				payload, err := json.Marshal(publicapi.InviteRequest{Email: args[0]})
+				if err != nil {
+					return err
+				}
+				res, err := originDo(cmd.Context(), http.MethodPost, "/v1/invites", raw, payload)
+				if err != nil {
+					return err
+				}
+				var out publicapi.InviteResponse
+				if err := json.Unmarshal(res, &out); err != nil {
+					return err
+				}
+				if out.Emailed {
+					fmt.Fprintf(cmd.OutOrStdout(), "invited %s — setup email sent\n", args[0])
+					return nil
+				}
+				return encode(cmd, inviteDTO{IdentityID: out.IdentityID, RecoveryLink: out.RecoveryURL})
+			}
 			if codeFile == "" {
 				return fmt.Errorf("--code-file is required")
 			}
@@ -577,9 +617,8 @@ func humanCmd(home *string) *cobra.Command {
 			return encode(cmd, inviteDTO{IdentityID: inv.IdentityID, RecoveryLink: inv.RecoveryLink})
 		},
 	}
-	invite.Flags().StringVar(&codeFile, "code-file", "", "write the Kratos recovery code here. never argv.")
+	invite.Flags().StringVar(&codeFile, "code-file", "", "write the Kratos recovery code here (direct-admin path only). never argv.")
 	invite.Flags().StringVar(&tokenFile, "oidc-token-file", "", "owner Hydra ID token file. Env VEIL_HUMAN_TOKEN. Never argv.")
-	_ = invite.MarkFlagRequired("code-file")
 	var outFile string
 	login := &cobra.Command{
 		Use:   "login",

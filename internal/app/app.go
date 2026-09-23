@@ -49,6 +49,20 @@ type Provisioner interface {
 	SetIdentityOrg(ctx context.Context, identityID, orgID string) error
 }
 
+// InviteResult is what an owner gets back from an invite: the new identity,
+// whether the email went out, and the recovery link when it did not.
+type InviteResult struct {
+	IdentityID  string
+	RecoveryURL string
+	Emailed     bool
+}
+
+// Inviter creates a Kratos identity plus recovery link under the owner's org.
+// glue.Glue satisfies it via a thin adapter; nil in local vaults.
+type Inviter interface {
+	Invite(ctx context.Context, email, actor, orgID string) (InviteResult, error)
+}
+
 var ErrExists = errors.New("app: vault already exists")
 
 type config struct {
@@ -73,6 +87,7 @@ type App struct {
 	Workload  *workload.Checker
 	Members   MemberCheck
 	Provision Provisioner
+	Invites   Inviter
 }
 
 func Init(dir string) (*App, error) {
@@ -791,6 +806,27 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 		}
 	}
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
+}
+
+// InviteHuman is the private-alpha gate: a verified, provisioned human invites
+// an email into their org. The identity and recovery link live in Kratos;
+// owner-ness is enforced by the Inviter (Keto) inside glue.
+func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteResult, error) {
+	if a.Human == nil {
+		return InviteResult{}, fmt.Errorf("app: human verifier not configured")
+	}
+	if a.Invites == nil {
+		return InviteResult{}, fmt.Errorf("app: invites not configured")
+	}
+	sub, err := a.Human.Subject(ctx, rawToken)
+	if err != nil {
+		return InviteResult{}, err
+	}
+	h, err := a.Store.Human(sub)
+	if err != nil {
+		return InviteResult{}, err
+	}
+	return a.Invites.Invite(ctx, email, sub, h.OrgID)
 }
 
 func (a *App) ownsVault(p protocol.Principal) (bool, error) {

@@ -147,6 +147,16 @@ type ProvisionResponse struct {
 	OrgID   string `json:"org_id"`
 }
 
+type InviteRequest struct {
+	Email string `json:"email"`
+}
+
+type InviteResponse struct {
+	IdentityID  string `json:"identity_id"`
+	Emailed     bool   `json:"emailed"`
+	RecoveryURL string `json:"recovery_url,omitempty"`
+}
+
 type FillLoginsRequest struct {
 	URL      string `json:"url,omitempty"`
 	UUID     string `json:"uuid,omitempty"`
@@ -232,6 +242,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
 	mux.HandleFunc("POST /v1/provision", s.provision)
+	mux.HandleFunc("POST /v1/invites", s.createInvite)
 	mux.HandleFunc("POST /v1/use", s.useItem)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -569,6 +580,33 @@ func (s *Server) provision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, ProvisionResponse{Subject: p.ID, OrgID: p.OrgID})
+}
+
+// createInvite is the private-alpha gate: a provisioned human invites an email
+// into their org. The identity and recovery link are minted in Kratos and
+// delivered by the mail worker; the link only appears in the response when
+// mail is not configured (local dev).
+func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
+	var in InviteRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil || in.Email == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	inv, err := s.App.InviteHuman(r.Context(), raw, in.Email)
+	if err != nil {
+		http.Error(w, "invite failed", http.StatusUnauthorized)
+		return
+	}
+	out := InviteResponse{IdentityID: inv.IdentityID, Emailed: inv.Emailed}
+	if !inv.Emailed {
+		out.RecoveryURL = inv.RecoveryURL
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) useItem(w http.ResponseWriter, r *http.Request) {

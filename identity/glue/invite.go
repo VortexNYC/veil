@@ -26,12 +26,21 @@ func (g *Glue) InviteIdentity(ctx context.Context, email, actor, orgID string) (
 	if err != nil {
 		return Invite{}, err
 	}
+	out := Invite{Invite: inv}
+	if g.mail != nil {
+		if err := g.mail.send(ctx, email, "invite", map[string]string{
+			"url": inv.RecoveryLink,
+		}); err != nil {
+			return Invite{}, err
+		}
+		out.Emailed = true
+	}
 	if g.members != nil {
 		if err := g.members.ForOrg(orgID).AddMember(ctx, inv.IdentityID); err != nil {
 			return Invite{}, err
 		}
 	}
-	return inv, nil
+	return out, nil
 }
 
 // ListMembers is the Kratos directory for this org. Membership checks are Keto.

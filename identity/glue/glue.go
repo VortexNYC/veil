@@ -30,11 +30,16 @@ const (
 )
 
 type (
-	Invite      = kratos.Invite
 	AgentClient = hydra.AgentClient
 	AgentCred   = hydra.AgentCred
 	FirstParty  = hydra.FirstParty
 )
+
+// Invite is a Kratos invite plus whether the delivery mail went out.
+type Invite struct {
+	kratos.Invite
+	Emailed bool
+}
 
 type Config struct {
 	KratosPublic string
@@ -43,12 +48,15 @@ type Config struct {
 	KetoRead     string
 	KetoWrite    string
 	OrgID        string
+	MailURL      string
+	MailToken    string
 }
 
 type Glue struct {
 	humans  *kratos.Client
 	tokens  *hydra.Client
 	members *keto.Client
+	mail    *mailer
 }
 
 func New(cfg Config) (*Glue, error) {
@@ -68,6 +76,7 @@ func New(cfg Config) (*Glue, error) {
 		humans:  humans,
 		tokens:  tokens,
 		members: members,
+		mail:    newMailer(cfg.MailURL, cfg.MailToken),
 	}, nil
 }
 

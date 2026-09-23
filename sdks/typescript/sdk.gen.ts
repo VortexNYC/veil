@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses } from './types.gen';
+import type { ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -199,4 +199,17 @@ export const provision = <ThrowOnError extends boolean = false>(options?: Option
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/v1/provision',
     ...options
+});
+
+/**
+ * Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.
+ */
+export const createInvite = <ThrowOnError extends boolean = false>(options: Options<CreateInviteData, ThrowOnError>): RequestResult<CreateInviteResponses, CreateInviteErrors, ThrowOnError> => (options.client ?? client).post<CreateInviteResponses, CreateInviteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/invites',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });

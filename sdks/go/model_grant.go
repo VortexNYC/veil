@@ -11,10 +11,10 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"time"
+	"bytes"
+	"fmt"
 )
 
 // checks if the Grant type satisfies the MappedNullable interface at compile time
@@ -22,11 +22,11 @@ var _ MappedNullable = &Grant{}
 
 // Grant struct for Grant
 type Grant struct {
-	Id        string     `json:"id"`
-	OrgId     string     `json:"org_id"`
-	AgentId   string     `json:"agent_id"`
-	ItemId    string     `json:"item_id"`
-	Level     string     `json:"level"`
+	Id string `json:"id"`
+	OrgId string `json:"org_id"`
+	AgentId string `json:"agent_id"`
+	ItemId string `json:"item_id"`
+	Level string `json:"level"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
@@ -207,7 +207,7 @@ func (o *Grant) SetExpiresAt(v time.Time) {
 }
 
 func (o Grant) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -244,10 +244,10 @@ func (o *Grant) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -303,3 +303,5 @@ func (v *NullableGrant) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

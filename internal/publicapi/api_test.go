@@ -1351,3 +1351,47 @@ func TestProvisionEndpoint(t *testing.T) {
 		t.Fatalf("no-token provision %d", code)
 	}
 }
+
+type fakeInviter struct{ res app.InviteResult }
+
+func (f fakeInviter) Invite(_ context.Context, _, _, _ string) (app.InviteResult, error) {
+	return f.res, nil
+}
+
+// POST /v1/invites is the private-alpha gate: provisioned human bearer, email
+// body, recovery link stays server-side once mail delivered it.
+func TestInviteEndpoint(t *testing.T) {
+	a := testApp(t)
+	a.Human = fakeSubjectVerifier{sub: "sub-owner"}
+	a.Provision = fakeProvisioner{}
+	a.Invites = fakeInviter{res: app.InviteResult{IdentityID: "id-1", RecoveryURL: "https://x/recovery", Emailed: true}}
+	mux := http.NewServeMux()
+	(&Server{App: a}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	if code, raw := doJSON(t, srv, http.MethodPost, "/v1/provision", "tok-owner", nil); code != http.StatusOK {
+		t.Fatalf("provision %d %s", code, raw)
+	}
+
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{"email": "new@example.com"})
+	if code != http.StatusOK {
+		t.Fatalf("invite %d %s", code, raw)
+	}
+	var out InviteResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.IdentityID != "id-1" || !out.Emailed || out.RecoveryURL != "" {
+		t.Fatalf("invite %+v", out)
+	}
+
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/invites", "", map[string]string{"email": "x@example.com"})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("no-token invite %d", code)
+	}
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{})
+	if code != http.StatusBadRequest {
+		t.Fatalf("no-email invite %d", code)
+	}
+}

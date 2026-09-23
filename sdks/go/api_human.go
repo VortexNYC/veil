@@ -18,11 +18,120 @@ import (
 	"net/url"
 )
 
+
 // HumanAPIService HumanAPI service
 type HumanAPIService service
 
+type HumanAPICreateInviteRequest struct {
+	ctx context.Context
+	ApiService *HumanAPIService
+	inviteRequest *InviteRequest
+}
+
+func (r HumanAPICreateInviteRequest) InviteRequest(inviteRequest InviteRequest) HumanAPICreateInviteRequest {
+	r.inviteRequest = &inviteRequest
+	return r
+}
+
+func (r HumanAPICreateInviteRequest) Execute() (*InviteResponse, *http.Response, error) {
+	return r.ApiService.CreateInviteExecute(r)
+}
+
+/*
+CreateInvite Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPICreateInviteRequest
+*/
+func (a *HumanAPIService) CreateInvite(ctx context.Context) HumanAPICreateInviteRequest {
+	return HumanAPICreateInviteRequest{
+		ApiService: a,
+		ctx: ctx,
+	}
+}
+
+// Execute executes the request
+//  @return InviteResponse
+func (a *HumanAPIService) CreateInviteExecute(r HumanAPICreateInviteRequest) (*InviteResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *InviteResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.CreateInvite")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/invites"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.inviteRequest == nil {
+		return localVarReturnValue, nil, reportError("inviteRequest is required and must be specified")
+	}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	// body params
+	localVarPostBody = r.inviteRequest
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type HumanAPIProvisionRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
 }
 
@@ -33,25 +142,24 @@ func (r HumanAPIProvisionRequest) Execute() (*ProvisionResponse, *http.Response,
 /*
 Provision Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIProvisionRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIProvisionRequest
 */
 func (a *HumanAPIService) Provision(ctx context.Context) HumanAPIProvisionRequest {
 	return HumanAPIProvisionRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return ProvisionResponse
+//  @return ProvisionResponse
 func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*ProvisionResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodPost
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *ProvisionResponse
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *ProvisionResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.Provision")

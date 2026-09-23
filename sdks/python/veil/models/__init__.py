@@ -27,6 +27,8 @@ from veil.models.grant import Grant
 from veil.models.grants_response import GrantsResponse
 from veil.models.identity_fields import IdentityFields
 from veil.models.import_response import ImportResponse
+from veil.models.invite_request import InviteRequest
+from veil.models.invite_response import InviteResponse
 from veil.models.item import Item
 from veil.models.items_response import ItemsResponse
 from veil.models.owner import Owner

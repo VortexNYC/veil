@@ -420,6 +420,33 @@ paths:
         \ Not MCP."
       tags:
       - Human
+  /v1/invites:
+    post:
+      operationId: createInvite
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteResponse"
+          description: Invite result
+        "400":
+          description: missing email
+        "401":
+          description: missing or invalid human token
+      summary: Private-alpha invite. Owner-authenticated — the bearer is a verified
+        human ID token of a provisioned human. Creates the Kratos identity plus recovery
+        link under the inviter's org and emails the setup link via the mail worker.
+        recovery_url only appears when mail is not configured (local dev). Idempotent
+        for re-invites. Not MCP.
+      tags:
+      - Human
 components:
   schemas:
     Item:
@@ -1188,6 +1215,33 @@ components:
       required:
       - org_id
       - subject
+    InviteRequest:
+      additionalProperties: false
+      example:
+        email: email
+      properties:
+        email:
+          format: email
+          type: string
+      required:
+      - email
+    InviteResponse:
+      additionalProperties: false
+      example:
+        identity_id: identity_id
+        emailed: true
+        recovery_url: recovery_url
+      properties:
+        identity_id:
+          type: string
+        emailed:
+          type: boolean
+        recovery_url:
+          description: Only present when mail delivery is not configured (local dev).
+          type: string
+      required:
+      - emailed
+      - identity_id
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

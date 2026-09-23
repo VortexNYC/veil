@@ -889,11 +889,21 @@ var provision = (options) => (options?.client ?? client).post({
   url: "/v1/provision",
   ...options
 });
+var createInvite = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/invites",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
 export {
   archiveItem,
   createAgent,
   createClient,
   createGrant,
+  createInvite,
   createItem,
   createSession,
   deleteItem,

@@ -44,6 +44,8 @@ __all__ = [
     "GrantsResponse",
     "IdentityFields",
     "ImportResponse",
+    "InviteRequest",
+    "InviteResponse",
     "Item",
     "ItemsResponse",
     "Owner",
@@ -86,6 +88,8 @@ from veil.models.grant import Grant as Grant
 from veil.models.grants_response import GrantsResponse as GrantsResponse
 from veil.models.identity_fields import IdentityFields as IdentityFields
 from veil.models.import_response import ImportResponse as ImportResponse
+from veil.models.invite_request import InviteRequest as InviteRequest
+from veil.models.invite_response import InviteResponse as InviteResponse
 from veil.models.item import Item as Item
 from veil.models.items_response import ItemsResponse as ItemsResponse
 from veil.models.owner import Owner as Owner
