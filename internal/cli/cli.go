@@ -173,6 +173,21 @@ func sweepCmd(home *string) *cobra.Command {
 						fmt.Fprintf(cmd.OutOrStdout(), "detached audit partition %s (archive then drop)\n", name)
 					}
 				}
+				// Outbox health line for cron logs: a non-empty outbox means the
+				// relay is behind — queued rows are durable, not lost, but the
+				// backlog wants an operator eye. Soft-fail: a monitoring line must
+				// never break the cleanup verb.
+				var depth int64
+				var oldest *time.Time
+				if err := pool.QueryRow(cmd.Context(),
+					`SELECT count(*), min(at) FROM audit_outbox`).Scan(&depth, &oldest); err != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "audit_outbox=unavailable (%v)\n", err)
+				} else if depth == 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "audit_outbox=empty")
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "audit_outbox=%d oldest=%s WARN relay backlog\n",
+						depth, time.Since(*oldest).Round(time.Second))
+				}
 				return nil
 			}
 			if sqlitePath == "" {
