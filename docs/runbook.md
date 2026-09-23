@@ -70,6 +70,29 @@ veil key recover-org --org <o> --owner <id> --material-file <f> --dsn <dsn>
 Secrets via files/env, never argv. KEK rotation requires coordinated
 redeploy — mixed-KEK replicas fail closed, they do not degrade.
 
+## Customer lifecycle
+
+All verbs are owner-gated human-token calls on the origin (Bearer = a
+provisioned human's Hydra id_token, never a session token):
+
+- **Offboard a member**: `DELETE /v1/members/{identity-id}` — drops the
+  Keto member tuple and the `humans` row; the token resolves nothing
+  from that call on. Refuses owners (demote first) and the caller
+  themselves.
+- **Promote a member**: `POST /v1/members/{identity-id}/owner`.
+- **Demote an owner**: `DELETE /v1/members/{identity-id}/owner` — refuses
+  the last owner (an org with no owner is unmanageable).
+- **Customer self-delete**: `DELETE /v1/me` — drops member (+owner)
+  tuples and the humans row. A sole owner is refused: promote someone or
+  delete the org.
+- **Org teardown**: `DELETE /v1/org` — deletes every Keto tuple, then
+  purges all vault rows (items, grants, sessions, agents, humans,
+  org_keys) in one transaction. `audit` rows survive deliberately —
+  teardown must not erase the forensic record.
+
+Support console equivalent: the same calls with an owner token via curl
+— there is no separate admin API.
+
 ## Audit
 
 `audit` is `PARTITION BY RANGE (at)` monthly. `veil-sweep` creates
