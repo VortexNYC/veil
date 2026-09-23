@@ -1,6 +1,7 @@
 packages:
   - "identity/login"
   - "apps/docs"
+  - "apps/mail"
   - "apps/vault"
   - "sdks/typescript"
 

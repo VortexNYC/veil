@@ -3,7 +3,8 @@
   "name": "veil-mail",
   "account_id": "31bfc2c14a28e0a39e8b9e3c556a18be",
   "compatibility_date": "2026-09-11",
-  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/index.tsx",
   "routes": [
     {
       "pattern": "mail.veil.nyc",
