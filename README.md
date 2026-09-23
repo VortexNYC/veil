@@ -23,7 +23,7 @@ Engine + local SQLite vault + CLI + MCP. Covered by tests.
 
 ## Hosted quickstart
 
-Origin is `https://veil.nyc`. Humans register at `https://login.veil.nyc/registration`. The hosted vault is Postgres — your laptop keeps no second store when `VEIL_ORIGIN` is set.
+Origin is `https://veil.nyc`. Accounts are invite-only during alpha — an org owner runs `veil human invite EMAIL`, which issues a recovery link that is the invitee's account setup. The hosted vault is Postgres — your laptop keeps no second store when `VEIL_ORIGIN` is set.
 
 ```
 # 1. CLI

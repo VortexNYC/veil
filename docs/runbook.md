@@ -10,7 +10,7 @@ the service and must never be re-entered by hand.
 
 | Service | Role |
 |---|---|
-| `veil` | Origin — `/veil mcp` on `veil.nyc`. Stateless on `PWM_POSTGRES_DSN`. |
+| `veil` | Origin — `/veil mcp` on `veil.nyc`. Stateless on `VEIL_POSTGRES_DSN`. |
 | `Postgres` | Store of record — `veil` and `identity` databases. |
 | `glue`, `kratos`, `keto`, `hydra` | Ory identity plane + broker glue. |
 | `veil-migrate` | One-shot `/veil migrate` — idempotent schema sync. |

@@ -18,7 +18,7 @@ So the backup plan has exactly two assets:
 | Asset | Where it lives | Loss consequence |
 |---|---|---|
 | Postgres database | Railway Postgres | All vault data |
-| `VEIL_KEK` | Railway env (`PWM_KEK` via bridge) | Everything is ciphertext |
+| `VEIL_KEK` | Railway env | Everything is ciphertext |
 
 Back up both. Keep them apart: a dump next to its KEK is a plaintext
 export with extra steps.
