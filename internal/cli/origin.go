@@ -110,14 +110,17 @@ func jwtExpUnix(tok string) (int64, bool) {
 }
 
 func originRemint(ctx context.Context, tokenFile, secretFile string) (string, error) {
-	secret, err := readFileMaterial(secretFile)
+	cred, err := readHydraCred(secretFile)
 	if err != nil {
 		return "", err
 	}
-	if len(secret) == 0 {
+	if cred.Secret == "" {
 		return "", fmt.Errorf("origin: empty VEIL_HYDRA_SECRET_FILE")
 	}
 	issuer := strings.TrimSpace(os.Getenv("VEIL_HYDRA_ISSUER"))
+	if issuer == "" {
+		issuer = cred.Issuer
+	}
 	if issuer == "" {
 		return "", fmt.Errorf("origin: VEIL_HYDRA_ISSUER is required to remint")
 	}
@@ -130,8 +133,16 @@ func originRemint(ctx context.Context, tokenFile, secretFile string) (string, er
 	if !id.Valid(agentName) {
 		return "", fmt.Errorf("origin: VEIL_AGENT is required to remint")
 	}
-	audience := envOr("VEIL_HYDRA_CLIENT_ID", glue.DefaultClientID)
-	raw, err := glue.ClientCredentials(ctx, issuer, glue.AgentClientID(agentName), string(secret), audience)
+	// Mint under the audience the binding recorded — bare secret files
+	// predate the rename and can only produce glue.LegacyAudience.
+	audience := cred.Audience
+	if audience == "" {
+		audience = glue.LegacyAudience
+	}
+	if env := os.Getenv("VEIL_HYDRA_CLIENT_ID"); env != "" {
+		audience = env
+	}
+	raw, err := glue.ClientCredentials(ctx, issuer, glue.AgentClientID(agentName), cred.Secret, audience)
 	if err != nil {
 		return "", err
 	}

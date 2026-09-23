@@ -18,7 +18,13 @@ import (
 
 var ErrChallenge = errors.New("glue: consent challenge")
 
-const DefaultClientID = "password-manager" // deployed Hydra client ID + audience; renaming is a prod migration, not a string sweep
+const DefaultClientID = "veil" // first-party Hydra client ID + default audience
+
+// LegacyAudience is the aud value agent bindings recorded before the
+// password-manager → veil rename. Bare .hydra secret files carry no
+// audience, so their mints must keep requesting this value — their
+// workload bindings and Hydra client allowed-audiences still hold it.
+const LegacyAudience = "password-manager"
 
 type Client struct {
 	admin *ory.APIClient

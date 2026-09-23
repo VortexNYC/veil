@@ -46,7 +46,7 @@ identity-env:
 			"KRATOS_CIPHER_SECRET=$$(openssl rand -hex 16)" \
 			"HYDRA_SYSTEM_SECRET=$$(openssl rand -hex 24)" \
 			"HYDRA_PAIRWISE_SALT=$$(openssl rand -hex 24)" \
-			"HYDRA_CLIENT_ID=password-manager" \
+			"HYDRA_CLIENT_ID=veil" \
 			"BROKER_REDIRECT_URL=http://127.0.0.1:4460/oidc/callback" \
 			"URLS_SELF_ISSUER=http://127.0.0.1:4444" \
 			> identity/.env; \

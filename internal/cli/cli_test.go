@@ -23,6 +23,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/VortexNYC/veil/identity/glue"
 	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/mcpserver"
 	"github.com/VortexNYC/veil/internal/protocol"
@@ -199,6 +200,7 @@ func TestCLIAgentHydraNeedsSecretFile(t *testing.T) {
 func TestCLIAgentTokenWritesFileNotStdout(t *testing.T) {
 	const hydraSecret = "hydra-agent-secret"
 	const jwt = "aaa.bbb.ccc"
+	var sawAud string
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/oauth2/token" {
 			http.NotFound(w, r)
@@ -215,6 +217,7 @@ func TestCLIAgentTokenWritesFileNotStdout(t *testing.T) {
 		if r.Form.Get("grant_type") != "client_credentials" {
 			t.Fatalf("grant %q", r.Form.Get("grant_type"))
 		}
+		sawAud = r.Form.Get("audience")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"access_token": jwt,
@@ -261,6 +264,53 @@ func TestCLIAgentTokenWritesFileNotStdout(t *testing.T) {
 	}
 	if st.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %o", st.Mode().Perm())
+	}
+	// A bare secret file predates the rename — the binding's audience is
+	// the legacy value, and the mint must request exactly that.
+	if sawAud != glue.LegacyAudience {
+		t.Fatalf("minted audience %q, want %q", sawAud, glue.LegacyAudience)
+	}
+}
+
+// A JSON credential file carries the audience recorded at bind time — the
+// mint requests it verbatim, so a renamed client-id default can never
+// desync minted aud from the stored binding.
+func TestCLIAgentTokenMintsRecordedAudience(t *testing.T) {
+	const hydraSecret = "hydra-agent-secret"
+	var sawAud string
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/token" {
+			http.NotFound(w, r)
+			return
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "agent-flue" || pass != hydraSecret {
+			http.Error(w, "auth", http.StatusUnauthorized)
+			return
+		}
+		_ = r.ParseForm()
+		sawAud = r.Form.Get("audience")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"access_token": "aaa.bbb.ccc", "token_type": "bearer",
+		})
+	}))
+	t.Cleanup(issuer.Close)
+	t.Setenv("VEIL_HYDRA_ISSUER", issuer.URL)
+
+	home := t.TempDir()
+	secFile := filepath.Join(home, "flue.hydra")
+	outFile := filepath.Join(home, "jwt")
+	if err := writeHydraCred(secFile, hydraCred{
+		Secret: hydraSecret, Audience: "veil", Issuer: issuer.URL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "agent", "token", "flue", "--secret-file", secFile, "--out-file", outFile); err != nil {
+		t.Fatal(err)
+	}
+	if sawAud != "veil" {
+		t.Fatalf("minted audience %q, want veil", sawAud)
 	}
 }
 
@@ -2098,9 +2148,14 @@ func TestCLIAgentHydraSkipsRotationWhenSecretVerifies(t *testing.T) {
 	if puts != 0 {
 		t.Fatalf("verified secret still rotated: puts=%d", puts)
 	}
-	raw, _ := os.ReadFile(secFile)
-	if strings.TrimSpace(string(raw)) != "live-secret" {
-		t.Fatal("secret file rewritten during a verify-only run")
+	// The file upgrades to JSON but keeps the secret and the legacy
+	// audience it was bound under.
+	got, err := readHydraCred(secFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Secret != "live-secret" || got.Audience != glue.LegacyAudience {
+		t.Fatalf("verify-only run rewrote credential: %+v", got)
 	}
 }
 
@@ -2127,9 +2182,15 @@ func TestCLIAgentHydraRotatesWhenSecretStale(t *testing.T) {
 	if puts != 1 {
 		t.Fatalf("stale secret did not rotate: puts=%d", puts)
 	}
-	raw, _ := os.ReadFile(secFile)
-	if strings.TrimSpace(string(raw)) != "rotated-secret" {
+	got, err := readHydraCred(secFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Secret != "rotated-secret" {
 		t.Fatal("rotated secret not written back to file")
+	}
+	if got.Audience != glue.DefaultClientID {
+		t.Fatalf("fresh bind audience = %q, want %q", got.Audience, glue.DefaultClientID)
 	}
 }
 
@@ -2202,11 +2263,11 @@ func TestCLIAgentHydraIgnoresForeignSecretEnv(t *testing.T) {
 		t.Fatal("foreign agent's secret file was overwritten")
 	}
 	canon := filepath.Join(home, ".config", "vortex", "pwm-railway", "codex.hydra")
-	raw, err := os.ReadFile(canon)
+	got, err := readHydraCred(canon)
 	if err != nil {
 		t.Fatalf("canonical secret file not written: %v", err)
 	}
-	if strings.TrimSpace(string(raw)) != "rotated-secret" {
+	if got.Secret != "rotated-secret" {
 		t.Fatal("canonical file has wrong secret")
 	}
 }
