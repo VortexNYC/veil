@@ -26,11 +26,16 @@ sdk-fresh:
 
 ci:
 	$(MAKE) sdk-fresh
-	$(MAKE) vet test
+	$(MAKE) vet test vuln
 	pnpm exec vp lint
 	pnpm run typecheck
 	pnpm --filter veil-vault test
 	pnpm run docs:build
+
+# govulncheck is pinned — a floating @latest can break the merge bar on a
+# bad tool release. Bump deliberately.
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 prove-cli-golden-flow:
 	go test ./internal/cli ./internal/mcpserver ./internal/publicapi -count=1

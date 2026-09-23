@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veil — Security</title>
+<meta name="description" content="How Veil holds credentials: per-org encryption, agents never see plaintext, append-only audit.">
+<style>
+  @font-face {
+    font-family: "Hedvig Letters Serif";
+    src: url("/fonts/hedvig-letters-serif.woff2") format("woff2");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Hedvig Letters Sans";
+    src: url("/fonts/hedvig-letters-sans.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root {
+    --void: oklch(0.1 0 0);
+    --surface: oklch(0.165 0 0);
+    --border: oklch(0.26 0 0);
+    --subtle: oklch(0.52 0 0);
+    --secondary: oklch(0.68 0 0);
+    --foreground: oklch(0.9 0 0);
+    --bright: oklch(0.97 0 0);
+    --serif: "Hedvig Letters Serif", Georgia, serif;
+    --sans: "Hedvig Letters Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--void);
+    color: var(--foreground);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 64px 20px;
+  }
+  main { max-width: 640px; width: 100%; margin: 0 auto; }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(36px, 7vw, 56px);
+    font-weight: 400;
+    color: var(--bright);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  h2 {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--bright);
+    margin: 40px 0 12px;
+  }
+  p, li {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--secondary);
+  }
+  ul { padding-left: 20px; margin-top: 8px; }
+  li { margin-bottom: 6px; }
+  li::marker { color: var(--subtle); }
+  a { color: var(--foreground); }
+  .back {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--subtle);
+    text-decoration: none;
+  }
+  .back:hover { color: var(--bright); }
+  .report {
+    margin-top: 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .report p { font-size: 14px; }
+  .report a { font-family: var(--mono); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; veil.nyc</a>
+  <h1>Security</h1>
+  <p style="margin-top:16px">Veil is a credential broker for agents and the humans who run them.
+  It is in private alpha — this page is what we can already answer for, in plain terms.</p>
+
+  <h2>Where secrets live</h2>
+  <ul>
+    <li>Every secret is encrypted under a per-organization master key. Org masters are wrapped by a deployment key-encryption key held outside the database.</li>
+    <li>A database dump without the KEK is ciphertext — the two are escrowed in separate failure domains.</li>
+    <li>Items, grants, agents, and sessions are per-org. Authorization checks are org-scoped and fail closed.</li>
+  </ul>
+
+  <h2>What agents can see</h2>
+  <ul>
+    <li>Agents never receive plaintext secrets — not in API responses, MCP, logs, or audit. Secrets are injected into the request/fill path.</li>
+    <li>Grants are use-scoped and bounded: item, level, expiry, and max uses. Every use consumes a session use and writes an audit row in the same transaction — a secret never leaves unaudited.</li>
+  </ul>
+
+  <h2>Identity</h2>
+  <ul>
+    <li>Humans authenticate through Ory Kratos (password + TOTP), tokens through Ory Hydra, org owner/member checks through Ory Keto. We do not hand-roll identity.</li>
+    <li>Signup is invite-only: an owner of an existing org invites an email; the invite carries a one-time recovery code.</li>
+  </ul>
+
+  <h2>Operations</h2>
+  <ul>
+    <li>Daily encrypted-at-rest dumps of every backing database, with restore drills run against real artifacts.</li>
+    <li>Audit rows are append-only and retained on a fixed schedule; deleting an org purges its vault data but never its audit history.</li>
+    <li>Edge and origin both terminate TLS with valid certificates (strict mode, no HTTP path).</li>
+  </ul>
+
+  <div class="report">
+    <p><strong>Report a vulnerability.</strong> Private alpha disclosure goes through
+    <a href="https://github.com/VortexNYC/veil/security/advisories/new">GitHub private advisories</a>.
+    Do not open a public issue. For account problems, contact the owner who invited you — they can
+    remove members and rotate access directly.</p>
+  </div>
+</main>
+</body>
+</html>

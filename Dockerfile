@@ -2,7 +2,7 @@
 # No VOLUME: Railway rejects it. Vault is a Railway volume mounted at /data.
 # Distroless has no shell. Do not put $PORT in CMD — mcp binds os.Getenv("PORT").
 # Glue is the same image: start /identity-glue. It binds GLUE_LISTEN or :$PORT.
-FROM golang:1.25-bookworm AS build
+FROM golang:1.26-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
