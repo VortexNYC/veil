@@ -388,7 +388,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	if err != nil {
 		return err
 	}
-	blob, err := crypto.Seal(dek, secret)
+	blob, err := crypto.SealEpoch(dek, secret, itemAAD(item.OrgID, item.ID))
 	if err != nil {
 		return err
 	}
@@ -568,7 +568,7 @@ func (p *Postgres) Secret(id string) (Secret, error) {
 	if err != nil {
 		return nil, err
 	}
-	plain, err := crypto.Open(dek, r.Secret)
+	plain, err := crypto.OpenEpoch(dek, r.Secret, itemAAD(r.OrgID, id))
 	if err != nil {
 		return nil, err
 	}
@@ -698,7 +698,7 @@ func (p *Postgres) mintOwnerWrapped(ctx context.Context, orgID string, o protoco
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
-	sealed, err := crypto.Seal(master, dek)
+	sealed, err := crypto.SealEpoch(master, dek, ownerWrapAAD(orgID, o))
 	if err != nil {
 		return err
 	}

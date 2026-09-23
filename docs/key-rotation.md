@@ -189,7 +189,42 @@ new wraps land under a clean key), then orgs.
 ## What rotation does not do
 
 - Does not re-seal item ciphertexts (by design — see the table).
-- Does not version ciphertext AAD — `key_version` exists on `org_keys` for
-  the epoch-stamped-AAD work (VEIL-15), not used yet.
+- Does not bump ciphertext epochs — `items.secret` AAD binding is the
+  `VEIL1` marker (see *Ciphertext epochs*), orthogonal to `key_version`.
 - Does not give agents anything. Rotation is store-level; no secret or key
   material crosses the HTTP boundary.
+
+## Ciphertext epochs (AAD binding)
+
+`crypto.SealEpoch`/`OpenEpoch` in `internal/crypto/box.go` own the format.
+A stored blob is either:
+
+- **Legacy (epoch 0/1)** — `nonce||ct`, sealed nil-AAD. Readable forever,
+  no longer written.
+- **Epoch 2 (`VEIL1`)** — `VEIL1||nonce||ct(AAD-bound)`. The 5-byte marker
+  makes a legacy nonce colliding with it a ~2^-40 event, so the marker is
+  authoritative, not advisory: a marked blob that fails its AAD open errors
+  — there is no legacy fallback for marked bytes.
+
+AAD formats live in `internal/store/aad.go`, domain-tagged so a blob from
+one row type can never satisfy another's context:
+
+- `items.secret` → `veil/item/v1 · org_id · item_id`
+- `owner_keys.wrapped` → `veil/ownerkey/v1 · org_id · owner_kind · owner_id`
+- `item_versions.secret` → byte-copies of `items.secret`, same item binding
+- `org_keys.wrapped` → already `org_id`-bound via `SealAAD` (epoch-1 AAD
+  predates the marker — left as-is)
+- `replica/vault.go` — stays nil-AAD: the vault file is one sealed blob,
+  there are no rows to transplant between
+
+Migration is **lazy at the write edge**: `PutItem` and every DEK/wrap mint
+or re-seal write `VEIL1`; reads dispatch on the marker. `RotateOrgKey`
+converges `owner_keys` to `VEIL1` as a side effect (it re-seals every wrap).
+Legacy item ciphertexts are never mass-rewritten — a `PutItem` re-seals
+that row; `RestoreVersion`/`SnapshotItem` copy the blob verbatim and keep
+whatever epoch it was sealed at; untouched rows stay readable.
+
+The security property: a `VEIL1` blob transplanted to a different `item_id`,
+`org_id`, or owner row fails closed (`crypto.ErrAuth`). A *legacy* blob
+still transplants freely — that is exactly the gap the epoch closes, which
+is why new writes are always marked.

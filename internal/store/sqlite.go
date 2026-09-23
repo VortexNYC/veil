@@ -519,7 +519,7 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	if err != nil {
 		return err
 	}
-	blob, err := crypto.Seal(dek, secret)
+	blob, err := crypto.SealEpoch(dek, secret, itemAAD(item.OrgID, item.ID))
 	if err != nil {
 		return err
 	}
@@ -749,7 +749,7 @@ func (s *SQLite) Secret(id string) (Secret, error) {
 	if err != nil {
 		return nil, err
 	}
-	plain, err := crypto.Open(dek, blob)
+	plain, err := crypto.OpenEpoch(dek, blob, itemAAD(orgID, id))
 	if err != nil {
 		return nil, err
 	}
@@ -1375,7 +1375,7 @@ func (s *SQLite) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.
 }
 
 func (s *SQLite) mintOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, dek []byte) error {
-	sealed, err := crypto.Seal(s.master, dek)
+	sealed, err := crypto.SealEpoch(s.master, dek, ownerWrapAAD(orgID, o))
 	if err != nil {
 		return err
 	}
@@ -1399,7 +1399,7 @@ func (ts sqliteTxSource) loadOwnerWrapped(ctx context.Context, orgID string, o p
 }
 
 func (ts sqliteTxSource) mintOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, dek []byte) error {
-	sealed, err := crypto.Seal(ts.master, dek)
+	sealed, err := crypto.SealEpoch(ts.master, dek, ownerWrapAAD(orgID, o))
 	if err != nil {
 		return err
 	}
@@ -1476,8 +1476,9 @@ func (s *SQLite) rewrapLegacy() error {
 
 	ts := sqliteTxSource{tx: tx, master: s.master}
 
-	// Rewrap current item secrets.
-	items, err := tx.Query(`SELECT id, org_id, owner_kind, owner_id, secret FROM items`)
+	// Rewrap current item secrets. The trailing column is the id bound in the
+	// AAD — for items it is the row id itself.
+	items, err := tx.Query(`SELECT id, org_id, owner_kind, owner_id, secret, id FROM items`)
 	if err != nil {
 		return err
 	}
@@ -1490,7 +1491,7 @@ func (s *SQLite) rewrapLegacy() error {
 	}
 
 	// Rewrap historical item versions with their item's owner.
-	vers, err := tx.Query(`SELECT v.id, i.org_id, i.owner_kind, i.owner_id, v.secret FROM item_versions v JOIN items i ON v.item_id = i.id`)
+	vers, err := tx.Query(`SELECT v.id, i.org_id, i.owner_kind, i.owner_id, v.secret, v.item_id FROM item_versions v JOIN items i ON v.item_id = i.id`)
 	if err != nil {
 		return err
 	}
@@ -1521,15 +1522,16 @@ func (s *SQLite) rewrapLegacy() error {
 func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id string, blob []byte) error) (bool, int, int, error) {
 	defer rows.Close()
 	type row struct {
-		id    string
-		org   string
-		owner protocol.Owner
-		blob  []byte
+		id     string
+		org    string
+		owner  protocol.Owner
+		blob   []byte
+		itemID string
 	}
 	var list []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.org, &r.owner.Kind, &r.owner.ID, &r.blob); err != nil {
+		if err := rows.Scan(&r.id, &r.org, &r.owner.Kind, &r.owner.ID, &r.blob, &r.itemID); err != nil {
 			return false, 0, 0, err
 		}
 		list = append(list, r)
@@ -1553,7 +1555,7 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 			if err != nil {
 				return false, 0, 0, err
 			}
-			blob, err := crypto.Seal(dek, plain)
+			blob, err := crypto.SealEpoch(dek, plain, itemAAD(r.org, r.itemID))
 			if err != nil {
 				return false, 0, 0, err
 			}
@@ -1581,7 +1583,7 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 		if err != nil {
 			return false, 0, 0, err
 		}
-		dek, err := crypto.Open(s.master, wrapped)
+		dek, err := crypto.OpenEpoch(s.master, wrapped, ownerWrapAAD(r.org, r.owner))
 		if err == crypto.ErrAuth {
 			// Wrong master key. Skip this row.
 			continue
@@ -1589,7 +1591,7 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 		if err != nil {
 			return false, 0, 0, err
 		}
-		if _, err := crypto.Open(dek, r.blob); err != nil {
+		if _, err := crypto.OpenEpoch(dek, r.blob, itemAAD(r.org, r.itemID)); err != nil {
 			return false, 0, 0, fmt.Errorf("store: %s secret is neither master nor owner sealed: %w", r.id, err)
 		}
 		resolved++

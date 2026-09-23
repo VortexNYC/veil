@@ -139,7 +139,7 @@ func (km *keyManager) ownerDEK(ctx context.Context, s ownerSource, orgID string,
 		} else if err != nil {
 			return nil, err
 		}
-		plain, err := crypto.Open(master, wrapped)
+		plain, err := crypto.OpenEpoch(master, wrapped, ownerWrapAAD(orgID, o))
 		if err != nil {
 			// The loaded wrap was rewrapped by a rotation committed on
 			// another replica while this master was cached — or the row is

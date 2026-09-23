@@ -251,11 +251,12 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 		return err
 	}
 	for _, ow := range owners {
-		dek, err := crypto.Open(oldMaster, ow.Wrapped)
+		owner := protocol.Owner{Kind: protocol.OwnerKind(ow.OwnerKind), ID: ow.OwnerID}
+		dek, err := crypto.OpenEpoch(oldMaster, ow.Wrapped, ownerWrapAAD(orgID, owner))
 		if err != nil {
 			return fmt.Errorf("store: owner_keys row %s/%s does not unwrap: %w", ow.OwnerKind, ow.OwnerID, err)
 		}
-		resealed, err := crypto.Seal(newMaster, dek)
+		resealed, err := crypto.SealEpoch(newMaster, dek, ownerWrapAAD(orgID, owner))
 		if err != nil {
 			return err
 		}
