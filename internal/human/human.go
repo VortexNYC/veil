@@ -24,7 +24,7 @@ import (
 
 const (
 	// Deployed Hydra audience; renaming is a prod migration, not a string sweep.
-	DefaultAudience = "password-manager"
+	DefaultAudience = "veil"
 	DefaultRedirect = "http://127.0.0.1:4460/oidc/callback"
 )
 

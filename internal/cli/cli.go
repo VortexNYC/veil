@@ -1055,22 +1055,27 @@ func agentCmd(home *string) *cobra.Command {
 
 			// EnsureAgent PUTs the client and rotates its secret — a blind
 			// re-run orphans every other copy of the secret. Verify the
-			// on-disk secret first: if it still mints, there is nothing to
-			// rotate. Only a real auth rejection justifies rotation; a
-			// network failure cannot prove the secret is stale.
+			// on-disk credential first: if it still mints, there is nothing
+			// to rotate. The verify mint uses the FILE's recorded audience,
+			// not the current default — a renamed default must not make a
+			// healthy legacy binding look stale.
 			verified := false
-			if !forceRotate {
-				if secret, rerr := readFileMaterial(secretFile); rerr == nil && len(secret) > 0 {
-					_, verr := glue.ClientCredentials(cmd.Context(), issuer, clientID, string(secret), audience)
-					switch {
-					case verr == nil:
-						verified = true
-						slog.Info("agent hydra: existing secret verified, not rotating", "agent", name)
-					case isAuthRejection(verr):
-						slog.Warn("agent hydra: on-disk secret rejected, rotating", "agent", name)
-					default:
-						return fmt.Errorf("agent hydra: cannot verify existing secret (%v); refusing to rotate — --force overrides", verr)
-					}
+			existing, _ := readHydraCred(secretFile)
+			if !forceRotate && existing.Secret != "" {
+				mintAud := existing.Audience
+				if mintAud == "" {
+					mintAud = glue.LegacyAudience
+				}
+				_, verr := glue.ClientCredentials(cmd.Context(), issuer, clientID, existing.Secret, mintAud)
+				switch {
+				case verr == nil:
+					verified = true
+					audience = mintAud // keep the aud the binding was created under
+					slog.Info("agent hydra: existing secret verified, not rotating", "agent", name)
+				case isAuthRejection(verr):
+					slog.Warn("agent hydra: on-disk secret rejected, rotating", "agent", name)
+				default:
+					return fmt.Errorf("agent hydra: cannot verify existing secret (%v); refusing to rotate — --force overrides", verr)
 				}
 			}
 			a, err := openApp(*home)
@@ -1094,16 +1099,24 @@ func agentCmd(home *string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if cred.Secret != "" {
-					if err := os.MkdirAll(filepath.Dir(secretFile), 0o700); err != nil {
-						return err
+				if cred.Secret == "" {
+					if _, err := os.Stat(secretFile); err != nil {
+						return fmt.Errorf("agent hydra: client exists; secret is not reissued")
 					}
-					if err := os.WriteFile(secretFile, []byte(cred.Secret+"\n"), 0o600); err != nil {
-						return err
-					}
-				} else if _, err := os.Stat(secretFile); err != nil {
-					return fmt.Errorf("agent hydra: client exists; secret is not reissued")
 				}
+			}
+			// Record the aud this agent mints under — bare secret files
+			// silently resolve to the legacy audience.
+			if cred.Secret != "" {
+				existing.Secret = cred.Secret
+			}
+			if existing.Secret == "" {
+				return fmt.Errorf("agent hydra: no client secret to record")
+			}
+			existing.Audience = cred.Audience
+			existing.Issuer = issuer
+			if err := writeHydraCred(secretFile, existing); err != nil {
+				return err
 			}
 			w, err := a.BindWorkload(name, issuer, cred.ID, cred.Audience)
 			if err != nil {
@@ -1134,17 +1147,28 @@ func agentCmd(home *string) *cobra.Command {
 			if !id.Valid(args[0]) {
 				return fmt.Errorf("agent token: invalid name")
 			}
-			secret, err := readFileMaterial(tokenSecretFile)
+			cred, err := readHydraCred(tokenSecretFile)
 			if err != nil {
 				return err
 			}
-			if len(secret) == 0 {
+			if cred.Secret == "" {
 				return fmt.Errorf("agent token: empty secret")
 			}
 			issuer := envOr("VEIL_HYDRA_ISSUER", "http://127.0.0.1:4444")
-			audience := envOr("VEIL_HYDRA_CLIENT_ID", glue.DefaultClientID)
+			if cred.Issuer != "" && os.Getenv("VEIL_HYDRA_ISSUER") == "" {
+				issuer = cred.Issuer
+			}
+			// The binding's recorded audience wins — a renamed client-id
+			// default must not change what an existing agent mints.
+			audience := cred.Audience
+			if audience == "" {
+				audience = glue.LegacyAudience
+			}
+			if env := os.Getenv("VEIL_HYDRA_CLIENT_ID"); env != "" {
+				audience = env
+			}
 			clientID := glue.AgentClientID(args[0])
-			raw, err := glue.ClientCredentials(cmd.Context(), issuer, clientID, string(secret), audience)
+			raw, err := glue.ClientCredentials(cmd.Context(), issuer, clientID, cred.Secret, audience)
 			if err != nil {
 				return err
 			}
@@ -1963,6 +1987,45 @@ func readFileMaterial(path string) ([]byte, error) {
 		return nil, err
 	}
 	return trimNL(b), nil
+}
+
+// hydraCred is the on-disk form of an agent's Hydra client credential.
+// New files are JSON carrying the audience the binding recorded at bind
+// time; pre-rename files are a bare secret and can only mint under
+// glue.LegacyAudience — the value their workload bindings hold.
+type hydraCred struct {
+	Secret   string `json:"secret"`
+	Audience string `json:"audience"`
+	Issuer   string `json:"issuer,omitempty"`
+}
+
+func readHydraCred(path string) (hydraCred, error) {
+	b, err := readFileMaterial(path)
+	if err != nil {
+		return hydraCred{}, err
+	}
+	if len(b) == 0 {
+		return hydraCred{}, nil
+	}
+	if b[0] == '{' {
+		var c hydraCred
+		if err := json.Unmarshal(b, &c); err != nil {
+			return hydraCred{}, fmt.Errorf("hydra secret file: %w", err)
+		}
+		return c, nil
+	}
+	return hydraCred{Secret: string(b), Audience: glue.LegacyAudience}, nil
+}
+
+func writeHydraCred(path string, c hydraCred) error {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(b, '\n'), 0o600)
 }
 
 // hydraSecretPath resolves where an agent's client secret lives: the flag
