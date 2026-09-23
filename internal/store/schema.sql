@@ -136,6 +136,11 @@ CREATE TABLE sessions (
     uses INTEGER NOT NULL
 );
 
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_items_name_trgm ON items USING GIN (name gin_trgm_ops);
+CREATE INDEX idx_items_uris_trgm ON items USING GIN (uris gin_trgm_ops);
+CREATE INDEX idx_items_tags_trgm ON items USING GIN (tags gin_trgm_ops);
+CREATE INDEX idx_items_login_trgm ON items USING GIN (login gin_trgm_ops);
 CREATE INDEX idx_items_org_name ON items(org_id, name);
 CREATE INDEX idx_items_org_archived_name ON items(org_id, archived, name);
 CREATE INDEX idx_grants_item ON grants(item_id);

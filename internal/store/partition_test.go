@@ -267,3 +267,46 @@ func TestPostgresAuditRetention(t *testing.T) {
 		t.Fatalf("current partitions detached: %v", detached2)
 	}
 }
+
+// TestPostgresTrigramIndexes: EnsurePostgresSchema installs pg_trgm and the
+// GIN trigram indexes on items, and a similarity query actually resolves
+// (VEIL-9 — the index substrate for human item search).
+func TestPostgresTrigramIndexes(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	pool := partPool(t, dsn, "test_trgm")
+	defer pool.Close()
+	if err := EnsurePostgresSchema(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var ext int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_extension WHERE extname='pg_trgm'`).Scan(&ext); err != nil {
+		t.Fatal(err)
+	}
+	if ext != 1 {
+		t.Fatal("pg_trgm extension not installed")
+	}
+	var idx int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_indexes
+		WHERE schemaname=current_schema() AND tablename='items'
+		AND indexname IN ('idx_items_name_trgm','idx_items_uris_trgm','idx_items_tags_trgm','idx_items_login_trgm')`).Scan(&idx); err != nil {
+		t.Fatal(err)
+	}
+	if idx != 4 {
+		t.Fatalf("items has %d trigram indexes, want 4", idx)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, tags, login)
+		VALUES ('i1', 'org', 'GitHub deploy token', 'login', 'agent', 'a1', '["github.com"]', '\x00', '["ci","prod"]', 'ci-bot')`); err != nil {
+		t.Fatal(err)
+	}
+	var hits int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM items WHERE name % 'github' OR uris % 'github' OR tags % 'prod' OR login % 'ci'`).Scan(&hits); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 {
+		t.Fatalf("trigram similarity found %d rows, want 1", hits)
+	}
+}

@@ -871,7 +871,14 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	// Index phase: after the legacy drop so the idx_audit_* names bind to
 	// the partitioned parent and propagate to every partition.
+	// pg_trgm is a trusted contrib extension — CREATE EXTENSION works under
+	// the app role on Railway's Postgres image.
 	for _, q := range []string{
+		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+		`CREATE INDEX IF NOT EXISTS idx_items_name_trgm ON items USING GIN (name gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_uris_trgm ON items USING GIN (uris gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_tags_trgm ON items USING GIN (tags gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_login_trgm ON items USING GIN (login gin_trgm_ops)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_org_name ON items(org_id, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_org_archived_name ON items(org_id, archived, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_grants_item ON grants(item_id)`,
