@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "veil-mail",
+  "account_id": "31bfc2c14a28e0a39e8b9e3c556a18be",
+  "compatibility_date": "2026-09-11",
+  "main": "src/index.ts",
+  "routes": [
+    {
+      "pattern": "mail.veil.nyc",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "EMAIL_FROM": "Veil <noreply@veil.nyc>"
+  },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ]
+}

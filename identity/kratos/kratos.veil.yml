@@ -78,6 +78,7 @@ selfservice:
       ui_url: https://login.veil.nyc/login
       lifespan: 10m
     registration:
+      enabled: false
       lifespan: 10m
       ui_url: https://login.veil.nyc/registration
       after:
@@ -117,7 +118,7 @@ courier:
     from_name: Veil
   http:
     request_config:
-      url: https://api.resend.com/emails
+      url: https://mail.veil.nyc/
       method: POST
       headers:
         Content-Type: application/json
@@ -127,7 +128,7 @@ courier:
           name: Authorization
           in: header
           value: unset
-      body: file:///etc/config/kratos/courier.resend.jsonnet
+      body: file:///etc/config/kratos/courier.cf.jsonnet
 
 session:
   whoami:

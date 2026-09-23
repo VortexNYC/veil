@@ -1,6 +1,5 @@
 function(ctx) {
-  from: 'Veil <noreply@veil.nyc>',
-  to: [ctx.recipient],
+  to: ctx.recipient,
   subject: ctx.subject,
   html: ctx.body,
 }
