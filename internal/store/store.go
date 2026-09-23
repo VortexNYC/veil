@@ -88,6 +88,11 @@ type Store interface {
 	StoreRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error
 	OpenRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) ([]byte, error)
 	ReseedOrgKey(ctx context.Context, orgID string, master []byte) error
+	// RecoverOrgKey opens the owner's recovery wrap, re-wraps the recovered
+	// master under this store's KEK, and marks the wrap used — atomically,
+	// in one transaction, so a failed reseed cannot burn the wrap. It is the
+	// safe composition of OpenRecoveryWrap + ReseedOrgKey; prefer it.
+	RecoverOrgKey(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) error
 
 	PutItem(protocol.Item, Secret) error
 	Item(id string) (protocol.Item, error)

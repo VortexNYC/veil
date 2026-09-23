@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -110,6 +111,11 @@ func poolSizeEnv(name string) int {
 // Missing rows fail closed with ErrOrgKeyMissing — a wrong-key decrypt attempt
 // would be indistinguishable from corruption, so we never try.
 func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, error) {
+	// RLock spans read + unwrap: a KEK rotation can never commit between
+	// them — resolving during rotate-kek waits for adoption, then reads the
+	// rewrapped row under the new KEK instead of failing on a stale blob.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	row, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
 		return p.sqlc.OrgKey(ctx, orgID)
 	})
@@ -121,8 +127,6 @@ func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, err
 	}
 	// AAD binds the wrap to this org: a row copied to another org's row does
 	// not open even under the same KEK.
-	p.kekMu.RLock()
-	defer p.kekMu.RUnlock()
 	return crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
 }
 
@@ -137,9 +141,13 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
+	// RLock spans seal + insert + verify: a KEK rotation can never commit
+	// between sealing under the old KEK and inserting — the row this writes
+	// always matches the KEK that sealed it. Outermost lock; no DB locks are
+	// held while acquiring it.
 	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -166,9 +174,7 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
-	p.kekMu.RLock()
 	existing, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
@@ -202,22 +208,37 @@ var ErrRotationConflict = errors.New("store: concurrent key rotation")
 // guard makes concurrent rotations fail one side instead of interleaving
 // rewraps under different masters.
 func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
+	// kekMu.RLock outermost — see RotateKEK for the lock-ordering rule.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// ROW EXCLUSIVE upfront: SELECT FOR UPDATE only takes ROW SHARE, and
+	// upgrading to ROW EXCLUSIVE mid-transaction (at BumpOrgKey) deadlocks
+	// against RotateKEK's SHARE ROW EXCLUSIVE — it holds the table lock
+	// while waiting on our row lock. Taking the write-level lock first
+	// turns that into clean first-statement serialization. Concurrent
+	// org rotations on different orgs still proceed (ROW EXCLUSIVE does
+	// not self-conflict); same-org serializes on the row lock below.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
 	q := p.sqlc.WithTx(tx)
-	row, err := q.OrgKey(ctx, orgID)
+	// FOR UPDATE serializes against DEK mints and recovery-wrap stores
+	// (FOR SHARE readers) and against concurrent rotations on other
+	// processes: a second rotation waits, re-reads the bumped version, and
+	// loses on the key_version guard rather than interleaving rewraps.
+	row, err := q.OrgKeyForUpdate(ctx, orgID)
 	if err == pgx.ErrNoRows {
 		return ErrOrgKeyMissing
 	}
 	if err != nil {
 		return err
 	}
-	p.kekMu.RLock()
 	oldMaster, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
@@ -248,9 +269,7 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 			return fmt.Errorf("store: owner_keys row %s/%s vanished mid-rotation", ow.OwnerKind, ow.OwnerID)
 		}
 	}
-	p.kekMu.RLock()
 	wrapped, err := crypto.SealAAD(p.kek, newMaster, []byte(orgID))
-	p.kekMu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -285,20 +304,54 @@ func (p *Postgres) ReseedOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
+	// RLock spans seal + update — a KEK rotation cannot interleave between
+	// them and strand the re-seeded row under a retired KEK.
 	p.kekMu.RLock()
-	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
-	p.kekMu.RUnlock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	n, err := retryOnDeadConn(func() (int64, error) {
-		return p.sqlc.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
-	})
+	defer func() { _ = tx.Rollback(ctx) }()
+	// ROW EXCLUSIVE upfront — same upgrade-deadlock fix as RotateOrgKey:
+	// the RewrapOrgKey write below would otherwise upgrade mid-tx against
+	// RotateKEK's held SHARE ROW EXCLUSIVE while it waits on our row lock.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	q := p.sqlc.WithTx(tx)
+	// FOR UPDATE serializes against RotateOrgKey: without it a reseed of a
+	// retired master could overwrite a row rotation just committed.
+	row, err := q.OrgKeyForUpdate(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	// Refuse to overwrite a master that is alive under this KEK: reseed
+	// exists for rows sealed under a LOST KEK. An identical re-seed is a
+	// no-op; a different live master means someone rotated — regressing
+	// would strand every rewrapped DEK.
+	if existing, openErr := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID)); openErr == nil {
+		if hmac.Equal(existing, master) {
+			return tx.Commit(ctx)
+		}
+		return ErrOrgKeyMismatch
+	}
+	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	if err != nil {
+		return err
+	}
+	n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
 	if err != nil {
 		return err
 	}
 	if n != 1 {
 		return ErrOrgKeyMissing
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	p.km.InvalidateOrg(orgID)
 	return nil
@@ -311,9 +364,11 @@ func recoveryAAD(orgID string, o protocol.Owner) []byte {
 }
 
 // StoreRecoveryWrap seals the org's committed master under owner-held
-// recovery material and upserts the wrap. The recovery key never persists —
-// losing it strands the wrap, not the vault. Re-minting replaces the row and
-// clears used_at.
+// recovery material and upserts the wrap, in one transaction: the FOR SHARE
+// read of org_keys serializes against RotateOrgKey's FOR UPDATE, so a wrap
+// can never commit a dead master after rotation's delete+commit. The
+// recovery key never persists — losing it strands the wrap, not the vault.
+// Re-minting replaces the row and clears used_at.
 func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error {
 	if len(recoveryKey) != crypto.KeySize {
 		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
@@ -321,22 +376,38 @@ func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protoc
 	if o.Kind == "" || o.ID == "" {
 		return fmt.Errorf("store: missing owner")
 	}
-	master, err := p.resolveOrgKey(ctx, orgID)
+	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.OrgKeyForShare(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
 	wrapped, err := crypto.SealAAD(recoveryKey, master, recoveryAAD(orgID, o))
 	if err != nil {
 		return err
 	}
 	exp := sql.NullTime{Valid: !expiresAt.IsZero(), Time: expiresAt}
-	_, err = retryOnDeadConn(func() (struct{}, error) {
-		return struct{}{}, p.sqlc.PutRecoveryWrap(ctx, sqlc.PutRecoveryWrapParams{
-			OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
-			Wrapped: wrapped, CreatedAt: time.Now().UTC(), ExpiresAt: exp,
-		})
-	})
-	return err
+	if err := q.PutRecoveryWrap(ctx, sqlc.PutRecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
+		Wrapped: wrapped, CreatedAt: time.Now().UTC(), ExpiresAt: exp,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // OpenRecoveryWrap verifies recoveryKey against the owner's wrap and returns
@@ -387,6 +458,96 @@ func (p *Postgres) OpenRecoveryWrap(ctx context.Context, orgID string, o protoco
 	return master, nil
 }
 
+// RecoverOrgKey is the lost-KEK recovery verb and the only safe way to spend
+// a wrap for reseed: open + consume + re-wrap org_keys under this store's
+// KEK happen in ONE transaction. Composing OpenRecoveryWrap + ReseedOrgKey
+// burns the wrap on the first commit — a failed reseed would leave the org
+// sealed under the lost KEK with the wrap already spent.
+func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) error {
+	if len(recoveryKey) != crypto.KeySize {
+		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
+	}
+	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// ROW EXCLUSIVE upfront — same upgrade-deadlock fix as RotateOrgKey.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	q := p.sqlc.WithTx(tx)
+	// Global lock order is org_keys → recovery_wraps, matching
+	// RotateOrgKey/StoreRecoveryWrap — taking the wrap row first would
+	// deadlock against them. FOR UPDATE also serializes against rotation:
+	// a committed rotation deletes the wrap below, and a waiting rotation
+	// re-seals after this recovery commits.
+	orgRow, err := q.OrgKeyForUpdate(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	row, err := q.RecoveryWrap(ctx, sqlc.RecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
+	})
+	if err == pgx.ErrNoRows {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if row.UsedAt.Valid {
+		return fmt.Errorf("store: recovery wrap already used")
+	}
+	if row.ExpiresAt.Valid && time.Now().UTC().After(row.ExpiresAt.Time) {
+		return fmt.Errorf("store: recovery wrap expired")
+	}
+	master, err := crypto.OpenAAD(recoveryKey, row.Wrapped, recoveryAAD(orgID, o))
+	if err != nil {
+		return fmt.Errorf("store: recovery key does not open this wrap: %w", err)
+	}
+	// Never regress a live master: if the committed row already opens under
+	// this KEK to the same master the org is healthy — no-op, wrap unspent.
+	// A different live master means a rotation committed after the wrap was
+	// minted; regressing would strand the rewrapped DEKs.
+	if existing, openErr := crypto.OpenAAD(p.kek, orgRow.Wrapped, []byte(orgID)); openErr == nil {
+		if hmac.Equal(existing, master) {
+			return tx.Commit(ctx)
+		}
+		return ErrOrgKeyMismatch
+	}
+	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	if err != nil {
+		return err
+	}
+	n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrOrgKeyMissing
+	}
+	n, err = q.ConsumeRecoveryWrap(ctx, sqlc.ConsumeRecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID, UsedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("store: recovery wrap consumed concurrently")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	p.km.InvalidateOrg(orgID)
+	return nil
+}
+
 // RotateKEK rewraps every org master under newKEK. Masters do not change —
 // owner DEKs and item ciphertexts are untouched; only the org_keys wrap
 // moves. cmk-managed rows are skipped (an external CMK owns its own wrap).
@@ -396,18 +557,30 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 	if len(newKEK) != crypto.KeySize {
 		return fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
 	}
+	// kekMu is always the OUTERMOST lock: taken before any DB transaction or
+	// row/table lock. Every other verb takes kekMu.RLock the same way, so a
+	// reader can never hold a DB lock while waiting on kekMu — no
+	// mutex-versus-table-lock deadlock. Exclusive for the whole verb:
+	// resolveOrgKey/EnsureOrgKey readers wait rather than race the swap.
+	p.kekMu.Lock()
+	defer p.kekMu.Unlock()
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// SHARE ROW EXCLUSIVE blocks INSERTs for the tx — an org provisioned
+	// mid-rotation on a not-yet-restarted replica would otherwise land
+	// sealed under the old KEK after the snapshot. Same-process inserts
+	// serialize on kekMu instead and seal under the adopted key.
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
 	q := p.sqlc.WithTx(tx)
 	rows, err := q.ListOrgKeys(ctx)
 	if err != nil {
 		return err
 	}
-	p.kekMu.RLock()
-	defer p.kekMu.RUnlock()
 	for _, row := range rows {
 		if row.CmkID.Valid {
 			continue
@@ -431,7 +604,7 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	p.kek = newKEK
+	p.kek = append([]byte(nil), newKEK...)
 	for _, row := range rows {
 		p.km.InvalidateOrg(row.OrgID)
 	}
@@ -442,6 +615,40 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 // same DDL OpenPostgres runs at boot, exposed so the sqlite→postgres migrator
 // can prepare an empty database without a master key.
 func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	// Legacy audit migration: a plain audit table cannot become partitioned
+	// in place. Rename it aside first — the DDL below then creates the
+	// partitioned form, the copy step moves rows, and the drop frees the
+	// idx_audit_* index names before index creation runs. Detection keys on
+	// relkind: 'r' is a plain table, 'p' is already partitioned.
+	var auditIsPlain bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = current_schema() AND c.relname = 'audit' AND c.relkind = 'r')`).Scan(&auditIsPlain); err != nil {
+		return err
+	}
+	if auditIsPlain {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		// Table renames do not rename owned sequences: the legacy identity
+		// sequence keeps the name audit_id_seq. It must move aside or
+		// CREATE SEQUENCE IF NOT EXISTS binds the partitioned table's
+		// default to a sequence owned by the doomed legacy table — and the
+		// later DROP fails on the dependency.
+		for _, q := range []string{
+			`ALTER TABLE audit RENAME TO audit_legacy`,
+			`ALTER SEQUENCE IF EXISTS audit_id_seq RENAME TO audit_id_seq_legacy`,
+		} {
+			if _, err := tx.Exec(ctx, q); err != nil {
+				_ = tx.Rollback(ctx)
+				return err
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+	}
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS humans (
 			id TEXT PRIMARY KEY,
@@ -485,8 +692,13 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			human_id TEXT NOT NULL,
 			expires_at TIMESTAMPTZ NOT NULL
 		)`,
+		// Audit is range-partitioned by month on `at` (VEIL-4): retention is
+		// DETACH PARTITION, not DELETE scans. The partition key must be part
+		// of the PK, hence composite (id, at). id comes from a plain sequence
+		// — PG16 cannot declare IDENTITY columns on partitioned tables.
+		`CREATE SEQUENCE IF NOT EXISTS audit_id_seq`,
 		`CREATE TABLE IF NOT EXISTS audit (
-			id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+			id BIGINT NOT NULL DEFAULT nextval('audit_id_seq'),
 			at TIMESTAMPTZ NOT NULL,
 			org_id TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
@@ -494,8 +706,13 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			action TEXT NOT NULL,
 			decision TEXT NOT NULL,
 			reason TEXT NOT NULL,
-			approval_id TEXT NOT NULL
-		)`,
+			approval_id TEXT NOT NULL,
+			PRIMARY KEY (id, at)
+		) PARTITION BY RANGE (at)`,
+		// Catch-all: rows outside every created month land here instead of
+		// erroring. Migrated legacy rows live here permanently; retention
+		// only detaches named monthly partitions.
+		`CREATE TABLE IF NOT EXISTS audit_default PARTITION OF audit DEFAULT`,
 		`CREATE TABLE IF NOT EXISTS workloads (
 			issuer TEXT NOT NULL,
 			subject TEXT NOT NULL,
@@ -538,13 +755,6 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			max_uses INTEGER NOT NULL,
 			uses INTEGER NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_items_org_name ON items(org_id, name)`,
-		`CREATE INDEX IF NOT EXISTS idx_items_org_archived_name ON items(org_id, archived, name)`,
-		`CREATE INDEX IF NOT EXISTS idx_grants_item ON grants(item_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_agent_at ON audit(agent_id, at)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_item_versions_item ON item_versions(item_id, id)`,
 		`CREATE TABLE IF NOT EXISTS recovery_wraps (
 			org_id TEXT NOT NULL,
 			owner_kind TEXT NOT NULL,
@@ -556,6 +766,63 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			PRIMARY KEY (org_id, owner_kind, owner_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_workloads_issuer ON workloads(issuer)`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			return err
+		}
+	}
+	// Legacy audit copy: move every row from audit_legacy into the
+	// partitioned table (the DEFAULT partition catches pre-partition-era
+	// months), advance the sequence past copied ids, and drop the legacy
+	// table — freeing the idx_audit_* names for the index phase below. One
+	// transaction: a crash rolls back and the next boot retries the copy.
+	var hasLegacyAudit bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = current_schema() AND c.relname = 'audit_legacy' AND c.relkind = 'r')`).Scan(&hasLegacyAudit); err != nil {
+		return err
+	}
+	if hasLegacyAudit {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		for _, q := range []string{
+			// A legacy table from before org-carrying rows may lack the
+			// column entirely; default it so the copy backfills '' →
+			// LocalOrgID via the later org backfill pass.
+			`ALTER TABLE audit_legacy ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`,
+			`INSERT INTO audit(id, at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+			 SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit_legacy`,
+			`SELECT setval('audit_id_seq', COALESCE((SELECT max(id) FROM audit), 1))`,
+			`DROP TABLE audit_legacy`,
+		} {
+			if _, err := tx.Exec(ctx, q); err != nil {
+				_ = tx.Rollback(ctx)
+				return err
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+	}
+	// Current and next month's partitions exist after every boot — the
+	// origin self-maintains its partition horizon on deploy/restart, and
+	// `veil sweep` runs the same ensure so a never-restarting process still
+	// gets partitions.
+	if err := EnsureAuditPartitions(ctx, pool, 2); err != nil {
+		return err
+	}
+	// Index phase: after the legacy drop so the idx_audit_* names bind to
+	// the partitioned parent and propagate to every partition.
+	for _, q := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_items_org_name ON items(org_id, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_org_archived_name ON items(org_id, archived, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_grants_item ON grants(item_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_agent_at ON audit(agent_id, at)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_item_versions_item ON item_versions(item_id, id)`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err
@@ -669,6 +936,79 @@ func (p *Postgres) migrate() error {
 }
 
 func (p *Postgres) Close() error { p.pool.Close(); p.auditPool.Close(); return nil }
+
+// auditPartitionName names monthly audit partitions deterministically.
+func auditPartitionName(t time.Time) string {
+	return fmt.Sprintf("audit_%04d_%02d", t.UTC().Year(), int(t.UTC().Month()))
+}
+
+// EnsureAuditPartitions creates monthly partitions of audit covering this
+// month and ahead-1 following months. Idempotent — reruns create only the
+// missing range. Boot calls it with ahead=2; `veil sweep` calls it with a
+// wider horizon so a never-restarting origin still partitions ahead.
+func EnsureAuditPartitions(ctx context.Context, pool *pgxpool.Pool, ahead int) error {
+	now := time.Now().UTC()
+	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < ahead; i++ {
+		from := start.AddDate(0, i, 0)
+		to := from.AddDate(0, 1, 0)
+		q := fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS %s PARTITION OF audit FOR VALUES FROM ('%s') TO ('%s')`,
+			auditPartitionName(from),
+			from.Format("2006-01-02"), to.Format("2006-01-02"))
+		if _, err := pool.Exec(ctx, q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DetachAuditPartitionsBefore detaches every monthly audit partition whose
+// range ends before cutoff, returning the detached table names. Detached
+// partitions become ordinary tables — archive or drop is an ops call (e.g.
+// pg_dump -t then DROP), never an implicit data loss inside the verb.
+// audit_default is never detached: it is the catch-all, not a month.
+func DetachAuditPartitionsBefore(ctx context.Context, pool *pgxpool.Pool, cutoff time.Time) ([]string, error) {
+	rows, err := pool.Query(ctx, `SELECT c.relname
+		FROM pg_inherits i
+		JOIN pg_class p ON p.oid = i.inhparent
+		JOIN pg_class c ON c.oid = i.inhrelid
+		JOIN pg_namespace n ON n.oid = p.relnamespace
+		WHERE n.nspname = current_schema() AND p.relname = 'audit'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	monthName := regexp.MustCompile(`^audit_(\d{4})_(\d{2})$`)
+	var detach []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		m := monthName.FindStringSubmatch(name)
+		if m == nil {
+			continue // audit_default and anything not month-named
+		}
+		y, _ := strconv.Atoi(m[1])
+		mo, _ := strconv.Atoi(m[2])
+		end := time.Date(y, time.Month(mo), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+		if !end.After(cutoff) {
+			detach = append(detach, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var detached []string
+	for _, name := range detach {
+		if _, err := pool.Exec(ctx, `ALTER TABLE audit DETACH PARTITION `+name); err != nil {
+			return detached, fmt.Errorf("detach %s: %w", name, err)
+		}
+		detached = append(detached, name)
+	}
+	return detached, nil
+}
 
 func (p *Postgres) ownerDEK(orgID string, o protocol.Owner) ([]byte, error) {
 	return p.km.ownerDEK(context.Background(), p, orgID, o)

@@ -670,13 +670,47 @@ func (p *Postgres) loadOwnerWrapped(ctx context.Context, orgID string, o protoco
 	return wrapped, err
 }
 
-func (p *Postgres) storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error {
-	return p.sqlc.PutOwnerWrapped(ctx, sqlc.PutOwnerWrappedParams{
+// mintOwnerWrapped seals dek under the org's committed master and inserts
+// the wrap, in one transaction. The FOR SHARE read of org_keys serializes
+// against RotateOrgKey's FOR UPDATE: either the mint lands first (rotation
+// rewraps it) or it waits and seals under the new master — a wrap can never
+// commit under a master rotation just retired, even from a stale replica.
+func (p *Postgres) mintOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, dek []byte) error {
+	// kekMu.RLock outermost — before any DB lock (see RotateKEK). A caller
+	// holding FOR SHARE can never wait on kekMu while RotateKEK holds it,
+	// which is exactly the cycle that would deadlock.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.OrgKeyForShare(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	sealed, err := crypto.Seal(master, dek)
+	if err != nil {
+		return err
+	}
+	if err := q.PutOwnerWrapped(ctx, sqlc.PutOwnerWrappedParams{
 		OrgID:     orgID,
 		OwnerKind: string(o.Kind),
 		OwnerID:   o.ID,
-		Wrapped:   wrapped,
-	})
+		Wrapped:   sealed,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func agentFromSqlc(a *sqlc.Agent) protocol.Principal {

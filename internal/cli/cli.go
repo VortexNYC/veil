@@ -130,7 +130,7 @@ func migrateCmd(home *string) *cobra.Command {
 
 func sweepCmd(home *string) *cobra.Command {
 	var sqlitePath, dsn string
-	var keep time.Duration
+	var keep, auditKeep time.Duration
 	c := &cobra.Command{
 		Use:   "sweep",
 		Short: "Delete terminally-expired sessions, grants, and approvals",
@@ -140,7 +140,10 @@ func sweepCmd(home *string) *cobra.Command {
 			"recent expirations stay auditable. With --sqlite the sqlite file is " +
 			"swept; otherwise Postgres when --dsn or VEIL_POSTGRES_DSN is set; " +
 			"otherwise the default sqlite vault. Sweep never decrypts, so no " +
-			"master key is required.",
+			"master key is required. On Postgres it also creates monthly audit " +
+			"partitions through the next two months, and --audit-keep (default 90d) detaches " +
+			"older month partitions into standalone tables for archival — it " +
+			"detaches, never drops.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			before := time.Now().Add(-keep)
 			if dsn == "" {
@@ -157,6 +160,19 @@ func sweepCmd(home *string) *cobra.Command {
 					return err
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "sessions=%d grants=%d approvals=%d\n", rep.Sessions, rep.Grants, rep.Approvals)
+				if err := store.EnsureAuditPartitions(cmd.Context(), pool, 3); err != nil {
+					return fmt.Errorf("sweep: audit partitions: %w", err)
+				}
+				if auditKeep > 0 {
+					cutoff := time.Now().Add(-auditKeep)
+					detached, err := store.DetachAuditPartitionsBefore(cmd.Context(), pool, cutoff)
+					if err != nil {
+						return fmt.Errorf("sweep: audit retention: %w", err)
+					}
+					for _, name := range detached {
+						fmt.Fprintf(cmd.OutOrStdout(), "detached audit partition %s (archive then drop)\n", name)
+					}
+				}
 				return nil
 			}
 			if sqlitePath == "" {
@@ -188,6 +204,7 @@ func sweepCmd(home *string) *cobra.Command {
 	c.Flags().StringVar(&sqlitePath, "sqlite", "", "sqlite vault file (default $VEIL_HOME/vault.db)")
 	c.Flags().StringVar(&dsn, "dsn", "", "Postgres DSN (default env VEIL_POSTGRES_DSN)")
 	c.Flags().DurationVar(&keep, "keep", 24*time.Hour, "delete rows expired longer ago than this")
+	c.Flags().DurationVar(&auditKeep, "audit-keep", 90*24*time.Hour, "detach audit month partitions older than this; 0 disables")
 	return c
 }
 

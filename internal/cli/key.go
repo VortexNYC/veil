@@ -157,11 +157,12 @@ func keyCmd() *cobra.Command {
 
 	recoverOrg := &cobra.Command{
 		Use:   "recover-org ORG",
-		Short: "Open a recovery wrap and re-seed the org under the current KEK",
+		Short: "Recover the org master from a wrap and re-seed it under the current KEK",
 		Long: "Lost-KEK / lost-devices recovery: verifies --recovery-file " +
-			"against the owner's wrap (single-use — first open stamps used_at), " +
-			"then re-seals the recovered master under this deployment's KEK. " +
-			"Run it with the NEW VEIL_KEK already set; the recovered vault then " +
+			"against the owner's wrap, re-seals the recovered master under " +
+			"this deployment's KEK, and stamps the wrap used — atomically, in " +
+			"one transaction, so a failed reseed cannot burn the wrap. Run it " +
+			"with the NEW VEIL_KEK already set; the recovered vault then " +
 			"decrypts every item it held before the loss.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -179,11 +180,7 @@ func keyCmd() *cobra.Command {
 			}
 			defer func() { _ = s.Close() }()
 			o := protocol.Owner{Kind: protocol.OwnerKind(ownerKind), ID: ownerID}
-			master, err := s.OpenRecoveryWrap(cmd.Context(), args[0], o, recoveryKey)
-			if err != nil {
-				return err
-			}
-			if err := s.ReseedOrgKey(cmd.Context(), args[0], master); err != nil {
+			if err := s.RecoverOrgKey(cmd.Context(), args[0], o, recoveryKey); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "org %s recovered: master re-seeded under the current KEK; mint a new recovery wrap now\n", args[0])

@@ -14,11 +14,15 @@ func ownerCacheKey(orgID string, o protocol.Owner) string {
 	return orgID + "\x00" + string(o.Kind) + "\x00" + o.ID
 }
 
-// ownerSource is the persistence surface a keyManager uses to load and store
+// ownerSource is the persistence surface a keyManager uses to load and mint
 // wrapped per-owner DEKs. SQLite and Postgres implement it.
 type ownerSource interface {
 	loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error)
-	storeOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, wrapped []byte) error
+	// mintOwnerWrapped seals dek under the org's committed master and
+	// inserts the owner_keys row — atomically, under the org_keys row lock
+	// where the backend has one, so a wrap can never land under a master
+	// rotation just retired.
+	mintOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner, dek []byte) error
 }
 
 // keyManager resolves per-org master keys and caches unwrapped DEKs. It does
@@ -99,6 +103,9 @@ func (km *keyManager) ownerDEK(ctx context.Context, s ownerSource, orgID string,
 	}
 	k := ownerCacheKey(orgID, o)
 	for attempt := 0; ; attempt++ {
+		if attempt >= 3 {
+			return nil, fmt.Errorf("store: owner DEK for %s/%s did not stabilize", orgID, o.ID)
+		}
 		km.mu.Lock()
 		gen := km.gens[orgID]
 		if dek, ok := km.deks[k]; ok {
@@ -118,26 +125,13 @@ func (km *keyManager) ownerDEK(ctx context.Context, s ownerSource, orgID string,
 			if err != nil {
 				return nil, err
 			}
-			sealed, err := crypto.Seal(master, dek)
-			if err != nil {
+			// The mint seals under the committed org master inside the
+			// store's own lock scope — a rotation cannot strand it. A
+			// concurrent mint may still commit first (ON CONFLICT DO
+			// NOTHING): the stored row is authoritative — reload it.
+			if err := s.mintOwnerWrapped(ctx, orgID, o, dek); err != nil {
 				return nil, err
 			}
-			// The org rotated mid-flight: a wrap sealed under the old master
-			// would be unreadable once committed. Retry under the new master.
-			km.mu.Lock()
-			stale := km.gens[orgID] != gen
-			km.mu.Unlock()
-			if stale {
-				if attempt >= 3 {
-					return nil, fmt.Errorf("store: org %s rotated during DEK mint", orgID)
-				}
-				continue
-			}
-			if err := s.storeOwnerWrapped(ctx, orgID, o, sealed); err != nil {
-				return nil, err
-			}
-			// ON CONFLICT DO NOTHING: a concurrent mint may have committed
-			// first. The stored row is authoritative — reload it.
 			wrapped, err = s.loadOwnerWrapped(ctx, orgID, o)
 			if err != nil {
 				return nil, err
@@ -147,7 +141,13 @@ func (km *keyManager) ownerDEK(ctx context.Context, s ownerSource, orgID string,
 		}
 		plain, err := crypto.Open(master, wrapped)
 		if err != nil {
-			return nil, err
+			// The loaded wrap was rewrapped by a rotation committed on
+			// another replica while this master was cached — or the row is
+			// genuinely corrupt. Drop every cached key for the org and
+			// re-resolve; bounded by the attempt cap so corruption errors
+			// instead of spinning.
+			km.InvalidateOrg(orgID)
+			continue
 		}
 		km.mu.Lock()
 		if km.gens[orgID] == gen {

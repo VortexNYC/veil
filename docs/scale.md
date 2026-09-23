@@ -117,8 +117,36 @@ Users and agents multiply *rows*, not per-request cost: a million items
 does not change the 4-RT geometry because every hot-path read is
 PK/UNIQUE-indexed (`UseAuth` joins on `agent_id+item_id` UNIQUE,
 `sessions` by hash, `items` by PK). Table-size pressure lands on `audit`
-(VEIL-4: partitioning/retention) and `sessions` expiry cleanup
-(`veil sweep`), not on Use latency.
+and `sessions` expiry cleanup (`veil sweep`), not on Use latency.
+
+## Audit lifecycle (VEIL-4)
+
+`audit` is the one unbounded write path — one row per Use plus lifecycle
+events. It is `PARTITION BY RANGE (at)` with monthly partitions
+(`audit_YYYY_MM`) plus an `audit_default` catch-all for out-of-horizon
+rows. `id` comes from a plain sequence (`audit_id_seq`) because PG16
+cannot declare IDENTITY columns on partitioned tables; the PK is
+composite `(id, at)` — the partition key must be in the constraint.
+
+- **Creation:** `EnsureAuditPartitions` runs at every boot (current + next
+  month) and inside `veil sweep` (current + two more), so both deploying
+  and merely sweeping maintain the partition horizon. A never-restarting,
+  never-swept origin still never errors — out-of-range rows land in
+  `audit_default`.
+- **Migration:** a pre-partition `audit` table is renamed to
+  `audit_legacy`, the partitioned form is created, rows copy into it
+  (legacy months land in `audit_default`), and the legacy table drops —
+  each step transactional, rerun-safe.
+- **Retention:** `veil sweep --audit-keep 90d` (default) detaches month
+  partitions whose range ended before the cutoff. Detached partitions are
+  standalone tables — archive with `pg_dump -t audit_YYYY_MM`, then drop.
+  The verb never deletes audit data itself; `audit_default` is never
+  detached.
+- **Export (VEIL-10, deferred):** the audit table is the only sink today
+  and the async COPY path serves it. When a real consumer exists
+  (SIEM/billing), choose then between WAL-CDC on the partitions and an
+  outbox — the partitioned layout keeps both options cheap (CDC can
+  subscribe per-partition; a detach is already a natural export unit).
 
 ## Failure semantics under scale
 

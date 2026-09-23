@@ -214,6 +214,14 @@ ON CONFLICT(org_id, owner_kind, owner_id) DO NOTHING;
 SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
 FROM org_keys WHERE org_id = @org_id::text;
 
+-- name: OrgKeyForUpdate :one
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
+FROM org_keys WHERE org_id = @org_id::text FOR UPDATE;
+
+-- name: OrgKeyForShare :one
+SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at
+FROM org_keys WHERE org_id = @org_id::text FOR SHARE;
+
 -- name: PutOrgKey :execrows
 INSERT INTO org_keys(org_id, wrapped, key_version, cmk_id, created_at)
 VALUES(@org_id::text, @wrapped::bytea, @key_version::integer, sqlc.narg(cmk_id), @created_at::timestamptz)
