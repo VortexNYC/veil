@@ -48,7 +48,7 @@ export default defineRailway(() => {
     healthcheckTimeout: 300,
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve() },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
@@ -75,23 +75,41 @@ export default defineRailway(() => {
       VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
     },
   });
-  // Daily pg_dump of the `veil` database to a dedicated volume — the same
-  // format the restore drill in docs/backup-restore.md proves.
+  // Daily pg_dump of every real database to a dedicated volume — the same
+  // format the restore drill in docs/backup-restore.md proves. The identity
+  // plane is three databases, not one: kratos (humans), keto (org tuples),
+  // and `railway` (hydra — its DSN targets the default db). Losing them
+  // orphans humans even with a perfect vault restore.
   // Custom-format (-Fc) dumps compress and restore selectively; 14-day
-  // local retention. Pull a copy offsite with `railway files` — R2/offsite
+  // local retention. The trailing sleep leaves a daily window where the
+  // container is alive for `railway ssh`/`railway volume files` pulls —
+  // the SFTP bridge only works while the service is running. R2/offsite
   // replication is the post-alpha step, tracked in docs/backup-restore.md.
   const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
   const veilBackup = service("veil-backup", {
     source: image("postgres:16-alpine"),
-    start: "sh -c 'pg_dump \"$PGDUMP_DSN\" -Fc -f /backups/veil-$(date +%F-%H%M).dump && pg_dump \"$PGDUMP_IDENTITY_DSN\" -Fc -f /backups/identity-$(date +%F-%H%M).dump && find /backups -name \"*.dump\" -mtime +14 -delete'",
+    start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; find /backups -name \"*.dump\" -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES(\$\$backup\$\$,now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
     replicas: { "sfo": 1 },
     volumeMounts: { "/backups": veilBackups },
     env: {
-      PGDUMP_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
-      // Kratos/Keto/Hydra state — losing it orphans humans even with a
-      // perfect vault restore (docs/backup-restore.md).
-      PGDUMP_IDENTITY_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/identity",
+      PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+    },
+  });
+  // Dead-man's switch: every 15 min, check the backup/sweep beats,
+  // audit_outbox lag, and public /ready — email on findings. A cron that
+  // dies silently is worse than no cron; this is the thing that notices.
+  const veilMonitor = service("veil-monitor", {
+    build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
+    start: "/veil monitor",
+    deploy: { restartPolicyType: "NEVER", cronSchedule: "*/15 * * * *" },
+    replicas: { "sfo": 1 },
+    env: {
+      VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
+      VEIL_MAIL_URL: "${{veil.VEIL_MAIL_URL}}",
+      VEIL_MAIL_TOKEN: "${{veil.VEIL_MAIL_TOKEN}}",
+      VEIL_ALERT_TO: preserve(),
+      VEIL_READY_URL: "https://veil.nyc/ready",
     },
   });
   const glue = service("glue", {
@@ -111,6 +129,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor],
   });
 });

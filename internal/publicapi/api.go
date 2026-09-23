@@ -599,6 +599,10 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 	}
 	inv, err := s.App.InviteHuman(r.Context(), raw, in.Email)
 	if err != nil {
+		if errors.Is(err, app.ErrInviteLimit) {
+			http.Error(w, "invite rate limit", http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, "invite failed", http.StatusUnauthorized)
 		return
 	}

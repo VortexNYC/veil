@@ -88,6 +88,8 @@ type App struct {
 	Members   MemberCheck
 	Provision Provisioner
 	Invites   Inviter
+
+	inviteLim inviteLimiter
 }
 
 func Init(dir string) (*App, error) {
@@ -825,6 +827,9 @@ func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteRe
 	h, err := a.Store.Human(sub)
 	if err != nil {
 		return InviteResult{}, err
+	}
+	if !a.inviteLim.allowInvite(sub, email) {
+		return InviteResult{}, ErrInviteLimit
 	}
 	return a.Invites.Invite(ctx, email, sub, h.OrgID)
 }

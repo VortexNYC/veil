@@ -39,13 +39,20 @@ to the secret store of record — see the KEK runbook (VEIL-8) for escrow.
 
 Actual cadence: platform snapshots for crash recovery, plus the
 `veil-backup` Railway cron service (`.railway/railway.ts`) — daily at
-05:17 UTC, custom-format `pg_dump` of both the `veil` and `identity`
-databases onto the `veil-backups` volume with 14-day retention. Pull a
-dump offsite when it matters:
+05:17 UTC, custom-format `pg_dump` of all four real databases — `veil`
+(the vault), `kratos` (humans), `keto` (org tuples), and `railway`
+(hydra's DSN targets the default `railway` db) — onto the
+`veil-backups` volume with 14-day retention. There is no `identity`
+database; an earlier config dumped a name that never existed.
+
+The container stays alive for ten minutes after each run so artifacts
+can be pulled — `railway volume files` and `railway ssh` only work
+while the service is running. Pull during the ~05:17–05:27 UTC window:
 
 ```bash
-railway files --service veil-backup list /backups
-railway files --service veil-backup download /backups/veil-YYYY-MM-DD-HHMM.dump
+railway volume files -v veil-backups list /backups
+railway volume files -v veil-backups download /backups/veil-YYYY-MM-DD-HHMM.dump ./veil.dump
+# or any time: railway ssh -s Postgres -- "pg_dump -U postgres -Fc veil" > veil.dump
 ```
 
 Offsite replication (R2/object storage, different account) is the
@@ -80,7 +87,16 @@ the binary.
 
 ## What this does not cover
 
-- Kratos / Keto / Hydra state lives in the `identity` database on the
-  same shared Postgres — `veil-backup` dumps it alongside `veil` nightly.
+- Identity-plane state is three databases on the same shared Postgres —
+  `kratos`, `keto`, and `railway` (hydra) — all dumped nightly alongside
+  `veil`. Restoring the vault without them orphans humans: identities,
+  org membership, and OAuth clients would be gone.
+- `VEIL_KEK` escrow (done 2026-09-23): mode-600 copy at
+  `~/.config/vortex/veil-kek` on the ops host plus a `Veil KEK (escrow)`
+  item in the agents' 1Password vault. Verified by hash + a live unwrap
+  drill — a restored prod dump decrypts under the escrowed key and fails
+  closed (`crypto: authentication failed`) under a wrong one.
 - Ransom/drills cadence: run the restore, not just the backup. A backup
-  that has never been restored is a hypothesis.
+  that has never been restored is a hypothesis. First real-dump drill
+  ran 2026-09-23 (all four databases restored, `Secret()` unwrap
+  verified).

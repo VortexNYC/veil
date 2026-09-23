@@ -1395,3 +1395,50 @@ func TestInviteEndpoint(t *testing.T) {
 		t.Fatalf("no-email invite %d", code)
 	}
 }
+
+type countInviter struct{ n int }
+
+func (f *countInviter) Invite(_ context.Context, _, _, _ string) (app.InviteResult, error) {
+	f.n++
+	return app.InviteResult{IdentityID: "id-n", Emailed: true}, nil
+}
+
+// Invite abuse has two caps: three sends a day to one address, twenty sends a
+// day per inviter. Refused sends never reach the inviter or burn allowance.
+func TestInviteRateLimit(t *testing.T) {
+	a := testApp(t)
+	a.Human = fakeSubjectVerifier{sub: "sub-owner"}
+	a.Provision = fakeProvisioner{}
+	fi := &countInviter{}
+	a.Invites = fi
+	mux := http.NewServeMux()
+	(&Server{App: a}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	if code, raw := doJSON(t, srv, http.MethodPost, "/v1/provision", "tok-owner", nil); code != http.StatusOK {
+		t.Fatalf("provision %d %s", code, raw)
+	}
+
+	for i := 0; i < 3; i++ {
+		if code, _ := doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{"email": "victim@example.com"}); code != http.StatusOK {
+			t.Fatalf("recipient invite %d: %d", i, code)
+		}
+	}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{"email": "victim@example.com"}); code != http.StatusTooManyRequests {
+		t.Fatalf("4th to same recipient: %d", code)
+	}
+
+	// 3 inviter hits used; 17 more unique recipients exhaust the day.
+	for i := 0; i < 17; i++ {
+		if code, _ := doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{"email": "u" + string(rune('a'+i)) + "@example.com"}); code != http.StatusOK {
+			t.Fatalf("inviter invite %d: %d", i, code)
+		}
+	}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{"email": "one-more@example.com"}); code != http.StatusTooManyRequests {
+		t.Fatalf("21st invite: %d", code)
+	}
+	if fi.n != 20 {
+		t.Fatalf("inviter called %d times, want 20", fi.n)
+	}
+}

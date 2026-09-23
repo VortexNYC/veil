@@ -1003,6 +1003,11 @@ func (p *Postgres) migrate() error {
 	return EnsurePostgresSchema(context.Background(), p.pool)
 }
 
+// Ping is the readiness probe: the pool can serve a round trip right now.
+func (p *Postgres) Ping(ctx context.Context) error {
+	return p.pool.Ping(ctx)
+}
+
 func (p *Postgres) Close() error {
 	p.closeOnce.Do(func() {
 		if p.auditDone != nil {

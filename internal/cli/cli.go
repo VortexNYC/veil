@@ -84,6 +84,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(totpCmd())
 	root.AddCommand(migrateCmd(&home))
 	root.AddCommand(sweepCmd(&home))
+	root.AddCommand(monitorCmd())
 	root.AddCommand(keyCmd())
 	return root
 }
@@ -188,6 +189,9 @@ func sweepCmd(home *string) *cobra.Command {
 				} else {
 					fmt.Fprintf(cmd.OutOrStdout(), "audit_outbox=%d oldest=%s WARN relay backlog\n",
 						depth, time.Since(*oldest).Round(time.Second))
+				}
+				if err := store.MarkHeartbeat(cmd.Context(), pool, "sweep"); err != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "heartbeat=unwritten (%v)\n", err)
 				}
 				return nil
 			}

@@ -79,7 +79,7 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.HandleFunc("GET /ready", ready(issuer))
+	mux.HandleFunc("GET /ready", ready(a, issuer))
 	h := Handler(a, publicURL)
 	mux.Handle(Path, h)
 	mux.Handle(Path+"/", h)
@@ -97,14 +97,18 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 	return publicapi.CORS(otelsetup.Handler(mux))
 }
 
-// ready is origin truth: the process can answer agents only if Hydra discovery works.
-// /health stays process liveness so a dead issuer is visible instead of a green lie.
-func ready(issuer string) http.HandlerFunc {
+// ready is origin truth: the process can answer agents only if Hydra discovery
+// works and the store can serve a round trip. /health stays process liveness
+// so a dead dependency is visible instead of a green lie.
+func ready(a *app.App, issuer string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		if strings.TrimSpace(issuer) == "" {
+		notReady := func() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("not ready\n"))
+		}
+		if strings.TrimSpace(issuer) == "" {
+			notReady()
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -112,22 +116,27 @@ func ready(issuer string) http.HandlerFunc {
 		u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready\n"))
+			notReady()
 			return
 		}
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready\n"))
+			notReady()
 			return
 		}
 		defer res.Body.Close()
 		_, _ = io.Copy(io.Discard, res.Body)
 		if res.StatusCode != http.StatusOK {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready\n"))
+			notReady()
 			return
+		}
+		if p, ok := a.Store.(interface {
+			Ping(context.Context) error
+		}); ok {
+			if err := p.Ping(ctx); err != nil {
+				notReady()
+				return
+			}
 		}
 		_, _ = w.Write([]byte("ok\n"))
 	}

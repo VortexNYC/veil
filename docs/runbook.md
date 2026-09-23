@@ -40,16 +40,19 @@ sqlite volume as the rollback path).
   `audit_outbox=NNN oldest=MMs WARN` means the audit relay is behind:
   rows are durable in `audit_outbox` and visible via `Audit()`, but check
   `veil` logs for `audit relay` errors and confirm Postgres health.
-- `railway files --service veil-backup list /backups` — a fresh
-  `veil-*.dump` and `identity-*.dump` every day. A missing day is an
-  incident, not a nit.
+- `railway volume files -v veil-backups list /backups` — fresh
+  `veil-*.dump`, `kratos-*.dump`, `keto-*.dump`, and `railway-*.dump`
+  every day (the container sleeps 10 min post-run; pull inside that
+  window). A missing day is an incident, not a nit.
 
 ## Backup / restore
 
-`docs/backup-restore.md`. Short version: daily `pg_dump -Fc` of both
-databases on a dedicated volume; restore with `pg_restore` onto a fresh
-instance and boot origin with the same `VEIL_KEK`. A dump next to its KEK
-is a plaintext export — keep them apart. Run the restore drill
+`docs/backup-restore.md`. Short version: daily `pg_dump -Fc` of all four
+databases (`veil`, `kratos`, `keto`, `railway` for hydra) on a dedicated
+volume; restore with `pg_restore` onto a fresh instance and boot origin
+with the same `VEIL_KEK` (escrowed — `~/.config/vortex/veil-kek` +
+1Password `Veil KEK (escrow)`). A dump next to its KEK is a plaintext
+export — keep them apart. Run the restore drill
 (`PG_TEST_DSN=... go test ./internal/store -run BackupRestoreDrill`)
 before trusting the backups.
 
