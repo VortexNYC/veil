@@ -116,8 +116,10 @@ the Keto tuple wipe + `PurgeOrg` by hand) is the teardown.
 ## RPO / RTO
 
 - **RPO: 24h.** Daily `pg_dump -Fc` of all four databases at 05:17 UTC
-  to the `veil-backups` volume; 14-day retention. Worst case is one day
-  of audit/grant churn — secrets themselves re-wrap on restore.
+  to the `veil-backups` volume **and** Cloudflare R2 (via the
+  `backup-ingest` worker — the copy that survives a Railway-account
+  loss); 14-day local retention. Worst case is one day of audit/grant
+  churn — secrets themselves re-wrap on restore.
 - **RTO: hours, not days.** The drill (pg_restore into a fresh schema +
   `VEIL_KEK` unwrap + wrong-key fails closed) is proven
   (`TestPostgresBackupRestoreDrill` + the live drill in git history).
@@ -130,6 +132,24 @@ the Keto tuple wipe + `PurgeOrg` by hand) is the teardown.
 - **Alerts**: `veil-monitor` emails `VEIL_ALERT_TO` when the backup or
   sweep heartbeat is stale, or when `/ready` fails. A missing beat is
   an incident, not a nit.
+
+## Operational secrets rotation
+
+Distinct from `veil key` (data-plane keys — `docs/key-rotation.md`).
+The operational secrets to rotate on suspicion or quarterly:
+
+- `VEIL_MAIL_TOKEN` / `VEIL_MAIL_URL` — Resend worker creds. Rotate on
+  the worker (`wrangler secret put`), then on `veil`, `veil-monitor`,
+  `glue` (`preserve()` vars — set by hand).
+- `OFFSITE_TOKEN` / `INGEST_TOKEN` — backup-ingest Bearer. Rotate on the
+  worker and `veil-backup` together; a skew fails uploads, not dumps.
+- `HYDRA_SYSTEM_SECRET` / `SECRETS_SYSTEM` — rotating invalidates all
+  live tokens and sessions; do it under an incident, not casually.
+- `VEIL_KEK` — `veil key rotate-kek` (docs/key-rotation.md). Coordinated
+  redeploy; mixed-KEK replicas fail closed.
+
+Each rotation ends with the same proof: `veil monitor` clean,
+`/ready` ok, one `Use` smoke through the origin.
 
 ## Audit
 
