@@ -1302,6 +1302,7 @@ type fakeProvisioner struct{}
 
 func (fakeProvisioner) ProvisionMember(context.Context, string, string) error { return nil }
 func (fakeProvisioner) SetIdentityOrg(context.Context, string, string) error  { return nil }
+func (fakeProvisioner) IdentityOrg(context.Context, string) (string, error)   { return "", nil }
 
 // POST /v1/provision is signup: subject-auth only (no member check), and a
 // repeat call returns the same org — provisioning is idempotent.
@@ -1393,6 +1394,101 @@ func TestInviteEndpoint(t *testing.T) {
 	code, _ = doJSON(t, srv, http.MethodPost, "/v1/invites", "tok-owner", map[string]string{})
 	if code != http.StatusBadRequest {
 		t.Fatalf("no-email invite %d", code)
+	}
+}
+
+// mapVerifier resolves token→sub so multi-actor tests can carry two humans.
+type mapVerifier map[string]string
+
+func (m mapVerifier) Subject(_ context.Context, tok string) (string, error) {
+	if s := m[tok]; s != "" {
+		return s, nil
+	}
+	return "", errors.New("bad token")
+}
+
+type fakeOrgAdmin struct{ calls []string }
+
+func (f *fakeOrgAdmin) RemoveMember(_ context.Context, orgID, id string) error {
+	f.calls = append(f.calls, "rm:"+id)
+	return nil
+}
+
+func (f *fakeOrgAdmin) RemoveOwner(_ context.Context, orgID, id string) error {
+	f.calls = append(f.calls, "ro:"+id)
+	return nil
+}
+
+func (f *fakeOrgAdmin) PromoteOwner(_ context.Context, orgID, id string) error {
+	f.calls = append(f.calls, "po:"+id)
+	return nil
+}
+
+func (f *fakeOrgAdmin) RemoveOrgTuples(_ context.Context, orgID string) error {
+	f.calls = append(f.calls, "purge:"+orgID)
+	return nil
+}
+
+func (f *fakeOrgAdmin) ListOwners(_ context.Context, orgID string) ([]string, error) {
+	return []string{"sub-owner"}, nil
+}
+
+// Lifecycle verbs: owner removes/promotes members and tears the org down;
+// members get 403, strangers 404, anonymous 401.
+func TestLifecycleEndpoints(t *testing.T) {
+	a := testApp(t)
+	a.Human = mapVerifier{"tok-owner": "sub-owner", "tok-member": "sub-member"}
+	a.Provision = fakeProvisioner{}
+	a.Members = fakeMembers{
+		owners:  map[string]bool{"sub-owner": true},
+		members: map[string]bool{"sub-owner": true, "sub-member": true},
+	}
+	admin := &fakeOrgAdmin{}
+	a.OrgAdmin = admin
+	mux := http.NewServeMux()
+	(&Server{App: a}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/provision", "tok-owner", nil)
+	if code != http.StatusOK {
+		t.Fatalf("provision owner %d %s", code, raw)
+	}
+	var ownerOut ProvisionResponse
+	if err := json.Unmarshal(raw, &ownerOut); err != nil {
+		t.Fatal(err)
+	}
+	if code, raw := doJSON(t, srv, http.MethodPost, "/v1/provision", "tok-member", nil); code != http.StatusOK {
+		t.Fatalf("provision member %d %s", code, raw)
+	}
+
+	// Member cannot reach the verbs.
+	if code, _ := doJSON(t, srv, http.MethodDelete, "/v1/members/sub-owner", "tok-member", nil); code != http.StatusForbidden {
+		t.Fatalf("member remove %d", code)
+	}
+	if code, _ := doJSON(t, srv, http.MethodDelete, "/v1/org", "tok-member", nil); code != http.StatusForbidden {
+		t.Fatalf("member delete-org %d", code)
+	}
+
+	// Owner verbs.
+	if code, raw := doJSON(t, srv, http.MethodPost, "/v1/members/sub-member/owner", "tok-owner", nil); code != http.StatusOK {
+		t.Fatalf("promote %d %s", code, raw)
+	}
+	if code, _ := doJSON(t, srv, http.MethodDelete, "/v1/members/ghost", "tok-owner", nil); code != http.StatusNotFound {
+		t.Fatalf("ghost remove %d", code)
+	}
+	if code, raw := doJSON(t, srv, http.MethodDelete, "/v1/members/sub-member", "tok-owner", nil); code != http.StatusOK {
+		t.Fatalf("remove %d %s", code, raw)
+	}
+	if code, _ := doJSON(t, srv, http.MethodDelete, "/v1/members/sub-member", "", nil); code != http.StatusUnauthorized {
+		t.Fatalf("anon remove %d", code)
+	}
+
+	if code, raw := doJSON(t, srv, http.MethodDelete, "/v1/org", "tok-owner", nil); code != http.StatusOK {
+		t.Fatalf("delete org %d %s", code, raw)
+	}
+	if len(admin.calls) != 3 || admin.calls[0] != "po:sub-member" || admin.calls[1] != "rm:sub-member" || admin.calls[2] != "purge:"+ownerOut.OrgID {
+		t.Fatalf("admin calls %v", admin.calls)
 	}
 }
 

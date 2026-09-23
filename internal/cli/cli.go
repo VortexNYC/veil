@@ -348,6 +348,7 @@ func openOriginApp(home string) (*app.App, error) {
 		a.Members = g
 		a.Provision = g
 		a.Invites = glueInviter{g}
+		a.OrgAdmin = g
 		return a, nil
 	}
 	return openOrInitApp(home)

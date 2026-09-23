@@ -55,6 +55,12 @@ func (e *e2eOry) SetIdentityOrg(_ context.Context, sub, orgID string) error {
 	return nil
 }
 
+func (e *e2eOry) IdentityOrg(_ context.Context, sub string) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.stamps[sub], nil
+}
+
 func (e *e2eOry) IsMember(_ context.Context, orgID, sub string) (bool, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

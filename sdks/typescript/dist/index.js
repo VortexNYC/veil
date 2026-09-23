@@ -898,6 +898,31 @@ var createInvite = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var removeMember = (options) => (options.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/members/{id}",
+  ...options
+});
+var demoteOwner = (options) => (options.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/members/{id}/owner",
+  ...options
+});
+var promoteOwner = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/members/{id}/owner",
+  ...options
+});
+var deleteMe = (options) => (options?.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/me",
+  ...options
+});
+var deleteOrg = (options) => (options?.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/org",
+  ...options
+});
 export {
   archiveItem,
   createAgent,
@@ -907,6 +932,9 @@ export {
   createItem,
   createSession,
   deleteItem,
+  deleteMe,
+  deleteOrg,
+  demoteOwner,
   getHealth,
   getOpenApi,
   importItems,
@@ -915,7 +943,9 @@ export {
   listGrants,
   listItems,
   listSessions,
+  promoteOwner,
   provision,
+  removeMember,
   revokeAgent,
   updateItem,
   useItem

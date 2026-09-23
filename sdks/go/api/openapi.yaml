@@ -447,6 +447,134 @@ paths:
         for re-invites. Not MCP.
       tags:
       - Human
+  /v1/members/{id}:
+    delete:
+      operationId: removeMember
+      parameters:
+      - description: Kratos identity id of the member
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/removeMember_200_response"
+          description: Member removed
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "caller is a member, not an owner"
+        "404":
+          description: not a member of this org
+      summary: Offboard a member. Owner-only — drops the Keto member tuple and the
+        humans row; the removed member's token resolves nothing from that call on.
+        Owners cannot be removed this way (demote first). Not MCP.
+      tags:
+      - Human
+  /v1/members/{id}/owner:
+    delete:
+      operationId: demoteOwner
+      parameters:
+      - description: Kratos identity id of the owner
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/promoteOwner_200_response"
+          description: Owner demoted
+        "400":
+          description: last-owner demotion refused
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "caller is a member, not an owner"
+        "404":
+          description: not an owner of this org
+      summary: Strip the owners tuple from a co-owner. Owner-only. The last owner
+        cannot be demoted — the org would have no administrator. Not MCP.
+      tags:
+      - Human
+    post:
+      operationId: promoteOwner
+      parameters:
+      - description: Kratos identity id of the member
+        explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/promoteOwner_200_response"
+          description: Member promoted
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "caller is a member, not an owner"
+        "404":
+          description: not a member of this org
+      summary: Grant an existing member the owners tuple. Owner-only. Not MCP.
+      tags:
+      - Human
+  /v1/me:
+    delete:
+      operationId: deleteMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/deleteMe_200_response"
+          description: Account removed from org
+        "400":
+          description: sole-owner leave refused
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: not a provisioned human
+      summary: "Leave the org: drops the member (and owner, when present) tuples plus\
+        \ the humans row — the token resolves nothing afterward. A sole owner is refused:\
+        \ promote a member or delete the org. Not MCP."
+      tags:
+      - Human
+  /v1/org:
+    delete:
+      operationId: deleteOrg
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/deleteOrg_200_response"
+          description: Org purged
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "caller is a member, not an owner"
+      summary: "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges\
+        \ every vault row (items, grants, sessions, agents, humans, keys) in one transaction.\
+        \ Audit rows are kept — teardown must not erase the forensic record. Not MCP."
+      tags:
+      - Human
 components:
   schemas:
     Item:
@@ -1242,6 +1370,45 @@ components:
       required:
       - emailed
       - identity_id
+    removeMember_200_response:
+      example:
+        removed: true
+      properties:
+        removed:
+          type: boolean
+    promoteOwner_200_response:
+      example:
+        owner: true
+      properties:
+        owner:
+          type: boolean
+    deleteMe_200_response:
+      example:
+        deleted: true
+      properties:
+        deleted:
+          type: boolean
+    deleteOrg_200_response:
+      example:
+        items: 0
+        grants: 6
+        sessions: 1
+        agents: 5
+        humans: 5
+        keys: 2
+      properties:
+        items:
+          type: integer
+        grants:
+          type: integer
+        sessions:
+          type: integer
+        agents:
+          type: integer
+        humans:
+          type: integer
+        keys:
+          type: integer
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

@@ -22,6 +22,8 @@ from veil.models.create_grant_request import CreateGrantRequest
 from veil.models.create_item_request import CreateItemRequest
 from veil.models.create_session_request import CreateSessionRequest
 from veil.models.create_session_response import CreateSessionResponse
+from veil.models.delete_me200_response import DeleteMe200Response
+from veil.models.delete_org200_response import DeleteOrg200Response
 from veil.models.events_response import EventsResponse
 from veil.models.grant import Grant
 from veil.models.grants_response import GrantsResponse
@@ -32,7 +34,9 @@ from veil.models.invite_response import InviteResponse
 from veil.models.item import Item
 from veil.models.items_response import ItemsResponse
 from veil.models.owner import Owner
+from veil.models.promote_owner200_response import PromoteOwner200Response
 from veil.models.provision_response import ProvisionResponse
+from veil.models.remove_member200_response import RemoveMember200Response
 from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest

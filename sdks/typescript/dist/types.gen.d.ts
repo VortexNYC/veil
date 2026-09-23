@@ -720,3 +720,168 @@ export type CreateInviteResponses = {
     200: InviteResponse;
 };
 export type CreateInviteResponse = CreateInviteResponses[keyof CreateInviteResponses];
+export type RemoveMemberData = {
+    body?: never;
+    path: {
+        /**
+         * Kratos identity id of the member
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/v1/members/{id}';
+};
+export type RemoveMemberErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * caller is a member, not an owner
+     */
+    403: unknown;
+    /**
+     * not a member of this org
+     */
+    404: unknown;
+};
+export type RemoveMemberResponses = {
+    /**
+     * Member removed
+     */
+    200: {
+        removed?: boolean;
+    };
+};
+export type RemoveMemberResponse = RemoveMemberResponses[keyof RemoveMemberResponses];
+export type DemoteOwnerData = {
+    body?: never;
+    path: {
+        /**
+         * Kratos identity id of the owner
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/v1/members/{id}/owner';
+};
+export type DemoteOwnerErrors = {
+    /**
+     * last-owner demotion refused
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * caller is a member, not an owner
+     */
+    403: unknown;
+    /**
+     * not an owner of this org
+     */
+    404: unknown;
+};
+export type DemoteOwnerResponses = {
+    /**
+     * Owner demoted
+     */
+    200: {
+        owner?: boolean;
+    };
+};
+export type DemoteOwnerResponse = DemoteOwnerResponses[keyof DemoteOwnerResponses];
+export type PromoteOwnerData = {
+    body?: never;
+    path: {
+        /**
+         * Kratos identity id of the member
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/v1/members/{id}/owner';
+};
+export type PromoteOwnerErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * caller is a member, not an owner
+     */
+    403: unknown;
+    /**
+     * not a member of this org
+     */
+    404: unknown;
+};
+export type PromoteOwnerResponses = {
+    /**
+     * Member promoted
+     */
+    200: {
+        owner?: boolean;
+    };
+};
+export type PromoteOwnerResponse = PromoteOwnerResponses[keyof PromoteOwnerResponses];
+export type DeleteMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/me';
+};
+export type DeleteMeErrors = {
+    /**
+     * sole-owner leave refused
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * not a provisioned human
+     */
+    403: unknown;
+};
+export type DeleteMeResponses = {
+    /**
+     * Account removed from org
+     */
+    200: {
+        deleted?: boolean;
+    };
+};
+export type DeleteMeResponse = DeleteMeResponses[keyof DeleteMeResponses];
+export type DeleteOrgData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/org';
+};
+export type DeleteOrgErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * caller is a member, not an owner
+     */
+    403: unknown;
+};
+export type DeleteOrgResponses = {
+    /**
+     * Org purged
+     */
+    200: {
+        items?: number;
+        grants?: number;
+        sessions?: number;
+        agents?: number;
+        humans?: number;
+        keys?: number;
+    };
+};
+export type DeleteOrgResponse = DeleteOrgResponses[keyof DeleteOrgResponses];

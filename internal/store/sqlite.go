@@ -673,6 +673,52 @@ func (s *SQLite) DeleteItem(id string) error {
 	return nil
 }
 
+// DeleteHuman drops the humans row — token resolution fails closed after this.
+func (s *SQLite) DeleteHuman(_ context.Context, id string) error {
+	_, err := s.db.Exec(`DELETE FROM humans WHERE id=?`, id)
+	return err
+}
+
+// PurgeOrg deletes every vault row owned by orgID in one transaction — the
+// sqlite schema has no org_keys/recovery_wraps (encryption is file-local).
+// Audit rows survive deliberately: teardown must not erase the record.
+func (s *SQLite) PurgeOrg(ctx context.Context, orgID string) (PurgeReport, error) {
+	var rep PurgeReport
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return rep, err
+	}
+	defer tx.Rollback()
+	n := func(q string, dst *int64) error {
+		res, err := tx.ExecContext(ctx, q, orgID)
+		if err != nil {
+			return err
+		}
+		*dst, err = res.RowsAffected()
+		return err
+	}
+	steps := []struct {
+		q   string
+		dst *int64
+	}{
+		{`DELETE FROM item_versions WHERE item_id IN (SELECT id FROM items WHERE org_id = ?)`, new(int64)},
+		{`DELETE FROM approvals WHERE grant_id IN (SELECT id FROM grants WHERE org_id = ?)`, new(int64)},
+		{`DELETE FROM sessions WHERE org_id = ?`, &rep.Sessions},
+		{`DELETE FROM grants WHERE org_id = ?`, &rep.Grants},
+		{`DELETE FROM workloads WHERE agent_id IN (SELECT id FROM agents WHERE org_id = ?)`, new(int64)},
+		{`DELETE FROM owner_keys WHERE org_id = ?`, new(int64)},
+		{`DELETE FROM items WHERE org_id = ?`, &rep.Items},
+		{`DELETE FROM agents WHERE org_id = ?`, &rep.Agents},
+		{`DELETE FROM humans WHERE org_id = ?`, &rep.Humans},
+	}
+	for _, s := range steps {
+		if err := n(s.q, s.dst); err != nil {
+			return rep, fmt.Errorf("purge org: %w", err)
+		}
+	}
+	return rep, tx.Commit()
+}
+
 func (s *SQLite) Versions(itemID string) ([]protocol.ItemVersion, error) {
 	// Keep the newest maxListResults snapshots, then return them in
 	// chronological order (oldest first) so callers can restore by index.

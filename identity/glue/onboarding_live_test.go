@@ -90,6 +90,7 @@ func TestLiveOnboarding(t *testing.T) {
 	a.Members = g
 	a.Provision = g
 	a.Invites = inviterAdapter{g}
+	a.OrgAdmin = g
 	mux := http.NewServeMux()
 	publicapi.Mount(mux, a)
 	origin := httptest.NewServer(mux)
@@ -103,13 +104,14 @@ func TestLiveOnboarding(t *testing.T) {
 	inv1 := lastInviteMail(t, mails, email1)
 	idTok1 := onboardInvitee(t, inv1)
 
-	// --- provision: mints the org, plants the human row, stamps Kratos+Keto
+	// --- provision: invitee 1 carries the stamp + member tuple, so they land
+	// IN the invited org — first member bootstraps to owner.
 	org1 := provision(t, origin.URL, idTok1)
-	if org1 == "" {
-		t.Fatal("provision returned no org")
+	if org1 != orgID {
+		t.Fatalf("invitee landed in %q, want invited org %q", org1, orgID)
 	}
 
-	// --- invitee 1 invites invitee 2 through the public endpoint
+	// --- invitee 1 (now owner) invites invitee 2 through the public endpoint
 	email2 := fmt.Sprintf("onboard2-%d@example.com", time.Now().UnixNano())
 	res := invite(t, origin.URL, idTok1, email2)
 	if !res.Emailed {
@@ -119,7 +121,46 @@ func TestLiveOnboarding(t *testing.T) {
 		t.Fatal("recovery_url leaked in a mailed invite response")
 	}
 	inv2 := lastInviteMail(t, mails, email2)
-	_ = onboardInvitee(t, inv2) // invitee 2 completes the same setup
+	idTok2 := onboardInvitee(t, inv2) // invitee 2 completes the same setup
+
+	// --- invitee 2 provisions into the same org as a member — and members
+	// cannot invite (owner-gated).
+	org2 := provision(t, origin.URL, idTok2)
+	if org2 != orgID {
+		t.Fatalf("second invitee landed in %q, want shared org %q", org2, orgID)
+	}
+	if code := postInvite(t, origin.URL, idTok2, "x@example.com"); code != http.StatusUnauthorized {
+		t.Fatalf("member invite status %d", code)
+	}
+
+	// --- lifecycle against the real Keto: promote makes an owner (can
+	// invite), demote takes it back, remove kills the member's token.
+	if code := lifecycleCall(t, origin.URL, idTok1, http.MethodPost, "/v1/members/"+res.IdentityID+"/owner"); code != http.StatusOK {
+		t.Fatalf("promote member %d", code)
+	}
+	if code := postInvite(t, origin.URL, idTok2, fmt.Sprintf("onboard3-%d@example.com", time.Now().UnixNano())); code != http.StatusOK {
+		t.Fatalf("promoted member still cannot invite: %d", code)
+	}
+	if code := lifecycleCall(t, origin.URL, idTok1, http.MethodDelete, "/v1/members/"+res.IdentityID+"/owner"); code != http.StatusOK {
+		t.Fatalf("demote member %d", code)
+	}
+	if code := postInvite(t, origin.URL, idTok2, "x@example.com"); code != http.StatusUnauthorized {
+		t.Fatalf("demoted member invite status %d", code)
+	}
+	if code := lifecycleCall(t, origin.URL, idTok1, http.MethodDelete, "/v1/members/"+res.IdentityID); code != http.StatusOK {
+		t.Fatalf("remove member %d", code)
+	}
+	if code := postInvite(t, origin.URL, idTok2, "x@example.com"); code != http.StatusUnauthorized {
+		t.Fatalf("removed member still has access: %d", code)
+	}
+
+	// --- org teardown: owner deletes the org, their own token dies with it.
+	if code := lifecycleCall(t, origin.URL, idTok1, http.MethodDelete, "/v1/org"); code != http.StatusOK {
+		t.Fatalf("delete org %d", code)
+	}
+	if code := postInvite(t, origin.URL, idTok1, "x@example.com"); code != http.StatusUnauthorized {
+		t.Fatalf("owner still has access after teardown: %d", code)
+	}
 
 	// --- negative: nobody gets in without a provisioned human bearer
 	code := postInvite(t, origin.URL, "", email2)
@@ -130,6 +171,22 @@ func TestLiveOnboarding(t *testing.T) {
 	if code != http.StatusUnauthorized {
 		t.Fatalf("bad-token invite status %d", code)
 	}
+}
+
+// lifecycleCall is the owner-verb POST/DELETE with no body.
+func lifecycleCall(t *testing.T, base, token, method, path string) int {
+	t.Helper()
+	req, err := http.NewRequest(method, base+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	return res.StatusCode
 }
 
 // inviterAdapter mirrors cli.go's glueInviter — the app.Inviter seam is wired
@@ -441,9 +498,9 @@ func invite(t *testing.T, base, token, email string) app.InviteResult {
 		b, _ := io.ReadAll(res.Body)
 		t.Fatalf("invite %d: %s", res.StatusCode, string(b)[:200])
 	}
-	var out app.InviteResult
+	var out publicapi.InviteResponse
 	_ = json.NewDecoder(res.Body).Decode(&out)
-	return out
+	return app.InviteResult{IdentityID: out.IdentityID, RecoveryURL: out.RecoveryURL, Emailed: out.Emailed}
 }
 
 func postInvite(t *testing.T, base, token, email string) int {

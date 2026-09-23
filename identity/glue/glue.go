@@ -197,3 +197,48 @@ func (g *Glue) IdentityOrg(ctx context.Context, identityID string) (string, erro
 	}
 	return g.humans.Organization(ctx, identityID)
 }
+
+// RemoveMember strips the member tuple — offboarding. The humans row goes via
+// the store; Kratos keeps the identity (it belongs to the human, not the org).
+func (g *Glue) RemoveMember(ctx context.Context, orgID, identityID string) error {
+	if g.members == nil {
+		return fmt.Errorf("glue: keto is required")
+	}
+	return g.members.ForOrg(orgID).DeleteRelation(ctx, keto.RelMembers, identityID)
+}
+
+// RemoveOwner strips an owner tuple — demotion, or teardown cleanup.
+func (g *Glue) RemoveOwner(ctx context.Context, orgID, identityID string) error {
+	if g.members == nil {
+		return fmt.Errorf("glue: keto is required")
+	}
+	return g.members.ForOrg(orgID).DeleteRelation(ctx, keto.RelOwners, identityID)
+}
+
+// PromoteOwner grants the owners tuple to an existing member.
+func (g *Glue) PromoteOwner(ctx context.Context, orgID, identityID string) error {
+	if g.members == nil {
+		return fmt.Errorf("glue: keto is required")
+	}
+	return g.members.ForOrg(orgID).Promote(ctx, identityID)
+}
+
+// ListOwners returns every identity holding the owners tuple — last-owner
+// protection needs the count, not a boolean.
+func (g *Glue) ListOwners(ctx context.Context, orgID string) ([]string, error) {
+	if g.members == nil {
+		return nil, fmt.Errorf("glue: keto is required")
+	}
+	return g.members.ForOrg(orgID).ListRelation(ctx, keto.RelOwners)
+}
+
+// RemoveOrgTuples deletes every owner+member tuple for the org — teardown.
+func (g *Glue) RemoveOrgTuples(ctx context.Context, orgID string) error {
+	if g.members == nil {
+		return fmt.Errorf("glue: keto is required")
+	}
+	if err := g.members.ForOrg(orgID).DeleteAllRelations(ctx, keto.RelMembers); err != nil {
+		return err
+	}
+	return g.members.ForOrg(orgID).DeleteAllRelations(ctx, keto.RelOwners)
+}

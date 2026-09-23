@@ -44,9 +44,21 @@ type MemberCheck interface {
 
 // Provisioner plants a human's membership in their org: Keto tuples plus the
 // Kratos organization_id stamp. glue.Glue satisfies it; nil in local vaults.
+// IdentityOrg reads the stamp — an invite sets it, and provisioning honors it.
 type Provisioner interface {
 	ProvisionMember(ctx context.Context, orgID, identityID string) error
 	SetIdentityOrg(ctx context.Context, identityID, orgID string) error
+	IdentityOrg(ctx context.Context, identityID string) (string, error)
+}
+
+// OrgAdmin is org membership surgery against the identity plane — Keto tuple
+// writes/deletes. glue.Glue satisfies it; nil in local vaults.
+type OrgAdmin interface {
+	RemoveMember(ctx context.Context, orgID, identityID string) error
+	RemoveOwner(ctx context.Context, orgID, identityID string) error
+	PromoteOwner(ctx context.Context, orgID, identityID string) error
+	RemoveOrgTuples(ctx context.Context, orgID string) error
+	ListOwners(ctx context.Context, orgID string) ([]string, error)
 }
 
 // InviteResult is what an owner gets back from an invite: the new identity,
@@ -88,6 +100,7 @@ type App struct {
 	Members   MemberCheck
 	Provision Provisioner
 	Invites   Inviter
+	OrgAdmin  OrgAdmin
 
 	inviteLim inviteLimiter
 }
@@ -755,9 +768,25 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 	if h, herr := a.Store.Human(sub); herr == nil {
 		orgID = h.OrgID
 	} else if errors.Is(herr, store.ErrNotFound) {
-		orgID, err = id.NewOrg()
-		if err != nil {
-			return protocol.Principal{}, err
+		// An invited human carries the inviter's org in their Kratos stamp and
+		// a Keto member tuple — both mean "join that org". Without them this is
+		// self-signup and gets a fresh org. The stamp alone is not enough: a
+		// stale stamp on a purged org must not resurrect it.
+		join := ""
+		if a.Provision != nil && a.Members != nil {
+			if stamped, serr := a.Provision.IdentityOrg(ctx, sub); serr == nil && stamped != "" {
+				if member, merr := a.Members.IsMember(ctx, stamped, sub); merr == nil && member {
+					join = stamped
+				}
+			}
+		}
+		if join != "" {
+			orgID = join
+		} else {
+			orgID, err = id.NewOrg()
+			if err != nil {
+				return protocol.Principal{}, err
+			}
 		}
 		planted, perr := a.Store.PlantHuman(protocol.Principal{
 			Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID,
@@ -832,6 +861,172 @@ func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteRe
 		return InviteResult{}, ErrInviteLimit
 	}
 	return a.Invites.Invite(ctx, email, sub, h.OrgID)
+}
+
+// requireOwner resolves a provisioned human and requires owner of their org.
+func (a *App) requireOwner(ctx context.Context, rawToken string) (protocol.Principal, error) {
+	p, err := a.PrincipalFromOIDC(ctx, rawToken)
+	if err != nil {
+		return protocol.Principal{}, err
+	}
+	if p.Kind != protocol.PrincipalHuman || a.Members == nil {
+		return protocol.Principal{}, ErrForbidden
+	}
+	ok, err := a.Members.IsOwner(ctx, p.OrgID, p.ID)
+	if err != nil {
+		return protocol.Principal{}, err
+	}
+	if !ok {
+		return protocol.Principal{}, ErrForbidden
+	}
+	return p, nil
+}
+
+// RemoveMember offboards a member: drops the Keto tuple and the humans row —
+// their token stops resolving immediately. Owners cannot be removed this way;
+// demote first (or delete the org).
+func (a *App) RemoveMember(ctx context.Context, rawToken, memberID string) error {
+	p, err := a.requireOwner(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	if memberID == p.ID {
+		return fmt.Errorf("app: cannot remove yourself")
+	}
+	member, err := a.Members.IsMember(ctx, p.OrgID, memberID)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return store.ErrNotFound
+	}
+	owner, err := a.Members.IsOwner(ctx, p.OrgID, memberID)
+	if err != nil {
+		return err
+	}
+	if owner {
+		return fmt.Errorf("app: cannot remove an owner")
+	}
+	if a.OrgAdmin == nil {
+		return fmt.Errorf("app: org admin not configured")
+	}
+	if err := a.OrgAdmin.RemoveMember(ctx, p.OrgID, memberID); err != nil {
+		return err
+	}
+	if lc, ok := a.Store.(store.OrgLifecycle); ok {
+		if err := lc.DeleteHuman(ctx, memberID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PromoteOwner grants an existing member the owners tuple.
+func (a *App) PromoteOwner(ctx context.Context, rawToken, memberID string) error {
+	p, err := a.requireOwner(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	member, err := a.Members.IsMember(ctx, p.OrgID, memberID)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return store.ErrNotFound
+	}
+	if a.OrgAdmin == nil {
+		return fmt.Errorf("app: org admin not configured")
+	}
+	return a.OrgAdmin.PromoteOwner(ctx, p.OrgID, memberID)
+}
+
+// DemoteOwner strips the owners tuple — the last owner cannot be demoted or
+// the org has no one who can administer it.
+func (a *App) DemoteOwner(ctx context.Context, rawToken, memberID string) error {
+	p, err := a.requireOwner(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	owner, err := a.Members.IsOwner(ctx, p.OrgID, memberID)
+	if err != nil {
+		return err
+	}
+	if !owner {
+		return store.ErrNotFound
+	}
+	if a.OrgAdmin == nil {
+		return fmt.Errorf("app: org admin not configured")
+	}
+	owners, err := a.OrgAdmin.ListOwners(ctx, p.OrgID)
+	if err != nil {
+		return err
+	}
+	if len(owners) <= 1 {
+		return fmt.Errorf("app: cannot demote the last owner")
+	}
+	return a.OrgAdmin.RemoveOwner(ctx, p.OrgID, memberID)
+}
+
+// DeleteMe is the human kill-switch: drop both tuple legs and the humans
+// row — the token resolves nothing from this point. A sole owner cannot
+// leave an org with members in it: promote someone, or delete the org.
+func (a *App) DeleteMe(ctx context.Context, rawToken string) error {
+	p, err := a.PrincipalFromOIDC(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	if p.Kind != protocol.PrincipalHuman || a.Members == nil {
+		return ErrForbidden
+	}
+	if a.OrgAdmin == nil {
+		return fmt.Errorf("app: org admin not configured")
+	}
+	owner, err := a.Members.IsOwner(ctx, p.OrgID, p.ID)
+	if err != nil {
+		return err
+	}
+	if owner {
+		owners, err := a.OrgAdmin.ListOwners(ctx, p.OrgID)
+		if err != nil {
+			return err
+		}
+		if len(owners) <= 1 {
+			return fmt.Errorf("app: sole owner cannot leave — promote a member or delete the org")
+		}
+		if err := a.OrgAdmin.RemoveOwner(ctx, p.OrgID, p.ID); err != nil {
+			return err
+		}
+	}
+	if err := a.OrgAdmin.RemoveMember(ctx, p.OrgID, p.ID); err != nil {
+		return err
+	}
+	if lc, ok := a.Store.(store.OrgLifecycle); ok {
+		if err := lc.DeleteHuman(ctx, p.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteOrg is teardown: kill every access path first (Keto tuples), then
+// purge every vault row for the org in one transaction. Audit rows survive —
+// teardown must not erase the record of what happened.
+func (a *App) DeleteOrg(ctx context.Context, rawToken string) (store.PurgeReport, error) {
+	p, err := a.requireOwner(ctx, rawToken)
+	if err != nil {
+		return store.PurgeReport{}, err
+	}
+	lc, ok := a.Store.(store.OrgLifecycle)
+	if !ok {
+		return store.PurgeReport{}, fmt.Errorf("app: store cannot purge")
+	}
+	if a.OrgAdmin == nil {
+		return store.PurgeReport{}, fmt.Errorf("app: org admin not configured")
+	}
+	if err := a.OrgAdmin.RemoveOrgTuples(ctx, p.OrgID); err != nil {
+		return store.PurgeReport{}, err
+	}
+	return lc.PurgeOrg(ctx, p.OrgID)
 }
 
 func (a *App) ownsVault(p protocol.Principal) (bool, error) {

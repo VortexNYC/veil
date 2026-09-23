@@ -24,6 +24,7 @@ import (
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/oneimport"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/store"
 )
 
 type UseRequest struct {
@@ -243,6 +244,11 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
 	mux.HandleFunc("POST /v1/provision", s.provision)
 	mux.HandleFunc("POST /v1/invites", s.createInvite)
+	mux.HandleFunc("DELETE /v1/members/{id}", s.removeMember)
+	mux.HandleFunc("POST /v1/members/{id}/owner", s.promoteOwner)
+	mux.HandleFunc("DELETE /v1/members/{id}/owner", s.demoteOwner)
+	mux.HandleFunc("DELETE /v1/me", s.deleteMe)
+	mux.HandleFunc("DELETE /v1/org", s.deleteOrg)
 	mux.HandleFunc("POST /v1/use", s.useItem)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -611,6 +617,93 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 		out.RecoveryURL = inv.RecoveryURL
 	}
 	writeJSON(w, out)
+}
+
+// lifecycleStatus maps org-admin errors to status codes: 401 for unresolvable
+// principals, 403 for members who aren't owners, 404 for unknown members.
+func lifecycleStatus(err error) int {
+	switch {
+	case errors.Is(err, app.ErrForbidden):
+		return http.StatusForbidden
+	case errors.Is(err, store.ErrNotFound):
+		return http.StatusNotFound
+	default:
+		return http.StatusBadRequest
+	}
+}
+
+// DELETE /v1/members/{id} — owner offboards a member: tuple + humans row.
+func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := s.App.RemoveMember(r.Context(), raw, r.PathValue("id")); err != nil {
+		http.Error(w, "remove failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, map[string]bool{"removed": true})
+}
+
+// POST /v1/members/{id}/owner — owner promotes a member to co-owner.
+func (s *Server) promoteOwner(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := s.App.PromoteOwner(r.Context(), raw, r.PathValue("id")); err != nil {
+		http.Error(w, "promote failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, map[string]bool{"owner": true})
+}
+
+// DELETE /v1/members/{id}/owner — owner demotes a co-owner; the last owner
+// cannot be demoted.
+func (s *Server) demoteOwner(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := s.App.DemoteOwner(r.Context(), raw, r.PathValue("id")); err != nil {
+		http.Error(w, "demote failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, map[string]bool{"owner": false})
+}
+
+// DELETE /v1/me — the human kill-switch: tuples and the humans row die, the
+// token resolves nothing afterward. Sole owners are refused.
+func (s *Server) deleteMe(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := s.App.DeleteMe(r.Context(), raw); err != nil {
+		http.Error(w, "delete failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, map[string]bool{"deleted": true})
+}
+
+// DELETE /v1/org — owner teardown: tuples die, then every vault row for the
+// org in one transaction. Audit rows survive for the record.
+func (s *Server) deleteOrg(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	rep, err := s.App.DeleteOrg(r.Context(), raw)
+	if err != nil {
+		http.Error(w, "delete failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, rep)
 }
 
 func (s *Server) useItem(w http.ResponseWriter, r *http.Request) {

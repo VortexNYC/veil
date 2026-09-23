@@ -188,3 +188,76 @@ func (c *Client) AddMember(ctx context.Context, identityID string) error {
 	}
 	return c.writeRelation(ctx, RelOwners, identityID)
 }
+
+// Promote adds the owners tuple — the caller already proved membership.
+func (c *Client) Promote(ctx context.Context, identityID string) error {
+	return c.writeRelation(ctx, RelOwners, identityID)
+}
+
+// ListRelation returns every subject holding (org, relation) — owner
+// enumeration for last-owner protection.
+func (c *Client) ListRelation(ctx context.Context, relation string) ([]string, error) {
+	if !c.On() {
+		return nil, fmt.Errorf("keto: required")
+	}
+	var out []string
+	page := ""
+	for {
+		req := c.read.RelationshipAPI.GetRelationships(ctx).
+			Namespace(nsOrg).
+			Object(c.Org()).
+			Relation(relation).
+			PageSize(250)
+		if page != "" {
+			req = req.PageToken(page)
+		}
+		got, _, err := req.Execute()
+		if err != nil {
+			return nil, fmt.Errorf("keto: list: %w", err)
+		}
+		for _, t := range got.GetRelationTuples() {
+			if t.HasSubjectId() {
+				out = append(out, t.GetSubjectId())
+			}
+		}
+		page = got.GetNextPageToken()
+		if page == "" {
+			return out, nil
+		}
+	}
+}
+
+// DeleteRelation removes one tuple (org, relation, subject). Missing tuples
+// delete clean — offboarding is idempotent.
+func (c *Client) DeleteRelation(ctx context.Context, relation, subject string) error {
+	if !c.On() {
+		return fmt.Errorf("keto: required")
+	}
+	_, err := c.write.RelationshipAPI.DeleteRelationships(ctx).
+		Namespace(nsOrg).
+		Object(c.Org()).
+		Relation(relation).
+		SubjectId(subject).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("keto: delete: %w", err)
+	}
+	return nil
+}
+
+// DeleteAllRelations removes every tuple for the org under one relation —
+// org teardown. Missing is fine.
+func (c *Client) DeleteAllRelations(ctx context.Context, relation string) error {
+	if !c.On() {
+		return fmt.Errorf("keto: required")
+	}
+	_, err := c.write.RelationshipAPI.DeleteRelationships(ctx).
+		Namespace(nsOrg).
+		Object(c.Org()).
+		Relation(relation).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("keto: delete all: %w", err)
+	}
+	return nil
+}

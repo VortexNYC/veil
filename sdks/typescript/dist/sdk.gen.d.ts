@@ -1,5 +1,5 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client/index.js';
-import type { ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses } from './types.gen.js';
+import type { ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses } from './types.gen.js';
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
      * You can provide a client instance returned by `createClient()` instead of
@@ -89,3 +89,23 @@ export declare const provision: <ThrowOnError extends boolean = false>(options?:
  * Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.
  */
 export declare const createInvite: <ThrowOnError extends boolean = false>(options: Options<CreateInviteData, ThrowOnError>) => RequestResult<CreateInviteResponses, CreateInviteErrors, ThrowOnError>;
+/**
+ * Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.
+ */
+export declare const removeMember: <ThrowOnError extends boolean = false>(options: Options<RemoveMemberData, ThrowOnError>) => RequestResult<RemoveMemberResponses, RemoveMemberErrors, ThrowOnError>;
+/**
+ * Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.
+ */
+export declare const demoteOwner: <ThrowOnError extends boolean = false>(options: Options<DemoteOwnerData, ThrowOnError>) => RequestResult<DemoteOwnerResponses, DemoteOwnerErrors, ThrowOnError>;
+/**
+ * Grant an existing member the owners tuple. Owner-only. Not MCP.
+ */
+export declare const promoteOwner: <ThrowOnError extends boolean = false>(options: Options<PromoteOwnerData, ThrowOnError>) => RequestResult<PromoteOwnerResponses, PromoteOwnerErrors, ThrowOnError>;
+/**
+ * Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.
+ */
+export declare const deleteMe: <ThrowOnError extends boolean = false>(options?: Options<DeleteMeData, ThrowOnError>) => RequestResult<DeleteMeResponses, DeleteMeErrors, ThrowOnError>;
+/**
+ * Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.
+ */
+export declare const deleteOrg: <ThrowOnError extends boolean = false>(options?: Options<DeleteOrgData, ThrowOnError>) => RequestResult<DeleteOrgResponses, DeleteOrgErrors, ThrowOnError>;

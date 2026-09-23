@@ -39,6 +39,19 @@ func (f *fakeProvision) SetIdentityOrg(_ context.Context, id, orgID string) erro
 	return nil
 }
 
+// IdentityOrg mirrors Kratos: the last stamp wins, none is "".
+func (f *fakeProvision) IdentityOrg(_ context.Context, id string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	org := ""
+	for _, s := range f.stamps {
+		if s[0] == id {
+			org = s[1]
+		}
+	}
+	return org, nil
+}
+
 // orgMembers keys membership on org|id — cross-org isolation needs the org leg.
 type orgMembers map[string]bool
 
@@ -130,6 +143,49 @@ func TestProvisionHumanIdempotent(t *testing.T) {
 	second := provisioned(t, a, prov, "sub-1")
 	if first.OrgID != second.OrgID {
 		t.Fatalf("reprovision minted a second org: %q vs %q", first.OrgID, second.OrgID)
+	}
+}
+
+// An invited human carries the inviter's org in the Kratos stamp plus a Keto
+// member tuple — provisioning must join that org, not mint a fresh one. The
+// stamp alone (no member tuple) is not an invitation: it could be stale.
+func TestProvisionJoinsInvitedOrg(t *testing.T) {
+	dir := t.TempDir()
+	a, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	prov := &fakeProvision{}
+	a.Provision = prov
+
+	owner := provisioned(t, a, prov, "sub-owner")
+	a.Members = orgMembers{owner.OrgID + "|sub-owner": true}
+
+	// Invite: stamps the identity + plants the member tuple (glue does both).
+	if err := prov.SetIdentityOrg(context.Background(), "sub-inv", owner.OrgID); err != nil {
+		t.Fatal(err)
+	}
+	a.Members.(orgMembers)[owner.OrgID+"|sub-inv"] = true
+
+	inv := provisioned(t, a, prov, "sub-inv")
+	if inv.OrgID != owner.OrgID {
+		t.Fatalf("invitee got %q, want inviter's org %q", inv.OrgID, owner.OrgID)
+	}
+
+	// Stamp without membership is not an invitation — fresh org.
+	if err := prov.SetIdentityOrg(context.Background(), "sub-stale", owner.OrgID); err != nil {
+		t.Fatal(err)
+	}
+	stale := provisioned(t, a, prov, "sub-stale")
+	if stale.OrgID == owner.OrgID {
+		t.Fatal("stale stamp joined the org without a member tuple")
+	}
+
+	// No stamp at all — fresh org (self-signup).
+	fresh := provisioned(t, a, prov, "sub-fresh")
+	if fresh.OrgID == owner.OrgID || fresh.OrgID == stale.OrgID {
+		t.Fatal("unstamped signup joined an org")
 	}
 }
 
