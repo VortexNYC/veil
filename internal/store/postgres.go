@@ -18,6 +18,7 @@ import (
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store/sqlc"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -872,9 +873,13 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	// Index phase: after the legacy drop so the idx_audit_* names bind to
 	// the partitioned parent and propagate to every partition.
 	// pg_trgm is a trusted contrib extension — CREATE EXTENSION works under
-	// the app role on Railway's Postgres image.
+	// the app role on Railway's Postgres image. Pin it to pg_catalog: the
+	// opclasses are schema-scoped, and an install under a caller's
+	// search_path schema leaves gin_trgm_ops invisible to every other
+	// schema. pg_catalog is always searched.
 	for _, q := range []string{
-		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+		`CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA pg_catalog`,
+		`ALTER EXTENSION pg_trgm SET SCHEMA pg_catalog`,
 		`CREATE INDEX IF NOT EXISTS idx_items_name_trgm ON items USING GIN (name gin_trgm_ops)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_uris_trgm ON items USING GIN (uris gin_trgm_ops)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_tags_trgm ON items USING GIN (tags gin_trgm_ops)`,
@@ -1022,6 +1027,17 @@ func auditPartitionName(t time.Time) string {
 func EnsureAuditPartitions(ctx context.Context, pool *pgxpool.Pool, ahead int) error {
 	now := time.Now().UTC()
 	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, ahead, 0)
+	// A month partition cannot be created while audit_default holds a row
+	// in its range (SQLSTATE 23514). Legacy copies and any earlier strays
+	// land in DEFAULT, so drain it first: detach (it becomes a plain table,
+	// no partition constraint), create partitions spanning its data plus
+	// the horizon, re-insert so the parent router lands each row in its
+	// real month, then reattach the now-empty DEFAULT. If default is empty
+	// this is one cheap SELECT and the normal loop below.
+	if err := drainAuditDefault(ctx, pool, end); err != nil {
+		return err
+	}
 	for i := 0; i < ahead; i++ {
 		from := start.AddDate(0, i, 0)
 		to := from.AddDate(0, 1, 0)
@@ -1034,6 +1050,63 @@ func EnsureAuditPartitions(ctx context.Context, pool *pgxpool.Pool, ahead int) e
 		}
 	}
 	return nil
+}
+
+// drainAuditDefault re-homes rows sitting in audit_default into their real
+// month partitions so partition creation never trips over them. It widens
+// the created range to cover min/max(at) of the drained rows, so every row
+// lands in a real month — strays only accumulate when a row's timestamp is
+// outside every created month, which this function then covers anyway.
+func drainAuditDefault(ctx context.Context, pool *pgxpool.Pool, horizon time.Time) error {
+	var lo, hi *time.Time
+	if err := pool.QueryRow(ctx, `SELECT min(at), max(at) FROM audit_default`).Scan(&lo, &hi); err != nil {
+		// audit_default does not exist yet (pre-partition schema) — nothing
+		// to drain.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
+			return nil
+		}
+		return err
+	}
+	if lo == nil {
+		return nil
+	}
+	// Cover [month(lo) .. month(max(hi, horizon))].
+	loM := time.Date(lo.Year(), lo.Month(), 1, 0, 0, 0, 0, time.UTC)
+	hiM := time.Date(hi.Year(), hi.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+	horizonM := time.Date(horizon.Year(), horizon.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+	endM := hiM
+	if horizonM.After(endM) {
+		endM = horizonM
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `ALTER TABLE audit DETACH PARTITION audit_default`); err != nil {
+		return fmt.Errorf("detach audit_default: %w", err)
+	}
+	for m := loM; m.Before(endM); m = m.AddDate(0, 1, 0) {
+		to := m.AddDate(0, 1, 0)
+		q := fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS %s PARTITION OF audit FOR VALUES FROM ('%s') TO ('%s')`,
+			auditPartitionName(m), m.Format("2006-01-02"), to.Format("2006-01-02"))
+		if _, err := tx.Exec(ctx, q); err != nil {
+			return fmt.Errorf("partition %s: %w", auditPartitionName(m), err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO audit (id, at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+		SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit_default`); err != nil {
+		return fmt.Errorf("drain audit_default: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM audit_default`); err != nil {
+		return fmt.Errorf("clear audit_default: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `ALTER TABLE audit ATTACH PARTITION audit_default DEFAULT`); err != nil {
+		return fmt.Errorf("reattach audit_default: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 // DetachAuditPartitionsBefore detaches every monthly audit partition whose

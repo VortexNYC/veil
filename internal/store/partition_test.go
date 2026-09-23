@@ -121,7 +121,9 @@ func TestPostgresAuditPartitionLegacy(t *testing.T) {
 	defer pool.Close()
 
 	// Old shape: plain table, identity PK, plus one pre-migration row in a
-	// month that has no partition — it should land in audit_default.
+	// month that has no partition — the copy routes it to audit_default,
+	// then the drain re-homes it into that month's real partition so
+	// retention applies to migrated rows too.
 	old := time.Now().UTC().AddDate(0, -3, 0)
 	for _, q := range []string{
 		`CREATE TABLE audit (
@@ -169,8 +171,16 @@ func TestPostgresAuditPartitionLegacy(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_default`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("legacy row did not land in audit_default (%d)", n)
+	if n != 0 {
+		t.Fatalf("drain left %d rows in audit_default", n)
+	}
+	oldName := fmt.Sprintf("audit_%d_%02d", old.Year(), old.Month())
+	var inMonth int
+	if err := pool.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM %s WHERE reason='legacy-row'`, oldName)).Scan(&inMonth); err != nil {
+		t.Fatalf("legacy row did not re-home to %s: %v", oldName, err)
+	}
+	if inMonth != 1 {
+		t.Fatalf("legacy row in %s %d times, want 1", oldName, inMonth)
 	}
 	var gone bool
 	if err := pool.QueryRow(ctx, `SELECT NOT EXISTS(
@@ -308,5 +318,85 @@ func TestPostgresTrigramIndexes(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("trigram similarity found %d rows, want 1", hits)
+	}
+}
+
+// TestPostgresAuditPartitionDrainDefault reproduces the prod failure: a
+// partitioned audit whose DEFAULT partition holds rows inside a month
+// EnsureAuditPartitions must create. The drain must re-home them or the
+// create fails SQLSTATE 23514 and boot aborts.
+func TestPostgresAuditPartitionDrainDefault(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	pool := partPool(t, dsn, "test_audit_drain")
+	defer pool.Close()
+	// Replicate prod's real sequence: a partitioned audit whose ONLY
+	// partition is the DEFAULT catch-all (the state a legacy copy leaves
+	// before month partitions exist). Rows insert through the parent and
+	// all route into default — including a current-month row, which is
+	// exactly what made the boot-time CREATE PARTITION fail 23514.
+	now := time.Now().UTC()
+	for _, q := range []string{
+		`CREATE SEQUENCE audit_id_seq`,
+		`CREATE TABLE audit (
+			id BIGINT NOT NULL DEFAULT nextval('audit_id_seq'),
+			at TIMESTAMPTZ NOT NULL,
+			org_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			action TEXT NOT NULL,
+			decision TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			approval_id TEXT NOT NULL,
+			PRIMARY KEY (id, at)
+		) PARTITION BY RANGE (at)`,
+		`CREATE TABLE audit_default PARTITION OF audit DEFAULT`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+		VALUES ($1,'org','a','i','fetch','allow','recent',''), ($2,'org','a','i','fetch','allow','old','')`,
+		now.Add(-time.Hour), now.AddDate(0, -4, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureAuditPartitions(ctx, pool, 3); err != nil {
+		t.Fatalf("EnsureAuditPartitions over non-empty default: %v", err)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_default`).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("audit_default still holds %d rows", left)
+	}
+	thisMonth := fmt.Sprintf("audit_%d_%02d", now.Year(), now.Month())
+	var inMonth int
+	if err := pool.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM %s`, thisMonth)).Scan(&inMonth); err != nil {
+		t.Fatal(err)
+	}
+	if inMonth != 1 {
+		t.Fatalf("recent row landed in %s %d times, want 1", thisMonth, inMonth)
+	}
+	oldMonth := now.AddDate(0, -4, 0)
+	oldName := fmt.Sprintf("audit_%d_%02d", oldMonth.Year(), oldMonth.Month())
+	var inOld int
+	if err := pool.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM %s`, oldName)).Scan(&inOld); err != nil {
+		t.Fatal(err)
+	}
+	if inOld != 1 {
+		t.Fatalf("old row landed in %s %d times, want 1", oldName, inOld)
+	}
+	// Total audit rows still 2 — drain moved, did not duplicate.
+	var total int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit`).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Fatalf("audit has %d rows after drain, want 2", total)
 	}
 }

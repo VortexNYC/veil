@@ -136,7 +136,7 @@ CREATE TABLE sessions (
     uses INTEGER NOT NULL
 );
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA pg_catalog;
 CREATE INDEX idx_items_name_trgm ON items USING GIN (name gin_trgm_ops);
 CREATE INDEX idx_items_uris_trgm ON items USING GIN (uris gin_trgm_ops);
 CREATE INDEX idx_items_tags_trgm ON items USING GIN (tags gin_trgm_ops);
