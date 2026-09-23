@@ -7,6 +7,24 @@ description: What changed in Veil. Private alpha.
 
 Veil is in private alpha. Breaking changes land without notice until `v1`.
 
+## 2026-09-24 — Customer lifecycle, DR proof, monitoring
+
+- **Org lifecycle is live.** Owner-gated `DELETE /v1/members/{id}`,
+  `POST|DELETE /v1/members/{id}/owner`, self-delete `DELETE /v1/me`, and
+  org teardown `DELETE /v1/org` — purges all vault rows in one
+  transaction, audit survives as forensic record.
+- **Invites join the inviter's org.** Provisioning now honors the Kratos
+  org stamp only when the Keto member tuple exists; otherwise a fresh
+  org is minted.
+- **Backups are offsite.** Daily dumps of all four databases land on the
+  Railway volume *and* Cloudflare R2 via the `backup-ingest` worker.
+  KEK stays separately escrowed — no single vendor loses both.
+- **Monitoring covers silent failure.** `veil-monitor` alerts on stale
+  backup/sweep heartbeats, `/ready` failures, audit-outbox backlog, and
+  sustained origin 5xx (rolling `errors_5m` window in `/ready`).
+- **`/privacy` is live** — what we collect, retention, deletion rights,
+  and plain-English alpha terms.
+
 ## 2026-09-23 — Private alpha surface
 
 - **Invite-only access.** Self-service registration is off. Org owners invite

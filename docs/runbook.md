@@ -161,7 +161,24 @@ fallback: failed `audit` writes land there and a 2s relay on the audit
 pool lands them in `audit` atomically. `ListAudit` unions both, so a
 queued event is already visible.
 
+## Quarterly access review
+
+Who can reach what — diff reality against expectation each quarter:
+
+- `SELECT id, org_id FROM humans` — every row should be a known customer.
+- Keto: `GET /relationships` on each org — tuples match the humans table.
+- Railway: project members = founder only.
+- Cloudflare: account members + API tokens = founder + the four workers.
+- GitHub: repo collaborators on `VortexNYC/veil`.
+- 1Password: `Agents` vault access = the SA + founder.
+- Kratos: `kratos list identities` — count matches humans.
+
+Anything unexplained is an S2 until proven otherwise.
+
 ## Incidents
+
+`docs/incident-response.md` has the severity ladder, comms template, and
+postmortem format. The verbs:
 
 - **Origin down**: `railway logs --service veil`, `railway service
   redeploy --service veil` for the last good image.

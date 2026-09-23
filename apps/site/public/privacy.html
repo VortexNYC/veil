@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veil — Privacy</title>
+<meta name="description" content="What Veil collects, where it lives, how long it stays, and how to delete it.">
+<style>
+  @font-face {
+    font-family: "Hedvig Letters Serif";
+    src: url("/fonts/hedvig-letters-serif.woff2") format("woff2");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Hedvig Letters Sans";
+    src: url("/fonts/hedvig-letters-sans.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root {
+    --void: oklch(0.1 0 0);
+    --surface: oklch(0.165 0 0);
+    --border: oklch(0.26 0 0);
+    --subtle: oklch(0.52 0 0);
+    --secondary: oklch(0.68 0 0);
+    --foreground: oklch(0.9 0 0);
+    --bright: oklch(0.97 0 0);
+    --serif: "Hedvig Letters Serif", Georgia, serif;
+    --sans: "Hedvig Letters Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--void);
+    color: var(--foreground);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 64px 20px;
+  }
+  main { max-width: 640px; width: 100%; margin: 0 auto; }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(36px, 7vw, 56px);
+    font-weight: 400;
+    color: var(--bright);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  h2 {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--bright);
+    margin: 40px 0 12px;
+  }
+  p, li {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--secondary);
+  }
+  ul { padding-left: 20px; margin-top: 8px; }
+  li { margin-bottom: 6px; }
+  li::marker { color: var(--subtle); }
+  a { color: var(--foreground); }
+  .back {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--subtle);
+    text-decoration: none;
+  }
+  .back:hover { color: var(--bright); }
+  .note {
+    margin-top: 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .note p { font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; veil.nyc</a>
+  <h1>Privacy</h1>
+  <p style="margin-top:16px">Veil is in private alpha and invite-only. This page is the whole
+  privacy story — what we hold, why, and how to make it go away. It is written in plain terms
+  on purpose; if anything here is unclear, that's a bug.</p>
+
+  <h2>What we hold</h2>
+  <ul>
+    <li><strong>Account:</strong> your email address and name, held in our identity service (Ory Kratos) on our own database.</li>
+    <li><strong>Secrets:</strong> only ever as ciphertext. Items are encrypted under a per-organization key, wrapped by a deployment key held outside the database. We cannot read your secrets, and a database dump cannot be read without the wrapping key.</li>
+    <li><strong>Activity:</strong> an append-only audit record — which principal used which item, when, at what scope. Audit rows never contain secret material.</li>
+    <li><strong>Operational:</strong> server logs and traces used to keep the service alive. No analytics trackers, no ad pixels, no third-party cookies on the vault surfaces.</li>
+  </ul>
+
+  <h2>What we never do</h2>
+  <ul>
+    <li>We never see, log, or transmit your plaintext secrets. Agents you run receive credentials injected at the request path — they never see them either.</li>
+    <li>We never sell, rent, or share your data with advertisers or data brokers.</li>
+    <li>We never use your secrets or audit data to train models.</li>
+  </ul>
+
+  <h2>Who processes what</h2>
+  <ul>
+    <li><strong>Railway</strong> hosts the service and database (encrypted at rest).</li>
+    <li><strong>Cloudflare</strong> terminates TLS at the edge, runs our mail and backup workers, and holds encrypted offsite backup copies.</li>
+    <li><strong>1Password</strong> escrows the deployment wrapping key, separately from any backup.</li>
+  </ul>
+  <p style="margin-top:8px">No other vendor touches your data. Identity is self-hosted Ory
+  software running in our infrastructure — it is not a data processor.</p>
+
+  <h2>Retention &amp; deletion</h2>
+  <ul>
+    <li>Secrets and vault data are yours: an owner can delete the whole organization at any time, which purges all vault rows in one operation.</li>
+    <li>You can delete your own account from inside the product — membership and your identity mapping are removed immediately.</li>
+    <li>Audit records are retained on a fixed 90-day live window and survive organization deletion deliberately — they are the forensic record of who used what, and they contain no secrets.</li>
+    <li>Encrypted backups roll off on a fixed retention schedule (14 days on-host, replicated offsite).</li>
+  </ul>
+
+  <h2>Alpha terms, plainly</h2>
+  <ul>
+    <li>This is pre-release software. It is invite-only, provided as-is, and we publish no uptime SLA.</li>
+    <li>Durability work (encrypted backups, offsite copies, restore drills) is real and tested — but do not make Veil your only copy of anything yet.</li>
+    <li>If we have a security incident that affects you, we will tell you what happened, what was exposed, and what you need to do — quickly, in writing.</li>
+    <li>Questions, deletion requests, or anything unclear: contact the owner who invited you, or the address in <a href="/.well-known/security.txt">security.txt</a>.</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>Status.</strong> This page reflects the service as it actually runs today and will
+    be updated as the product changes. A formal privacy policy and terms of service will precede
+    public launch.</p>
+  </div>
+</main>
+</body>
+</html>
