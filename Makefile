@@ -1,4 +1,4 @@
-.PHONY: test vet fmt tidy sdk-fresh ci build identity-config identity-env identity-up glue prove-identity prove-cli-golden-flow prove-live prove-fill loadtest
+.PHONY: test vet fmt tidy sdk-fresh ci build identity-config identity-env identity-up glue prove-identity prove-hydra prove-cli-golden-flow prove-live prove-fill loadtest
 
 test:
 	env -u VEIL_HYDRA_ISSUER -u VEIL_HYDRA_ADMIN -u VEIL_HOME -u VEIL_OIDC_TOKEN -u VEIL_ORIGIN -u VEIL_OIDC_TOKEN_FILE -u VEIL_HYDRA_SECRET_FILE -u VEIL_AGENT VEIL_FILL_TOUCHID=0 go test -race -shuffle=on -timeout 15m ./...
@@ -57,6 +57,25 @@ identity-up: identity-env
 
 prove-identity: identity-up
 	go test -tags live ./identity/glue -count=1 -timeout 3m
+
+# Real-Hydra proof: a self-issued dev Hydra (issuer=itself, unlike the
+# identity-hydra compose service which masquerades as id.veil.nyc) mints a
+# real id_token; production code verifies it via JWKS, then a live app test
+# runs provision → item → agent → grant → use on real Postgres.
+prove-hydra:
+	@docker start veil-pg-test 2>/dev/null || docker run -d --name veil-pg-test \
+	  -p 127.0.0.1:55432:5432 -e POSTGRES_PASSWORD=test -e POSTGRES_DB=veiltest postgres:17
+	@docker start veil-hydra-test 2>/dev/null || docker run -d --name veil-hydra-test \
+	  -p 127.0.0.1:5555:4444 -p 127.0.0.1:5556:4445 \
+	  -e DSN=memory -e SECRETS_SYSTEM=test-system-secret-0123456789abcdef \
+	  -e OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT=test-salt-0123456789abcdef \
+	  -e URLS_SELF_ISSUER=http://127.0.0.1:5555 \
+	  oryd/hydra:v26.2.0 serve all --dev
+	@for i in $$(seq 1 50); do curl -sf http://127.0.0.1:5555/health/ready >/dev/null && break || sleep 0.2; done
+	@for i in $$(seq 1 50); do docker exec veil-pg-test pg_isready -U postgres >/dev/null 2>&1 && break || sleep 0.2; done
+	PG_TEST_DSN="postgres://postgres:test@127.0.0.1:55432/veiltest?sslmode=disable" \
+	  HYDRA_TEST_PUBLIC=http://127.0.0.1:5555 HYDRA_TEST_ADMIN=http://127.0.0.1:5556 \
+	  go test -tags live -p 1 ./internal/human ./internal/app -run HydraLive -count=1 -v
 
 prove-live:
 	./scripts/prove-live.sh
