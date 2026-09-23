@@ -2,6 +2,7 @@ import { EmailMessage } from "cloudflare:email";
 import { render } from "@react-email/render";
 import type { ReactElement } from "react";
 import { CodeEmail } from "./emails/code";
+import { InviteEmail } from "./emails/invite";
 import { LinkEmail } from "./emails/link";
 import { NoticeEmail } from "./emails/notice";
 
@@ -40,14 +41,7 @@ function templateFor(req: SendRequest): Rendered | null {
 	if (req.kind === "invite") {
 		return {
 			subject: "You're invited to Veil",
-			element: (
-				<LinkEmail
-					action="You're invited to Veil"
-					body="Veil is the credential broker for agents — items, grants, and injectable secrets without ever handing your agent the plaintext. Veil is in private alpha; this link sets up your account."
-					button="Set up your account"
-					url={str(d.url)}
-				/>
-			),
+			element: <InviteEmail url={str(d.url)} code={str(d.code)} />,
 		};
 	}
 	switch (req.template_type) {

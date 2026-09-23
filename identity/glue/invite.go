@@ -29,7 +29,8 @@ func (g *Glue) InviteIdentity(ctx context.Context, email, actor, orgID string) (
 	out := Invite{Invite: inv}
 	if g.mail != nil {
 		if err := g.mail.send(ctx, email, "invite", map[string]string{
-			"url": inv.RecoveryLink,
+			"url":  inv.RecoveryLink,
+			"code": inv.Code,
 		}); err != nil {
 			return Invite{}, err
 		}

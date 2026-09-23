@@ -79,9 +79,6 @@ func TestLiveAuthorize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := g.addOrgMember(context.Background(), id); err != nil {
-		t.Fatal(err)
-	}
 
 	_, ch := pkceChallenge(t)
 	noSess, loc := authorize(t, nil, ch)
@@ -160,17 +157,29 @@ func TestLiveAuthorize(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = a.Close() })
-	if _, err := a.AddAgent("claude"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.AddItem("stripe", "https://example.com", []byte("not-the-live-password")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.AddGrant("claude", "stripe", protocol.Level1); err != nil {
-		t.Fatal(err)
-	}
 	a.Members = g
-	ap, err := a.ApproveOIDC(context.Background(), "claude:stripe", idTok, time.Minute)
+	a.Provision = g
+	p, perr := a.ProvisionHuman(context.Background(), idTok)
+	if perr != nil {
+		t.Fatal(perr)
+	}
+	agent, err := a.AddAgentFor(p, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := a.PutItemFor(p, app.ItemOpts{
+		Name:  "stripe",
+		URI:   "https://example.com",
+		Token: []byte("not-the-live-password"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gr, err := a.GrantUntil(p, agent.ID, item.ID, protocol.Level1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ap, err := a.ApproveOIDC(context.Background(), gr.ID, idTok, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +212,7 @@ func TestLiveInvite(t *testing.T) {
 		t.Fatal(err)
 	}
 	email := fmt.Sprintf("invite-%d@example.com", time.Now().UnixNano())
-	inv, err := g.InviteIdentity(context.Background(), email, "", protocol.LocalOrgID)
+	inv, err := g.InviteIdentity(context.Background(), email, "", orgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +241,7 @@ func TestLiveInvite(t *testing.T) {
 			t.Fatal("kratos id cached in sqlite")
 		}
 	}
-	ids, err := g.ListMembers(context.Background(), protocol.LocalOrgID)
+	ids, err := g.ListMembers(context.Background(), orgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,21 +257,21 @@ func TestLiveInvite(t *testing.T) {
 	if !found {
 		t.Fatal("member not in kratos list")
 	}
-	member, err := g.Allowed(context.Background(), protocol.LocalOrgID, relMembers, inv.IdentityID)
+	member, err := g.Allowed(context.Background(), orgID, relMembers, inv.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !member {
 		t.Fatal("keto denied the invited member")
 	}
-	owner, err := g.Allowed(context.Background(), protocol.LocalOrgID, relOwners, inv.IdentityID)
+	owner, err := g.Allowed(context.Background(), orgID, relOwners, inv.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !owner {
 		t.Fatal("first invite is not keto owner")
 	}
-	stranger, err := g.Allowed(context.Background(), protocol.LocalOrgID, relMembers, "00000000-0000-4000-8000-000000000000")
+	stranger, err := g.Allowed(context.Background(), orgID, relMembers, "00000000-0000-4000-8000-000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,21 +286,21 @@ func TestLiveInvite(t *testing.T) {
 		t.Fatalf("organization_id %q", org)
 	}
 	email2 := fmt.Sprintf("invite2-%d@example.com", time.Now().UnixNano())
-	if _, err := g.InviteIdentity(context.Background(), email2, "", protocol.LocalOrgID); err == nil {
+	if _, err := g.InviteIdentity(context.Background(), email2, "", orgID); err == nil {
 		t.Fatal("second invite without owner")
 	}
-	second, err := g.InviteIdentity(context.Background(), email2, inv.IdentityID, protocol.LocalOrgID)
+	second, err := g.InviteIdentity(context.Background(), email2, inv.IdentityID, orgID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ok, err := g.IsMember(context.Background(), protocol.LocalOrgID, second.IdentityID)
+	ok, err := g.IsMember(context.Background(), orgID, second.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("second invite is not a member")
 	}
-	owner2, err := g.Allowed(context.Background(), protocol.LocalOrgID, relOwners, second.IdentityID)
+	owner2, err := g.Allowed(context.Background(), orgID, relOwners, second.IdentityID)
 	if err != nil {
 		t.Fatal(err)
 	}
