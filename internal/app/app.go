@@ -863,11 +863,15 @@ func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteRe
 	return a.Invites.Invite(ctx, email, sub, h.OrgID)
 }
 
+// ErrUnauthorized marks token/principal resolution failure on verbs that
+// distinguish it from a bad argument — the API maps it to 401, not 400.
+var ErrUnauthorized = errors.New("app: unauthorized")
+
 // requireOwner resolves a provisioned human and requires owner of their org.
 func (a *App) requireOwner(ctx context.Context, rawToken string) (protocol.Principal, error) {
 	p, err := a.PrincipalFromOIDC(ctx, rawToken)
 	if err != nil {
-		return protocol.Principal{}, err
+		return protocol.Principal{}, fmt.Errorf("%w: %v", ErrUnauthorized, err)
 	}
 	if p.Kind != protocol.PrincipalHuman || a.Members == nil {
 		return protocol.Principal{}, ErrForbidden
@@ -973,7 +977,7 @@ func (a *App) DemoteOwner(ctx context.Context, rawToken, memberID string) error 
 func (a *App) DeleteMe(ctx context.Context, rawToken string) error {
 	p, err := a.PrincipalFromOIDC(ctx, rawToken)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrUnauthorized, err)
 	}
 	if p.Kind != protocol.PrincipalHuman || a.Members == nil {
 		return ErrForbidden

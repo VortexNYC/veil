@@ -1483,6 +1483,10 @@ func TestLifecycleEndpoints(t *testing.T) {
 	if code, _ := doJSON(t, srv, http.MethodDelete, "/v1/members/sub-member", "", nil); code != http.StatusUnauthorized {
 		t.Fatalf("anon remove %d", code)
 	}
+	// A dead token (resolves to no provisioned human) is 401, not 404/400.
+	if code, _ := doJSON(t, srv, http.MethodDelete, "/v1/org", "tok-member", nil); code != http.StatusUnauthorized {
+		t.Fatalf("dead token delete-org %d", code)
+	}
 
 	if code, raw := doJSON(t, srv, http.MethodDelete, "/v1/org", "tok-owner", nil); code != http.StatusOK {
 		t.Fatalf("delete org %d %s", code, raw)

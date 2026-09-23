@@ -623,6 +623,8 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 // principals, 403 for members who aren't owners, 404 for unknown members.
 func lifecycleStatus(err error) int {
 	switch {
+	case errors.Is(err, app.ErrUnauthorized):
+		return http.StatusUnauthorized
 	case errors.Is(err, app.ErrForbidden):
 		return http.StatusForbidden
 	case errors.Is(err, store.ErrNotFound):
