@@ -40,11 +40,11 @@ final pgbot snapshot, so `pg_stat_statements` includes every audit `COPY`.
 | `LOADTEST_RESET_DB` | `0` | when `1`, truncates load-test tables before seeding (destructive; test DB only) |
 | `LOADTEST_REPLICAS` | 1 | origin replica count |
 | `VEIL_VUS` | 50 | k6 virtual users |
-| `VEIL_AUDIT_FLUSH_INTERVAL` | 5ms | max delay before an audit batch is flushed |
+| `VEIL_AUDIT_FLUSH_INTERVAL` | **removed** (§11) | async audit is gone from the origin path; env no longer read |
 | `VEIL_MASTER_KEY` | generated if unset | 64-hex master key for the origin; generated when empty. Required for `external` mode and must match the key used by the external origins. |
 | `VEIL_LOG_LEVEL` | warn | suppress per-request INFO logs during benchmarks |
 | `LOADTEST_OUT` | `tests/load/k6/out` | artifact directory for k6, pgbot, and pprof output |
-| `VEIL_MAX_IN_FLIGHT_USE` | 0 (unlimited) | per-origin in-flight `Use` limit; 0 disables admission control |
+| `VEIL_MAX_IN_FLIGHT_USE` | **100** in `veil mcp` child processes; 0 (unlimited) only for in-process `goroutine` origins | per-origin in-flight `Use` limit; must be set explicitly for `process`-mode benchmarks or 150 VUs shed at 3×100 capacity |
 
 ## Results
 
@@ -729,11 +729,61 @@ Postgres — consume rolls back, `uses` stays 0), and
 `TestUseAuditFailureFailsClosed` (broker — both token paths error with zero
 audit rows and no upstream call).
 
+### 13. Post-transactional-audit baseline (2026-09-23)
+
+First load runs **after** §11+§12 — every `Use` now commits
+`ConsumeSession`+`InsertAudit` in one transaction, so a synchronous WAL commit
+sits on the hot path. Same Mac, same harness, `process` mode, direct origins,
+`VEIL_MAX_IN_FLIGHT_USE=1000`, fresh `loadtest` DB.
+
+| Run | Requests | Throughput | avg | med | p95 | errors |
+|---|---|---|---|---|---|---|
+| 3 replicas, 150 VUs, 200 agents | 444,366 | 3,703 req/s | 18.17 ms | 10.08 ms | 47.24 ms | 0% |
+| 1 replica, 50 VUs, 50 agents | 347,123 | 2,892 req/s | 7.69 ms | 6.15 ms | 14.18 ms | 0% |
+
+**Consistency proof (both runs)**: `count(audit.decision='allow')` =
+`sum(sessions.uses)` = request count exactly — 444,366 and 347,123. Every
+request consumed exactly one use and committed exactly one audit row. Zero
+sheds, zero store errors, zero unaccounted requests.
+
+pg_stat_statements, per-`Use` synchronous DB time:
+
+| Query | mean (3rep/150vu) | mean (1rep/50vu) |
+|---|---|---|
+| `UseAuthSession` | 0.096 ms | 0.051 ms |
+| `ConsumeSession` (UPDATE) | 0.073 ms | 0.040 ms |
+| `InsertAudit` (in same tx) | 0.045 ms | 0.031 ms |
+| `ItemSecretOwner` | 0.018 ms | 0.014 ms |
+| **total** | **0.231 ms** | **0.136 ms** |
+
+Interpretation:
+
+- **The durability change costs real, bounded latency.** §10 measured
+  ~0.097 ms DB per `Use` with audit on the async COPY path; §13 measures
+  ~0.14–0.23 ms with the audit INSERT inside the consume transaction. The
+  audit INSERT itself is ~0.03–0.05 ms; the rest of the added latency is the
+  COMMIT — the fsync that pg_stat_statements doesn't attribute to any
+  statement. Docker-on-Mac fsync (virtiofs) almost certainly overstates the
+  production number; the Railway §8/§9 runs are the better latency reference.
+- **Throughput fell vs §10's pre-§12 run** (6,289 → 3,703 req/s at the same
+  3rep/150vu geometry). Part is commit serialization — every `Use` holds a
+  connection through COMMIT now — and part is the documented ±40% run-to-run
+  variance of this harness on one Mac. Directionally: sync audit is not free,
+  and it is cheap. Postgres is still not the limiter (≤0.23 ms DB per
+  request; ~0.86 DB-seconds per second of load at 3.7k req/s).
+- **The fail-closed invariant holds under load**: the 1:1:1
+  request/consume/audit count is not a test assertion, it's the actual
+  database state after 791k combined requests across the two runs.
+- One footgun found and documented: child-process origins default
+  `VEIL_MAX_IN_FLIGHT_USE` to **100** (cli.go), not unlimited — the harness
+  must set it explicitly or 150 VUs shed at 3×100 capacity.
+
 ## Scalability model — thousands of users and agents
 
-Measured basis (this doc): a `Use` costs ~0.097ms DB time + ~107B WAL for the
-consume write + ~336B/row async audit; auth reads are index-point lookups
-(`sessions.secret_hash` unique, `grants(agent_id,item_id)`, `workloads(issuer)`).
+Measured basis (this doc): a `Use` costs ~0.14–0.23ms DB time (auth read +
+transactional consume+audit commit + secret read, §13); auth reads are
+index-point lookups (`sessions.secret_hash` unique, `grants(agent_id,item_id)`,
+`workloads(issuer)`).
 
 - **Users** (humans) barely touch the hot path — login/TOTP/grant-admin flows
   are Kratos/Hydra + occasional vault writes. Thousands of humans is a Kratos
@@ -741,9 +791,9 @@ consume write + ~336B/row async audit; auth reads are index-point lookups
 - **Agents** scale along two axes: count × request rate. Count is cheap —
   agents/items/grants rows are small and indexed; 200-agent runs show zero
   lookup degradation. Rate is the constraint: N agents × R req/s each = total
-  `Use` load. At ~0.1ms DB time each, a single modest Postgres core sustains
-  roughly **10k `Use`/s**; the origin replicas exhaust first (~2–3k req/s
-  each at 150 VUs of headroom), so scale-out is `replicas += n` until the
+  `Use` load. At ~0.23ms DB time each (§13), a single modest Postgres core
+  sustains roughly **4k `Use`/s**; the origin replicas exhaust first (~2–3k
+  req/s each at 150 VUs of headroom), so scale-out is `replicas += n` until the
   connection budget binds (~4–5 replicas at `max_connections=100` —
   PgBouncer past that, see Deferred #1).
 - **Writes that grow unboundedly**: `audit` (1 row per use + lifecycle events)
