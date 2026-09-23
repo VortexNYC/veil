@@ -73,6 +73,25 @@ export default defineRailway(() => {
       VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
     },
   });
+  // Daily pg_dump of the `veil` database to a dedicated volume — the same
+  // format the restore drill in docs/backup-restore.md proves.
+  // Custom-format (-Fc) dumps compress and restore selectively; 14-day
+  // local retention. Pull a copy offsite with `railway files` — R2/offsite
+  // replication is the post-alpha step, tracked in docs/backup-restore.md.
+  const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
+  const veilBackup = service("veil-backup", {
+    source: image("postgres:16-alpine"),
+    start: "sh -c 'pg_dump \"$PGDUMP_DSN\" -Fc -f /backups/veil-$(date +%F-%H%M).dump && pg_dump \"$PGDUMP_IDENTITY_DSN\" -Fc -f /backups/identity-$(date +%F-%H%M).dump && find /backups -name \"*.dump\" -mtime +14 -delete'",
+    deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
+    replicas: { "sfo": 1 },
+    volumeMounts: { "/backups": veilBackups },
+    env: {
+      PGDUMP_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
+      // Kratos/Keto/Hydra state — losing it orphans humans even with a
+      // perfect vault restore (docs/backup-restore.md).
+      PGDUMP_IDENTITY_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/identity",
+    },
+  });
   const glue = service("glue", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/identity-glue",
@@ -90,6 +109,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, pwmVolume, veilMigrate, veilSweep],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, pwmVolume, veilMigrate, veilSweep, veilBackup, veilBackups],
   });
 });

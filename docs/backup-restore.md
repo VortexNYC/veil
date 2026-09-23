@@ -37,8 +37,20 @@ Store the dump somewhere that is not the same failure domain as the
 database (object storage, different account). The `VEIL_KEK` value goes
 to the secret store of record — see the KEK runbook (VEIL-8) for escrow.
 
-Suggested cadence: platform snapshots for crash recovery, a daily logical
-dump for anything that outlives the platform account.
+Actual cadence: platform snapshots for crash recovery, plus the
+`veil-backup` Railway cron service (`.railway/railway.ts`) — daily at
+05:17 UTC, custom-format `pg_dump` of both the `veil` and `identity`
+databases onto the `veil-backups` volume with 14-day retention. Pull a
+dump offsite when it matters:
+
+```bash
+railway files --service veil-backup list /backups
+railway files --service veil-backup download /backups/veil-YYYY-MM-DD-HHMM.dump
+```
+
+Offsite replication (R2/object storage, different account) is the
+post-alpha step — until then the volume and the database share a region's
+blast radius, which is honest but not maximal.
 
 ## Restoring
 
@@ -68,9 +80,7 @@ the binary.
 
 ## What this does not cover
 
-- Kratos / Keto / Hydra state lives in the identity plane's own Postgres
-  (`identity/compose.yml`, `identity` database) — back it up the same way.
-  Losing Kratos identities re-orphans humans even with a perfect vault
-  restore.
+- Kratos / Keto / Hydra state lives in the `identity` database on the
+  same shared Postgres — `veil-backup` dumps it alongside `veil` nightly.
 - Ransom/drills cadence: run the restore, not just the backup. A backup
   that has never been restored is a hypothesis.
