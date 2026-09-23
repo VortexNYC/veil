@@ -32,11 +32,14 @@ func TestOfficialMFAMethodsEnabled(t *testing.T) {
 			if strings.Contains(s, "127.0.0.1:1025") || strings.Contains(s, "smtp://mail:") {
 				t.Fatal("origin courier is mailpit")
 			}
-			if !strings.Contains(s, "delivery_strategy: http") || !strings.Contains(s, "api.resend.com") || !strings.Contains(s, "noreply@veil.nyc") {
-				t.Fatal("origin courier is not Resend HTTP from noreply@veil.nyc")
+			if !strings.Contains(s, "delivery_strategy: http") || !strings.Contains(s, "mail.veil.nyc") || !strings.Contains(s, "noreply@veil.nyc") {
+				t.Fatal("origin courier is not the veil-mail worker from noreply@veil.nyc")
 			}
 			if !strings.Contains(s, "type: api_key") || !strings.Contains(s, "name: Authorization") {
-				t.Fatal("origin courier auth is not Resend API key header")
+				t.Fatal("origin courier auth is not a bearer token header")
+			}
+			if !strings.Contains(s, "registration:\n      enabled: false") {
+				t.Fatal("origin registration is not invite-gated")
 			}
 			if !strings.Contains(s, "required_aal: highest_available") {
 				t.Fatal("origin session does not require TOTP when enrolled")

@@ -18,12 +18,11 @@ import (
 	"net/url"
 )
 
-
 // HumanAPIService HumanAPI service
 type HumanAPIService service
 
 type HumanAPIProvisionRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *HumanAPIService
 }
 
@@ -34,24 +33,25 @@ func (r HumanAPIProvisionRequest) Execute() (*ProvisionResponse, *http.Response,
 /*
 Provision Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return HumanAPIProvisionRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return HumanAPIProvisionRequest
 */
 func (a *HumanAPIService) Provision(ctx context.Context) HumanAPIProvisionRequest {
 	return HumanAPIProvisionRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return ProvisionResponse
+//
+//	@return ProvisionResponse
 func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*ProvisionResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *ProvisionResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ProvisionResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.Provision")

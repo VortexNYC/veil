@@ -6,7 +6,6 @@ import (
 	"runtime"
 
 	"github.com/VortexNYC/veil/internal/cli"
-	"github.com/VortexNYC/veil/internal/envcompat"
 	"github.com/VortexNYC/veil/internal/fill"
 )
 
@@ -20,7 +19,6 @@ func init() {
 }
 
 func main() {
-	envcompat.BridgeLegacy()
 	os.Args = fill.NativeHostArgs(os.Args)
 	if err := cli.New(version).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

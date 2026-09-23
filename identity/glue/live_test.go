@@ -395,7 +395,7 @@ func TestLiveLaptopSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sockDir, err := os.MkdirTemp("/tmp", "pwm")
+	sockDir, err := os.MkdirTemp("/tmp", "veil")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestLiveLaptopSocket(t *testing.T) {
 		},
 	}
 	body := `{"item":"stripe","url":"` + upstream.URL + `","method":"GET"}`
-	req, err := http.NewRequest(http.MethodPost, "http://pwm/use", bytes.NewBufferString(body))
+	req, err := http.NewRequest(http.MethodPost, "http://veil/use", bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatal(err)
 	}

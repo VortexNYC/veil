@@ -19,11 +19,11 @@ var _ MappedNullable = &CardFields{}
 
 // CardFields Request only. Never returned. Never MCP.
 type CardFields struct {
-	Number *string `json:"number,omitempty"`
+	Number   *string `json:"number,omitempty"`
 	ExpMonth *string `json:"exp_month,omitempty"`
-	ExpYear *string `json:"exp_year,omitempty"`
-	Cvv *string `json:"cvv,omitempty"`
-	Holder *string `json:"holder,omitempty"`
+	ExpYear  *string `json:"exp_year,omitempty"`
+	Cvv      *string `json:"cvv,omitempty"`
+	Holder   *string `json:"holder,omitempty"`
 }
 
 // NewCardFields instantiates a new CardFields object
@@ -204,7 +204,7 @@ func (o *CardFields) SetHolder(v string) {
 }
 
 func (o CardFields) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -266,5 +266,3 @@ func (v *NullableCardFields) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

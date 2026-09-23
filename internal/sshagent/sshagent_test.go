@@ -47,7 +47,7 @@ func TestSignDoesNotReturnPrivateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir, err := os.MkdirTemp("/tmp", "pwm")
+	dir, err := os.MkdirTemp("/tmp", "veil")
 	if err != nil {
 		t.Fatal(err)
 	}

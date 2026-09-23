@@ -25,15 +25,17 @@ export default defineRailway(() => {
     env: { DSN: preserve() },
   });
   // Postgres is the store of record (cutover done 2026-09-18). veil runs
-  // stateless on PWM_POSTGRES_DSN; the `veil` database lives in the shared
+  // stateless on VEIL_POSTGRES_DSN; the `veil` database lives in the shared
   // Postgres instance. veil-migrate keeps the sqlite volume mounted at /data
   // as the rollback path — redeploy it to re-run the idempotent sync.
-  // Rollback: move the volumeMount back to veil, delete PWM_POSTGRES_DSN,
+  // Rollback: move the volumeMount back to veil, delete VEIL_POSTGRES_DSN,
   // redeploy. Drop pwm-volume only after the rollback window closes.
-  // PWM_MASTER_KEY MUST stay live on veil (preserve() cannot read sealed
+  // VEIL_MASTER_KEY MUST stay live on veil (preserve() cannot read sealed
   // variables — an apply will silently drop one). Local recovery copy:
-  // ~/.config/vortex/pwm-master-key and ~/.veil/wraps on the founder's Mac.
-  const pwmVolume = volume("pwm-volume", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
+  // ~/.config/vortex/veil-master-key and ~/.veil/wraps on the founder's Mac.
+  // The Railway volume keeps its original name — the API has no volume
+  // rename, and renaming the resource would provision an empty volume.
+  const veilVolume = volume("pwm-volume", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
   // Replica budget (VEIL-5, docs/scale.md): each origin replica holds
   // VEIL_PG_MAX_CONNS (default 20) + VEIL_PG_AUDIT_CONNS (default 2) backend
   // connections against the shared Postgres. At the stock
@@ -46,14 +48,14 @@ export default defineRailway(() => {
     healthcheckTimeout: 300,
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), PWM_HOME: preserve(), PWM_HYDRA_ADMIN: preserve(), PWM_HYDRA_CLIENT_ID: preserve(), PWM_HYDRA_ISSUER: preserve(), PWM_KEK: preserve(), PWM_KETO_READ: preserve(), PWM_KETO_WRITE: preserve(), PWM_KRATOS_ADMIN: preserve(), PWM_KRATOS_PUBLIC: preserve(), PWM_MCP_URL: preserve(), PWM_MASTER_KEY: preserve(), PWM_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve() },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/veil migrate",
     deploy: { restartPolicyType: "NEVER" },
     replicas: { "sfo": 1 },
-    volumeMounts: { "/data": pwmVolume },
+    volumeMounts: { "/data": veilVolume },
     env: {
       VEIL_HOME: "/data",
       VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
@@ -109,6 +111,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, pwmVolume, veilMigrate, veilSweep, veilBackup, veilBackups],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups],
   });
 });

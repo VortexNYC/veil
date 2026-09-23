@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ORIGIN="${VEIL_ORIGIN:-https://veil.nyc}"
-TOKEN_FILE="${VEIL_HUMAN_TOKEN_FILE:-$HOME/.config/veil/pwm-human.jwt}"
+TOKEN_FILE="${VEIL_HUMAN_TOKEN_FILE:-$HOME/.config/veil/human.jwt}"
 URL="${VEIL_FILL_URL:-https://example.com/}"
 
 if [[ ! -s "$TOKEN_FILE" ]]; then

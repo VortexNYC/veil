@@ -138,7 +138,7 @@ func TestCodingAgentsFetchOverRemoteMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	public := "http://pwm.test/mcp"
+	public := "http://veil.test/mcp"
 	ts := httptest.NewServer(Mux(a, public, iss.URL))
 	t.Cleanup(ts.Close)
 	endpoint := ts.URL + Path
@@ -289,7 +289,7 @@ func TestRESTUsePOSTBodyDoesNotReturnSecret(t *testing.T) {
 	if _, err := a.BindWorkload("claude", iss.URL, "agent-claude", "veil"); err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(Mux(a, "http://pwm.test/mcp", iss.URL))
+	ts := httptest.NewServer(Mux(a, "http://veil.test/mcp", iss.URL))
 	t.Cleanup(ts.Close)
 	tok := iss.token(t, "agent-claude", "veil")
 	reqBody := `{"item":"stripe","url":"` + upstream.URL + `/v1","method":"POST","headers":{"Content-Type":"application/json"},"body":"{\"email\":\"a@b.c\"}"}`
@@ -380,7 +380,7 @@ func TestReadyFailsWhenIssuerDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	ts := httptest.NewServer(Mux(a, "http://pwm.test/mcp", "http://127.0.0.1:1"))
+	ts := httptest.NewServer(Mux(a, "http://veil.test/mcp", "http://127.0.0.1:1"))
 	t.Cleanup(ts.Close)
 	health, err := http.Get(ts.URL + "/health")
 	if err != nil {

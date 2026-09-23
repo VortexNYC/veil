@@ -46,7 +46,7 @@ func envClean() []string {
 			strings.HasPrefix(e, "VEIL_OIDC_") ||
 			strings.HasPrefix(e, "VEIL_HUMAN_") ||
 			strings.HasPrefix(e, "VEIL_HYDRA_") ||
-			strings.HasPrefix(e, "PWM_") {
+			strings.HasPrefix(e, "VEIL_") {
 			continue
 		}
 		out = append(out, e)
@@ -73,7 +73,7 @@ func TestEnvProveDoesNotDisableTouchID(t *testing.T) {
 	}
 }
 
-func pwm(t *testing.T, bin, home string, args ...string) []byte {
+func veil(t *testing.T, bin, home string, args ...string) []byte {
 	t.Helper()
 	return veilEnv(t, bin, home, nil, args...)
 }
@@ -96,15 +96,15 @@ func TestCompiledBinaryAddListMatchFill(t *testing.T) {
 	const login = "stripe@example.com"
 	bin := buildPWM(t)
 	home := t.TempDir()
-	pwm(t, bin, home, "init")
+	veil(t, bin, home, "init")
 	secFile := filepath.Join(home, "sec")
 	if err := os.WriteFile(secFile, []byte(secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	pwm(t, bin, home, "item", "add", "stripe", "--uri", "https://dashboard.stripe.com", "--secret-file", secFile, "--login", login)
-	pwm(t, bin, home, "item", "add", "github", "--uri", "https://github.com", "--secret-file", secFile)
+	veil(t, bin, home, "item", "add", "stripe", "--uri", "https://dashboard.stripe.com", "--secret-file", secFile, "--login", login)
+	veil(t, bin, home, "item", "add", "github", "--uri", "https://github.com", "--secret-file", secFile)
 
-	listOut := pwm(t, bin, home, "item", "list")
+	listOut := veil(t, bin, home, "item", "list")
 	var listed []protocol.Item
 	if err := json.Unmarshal(listOut, &listed); err != nil {
 		t.Fatalf("list json: %v\n%s", err, listOut)

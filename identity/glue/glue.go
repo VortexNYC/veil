@@ -24,7 +24,6 @@ import (
 const (
 	LocalOrgID        = protocol.LocalOrgID
 	DefaultClientID   = hydra.DefaultClientID
-	LegacyAudience    = hydra.LegacyAudience
 	AgentClientPrefix = hydra.AgentClientPrefix
 	relOwners         = keto.RelOwners
 	relMembers        = keto.RelMembers

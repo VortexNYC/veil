@@ -41,6 +41,6 @@ OpenAPI factory. `docs/openapi/veil.openapi.json` is the contract. HTTP `/v1/ite
 
 Item lifecycle and secret refs. `${NAME}` / `veil://name` resolve only inside `run --inject` and child env. Archive, delete, tags, history, file BLOB (owner write to disk), grant `--expires`, owner `audit`, `gen`. MCP agent tools are still only `list_items` + `fetch`. No 1Password vaults/Connect/`op`. No iOS until fill origin is proven.
 
-Cloud coding agents hit `https://veil.nyc/mcp`. Same Streamable HTTP. Bearer after `agent bind` / `agent hydra`. Mint at `https://id.veil.nyc` (Hydra public: token+JWKS). Not admin. Origin is Railway. Cloudflare is DNS plus Workers (`login.veil.nyc`, `app.veil.nyc`). Not Tunnel. `pwm.veil.nyc` is leftover Mini.
+Cloud coding agents hit `https://veil.nyc/mcp`. Same Streamable HTTP. Bearer after `agent bind` / `agent hydra`. Mint at `https://id.veil.nyc` (Hydra public: token+JWKS). Not admin. Origin is Railway. Cloudflare is DNS plus Workers (`login.veil.nyc`, `app.veil.nyc`). Not Tunnel.
 
 Keto is membership truth. Invite is owner-gated after bootstrap. Master is wrapped (`device.key` + `wraps/`), not a plaintext `master.key`. Origin crypto is per-org: `org_keys` rows hold each org's master sealed under `PWM_KEK` (env → `VEIL_KEK`); `VEIL_MASTER_KEY` is the legacy seed, not the model. If Hydra is configured, Approve is ApproveOIDC. Login is Kratos `oauth2_provider`, not a glue HTTP hop. Hydra consent skip still needs glue AcceptConsent.

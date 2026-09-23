@@ -19,7 +19,7 @@ func InstallOrigin(env InstallEnv) error {
 	}
 	cfg := HostConfig{Origin: env.Origin, Home: env.VaultHome}
 	if env.Origin != "" {
-		cfg.TokenFile = filepath.Join(env.UserHome, ".config/veil/pwm-human.jwt")
+		cfg.TokenFile = filepath.Join(env.UserHome, ".config/veil/human.jwt")
 		cfg.LoginEmail = env.LoginEmail
 		cfg.PasswordFile = env.PasswordFile
 		cfg.TOTPFile = env.TOTPFile

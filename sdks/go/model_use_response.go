@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"fmt"
 )
 
@@ -21,10 +21,10 @@ var _ MappedNullable = &UseResponse{}
 
 // UseResponse struct for UseResponse
 type UseResponse struct {
-	Decision string `json:"decision"`
-	Reason *string `json:"reason,omitempty"`
+	Decision   string  `json:"decision"`
+	Reason     *string `json:"reason,omitempty"`
 	ApprovalId *string `json:"approval_id,omitempty"`
-	Status *int32 `json:"status,omitempty"`
+	Status     *int32  `json:"status,omitempty"`
 	// Upstream response headers, including Content-Type and Content-Encoding.
 	Headers map[string][]string `json:"headers,omitempty"`
 	// Upstream body with vault secrets scrubbed. Present when the body is valid UTF-8.
@@ -270,7 +270,7 @@ func (o *UseResponse) SetBodyB64(v string) {
 }
 
 func (o UseResponse) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -314,10 +314,10 @@ func (o *UseResponse) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
-	for _, requiredProperty := range(requiredProperties) {
+	for _, requiredProperty := range requiredProperties {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -373,5 +373,3 @@ func (v *NullableUseResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

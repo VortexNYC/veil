@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"fmt"
 )
 
@@ -25,8 +25,8 @@ type CreateGrantRequest struct {
 	Agent *string `json:"agent,omitempty"`
 	// Kratos identity id. Same Grant.agent_id. Not email. XOR agent.
 	Human *string `json:"human,omitempty"`
-	Item string `json:"item"`
-	Level string `json:"level"`
+	Item  string  `json:"item"`
+	Level string  `json:"level"`
 	// Go duration. Empty is forever.
 	Expires *string `json:"expires,omitempty"`
 }
@@ -197,7 +197,7 @@ func (o *CreateGrantRequest) SetExpires(v string) {
 }
 
 func (o CreateGrantRequest) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -234,10 +234,10 @@ func (o *CreateGrantRequest) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
-	for _, requiredProperty := range(requiredProperties) {
+	for _, requiredProperty := range requiredProperties {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -293,5 +293,3 @@ func (v *NullableCreateGrantRequest) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

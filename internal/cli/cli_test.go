@@ -183,7 +183,7 @@ func TestCLIAgentHydraNeedsSecretFile(t *testing.T) {
 	// Pin HOME so the canonical default path resolves inside the tempdir —
 	// never the operator's real ~/.config/vortex secrets.
 	t.Setenv("HOME", home)
-	t.Setenv("PWM_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
 	if _, err := run(t, home, "", "init"); err != nil {
 		t.Fatal(err)
 	}
@@ -265,10 +265,10 @@ func TestCLIAgentTokenWritesFileNotStdout(t *testing.T) {
 	if st.Mode().Perm() != 0o600 {
 		t.Fatalf("mode %o", st.Mode().Perm())
 	}
-	// A bare secret file predates the rename — the binding's audience is
-	// the legacy value, and the mint must request exactly that.
-	if sawAud != glue.LegacyAudience {
-		t.Fatalf("minted audience %q, want %q", sawAud, glue.LegacyAudience)
+	// A bare secret file carries no recorded audience — the mint falls
+	// back to the default.
+	if sawAud != glue.DefaultClientID {
+		t.Fatalf("minted audience %q, want %q", sawAud, glue.DefaultClientID)
 	}
 }
 
@@ -319,7 +319,7 @@ func TestCLIAgentTokenNeedsFiles(t *testing.T) {
 	// Pin HOME + clear the env override so the default secret path resolves
 	// inside the tempdir — never the operator's real secrets.
 	t.Setenv("HOME", home)
-	t.Setenv("PWM_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
 	if _, err := run(t, home, "", "agent", "token", "flue"); err == nil {
 		t.Fatal("accepted token without files")
 	}
@@ -1145,13 +1145,13 @@ func TestCLIMCPConfigNoSecret(t *testing.T) {
 
 func TestCLIMCPConfigRailwayPORT(t *testing.T) {
 	t.Setenv("PORT", "4461")
-	t.Setenv("VEIL_MCP_URL", "https://pwm-production.up.railway.app/mcp")
+	t.Setenv("VEIL_MCP_URL", "https://veil.nyc/mcp")
 	home := t.TempDir()
 	out, err := run(t, home, "", "mcp", "config")
 	if err != nil {
 		t.Fatal(err, out)
 	}
-	if !strings.Contains(out, "https://pwm-production.up.railway.app/mcp") {
+	if !strings.Contains(out, "https://veil.nyc/mcp") {
 		t.Fatalf("url %s", out)
 	}
 }
@@ -2038,47 +2038,6 @@ func TestCLIOriginAgentRevoke(t *testing.T) {
 	}
 }
 
-func TestResolveHomeMigratesLegacyDir(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	t.Setenv("VEIL_HOME", "")
-	legacy := filepath.Join(dir, ".password-manager")
-	if err := os.MkdirAll(legacy, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	got, err := resolveHome("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(dir, ".veil"); got != want {
-		t.Fatalf("home = %q, want %q", got, want)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatal("legacy dir still present after migration")
-	}
-}
-
-func TestResolveHomeKeepsVeilWhenBothExist(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	t.Setenv("VEIL_HOME", "")
-	for _, d := range []string{".veil", ".password-manager"} {
-		if err := os.MkdirAll(filepath.Join(dir, d), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got, err := resolveHome("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := filepath.Join(dir, ".veil"); got != want {
-		t.Fatalf("home = %q, want %q", got, want)
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".password-manager")); err != nil {
-		t.Fatal("legacy dir must not be touched when .veil exists")
-	}
-}
-
 // fakeHydra serves both the public token endpoint and the admin client
 // endpoints. liveSecret mints; any other secret gets invalid_client.
 // putCalls counts client rotations — the whole point of these tests.
@@ -2106,7 +2065,7 @@ func fakeHydra(t *testing.T, liveSecret, rotatedSecret string, putCalls *int) *h
 				"client_id":                  id,
 				"client_secret":              rotatedSecret,
 				"grant_types":                []string{"client_credentials"},
-				"audience":                   []string{"password-manager"},
+				"audience":                   []string{"veil"},
 				"access_token_strategy":      "jwt",
 				"token_endpoint_auth_method": "client_secret_basic",
 			})
@@ -2123,7 +2082,7 @@ func TestCLIAgentHydraSkipsRotationWhenSecretVerifies(t *testing.T) {
 	srv := fakeHydra(t, "live-secret", "rotated-secret", &puts)
 	t.Setenv("VEIL_HYDRA_ISSUER", srv.URL)
 	t.Setenv("VEIL_HYDRA_ADMIN", srv.URL)
-	t.Setenv("PWM_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
 
 	home := t.TempDir()
 	if _, err := run(t, home, "", "init"); err != nil {
@@ -2133,7 +2092,7 @@ func TestCLIAgentHydraSkipsRotationWhenSecretVerifies(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Canonical default path under HOME — no --secret-file flag.
-	secFile := filepath.Join(home, ".config", "vortex", "pwm-railway", "codex.hydra")
+	secFile := filepath.Join(home, ".config", "vortex", "veil", "codex.hydra")
 	t.Setenv("HOME", home)
 	if err := os.MkdirAll(filepath.Dir(secFile), 0o700); err != nil {
 		t.Fatal(err)
@@ -2148,13 +2107,13 @@ func TestCLIAgentHydraSkipsRotationWhenSecretVerifies(t *testing.T) {
 	if puts != 0 {
 		t.Fatalf("verified secret still rotated: puts=%d", puts)
 	}
-	// The file upgrades to JSON but keeps the secret and the legacy
-	// audience it was bound under.
+	// The file upgrades to JSON and keeps the secret; the recorded
+	// audience resolves to the default.
 	got, err := readHydraCred(secFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Secret != "live-secret" || got.Audience != glue.LegacyAudience {
+	if got.Secret != "live-secret" || got.Audience != glue.DefaultClientID {
 		t.Fatalf("verify-only run rewrote credential: %+v", got)
 	}
 }
@@ -2225,7 +2184,7 @@ func TestCLIAgentHydraRefusesRotateWhenIssuerUnreachable(t *testing.T) {
 	}
 }
 
-// PWM_HYDRA_SECRET_FILE describes the ambient agent (PWM_AGENT). Running
+// VEIL_HYDRA_SECRET_FILE describes the ambient agent (VEIL_AGENT). Running
 // `agent hydra OTHER` must not read — and on rotation, must not overwrite —
 // that agent's file.
 func TestCLIAgentHydraIgnoresForeignSecretEnv(t *testing.T) {
@@ -2249,8 +2208,8 @@ func TestCLIAgentHydraIgnoresForeignSecretEnv(t *testing.T) {
 	if err := os.WriteFile(foreign, []byte("cursors-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PWM_AGENT", "cursor")
-	t.Setenv("PWM_HYDRA_SECRET_FILE", foreign)
+	t.Setenv("VEIL_AGENT", "cursor")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", foreign)
 
 	if _, err := run(t, home, "", "agent", "hydra", "codex"); err != nil {
 		t.Fatal(err)
@@ -2262,7 +2221,7 @@ func TestCLIAgentHydraIgnoresForeignSecretEnv(t *testing.T) {
 	if strings.TrimSpace(string(raw)) != "cursors-secret" {
 		t.Fatal("foreign agent's secret file was overwritten")
 	}
-	canon := filepath.Join(home, ".config", "vortex", "pwm-railway", "codex.hydra")
+	canon := filepath.Join(home, ".config", "vortex", "veil", "codex.hydra")
 	got, err := readHydraCred(canon)
 	if err != nil {
 		t.Fatalf("canonical secret file not written: %v", err)
@@ -2290,8 +2249,8 @@ func TestCLIAgentHydraUsesEnvForMatchingAgent(t *testing.T) {
 	if err := os.WriteFile(envFile, []byte("live-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PWM_AGENT", "cursor")
-	t.Setenv("PWM_HYDRA_SECRET_FILE", envFile)
+	t.Setenv("VEIL_AGENT", "cursor")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", envFile)
 
 	if _, err := run(t, home, "", "agent", "hydra", "cursor"); err != nil {
 		t.Fatal(err)

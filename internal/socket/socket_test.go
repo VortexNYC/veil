@@ -130,7 +130,7 @@ func setup(t *testing.T) (*app.App, *testIssuer, *http.Client, string) {
 	if _, err := a.BindWorkload("claude", iss.URL, "agent-claude", "veil"); err != nil {
 		t.Fatal(err)
 	}
-	sockDir, err := os.MkdirTemp("/tmp", "pwm")
+	sockDir, err := os.MkdirTemp("/tmp", "veil")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func unixClient(path string) *http.Client {
 func TestSocketUseWithBearerIsTheBoundAgent(t *testing.T) {
 	_, iss, c, up := setup(t)
 	tok := iss.token(t, "agent-claude", "veil")
-	req, err := http.NewRequest(http.MethodPost, "http://pwm/use", bytes.NewBufferString(`{"item":"stripe","url":"`+up+`","method":"GET"}`))
+	req, err := http.NewRequest(http.MethodPost, "http://veil/use", bytes.NewBufferString(`{"item":"stripe","url":"`+up+`","method":"GET"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestSocketUseWithBearerIsTheBoundAgent(t *testing.T) {
 
 func TestSocketRejectsMissingBearer(t *testing.T) {
 	_, _, c, up := setup(t)
-	req, err := http.NewRequest(http.MethodPost, "http://pwm/use", bytes.NewBufferString(`{"item":"stripe","url":"`+up+`"}`))
+	req, err := http.NewRequest(http.MethodPost, "http://veil/use", bytes.NewBufferString(`{"item":"stripe","url":"`+up+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestSocketRejectsUnknownIssuer(t *testing.T) {
 	_, _, c, up := setup(t)
 	other := newTestIssuer(t)
 	tok := other.token(t, "agent-claude", "veil")
-	req, err := http.NewRequest(http.MethodPost, "http://pwm/use", bytes.NewBufferString(`{"item":"stripe","url":"`+up+`"}`))
+	req, err := http.NewRequest(http.MethodPost, "http://veil/use", bytes.NewBufferString(`{"item":"stripe","url":"`+up+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSocketNameIsNotIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	tok := iss.token(t, "agent-claude", "veil")
-	req, err := http.NewRequest(http.MethodGet, "http://pwm/items", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://veil/items", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

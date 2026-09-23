@@ -89,7 +89,7 @@ func seedSourceVault(t *testing.T) (sqlitePath string, key []byte, want map[stri
 		t.Fatal(err)
 	}
 	if err := src.PutWorkload(protocol.Workload{
-		Issuer: "https://id.veil.nyc", Subject: "agent-1", AgentID: "agent-1", Audience: "password-manager",
+		Issuer: "https://id.veil.nyc", Subject: "agent-1", AgentID: "agent-1", Audience: "veil",
 	}); err != nil {
 		t.Fatal(err)
 	}

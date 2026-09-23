@@ -11,10 +11,10 @@ API version: 0.1.1
 package veil
 
 import (
-	"encoding/json"
-	"time"
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // checks if the CreateSessionResponse type satisfies the MappedNullable interface at compile time
@@ -22,18 +22,18 @@ var _ MappedNullable = &CreateSessionResponse{}
 
 // CreateSessionResponse Token is create-only. Never list. Never MCP.
 type CreateSessionResponse struct {
-	Id string `json:"id"`
-	OrgId string `json:"org_id"`
-	AgentId string `json:"agent_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
+	Id        string     `json:"id"`
+	OrgId     string     `json:"org_id"`
+	AgentId   string     `json:"agent_id"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	CreatedAt time.Time  `json:"created_at"`
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	RenewedAt *time.Time `json:"renewed_at,omitempty"`
-	Ttl int32 `json:"ttl"`
-	MaxTtl int32 `json:"max_ttl"`
-	MaxUses int32 `json:"max_uses"`
+	Ttl       int32      `json:"ttl"`
+	MaxTtl    int32      `json:"max_ttl"`
+	MaxUses   int32      `json:"max_uses"`
 	// Use calls that passed authorization and reached upstream consumption.
-	Uses int32 `json:"uses"`
+	Uses  int32  `json:"uses"`
 	Token string `json:"token"`
 }
 
@@ -371,7 +371,7 @@ func (o *CreateSessionResponse) SetToken(v string) {
 }
 
 func (o CreateSessionResponse) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -421,10 +421,10 @@ func (o *CreateSessionResponse) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
-	for _, requiredProperty := range(requiredProperties) {
+	for _, requiredProperty := range requiredProperties {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -480,5 +480,3 @@ func (v *NullableCreateSessionResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

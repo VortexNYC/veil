@@ -19,15 +19,15 @@ var _ MappedNullable = &IdentityFields{}
 
 // IdentityFields Request only. Never returned. Never MCP.
 type IdentityFields struct {
-	GivenName *string `json:"given_name,omitempty"`
+	GivenName  *string `json:"given_name,omitempty"`
 	FamilyName *string `json:"family_name,omitempty"`
-	Address *string `json:"address,omitempty"`
-	City *string `json:"city,omitempty"`
-	Region *string `json:"region,omitempty"`
-	Postal *string `json:"postal,omitempty"`
-	Country *string `json:"country,omitempty"`
-	Phone *string `json:"phone,omitempty"`
-	Email *string `json:"email,omitempty"`
+	Address    *string `json:"address,omitempty"`
+	City       *string `json:"city,omitempty"`
+	Region     *string `json:"region,omitempty"`
+	Postal     *string `json:"postal,omitempty"`
+	Country    *string `json:"country,omitempty"`
+	Phone      *string `json:"phone,omitempty"`
+	Email      *string `json:"email,omitempty"`
 }
 
 // NewIdentityFields instantiates a new IdentityFields object
@@ -336,7 +336,7 @@ func (o *IdentityFields) SetEmail(v string) {
 }
 
 func (o IdentityFields) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -410,5 +410,3 @@ func (v *NullableIdentityFields) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

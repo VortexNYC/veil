@@ -42,7 +42,7 @@ railway config apply
 
 ## Notes
 
-- This file is the **full** production plane: kratos, keto, glue, hydra, pwm, Postgres. Omitting a service and applying deletes it.
+- This file is the **full** production plane: kratos, keto, glue, hydra, veil, Postgres. Omitting a service and applying deletes it.
 - `railway config plan` is safe and does not change Railway.
 - `railway config apply` previews changes and asks before applying unless you pass `--yes`.
 - Destructive changes in non-interactive or agent sessions require `railway config apply --confirm-destructive` after reviewing the plan.

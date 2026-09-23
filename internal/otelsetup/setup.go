@@ -30,7 +30,7 @@ func Start(ctx context.Context) (func(context.Context) error, error) {
 	}
 	name := strings.TrimSpace(os.Getenv("OTEL_SERVICE_NAME"))
 	if name == "" {
-		name = "pwm"
+		name = "veil"
 	}
 	res, err := resource.New(ctx,
 		resource.WithFromEnv(),

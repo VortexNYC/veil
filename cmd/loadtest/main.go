@@ -28,7 +28,6 @@ import (
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/crypto"
-	"github.com/VortexNYC/veil/internal/envcompat"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/publicapi"
 )
@@ -42,7 +41,6 @@ type origin struct {
 }
 
 func main() {
-	envcompat.BridgeLegacy()
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel(),
 	})))

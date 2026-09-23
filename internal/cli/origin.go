@@ -133,11 +133,11 @@ func originRemint(ctx context.Context, tokenFile, secretFile string) (string, er
 	if !id.Valid(agentName) {
 		return "", fmt.Errorf("origin: VEIL_AGENT is required to remint")
 	}
-	// Mint under the audience the binding recorded — bare secret files
-	// predate the rename and can only produce glue.LegacyAudience.
+	// Mint under the audience the binding recorded; a bare secret file
+	// carries none and mints under the default audience.
 	audience := cred.Audience
 	if audience == "" {
-		audience = glue.LegacyAudience
+		audience = glue.DefaultClientID
 	}
 	if env := os.Getenv("VEIL_HYDRA_CLIENT_ID"); env != "" {
 		audience = env

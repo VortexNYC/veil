@@ -744,7 +744,7 @@ func (h *Host) knownKey(keys []assocKey) bool {
 }
 
 func (h *Host) hash() string {
-	sum := sha256.Sum256([]byte("pwm:" + h.orgID()))
+	sum := sha256.Sum256([]byte("veil:" + h.orgID()))
 	return hex.EncodeToString(sum[:])
 }
 

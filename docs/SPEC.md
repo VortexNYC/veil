@@ -101,7 +101,7 @@ The next slices, in this order, and nothing else until each is proven:
 17 public Hydra mint     written. https://id.veil.nyc token+JWKS.
                          not admin. cloud agents client_credentials.
 18 origin                 written. Hydra+broker on Railway. veil.nyc.
-                         laptop is not the origin. pwm.veil.nyc is
+                         laptop is not the origin. veil.nyc is
                          leftover Mini.
 19 item lifecycle + refs written. ${NAME}/veil:// in run --inject.
                          archive/delete/history. Grant.ExpiresAt.
@@ -163,7 +163,7 @@ The next slices, in this order, and nothing else until each is proven:
                          Kratos, Keto, glue, Hydra. Login UI is Cloudflare
                          Workers (`veil-login`) at login.veil.nyc.
                          accounts.veil.nyc is Kratos public. consent.veil.nyc
-                         is glue. Hydra URLS_LOGIN public. pwm VEIL_KETO_*.
+                         is glue. Hydra URLS_LOGIN public. origin VEIL_KETO_*.
                          First-party client veil. Live human mint.
                          Grants stay in the vault. Not Keto. Not one soup.
 26 chrome URI fill        written. store keepassxc-browser + Go host
@@ -670,7 +670,7 @@ Canonical write-up: [docs/fill.md](fill.md). Learning closed. We do not copy kpx
 
 Two modes: **choose** (click field, pick a domain/app match) and **execute** (trusted focus, unambiguous, write username → password → TOTP in one session). Match has no secrets. Fill has Touch ID. Agents move the cursor; they do not get the password on MCP. **Generate + save + fill** on `autocomplete=new-password` is written on `nyc.veil.fill` (`generate`). `passgen` stays CLI; the host is what makes the value a vault item. Change-password execute never generates.
 
-Next: Mac helper (slice 32). Typed-save / TOTP-from-page on Chrome are CFT-proven (`docs/fill.md` increment 13). Origin `POST /v1/fill/totp/enroll` ships with the pwm SHA of that change. Family-member create is written. Confirm scope is eTLD+1; CVV never reuses. PAN/CVV never MCP, never list JSON. Import is one-shot onto origin (duplicate titles, new ids, SSH+notes). Replica airplane proven 2026-09-14. `fill install` writes `nyc.veil.fill` only — do not run it against production `fill.json`. Do not start Firefox, Safari, or 32.
+Next: Mac helper (slice 32). Typed-save / TOTP-from-page on Chrome are CFT-proven (`docs/fill.md` increment 13). Origin `POST /v1/fill/totp/enroll` ships with the veil SHA of that change. Family-member create is written. Confirm scope is eTLD+1; CVV never reuses. PAN/CVV never MCP, never list JSON. Import is one-shot onto origin (duplicate titles, new ids, SSH+notes). Replica airplane proven 2026-09-14. `fill install` writes `nyc.veil.fill` only — do not run it against production `fill.json`. Do not start Firefox, Safari, or 32.
 
 ## Testing
 

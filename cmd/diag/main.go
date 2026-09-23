@@ -19,12 +19,10 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/VortexNYC/veil/internal/app"
-	"github.com/VortexNYC/veil/internal/envcompat"
 	"github.com/VortexNYC/veil/internal/protocol"
 )
 
 func main() {
-	envcompat.BridgeLegacy()
 	dsn := os.Getenv("PG_TEST_DSN")
 	origin := os.Getenv("DIAG_ORIGIN")
 	upstream := os.Getenv("DIAG_UPSTREAM")

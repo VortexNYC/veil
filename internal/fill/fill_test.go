@@ -443,7 +443,7 @@ func TestInstallOriginBakesOriginNotToken(t *testing.T) {
 	if cfg.Origin != "https://veil.nyc" {
 		t.Fatalf("%+v", cfg)
 	}
-	if cfg.TokenFile == "" || !strings.Contains(cfg.TokenFile, "pwm-human.jwt") {
+	if cfg.TokenFile == "" || !strings.Contains(cfg.TokenFile, "human.jwt") {
 		t.Fatalf("token file %q", cfg.TokenFile)
 	}
 	raw, err := os.ReadFile(ConfigPath(vaultDir))

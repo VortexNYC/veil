@@ -248,14 +248,6 @@ func resolveHome(home string) (string, error) {
 		return "", err
 	}
 	home = filepath.Join(dir, ".veil")
-	if _, err := os.Stat(home); os.IsNotExist(err) {
-		// Pre-rename installs keep state at ~/.password-manager. Adopt it.
-		if legacy := filepath.Join(dir, ".password-manager"); fileExists(legacy) {
-			if err := os.Rename(legacy, home); err == nil {
-				fmt.Fprintf(os.Stderr, "veil: migrated %s -> %s\n", legacy, home)
-			}
-		}
-	}
 	return home, nil
 }
 
@@ -1058,13 +1050,13 @@ func agentCmd(home *string) *cobra.Command {
 			// on-disk credential first: if it still mints, there is nothing
 			// to rotate. The verify mint uses the FILE's recorded audience,
 			// not the current default — a renamed default must not make a
-			// healthy legacy binding look stale.
+			// healthy binding look stale.
 			verified := false
 			existing, _ := readHydraCred(secretFile)
 			if !forceRotate && existing.Secret != "" {
 				mintAud := existing.Audience
 				if mintAud == "" {
-					mintAud = glue.LegacyAudience
+					mintAud = glue.DefaultClientID
 				}
 				_, verr := glue.ClientCredentials(cmd.Context(), issuer, clientID, existing.Secret, mintAud)
 				switch {
@@ -1130,7 +1122,7 @@ func agentCmd(home *string) *cobra.Command {
 			})
 		},
 	}
-	hydra.Flags().StringVar(&secretFile, "secret-file", "", "write the Hydra client secret here. never argv. default: $PWM_HYDRA_SECRET_FILE or ~/.config/vortex/pwm-railway/NAME.hydra")
+	hydra.Flags().StringVar(&secretFile, "secret-file", "", "write the Hydra client secret here. never argv. default: $VEIL_HYDRA_SECRET_FILE or ~/.config/vortex/veil/NAME.hydra")
 	hydra.Flags().BoolVar(&forceRotate, "force", false, "rotate the client secret even if the on-disk one still verifies")
 	c.AddCommand(hydra)
 
@@ -1162,7 +1154,7 @@ func agentCmd(home *string) *cobra.Command {
 			// default must not change what an existing agent mints.
 			audience := cred.Audience
 			if audience == "" {
-				audience = glue.LegacyAudience
+				audience = glue.DefaultClientID
 			}
 			if env := os.Getenv("VEIL_HYDRA_CLIENT_ID"); env != "" {
 				audience = env
@@ -1990,9 +1982,8 @@ func readFileMaterial(path string) ([]byte, error) {
 }
 
 // hydraCred is the on-disk form of an agent's Hydra client credential.
-// New files are JSON carrying the audience the binding recorded at bind
-// time; pre-rename files are a bare secret and can only mint under
-// glue.LegacyAudience — the value their workload bindings hold.
+// Files are JSON carrying the audience the binding recorded at bind time;
+// a bare-secret file mints under the default audience.
 type hydraCred struct {
 	Secret   string `json:"secret"`
 	Audience string `json:"audience"`
@@ -2014,7 +2005,7 @@ func readHydraCred(path string) (hydraCred, error) {
 		}
 		return c, nil
 	}
-	return hydraCred{Secret: string(b), Audience: glue.LegacyAudience}, nil
+	return hydraCred{Secret: string(b), Audience: glue.DefaultClientID}, nil
 }
 
 func writeHydraCred(path string, c hydraCred) error {
@@ -2029,19 +2020,19 @@ func writeHydraCred(path string, c hydraCred) error {
 }
 
 // hydraSecretPath resolves where an agent's client secret lives: the flag
-// wins; the env var only applies when it describes THIS agent (PWM_AGENT
+// wins; the env var only applies when it describes THIS agent (VEIL_AGENT
 // matches) — otherwise it is another agent's file and the canonical
 // per-name path is used. Re-ensures therefore always land on
-// ~/.config/vortex/pwm-railway/<name>.hydra instead of whatever path an
+// ~/.config/vortex/veil/<name>.hydra instead of whatever path an
 // ambient env happened to point at.
 func hydraSecretPath(flag, name string) string {
 	if flag != "" {
 		return flag
 	}
-	if env := os.Getenv("PWM_HYDRA_SECRET_FILE"); env != "" && os.Getenv("PWM_AGENT") == name {
+	if env := os.Getenv("VEIL_HYDRA_SECRET_FILE"); env != "" && os.Getenv("VEIL_AGENT") == name {
 		return env
 	}
-	return filepath.Join(os.Getenv("HOME"), ".config", "vortex", "pwm-railway", name+".hydra")
+	return filepath.Join(os.Getenv("HOME"), ".config", "vortex", "veil", name+".hydra")
 }
 
 // isAuthRejection reports whether a client-credentials failure is Hydra

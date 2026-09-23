@@ -16,18 +16,17 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"os"
+	"strings"
 )
-
 
 // OwnerAPIService OwnerAPI service
 type OwnerAPIService service
 
 type OwnerAPIArchiveItemRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIArchiveItemRequest) Execute() (*http.Response, error) {
@@ -37,24 +36,24 @@ func (r OwnerAPIArchiveItemRequest) Execute() (*http.Response, error) {
 /*
 ArchiveItem Hide from Use and list. History stays.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIArchiveItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIArchiveItemRequest
 */
 func (a *OwnerAPIService) ArchiveItem(ctx context.Context, name string) OwnerAPIArchiveItemRequest {
 	return OwnerAPIArchiveItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) ArchiveItemExecute(r OwnerAPIArchiveItemRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodPost
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ArchiveItem")
@@ -115,8 +114,8 @@ func (a *OwnerAPIService) ArchiveItemExecute(r OwnerAPIArchiveItemRequest) (*htt
 }
 
 type OwnerAPICreateAgentRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                context.Context
+	ApiService         *OwnerAPIService
 	createAgentRequest *CreateAgentRequest
 }
 
@@ -132,24 +131,25 @@ func (r OwnerAPICreateAgentRequest) Execute() (*Agent, *http.Response, error) {
 /*
 CreateAgent Register an agent principal. Not a Hydra secret. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateAgentRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateAgentRequest
 */
 func (a *OwnerAPIService) CreateAgent(ctx context.Context) OwnerAPICreateAgentRequest {
 	return OwnerAPICreateAgentRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Agent
+//
+//	@return Agent
 func (a *OwnerAPIService) CreateAgentExecute(r OwnerAPICreateAgentRequest) (*Agent, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Agent
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Agent
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateAgent")
@@ -223,8 +223,8 @@ func (a *OwnerAPIService) CreateAgentExecute(r OwnerAPICreateAgentRequest) (*Age
 }
 
 type OwnerAPICreateGrantRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                context.Context
+	ApiService         *OwnerAPIService
 	createGrantRequest *CreateGrantRequest
 }
 
@@ -240,24 +240,25 @@ func (r OwnerAPICreateGrantRequest) Execute() (*Grant, *http.Response, error) {
 /*
 CreateGrant Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateGrantRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateGrantRequest
 */
 func (a *OwnerAPIService) CreateGrant(ctx context.Context) OwnerAPICreateGrantRequest {
 	return OwnerAPICreateGrantRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Grant
+//
+//	@return Grant
 func (a *OwnerAPIService) CreateGrantExecute(r OwnerAPICreateGrantRequest) (*Grant, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Grant
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Grant
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateGrant")
@@ -331,8 +332,8 @@ func (a *OwnerAPIService) CreateGrantExecute(r OwnerAPICreateGrantRequest) (*Gra
 }
 
 type OwnerAPICreateItemRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx               context.Context
+	ApiService        *OwnerAPIService
 	createItemRequest *CreateItemRequest
 }
 
@@ -348,24 +349,25 @@ func (r OwnerAPICreateItemRequest) Execute() (*Item, *http.Response, error) {
 /*
 CreateItem Create an item. Secret is in the request over TLS. Never in the response. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateItemRequest
 */
 func (a *OwnerAPIService) CreateItem(ctx context.Context) OwnerAPICreateItemRequest {
 	return OwnerAPICreateItemRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Item
+//
+//	@return Item
 func (a *OwnerAPIService) CreateItemExecute(r OwnerAPICreateItemRequest) (*Item, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Item
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Item
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateItem")
@@ -439,8 +441,8 @@ func (a *OwnerAPIService) CreateItemExecute(r OwnerAPICreateItemRequest) (*Item,
 }
 
 type OwnerAPICreateSessionRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                  context.Context
+	ApiService           *OwnerAPIService
 	createSessionRequest *CreateSessionRequest
 }
 
@@ -456,24 +458,25 @@ func (r OwnerAPICreateSessionRequest) Execute() (*CreateSessionResponse, *http.R
 /*
 CreateSession Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateSessionRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateSessionRequest
 */
 func (a *OwnerAPIService) CreateSession(ctx context.Context) OwnerAPICreateSessionRequest {
 	return OwnerAPICreateSessionRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return CreateSessionResponse
+//
+//	@return CreateSessionResponse
 func (a *OwnerAPIService) CreateSessionExecute(r OwnerAPICreateSessionRequest) (*CreateSessionResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *CreateSessionResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *CreateSessionResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateSession")
@@ -547,9 +550,9 @@ func (a *OwnerAPIService) CreateSessionExecute(r OwnerAPICreateSessionRequest) (
 }
 
 type OwnerAPIDeleteItemRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIDeleteItemRequest) Execute() (*http.Response, error) {
@@ -559,24 +562,24 @@ func (r OwnerAPIDeleteItemRequest) Execute() (*http.Response, error) {
 /*
 DeleteItem Remove the item and its grants. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIDeleteItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIDeleteItemRequest
 */
 func (a *OwnerAPIService) DeleteItem(ctx context.Context, name string) OwnerAPIDeleteItemRequest {
 	return OwnerAPIDeleteItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) DeleteItemExecute(r OwnerAPIDeleteItemRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodDelete
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodDelete
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.DeleteItem")
@@ -637,10 +640,10 @@ func (a *OwnerAPIService) DeleteItemExecute(r OwnerAPIDeleteItemRequest) (*http.
 }
 
 type OwnerAPIImportItemsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	body *os.File
-	filename *string
+	body       *os.File
+	filename   *string
 }
 
 func (r OwnerAPIImportItemsRequest) Body(body *os.File) OwnerAPIImportItemsRequest {
@@ -661,24 +664,25 @@ func (r OwnerAPIImportItemsRequest) Execute() (*ImportResponse, *http.Response, 
 /*
 ImportItems One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIImportItemsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIImportItemsRequest
 */
 func (a *OwnerAPIService) ImportItems(ctx context.Context) OwnerAPIImportItemsRequest {
 	return OwnerAPIImportItemsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return ImportResponse
+//
+//	@return ImportResponse
 func (a *OwnerAPIService) ImportItemsExecute(r OwnerAPIImportItemsRequest) (*ImportResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *ImportResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ImportResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ImportItems")
@@ -755,7 +759,7 @@ func (a *OwnerAPIService) ImportItemsExecute(r OwnerAPIImportItemsRequest) (*Imp
 }
 
 type OwnerAPIListAgentsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -766,24 +770,25 @@ func (r OwnerAPIListAgentsRequest) Execute() (*AgentsResponse, *http.Response, e
 /*
 ListAgents Agents in this org. Ids only. Never secrets. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListAgentsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListAgentsRequest
 */
 func (a *OwnerAPIService) ListAgents(ctx context.Context) OwnerAPIListAgentsRequest {
 	return OwnerAPIListAgentsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return AgentsResponse
+//
+//	@return AgentsResponse
 func (a *OwnerAPIService) ListAgentsExecute(r OwnerAPIListAgentsRequest) (*AgentsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *AgentsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *AgentsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListAgents")
@@ -852,7 +857,7 @@ func (a *OwnerAPIService) ListAgentsExecute(r OwnerAPIListAgentsRequest) (*Agent
 }
 
 type OwnerAPIListGrantsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -863,24 +868,25 @@ func (r OwnerAPIListGrantsRequest) Execute() (*GrantsResponse, *http.Response, e
 /*
 ListGrants Grants in this org. No secrets. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListGrantsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListGrantsRequest
 */
 func (a *OwnerAPIService) ListGrants(ctx context.Context) OwnerAPIListGrantsRequest {
 	return OwnerAPIListGrantsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return GrantsResponse
+//
+//	@return GrantsResponse
 func (a *OwnerAPIService) ListGrantsExecute(r OwnerAPIListGrantsRequest) (*GrantsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *GrantsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *GrantsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListGrants")
@@ -949,7 +955,7 @@ func (a *OwnerAPIService) ListGrantsExecute(r OwnerAPIListGrantsRequest) (*Grant
 }
 
 type OwnerAPIListSessionsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -960,24 +966,25 @@ func (r OwnerAPIListSessionsRequest) Execute() (*SessionsResponse, *http.Respons
 /*
 ListSessions Active sandbox sessions. Metadata only. Never the token. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListSessionsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListSessionsRequest
 */
 func (a *OwnerAPIService) ListSessions(ctx context.Context) OwnerAPIListSessionsRequest {
 	return OwnerAPIListSessionsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return SessionsResponse
+//
+//	@return SessionsResponse
 func (a *OwnerAPIService) ListSessionsExecute(r OwnerAPIListSessionsRequest) (*SessionsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *SessionsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *SessionsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListSessions")
@@ -1046,9 +1053,9 @@ func (a *OwnerAPIService) ListSessionsExecute(r OwnerAPIListSessionsRequest) (*S
 }
 
 type OwnerAPIRevokeAgentRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIRevokeAgentRequest) Execute() (*Agent, *http.Response, error) {
@@ -1058,26 +1065,27 @@ func (r OwnerAPIRevokeAgentRequest) Execute() (*Agent, *http.Response, error) {
 /*
 RevokeAgent Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIRevokeAgentRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIRevokeAgentRequest
 */
 func (a *OwnerAPIService) RevokeAgent(ctx context.Context, name string) OwnerAPIRevokeAgentRequest {
 	return OwnerAPIRevokeAgentRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return Agent
+//
+//	@return Agent
 func (a *OwnerAPIService) RevokeAgentExecute(r OwnerAPIRevokeAgentRequest) (*Agent, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Agent
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Agent
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.RevokeAgent")
@@ -1147,9 +1155,9 @@ func (a *OwnerAPIService) RevokeAgentExecute(r OwnerAPIRevokeAgentRequest) (*Age
 }
 
 type OwnerAPIUpdateItemRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
-	name string
+	ctx               context.Context
+	ApiService        *OwnerAPIService
+	name              string
 	updateItemRequest *UpdateItemRequest
 }
 
@@ -1165,26 +1173,27 @@ func (r OwnerAPIUpdateItemRequest) Execute() (*Item, *http.Response, error) {
 /*
 UpdateItem Replace URIs, tags, and fill username. No secret.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIUpdateItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIUpdateItemRequest
 */
 func (a *OwnerAPIService) UpdateItem(ctx context.Context, name string) OwnerAPIUpdateItemRequest {
 	return OwnerAPIUpdateItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return Item
+//
+//	@return Item
 func (a *OwnerAPIService) UpdateItemExecute(r OwnerAPIUpdateItemRequest) (*Item, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPatch
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Item
+		localVarHTTPMethod  = http.MethodPatch
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Item
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.UpdateItem")
