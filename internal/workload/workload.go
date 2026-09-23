@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/VortexNYC/veil/internal/oidchttp"
 	"github.com/VortexNYC/veil/internal/protocol"
@@ -25,6 +26,7 @@ type Checker struct {
 
 	mu        sync.Mutex
 	providers map[string]*oidc.Provider
+	group     singleflight.Group
 }
 
 func New(s store.Store) *Checker {
@@ -99,18 +101,37 @@ func (c *Checker) subject(ctx context.Context, issuer, audience, raw string) (st
 	return claims.Sub, nil
 }
 
+// provider resolves the issuer's OIDC provider, discovering on first use.
+// Per-issuer singleflight: concurrent cold auths on the same issuer share
+// one discovery call, and a cold issuer never serializes auths bound to a
+// different one — the map mutex is only ever held for lookups.
 func (c *Checker) provider(ctx context.Context, issuer string) (*oidc.Provider, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if p, ok := c.providers[issuer]; ok {
+	p, ok := c.providers[issuer]
+	c.mu.Unlock()
+	if ok {
 		return p, nil
 	}
-	p, err := oidc.NewProvider(oidchttp.Context(ctx), issuer)
+	v, err, _ := c.group.Do(issuer, func() (any, error) {
+		c.mu.Lock()
+		p, ok := c.providers[issuer]
+		c.mu.Unlock()
+		if ok {
+			return p, nil
+		}
+		p, err := oidc.NewProvider(oidchttp.Context(ctx), issuer)
+		if err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		c.providers[issuer] = p
+		c.mu.Unlock()
+		return p, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	c.providers[issuer] = p
-	return p, nil
+	return v.(*oidc.Provider), nil
 }
 
 // unverifiedIssuer reads iss so we can refuse unknown issuers before discovery.

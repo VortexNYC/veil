@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,7 +23,8 @@ type testIssuer struct {
 	URL         string
 	key         *rsa.PrivateKey
 	server      *httptest.Server
-	discoveries int
+	discoveries atomic.Int64
+	gate        chan struct{}
 }
 
 func newTestIssuer(tb testing.TB) *testIssuer {
@@ -33,7 +36,10 @@ func newTestIssuer(tb testing.TB) *testIssuer {
 	iss := &testIssuer{key: key}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
-		iss.discoveries++
+		iss.discoveries.Add(1)
+		if iss.gate != nil {
+			<-iss.gate
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"issuer":                                iss.URL,
 			"jwks_uri":                              iss.URL + "/keys",
@@ -158,8 +164,101 @@ func TestProviderDiscoveryCachedAcrossCalls(t *testing.T) {
 	if _, err := c.Agent(context.Background(), tok); err != nil {
 		t.Fatal(err)
 	}
-	if iss.discoveries != 1 {
-		t.Fatalf("provider discovery called %d times, want 1", iss.discoveries)
+	if iss.discoveries.Load() != 1 {
+		t.Fatalf("provider discovery called %d times, want 1", iss.discoveries.Load())
+	}
+}
+
+// TestColdDiscoverySingleflight: N concurrent first-auths on one cold
+// issuer share exactly one discovery call.
+func TestColdDiscoverySingleflight(t *testing.T) {
+	iss := newTestIssuer(t)
+	mem := store.NewMemory()
+	if err := mem.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: "flue", OrgID: "org"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.PutWorkload(protocol.Workload{
+		AgentID:  "flue",
+		Issuer:   iss.URL,
+		Subject:  "repo:VortexNYC/veil:ref:refs/heads/main",
+		Audience: "veil",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := New(mem)
+	tok := iss.token(t, "repo:VortexNYC/veil:ref:refs/heads/main", "veil", time.Now().Add(time.Hour))
+	const n = 8
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = c.Agent(context.Background(), tok)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("auth %d: %v", i, err)
+		}
+	}
+	if iss.discoveries.Load() != 1 {
+		t.Fatalf("provider discovery called %d times, want 1", iss.discoveries.Load())
+	}
+}
+
+// TestColdDiscoveryPerIssuer: a slow discovery on one issuer must not
+// serialize auths bound to a different issuer — the pre-singleflight global
+// mutex parked every workload auth behind one HTTP call.
+func TestColdDiscoveryPerIssuer(t *testing.T) {
+	slow := newTestIssuer(t)
+	slow.gate = make(chan struct{})
+	fast := newTestIssuer(t)
+	mem := store.NewMemory()
+	for _, tc := range []struct {
+		agentID string
+		iss     *testIssuer
+		sub     string
+	}{
+		{"slow-agent", slow, "sub-slow"},
+		{"fast-agent", fast, "sub-fast"},
+	} {
+		if err := mem.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: tc.agentID, OrgID: "org"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := mem.PutWorkload(protocol.Workload{
+			AgentID:  tc.agentID,
+			Issuer:   tc.iss.URL,
+			Subject:  tc.sub,
+			Audience: "veil",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := New(mem)
+	slowTok := slow.token(t, "sub-slow", "veil", time.Now().Add(time.Hour))
+	slowDone := make(chan error, 1)
+	go func() {
+		_, err := c.Agent(context.Background(), slowTok)
+		slowDone <- err
+	}()
+	// Wait until the slow discovery is actually in flight (it parks on the
+	// gate after incrementing).
+	deadline := time.Now().Add(5 * time.Second)
+	for slow.discoveries.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("slow discovery never started")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// The fast issuer's auth must complete while the slow one is parked.
+	if _, err := c.Agent(context.Background(), fast.token(t, "sub-fast", "veil", time.Now().Add(time.Hour))); err != nil {
+		t.Fatalf("fast issuer blocked behind slow discovery: %v", err)
+	}
+	close(slow.gate)
+	if err := <-slowDone; err != nil {
+		t.Fatalf("slow auth: %v", err)
 	}
 }
 
@@ -221,7 +320,7 @@ func BenchmarkAgentVerifyParallel(b *testing.B) {
 			}
 		}
 	})
-	if iss.discoveries != 1 {
-		b.Fatalf("provider discovery called %d times, want 1", iss.discoveries)
+	if iss.discoveries.Load() != 1 {
+		b.Fatalf("provider discovery called %d times, want 1", iss.discoveries.Load())
 	}
 }
