@@ -44,6 +44,32 @@ func Open(key, blob []byte) ([]byte, error) {
 	return OpenAAD(key, blob, nil)
 }
 
+// epochMark is the blob epoch marker: SealEpoch output is mark||nonce||ct.
+// Five bytes keeps a random legacy nonce colliding with it near-impossible
+// (~2^-40), so a legacy blob is never misread as an AAD-bound one.
+var epochMark = []byte("VEIL1")
+
+// SealEpoch is SealAAD stamped with the epoch marker. Store rows written
+// through it are bound to aad; OpenEpoch reads both this and legacy
+// nil-AAD blobs.
+func SealEpoch(key, plaintext, aad []byte) ([]byte, error) {
+	blob, err := SealAAD(key, plaintext, aad)
+	if err != nil {
+		return nil, err
+	}
+	return append(append([]byte(nil), epochMark...), blob...), nil
+}
+
+// OpenEpoch dispatches on the epoch marker: marked blobs must open under aad
+// (a wrong context fails closed — no legacy retry), unmarked blobs are legacy
+// and open nil-AAD. aad is ignored for legacy blobs.
+func OpenEpoch(key, blob, aad []byte) ([]byte, error) {
+	if len(blob) >= len(epochMark) && string(blob[:len(epochMark)]) == string(epochMark) {
+		return OpenAAD(key, blob[len(epochMark):], aad)
+	}
+	return Open(key, blob)
+}
+
 // OpenAAD fails with ErrAuth unless aad matches what SealAAD bound.
 func OpenAAD(key, blob, aad []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
