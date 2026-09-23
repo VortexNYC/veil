@@ -81,6 +81,42 @@ func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const claimAuditOutbox = `-- name: ClaimAuditOutbox :many
+DELETE FROM audit_outbox WHERE id IN (
+    SELECT id FROM audit_outbox ORDER BY id LIMIT $1::bigint FOR UPDATE SKIP LOCKED
+) RETURNING id, at, org_id, agent_id, item_id, action, decision, reason, approval_id
+`
+
+func (q *Queries) ClaimAuditOutbox(ctx context.Context, maxResults int64) ([]AuditOutbox, error) {
+	rows, err := q.db.Query(ctx, claimAuditOutbox, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditOutbox
+	for rows.Next() {
+		var i AuditOutbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.Action,
+			&i.Decision,
+			&i.Reason,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const consumeRecoveryWrap = `-- name: ConsumeRecoveryWrap :execrows
 UPDATE recovery_wraps SET used_at = $1::timestamptz
 WHERE org_id = $2::text AND owner_kind = $3::text AND owner_id = $4::text
@@ -259,6 +295,36 @@ type InsertAuditParams struct {
 
 func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error {
 	_, err := q.db.Exec(ctx, insertAudit,
+		arg.At,
+		arg.OrgID,
+		arg.AgentID,
+		arg.ItemID,
+		arg.Action,
+		arg.Decision,
+		arg.Reason,
+		arg.ApprovalID,
+	)
+	return err
+}
+
+const insertAuditOutbox = `-- name: InsertAuditOutbox :exec
+INSERT INTO audit_outbox(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+VALUES($1::timestamptz, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::text)
+`
+
+type InsertAuditOutboxParams struct {
+	At         time.Time
+	OrgID      string
+	AgentID    string
+	ItemID     string
+	Action     string
+	Decision   string
+	Reason     string
+	ApprovalID string
+}
+
+func (q *Queries) InsertAuditOutbox(ctx context.Context, arg InsertAuditOutboxParams) error {
+	_, err := q.db.Exec(ctx, insertAuditOutbox,
 		arg.At,
 		arg.OrgID,
 		arg.AgentID,
@@ -479,9 +545,16 @@ func (q *Queries) ListAgents(ctx context.Context, maxResults int64) ([]Agent, er
 
 const listAudit = `-- name: ListAudit :many
 SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id
-FROM audit ORDER BY id DESC LIMIT $1::bigint
+FROM (
+    SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit
+    UNION ALL
+    SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit_outbox
+) ev ORDER BY at DESC, id DESC LIMIT $1::bigint
 `
 
+// Outbox rows union in: claim-delete and audit-insert commit in one tx, so an
+// event can never appear in both tables at once — queued events are visible
+// immediately without double-counting.
 func (q *Queries) ListAudit(ctx context.Context, maxResults int64) ([]Audit, error) {
 	rows, err := q.db.Query(ctx, listAudit, maxResults)
 	if err != nil {

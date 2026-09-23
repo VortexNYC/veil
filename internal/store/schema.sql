@@ -59,6 +59,20 @@ CREATE TABLE audit (
     PRIMARY KEY (id, at)
 ) PARTITION BY RANGE (at);
 
+-- Durable fallback for audit writes that fail against `audit` (VEIL-10):
+-- a relay claims rows with FOR UPDATE SKIP LOCKED and re-lands them.
+CREATE TABLE audit_outbox (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    at TIMESTAMPTZ NOT NULL,
+    org_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    approval_id TEXT NOT NULL
+);
+
 CREATE TABLE workloads (
     issuer TEXT NOT NULL,
     subject TEXT NOT NULL,

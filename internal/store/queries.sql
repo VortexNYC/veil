@@ -311,8 +311,24 @@ INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, appro
 VALUES(@at::timestamptz, @org_id::text, @agent_id::text, @item_id::text, @action::text, @decision::text, @reason::text, @approval_id::text);
 
 -- name: ListAudit :many
+-- Outbox rows union in: claim-delete and audit-insert commit in one tx, so an
+-- event can never appear in both tables at once — queued events are visible
+-- immediately without double-counting.
 SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id
-FROM audit ORDER BY id DESC LIMIT @max_results::bigint;
+FROM (
+    SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit
+    UNION ALL
+    SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit_outbox
+) ev ORDER BY at DESC, id DESC LIMIT @max_results::bigint;
+
+-- name: InsertAuditOutbox :exec
+INSERT INTO audit_outbox(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+VALUES(@at::timestamptz, @org_id::text, @agent_id::text, @item_id::text, @action::text, @decision::text, @reason::text, @approval_id::text);
+
+-- name: ClaimAuditOutbox :many
+DELETE FROM audit_outbox WHERE id IN (
+    SELECT id FROM audit_outbox ORDER BY id LIMIT @max_results::bigint FOR UPDATE SKIP LOCKED
+) RETURNING id, at, org_id, agent_id, item_id, action, decision, reason, approval_id;
 
 -- name: SweepExpiredSessions :execrows
 DELETE FROM sessions

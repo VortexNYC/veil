@@ -218,7 +218,13 @@ func (s *Server) inject(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request
 		Reason:     dec.Reason,
 		ApprovalID: dec.ApprovalID,
 	}
-	_ = s.App.Store.AppendAudit(event)
+	if err := s.App.Store.AppendAudit(event); err != nil {
+		broker.LogEvent(event, item.Name, destURL(req), 0)
+		return nil, jsonResp(req, http.StatusInternalServerError, protocol.UseResult{
+			Decision: protocol.DecisionDeny,
+			Reason:   "audit_unavailable",
+		})
+	}
 	broker.LogEvent(event, item.Name, destURL(req), 0)
 	if dec.Decision != protocol.DecisionAllow {
 		status := http.StatusForbidden

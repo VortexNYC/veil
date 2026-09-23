@@ -88,10 +88,23 @@ Replicas are stateless except three caches/queues:
    `VEIL_AUDIT_FLUSH_INTERVAL` (default 5 ms; 20 ms batches ~43 rows/COPY
    and was +4% throughput in runs). A process crash loses up to one flush
    interval of queued audit events — the audit write is durable once
-   committed; the queue is not. `Close()` drains on shutdown. Fail-closed
+   committed; the queue is not. `Close()` drains on shutdown (batch and
+   channel-buffered events join the retry backlog in order). Fail-closed
    is preserved: a Use never returns the secret without the audit event
    being committed *or* queued for commit — the gap is the flush window,
    documented, not hidden.
+   **Outbox (VEIL-10):** a failed `audit` write falls back to
+   `audit_outbox` (single events insert, batches COPY) when the failure
+   provably did not commit — SQLSTATE-class errors or pgconn SafeToRetry;
+   ambiguous timeouts stay loud errors rather than risking a duplicate.
+   `consumeSession` writes the fallback under a savepoint in the consume
+   tx, so a partial `audit` outage never denies a use nor loses the event.
+   A 2 s relay (on `auditPool`) claims rows `FOR UPDATE SKIP LOCKED` and
+   lands them in `audit` in the same tx — at-least-once with no double-
+   landing possible. `ListAudit` unions `audit` and `audit_outbox`, so a
+   queued event is observable immediately and exactly once. The outbox
+   carries the same `org_id <> ''` CHECK as `audit` — a row that cannot
+   land in `audit` cannot enter the outbox either.
 3. **`VEIL_MAX_IN_FLIGHT_USE` admission control** — per-replica in-flight
    cap; effective ceiling is `replicas × limit`, so keep it in sync with
    pool sizing (`in-flight > MaxConns` just queues inside pgx).

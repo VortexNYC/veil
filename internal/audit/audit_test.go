@@ -2,7 +2,10 @@ package audit
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -252,5 +255,84 @@ func TestAsyncAuditorFlushesPendingOnClose(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].AgentID != "pending" {
 		t.Fatalf("events=%+v", events)
+	}
+}
+
+// A failed flush must not drop the batch: events ride pending until the
+// store recovers, in order, with newer events queued behind the backlog.
+func TestAsyncAuditorRetriesFailedFlush(t *testing.T) {
+	m := store.NewMemory()
+	fs := &flakyStore{Memory: m}
+	a := NewAsync(fs, 4)
+
+	// Three failures, then the store recovers.
+	fs.fail.Store(3)
+	for i := 0; i < 5; i++ {
+		e := protocol.AuditEvent{AgentID: "a", ItemID: fmt.Sprintf("i%d", i), Decision: protocol.DecisionAllow}
+		if err := a.Append(context.Background(), e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		events, _ := m.Audit()
+		if len(events) == 5 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	events, err := m.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 5 {
+		t.Fatalf("want 5 events after recovery, got %d", len(events))
+	}
+	for i, e := range events {
+		if e.ItemID != fmt.Sprintf("i%d", i) {
+			t.Fatalf("order broken at %d: %+v", i, events)
+		}
+	}
+	if err := a.Close(); err == nil {
+		t.Fatal("want recorded flush error from the outage window")
+	}
+}
+
+// flakyStore fails AppendAudits fail-times before delegating to Memory.
+type flakyStore struct {
+	*store.Memory
+	fail atomic.Int64
+}
+
+func (s *flakyStore) AppendAudits(events []protocol.AuditEvent) error {
+	if s.fail.Add(-1) >= 0 {
+		return errors.New("store down")
+	}
+	return s.Memory.AppendAudits(events)
+}
+
+// Close during a store outage must not drop events still buffered in the
+// channel or queued in pending: everything is offered to the final flush.
+func TestAsyncAuditorCloseDrainsBacklog(t *testing.T) {
+	m := store.NewMemory()
+	fs := &flakyStore{Memory: m}
+	a := NewAsync(fs, 4)
+
+	// The first several flushes fail, filling pending; events keep arriving.
+	fs.fail.Store(100)
+	const total = 20
+	for i := 0; i < total; i++ {
+		e := protocol.AuditEvent{AgentID: "a", ItemID: fmt.Sprintf("i%d", i), Decision: protocol.DecisionAllow}
+		_ = a.Append(context.Background(), e)
+	}
+	// Store recovers just before Close — the final drain must deliver all.
+	fs.fail.Store(0)
+	_ = a.Close()
+	events, err := m.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != total {
+		t.Fatalf("want %d events delivered on close, got %d", total, len(events))
 	}
 }

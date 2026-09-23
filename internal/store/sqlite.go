@@ -1113,6 +1113,9 @@ func (s *SQLite) AppendAudits(events []protocol.AuditEvent) error {
 	return tx.Commit()
 }
 
+// FlushAuditOutbox: sqlite writes audit rows directly — there is no outbox.
+func (s *SQLite) FlushAuditOutbox(int) (int, error) { return 0, nil }
+
 func (s *SQLite) Audit() ([]protocol.AuditEvent, error) {
 	rows, err := s.db.Query(`SELECT at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit ORDER BY rowid DESC LIMIT ?`, maxListResults)
 	if err != nil {
