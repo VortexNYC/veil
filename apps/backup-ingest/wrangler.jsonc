@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "veil-backup-ingest",
+  "account_id": "31bfc2c14a28e0a39e8b9e3c556a18be",
+  "compatibility_date": "2026-09-11",
+  "main": "src/index.ts",
+  "routes": [
+    {
+      "pattern": "backup-ingest.veil.nyc",
+      "custom_domain": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "veil-backups"
+    }
+  ]
+}

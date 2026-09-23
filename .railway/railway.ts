@@ -83,17 +83,21 @@ export default defineRailway(() => {
   // Custom-format (-Fc) dumps compress and restore selectively; 14-day
   // local retention. The trailing sleep leaves a daily window where the
   // container is alive for `railway ssh`/`railway volume files` pulls —
-  // the SFTP bridge only works while the service is running. R2/offsite
-  // replication is the post-alpha step, tracked in docs/backup-restore.md.
+  // the SFTP bridge only works while the service is running. After the
+  // local dumps, each fresh artifact PUTs to R2 via the backup-ingest
+  // worker (backup-ingest.veil.nyc) — the offsite copy that survives a
+  // Railway-account loss. The KEK is escrowed separately; a dump plus
+  // its KEK is a plaintext export, keep them apart.
   const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
   const veilBackup = service("veil-backup", {
-    source: image("postgres:16-alpine"),
-    start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; find /backups -name \"*.dump\" -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES(\$\$backup\$\$,now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
+    build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.backup" },
+    start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if [ -n \"$OFFSITE_TOKEN\" ]; then for f in /backups/*-$(date +%F)-*.dump; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/$(basename \"$f\")\" || rc=1; done; fi; find /backups -name \"*.dump\" -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES(\$\$backup\$\$,now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
     replicas: { "sfo": 1 },
     volumeMounts: { "/backups": veilBackups },
     env: {
       PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      OFFSITE_TOKEN: preserve(),
     },
   });
   // Dead-man's switch: every 15 min, check the backup/sweep beats,

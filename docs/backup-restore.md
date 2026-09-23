@@ -55,9 +55,25 @@ railway volume files -v veil-backups download /backups/veil-YYYY-MM-DD-HHMM.dump
 # or any time: railway ssh -s Postgres -- "pg_dump -U postgres -Fc veil" > veil.dump
 ```
 
-Offsite replication (R2/object storage, different account) is the
-post-alpha step — until then the volume and the database share a region's
-blast radius, which is honest but not maximal.
+## Offsite copy (R2)
+
+Every run also PUTs each fresh dump to Cloudflare R2 through the
+`veil-backup-ingest` worker (`apps/backup-ingest`, route
+`backup-ingest.veil.nyc`) into bucket `veil-backups`. This is the copy
+that survives a Railway-account loss — the volume and the database share
+a region's blast radius, R2 does not.
+
+Pull an offsite artifact any time (no container window needed):
+
+```bash
+curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
+  https://backup-ingest.veil.nyc/v1/veil-YYYY-MM-DD-HHMM.dump -o veil.dump
+```
+
+`OFFSITE_TOKEN` is `Veil backup-ingest token` in the 1Password Agents
+vault and the `INGEST_TOKEN` worker secret. A dump plus its KEK is a
+plaintext export — the token only gates the ciphertext; `VEIL_KEK` stays
+in its own escrow.
 
 ## Restoring
 

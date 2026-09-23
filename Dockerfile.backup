@@ -1,0 +1,5 @@
+# Backup runner: pg client pinned to the server major (pg_dump refuses a
+# major mismatch), plus curl for the offsite R2 push. postgres:16-alpine
+# could not dump the Postgres 18 server — version must track.
+FROM postgres:18-alpine
+RUN apk add --no-cache curl
