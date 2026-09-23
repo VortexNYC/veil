@@ -21,6 +21,36 @@ Same protocol on a laptop and in Codex Cloud / Flue / Cloudflare Agents. An agen
 
 Engine + local SQLite vault + CLI + MCP. Covered by tests.
 
+## Hosted quickstart
+
+Origin is `https://veil.nyc`. Humans register at `https://login.veil.nyc/registration`. The hosted vault is Postgres — your laptop keeps no second store when `VEIL_ORIGIN` is set.
+
+```
+# 1. CLI
+go install github.com/VortexNYC/veil/cmd/veil@latest
+
+# 2. Human token — browser flow, or VEIL_LOGIN_EMAIL + VEIL_KRATOS_PASSWORD_FILE
+#    (+ VEIL_KRATOS_TOTP_FILE) for headless. Writes a file, never stdout.
+veil human login --out-file ~/.config/veil/human.jwt
+
+# 3. Provision your org on the origin (idempotent)
+VEIL_ORIGIN=https://veil.nyc veil init --oidc-token-file ~/.config/veil/human.jwt
+
+# 4. First item + agent + grant (owner verbs take the human JWT as bearer)
+export VEIL_ORIGIN=https://veil.nyc VEIL_OIDC_TOKEN_FILE=~/.config/veil/human.jwt
+veil item add stripe --uri https://api.stripe.com --secret-file ./sk_live
+veil agent add cursor
+veil agent hydra cursor --secret-file ~/.config/veil/cursor.hydra
+veil grant add --agent cursor --item stripe --level level2
+
+# 5. Wire the agent — stdio for Cursor, HTTP Bearer for cloud agents
+veil mcp laptop   # prints the Cursor block; token file path, never the JWT
+```
+
+Cloud agents (Codex Cloud, Flue, Cloudflare) skip step 5's stdio block: mint with `client_credentials` at `https://id.veil.nyc`, send the JWT as Bearer to `https://veil.nyc/mcp`. OpenAPI: `https://veil.nyc/openapi.json`. TS SDK: `npm i @vortex-api/veil`.
+
+## Local vault
+
 ```
 make test
 go run ./cmd/veil init --home /tmp/veil
