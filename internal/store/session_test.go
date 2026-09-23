@@ -458,8 +458,21 @@ func TestSessionConsumeAuditedRollback(t *testing.T) {
 						t.Fatal(err)
 					}
 				}()
+				// No outbox on sqlite: audit-write failure still rolls the
+				// consume back.
+				if _, err := s.ConsumeSessionAudited(hash, now, evt); err == nil {
+					t.Fatal("expected audit insert failure")
+				}
+				sess, err := s.SessionByHash(hash)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if sess.Uses != 0 {
+					t.Fatalf("consume not rolled back: uses=%d", sess.Uses)
+				}
 			case *Postgres:
-				if _, err := st.pool.Exec(context.Background(), `DROP TABLE audit`); err != nil {
+				ctx := context.Background()
+				if _, err := st.pool.Exec(ctx, `DROP TABLE audit`); err != nil {
 					t.Fatal(err)
 				}
 				defer func() {
@@ -467,19 +480,34 @@ func TestSessionConsumeAuditedRollback(t *testing.T) {
 						t.Fatal(err)
 					}
 				}()
+				// audit down but audit_outbox up: the event commits with the
+				// consume — durable in the outbox — and the use proceeds.
+				if _, err := s.ConsumeSessionAudited(hash, now, evt); err != nil {
+					t.Fatalf("outbox fallback should commit: %v", err)
+				}
+				sess, err := s.SessionByHash(hash)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if sess.Uses != 1 {
+					t.Fatalf("consume should commit with outbox: uses=%d", sess.Uses)
+				}
+				// Both down: the consume truly fails and rolls back.
+				if _, err := st.pool.Exec(ctx, `DROP TABLE audit_outbox`); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.ConsumeSessionAudited(hash, now, evt); err == nil {
+					t.Fatal("expected failure with audit and outbox down")
+				}
+				sess, err = s.SessionByHash(hash)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if sess.Uses != 1 {
+					t.Fatalf("double consume on total outage: uses=%d", sess.Uses)
+				}
 			default:
 				t.Skip("no failure injection")
-			}
-
-			if _, err := s.ConsumeSessionAudited(hash, now, evt); err == nil {
-				t.Fatal("expected audit insert failure")
-			}
-			sess, err := s.SessionByHash(hash)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if sess.Uses != 0 {
-				t.Fatalf("consume not rolled back: uses=%d", sess.Uses)
 			}
 		})
 	}

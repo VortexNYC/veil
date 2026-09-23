@@ -36,6 +36,18 @@ type Audit struct {
 	ApprovalID string
 }
 
+type AuditOutbox struct {
+	ID         int64
+	At         time.Time
+	OrgID      string
+	AgentID    string
+	ItemID     string
+	Action     string
+	Decision   string
+	Reason     string
+	ApprovalID string
+}
+
 type Grant struct {
 	ID        string
 	OrgID     string

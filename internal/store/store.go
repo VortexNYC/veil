@@ -155,6 +155,10 @@ type Store interface {
 	AppendAudit(protocol.AuditEvent) error
 	AppendAudits([]protocol.AuditEvent) error
 	Audit() ([]protocol.AuditEvent, error)
+	// FlushAuditOutbox relays queued audit events into the audit table.
+	// Postgres queues events that fail the direct write so a transient
+	// outage cannot lose them; stores without an outbox report 0.
+	FlushAuditOutbox(limit int) (int, error)
 
 	// Sweep deletes terminally-expired rows (sessions past expiry or revoked,
 	// grants and approvals past expiry) older than the cutoff. It keeps the

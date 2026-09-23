@@ -63,7 +63,7 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 			ApprovalID: dec.ApprovalID,
 		}
 		if dec.Decision != protocol.DecisionAllow {
-			_ = b.Store.AppendAudit(event)
+			_ = b.appendAudit(ctx, event)
 			LogEvent(event, item.Name, "", 0)
 			continue
 		}
@@ -78,7 +78,7 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 			if err != nil {
 				event.Decision = protocol.DecisionDeny
 				event.Reason = "oauth_failed"
-				_ = b.Store.AppendAudit(event)
+				_ = b.appendAudit(ctx, event)
 				LogEvent(event, item.Name, "", 0)
 				continue
 			}
@@ -87,8 +87,14 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 		if val == "" {
 			event.Decision = protocol.DecisionDeny
 			event.Reason = "empty_secret"
-			_ = b.Store.AppendAudit(event)
+			_ = b.appendAudit(ctx, event)
 			LogEvent(event, item.Name, "", 0)
+			continue
+		}
+		// Fail closed: a grant whose audit write fails is not injected, and
+		// the skip is logged rather than silently shrinking the child env.
+		if err := b.appendAudit(ctx, event); err != nil {
+			LogEvent(event, item.Name, "audit_unavailable", 0)
 			continue
 		}
 		pairs = append(pairs, EnvName(item.Name)+"="+val)
@@ -98,7 +104,6 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 				pairs = append(pairs, EnvName(item.Name)+"_TOTP="+code)
 			}
 		}
-		_ = b.Store.AppendAudit(event)
 		LogEvent(event, item.Name, "", 0)
 	}
 	return pairs, nil

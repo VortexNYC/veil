@@ -473,6 +473,9 @@ func (m *Memory) AppendAudits(events []protocol.AuditEvent) error {
 	return nil
 }
 
+// FlushAuditOutbox: memory has no outbox.
+func (m *Memory) FlushAuditOutbox(int) (int, error) { return 0, nil }
+
 func (m *Memory) Audit() ([]protocol.AuditEvent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

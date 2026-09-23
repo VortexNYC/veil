@@ -120,17 +120,49 @@ func (a *Async) loop() {
 	defer a.workerWg.Done()
 	defer close(a.workerDone)
 	batch := make([]protocol.AuditEvent, 0, a.batchSize)
+	var pending []protocol.AuditEvent
+loop:
 	for {
-		e, ok := <-a.ch
-		if !ok {
-			a.flush(batch)
-			return
+		// A failed batch is never dropped: it moves to pending and is retried
+		// before new events are read. While a large backlog stays unflushed
+		// the loop stops consuming so channel backpressure reaches Append
+		// callers instead of silently growing memory.
+		if len(pending) > 0 {
+			if a.flush(pending) {
+				pending = nil
+			}
 		}
-		batch = append(batch, e)
+		if len(pending) >= a.batchSize*4 {
+			select {
+			case <-a.stopCh:
+				break loop
+			case <-time.After(100 * time.Millisecond):
+			}
+			continue
+		}
+		// With a sub-cap backlog, retry it on a short timer rather than
+		// blocking forever on a quiet channel.
+		var retry <-chan time.Time
+		if len(pending) > 0 {
+			retry = time.After(100 * time.Millisecond)
+		}
+		select {
+		case e, ok := <-a.ch:
+			if !ok {
+				break loop
+			}
+			batch = append(batch, e)
+		case <-retry:
+			continue
+		}
 
 		if a.flushInterval <= 0 {
 			a.drainBatch(&batch)
-			a.flush(batch)
+			// Events queue behind an unflushed backlog — insertion order is
+			// the audit record, so newer batches never overtake pending ones.
+			if len(pending) > 0 || !a.flush(batch) {
+				pending = append(pending, batch...)
+			}
 			batch = batch[:0]
 			continue
 		}
@@ -144,8 +176,7 @@ func (a *Async) loop() {
 					if !timer.Stop() {
 						<-timer.C
 					}
-					a.flush(batch)
-					return
+					break loop
 				}
 				batch = append(batch, e2)
 			case <-timer.C:
@@ -163,9 +194,30 @@ func (a *Async) loop() {
 			a.drainBatch(&batch)
 		}
 		if len(batch) > 0 {
-			a.flush(batch)
+			if len(pending) > 0 || !a.flush(batch) {
+				pending = append(pending, batch...)
+			}
 			batch = batch[:0]
 		}
+	}
+	// Final drain on close: batch (mid-loop leftovers) then whatever is still
+	// buffered in the channel join pending in order — pending is always the
+	// oldest unflushed run — before the last flush attempt.
+	pending = append(pending, batch...)
+	for {
+		select {
+		case e, ok := <-a.ch:
+			if !ok {
+				goto drained
+			}
+			pending = append(pending, e)
+		default:
+			goto drained
+		}
+	}
+drained:
+	if len(pending) > 0 {
+		a.flush(pending)
 	}
 }
 
@@ -183,9 +235,9 @@ func (a *Async) drainBatch(batch *[]protocol.AuditEvent) {
 	}
 }
 
-func (a *Async) flush(batch []protocol.AuditEvent) {
+func (a *Async) flush(batch []protocol.AuditEvent) bool {
 	if len(batch) == 0 {
-		return
+		return true
 	}
 	if err := a.store.AppendAudits(batch); err != nil {
 		a.errMu.Lock()
@@ -193,7 +245,9 @@ func (a *Async) flush(batch []protocol.AuditEvent) {
 			a.err = err
 		}
 		a.errMu.Unlock()
+		return false
 	}
+	return true
 }
 
 func (a *Async) Close() error {

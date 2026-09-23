@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"strconv"
@@ -31,6 +32,10 @@ type Postgres struct {
 	kek       []byte
 	km        *keyManager
 	sqlc      *sqlc.Queries
+
+	auditStop chan struct{}
+	auditDone chan struct{}
+	closeOnce sync.Once
 }
 
 // OpenPostgres opens a Postgres-backed store. The supplied key is the
@@ -88,13 +93,49 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 		pool.Close()
 		return nil, err
 	}
-	p := &Postgres{pool: pool, auditPool: auditPool, kek: append([]byte(nil), kek...), sqlc: sqlc.New(pool)}
+	p := &Postgres{
+		pool:      pool,
+		auditPool: auditPool,
+		kek:       append([]byte(nil), kek...),
+		sqlc:      sqlc.New(pool),
+		auditStop: make(chan struct{}),
+	}
 	p.km = newKeyManager(p.resolveOrgKey)
 	if err := p.migrate(); err != nil {
 		p.Close()
 		return nil, err
 	}
+	p.auditDone = make(chan struct{})
+	go p.auditRelay()
 	return p, nil
+}
+
+// auditRelay drains audit_outbox into audit every interval. Events only
+// reach the outbox when the direct write failed, so the table is empty in
+// the common case — the tick is a cheap DELETE ... SKIP LOCKED no-op.
+func (p *Postgres) auditRelay() {
+	defer close(p.auditDone)
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-p.auditStop:
+			return
+		case <-tick.C:
+		}
+		// Drain fully per tick so a recovered backlog clears promptly; each
+		// flush is one bounded tx, capped to keep the loop responsive.
+		for i := 0; i < 8; i++ {
+			n, err := p.FlushAuditOutbox(500)
+			if err != nil {
+				slog.Warn("audit outbox relay failed", "error", err)
+				break
+			}
+			if n < 500 {
+				break
+			}
+		}
+	}
 }
 
 // poolSizeEnv parses a positive-int env override; 0/missing/garbage means
@@ -714,6 +755,20 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		// erroring. Migrated legacy rows live here permanently; retention
 		// only detaches named monthly partitions.
 		`CREATE TABLE IF NOT EXISTS audit_default PARTITION OF audit DEFAULT`,
+		// Durable fallback for audit writes that fail against `audit`
+		// (VEIL-10): the relay claims rows FOR UPDATE SKIP LOCKED and
+		// re-lands them in the partitioned table.
+		`CREATE TABLE IF NOT EXISTS audit_outbox (
+			id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+			at TIMESTAMPTZ NOT NULL,
+			org_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			action TEXT NOT NULL,
+			decision TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			approval_id TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS workloads (
 			issuer TEXT NOT NULL,
 			subject TEXT NOT NULL,
@@ -906,7 +961,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions", "recovery_wraps"} {
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "audit_outbox", "sessions", "recovery_wraps"} {
 		if _, err := tx.Exec(ctx, `ALTER TABLE `+table+` ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
@@ -936,7 +991,17 @@ func (p *Postgres) migrate() error {
 	return EnsurePostgresSchema(context.Background(), p.pool)
 }
 
-func (p *Postgres) Close() error { p.pool.Close(); p.auditPool.Close(); return nil }
+func (p *Postgres) Close() error {
+	p.closeOnce.Do(func() {
+		if p.auditDone != nil {
+			close(p.auditStop)
+			<-p.auditDone
+		}
+		p.pool.Close()
+		p.auditPool.Close()
+	})
+	return nil
+}
 
 // auditPartitionName names monthly audit partitions deterministically.
 func auditPartitionName(t time.Time) string {

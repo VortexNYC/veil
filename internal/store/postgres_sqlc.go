@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -165,11 +166,30 @@ func (p *Postgres) consumeSession(sessionHash []byte, now time.Time, e *protocol
 		if e != nil {
 			e.OrgID = row.AgentOrgID
 			e.AgentID = row.AgentID
-			if err := qtx.InsertAudit(ctx, sqlc.InsertAuditParams{
+			// The audit insert runs under a savepoint: a failed statement
+			// aborts the whole tx in Postgres, so the outbox fallback needs
+			// the savepoint rolled back first — then the event still commits
+			// with the consume, durably queued for the relay.
+			sp, err := tx.Begin(ctx)
+			if err != nil {
+				return sqlc.ConsumeSessionRow{}, err
+			}
+			err = p.sqlc.WithTx(sp).InsertAudit(ctx, sqlc.InsertAuditParams{
 				At: e.Time.UTC(), OrgID: e.OrgID, AgentID: e.AgentID, ItemID: e.ItemID,
 				Action: string(e.Action), Decision: string(e.Decision), Reason: e.Reason, ApprovalID: e.ApprovalID,
-			}); err != nil {
-				return sqlc.ConsumeSessionRow{}, err
+			})
+			if err == nil {
+				if err := sp.Commit(ctx); err != nil {
+					return sqlc.ConsumeSessionRow{}, err
+				}
+			} else {
+				_ = sp.Rollback(ctx)
+				if oerr := qtx.InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
+					At: e.Time.UTC(), OrgID: e.OrgID, AgentID: e.AgentID, ItemID: e.ItemID,
+					Action: string(e.Action), Decision: string(e.Decision), Reason: e.Reason, ApprovalID: e.ApprovalID,
+				}); oerr != nil {
+					return sqlc.ConsumeSessionRow{}, fmt.Errorf("%w (outbox: %v)", err, oerr)
+				}
 			}
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -877,19 +897,105 @@ func (p *Postgres) AppendAudit(e protocol.AuditEvent) error {
 			Action: string(e.Action), Decision: string(e.Decision), Reason: e.Reason, ApprovalID: e.ApprovalID,
 		})
 	})
-	return err
+	if err == nil {
+		return nil
+	}
+	if !shouldOutbox(err) {
+		// Ambiguous failure — the row may already be committed. Returning
+		// the error beats a possible duplicate write through the outbox.
+		return err
+	}
+	// Durable fallback: the event lands in audit_outbox for the relay to
+	// re-land in `audit`. An error is only returned when both stores failed.
+	_, oerr := retryOnDeadConn(func() (struct{}, error) {
+		return struct{}{}, p.sqlc.InsertAuditOutbox(context.Background(), sqlc.InsertAuditOutboxParams{
+			At: e.Time.UTC(), OrgID: e.OrgID, AgentID: e.AgentID, ItemID: e.ItemID,
+			Action: string(e.Action), Decision: string(e.Decision), Reason: e.Reason, ApprovalID: e.ApprovalID,
+		})
+	})
+	if oerr != nil {
+		return fmt.Errorf("audit write failed (%w) and outbox fallback failed (%v)", err, oerr)
+	}
+	return nil
+}
+
+// shouldOutbox reports whether a failed write provably did not commit, so
+// queueing the event cannot double-write it. SQLSTATE-class errors are
+// deterministic failures; connection errors qualify only when pgconn marks
+// them SafeToRetry. Anything else (ambiguous timeouts) stays a loud error.
+func shouldOutbox(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return true
+	}
+	return pgconn.SafeToRetry(err)
 }
 
 func (p *Postgres) AppendAudits(events []protocol.AuditEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
+	cols := []string{"at", "org_id", "agent_id", "item_id", "action", "decision", "reason", "approval_id"}
 	_, err := retryOnDeadConn(func() (int64, error) {
-		return p.auditPool.CopyFrom(context.Background(), pgx.Identifier{"audit"}, []string{
-			"at", "org_id", "agent_id", "item_id", "action", "decision", "reason", "approval_id",
-		}, &auditCopySource{events: events})
+		return p.auditPool.CopyFrom(context.Background(), pgx.Identifier{"audit"}, cols, &auditCopySource{events: events})
 	})
-	return err
+	if err == nil {
+		return nil
+	}
+	if !shouldOutbox(err) {
+		return err
+	}
+	_, oerr := retryOnDeadConn(func() (int64, error) {
+		return p.auditPool.CopyFrom(context.Background(), pgx.Identifier{"audit_outbox"}, cols, &auditCopySource{events: events})
+	})
+	if oerr != nil {
+		return fmt.Errorf("audit batch write failed (%w) and outbox fallback failed (%v)", err, oerr)
+	}
+	return nil
+}
+
+// FlushAuditOutbox claims up to limit queued events and lands them in `audit`,
+// in one transaction: a crash mid-relay leaves the rows queued for retry, and
+// concurrent relays take disjoint rows via FOR UPDATE SKIP LOCKED. Returns the
+// number of events relayed.
+func (p *Postgres) FlushAuditOutbox(limit int) (int, error) {
+	ctx := context.Background()
+	tx, err := p.auditPool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	qtx := p.sqlc.WithTx(tx)
+	rows, err := qtx.ClaimAuditOutbox(ctx, int64(limit))
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) > 0 {
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"audit"}, []string{
+			"at", "org_id", "agent_id", "item_id", "action", "decision", "reason", "approval_id",
+		}, pgx.CopyFromRows(outboxRows(rows))); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	committed = true
+	return len(rows), nil
+}
+
+// outboxRows adapts claimed outbox rows to pgx.CopyFromSource.
+func outboxRows(rows []sqlc.AuditOutbox) [][]interface{} {
+	out := make([][]interface{}, len(rows))
+	for i, r := range rows {
+		out[i] = []interface{}{r.At.UTC(), r.OrgID, r.AgentID, r.ItemID, r.Action, r.Decision, r.Reason, r.ApprovalID}
+	}
+	return out
 }
 
 type auditCopySource struct {
