@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -103,7 +105,95 @@ func keyCmd() *cobra.Command {
 	persistent(rotateKEK)
 	rotateKEK.Flags().StringVar(&newKekFile, "new-kek-file", "", "file containing the new KEK as hex (default env VEIL_KEK_NEW)")
 
-	c.AddCommand(rotateOrg, rotateKEK)
+	var ownerKind, ownerID, recoveryFile string
+	var expires time.Duration
+	ownerFlags := func(cmd *cobra.Command) {
+		cmd.Flags().StringVar(&ownerKind, "owner-kind", "", "owner kind (e.g. user, org)")
+		cmd.Flags().StringVar(&ownerID, "owner-id", "", "owner id")
+		cmd.Flags().StringVar(&recoveryFile, "recovery-file", "", "file containing the recovery key as hex (required)")
+		_ = cmd.MarkFlagRequired("owner-kind")
+		_ = cmd.MarkFlagRequired("owner-id")
+		_ = cmd.MarkFlagRequired("recovery-file")
+	}
+
+	storeRecovery := &cobra.Command{
+		Use:   "store-recovery ORG",
+		Short: "Escrow the org master under owner-held recovery material",
+		Long: "Seals ORG's committed master under the recovery key in " +
+			"--recovery-file and upserts the recovery_wraps row. The recovery " +
+			"key never persists — the owner keeps it offline. Re-minting " +
+			"replaces the wrap and clears used_at. --expires bounds how long " +
+			"the wrap stays openable.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d, kek, err := resolve()
+			if err != nil {
+				return err
+			}
+			recoveryKey, err := loadHexKey("recovery-file", recoveryFile)
+			if err != nil {
+				return err
+			}
+			var exp time.Time
+			if expires > 0 {
+				exp = time.Now().UTC().Add(expires)
+			}
+			s, err := store.OpenPostgres(d, kek)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = s.Close() }()
+			o := protocol.Owner{Kind: protocol.OwnerKind(ownerKind), ID: ownerID}
+			if err := s.StoreRecoveryWrap(cmd.Context(), args[0], o, recoveryKey, exp); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "recovery wrap stored for %s/%s on org %s\n", ownerKind, ownerID, args[0])
+			return nil
+		},
+	}
+	persistent(storeRecovery)
+	ownerFlags(storeRecovery)
+	storeRecovery.Flags().DurationVar(&expires, "expires", 0, "wrap lifetime (e.g. 720h); 0 = no expiry")
+
+	recoverOrg := &cobra.Command{
+		Use:   "recover-org ORG",
+		Short: "Open a recovery wrap and re-seed the org under the current KEK",
+		Long: "Lost-KEK / lost-devices recovery: verifies --recovery-file " +
+			"against the owner's wrap (single-use — first open stamps used_at), " +
+			"then re-seals the recovered master under this deployment's KEK. " +
+			"Run it with the NEW VEIL_KEK already set; the recovered vault then " +
+			"decrypts every item it held before the loss.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d, kek, err := resolve()
+			if err != nil {
+				return err
+			}
+			recoveryKey, err := loadHexKey("recovery-file", recoveryFile)
+			if err != nil {
+				return err
+			}
+			s, err := store.OpenPostgres(d, kek)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = s.Close() }()
+			o := protocol.Owner{Kind: protocol.OwnerKind(ownerKind), ID: ownerID}
+			master, err := s.OpenRecoveryWrap(cmd.Context(), args[0], o, recoveryKey)
+			if err != nil {
+				return err
+			}
+			if err := s.ReseedOrgKey(cmd.Context(), args[0], master); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "org %s recovered: master re-seeded under the current KEK; mint a new recovery wrap now\n", args[0])
+			return nil
+		},
+	}
+	persistent(recoverOrg)
+	ownerFlags(recoverOrg)
+
+	c.AddCommand(rotateOrg, rotateKEK, storeRecovery, recoverOrg)
 	return c
 }
 

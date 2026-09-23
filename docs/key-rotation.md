@@ -7,6 +7,7 @@ The key hierarchy, top to bottom:
 | `VEIL_KEK` | deployment env (Railway) | every `org_keys` row, AAD-bound to the org | `veil key rotate-kek` |
 | org master | `org_keys` row (wrapped) | every `owner_keys` row for the org | `veil key rotate-org ORG` |
 | owner DEK | `owner_keys` row (wrapped) | that owner's item ciphertexts | never — DEKs don't rotate, the wrap does |
+| recovery wrap | `recovery_wraps` row (wrapped) | a copy of the org master, sealed under **owner-held** material | owner re-mints; deleted on org rotation |
 | item ciphertext | `items.secret` | the secret itself | n/a |
 
 Item ciphertexts seal under owner DEKs. Rotating an org master **rewraps the
@@ -82,11 +83,46 @@ When: KEK suspected-compromised, or scheduled. `VEIL_KEK_NEW` (or
 
 ### Lost KEK (incident)
 
-If the KEK is lost and not escrowed: `org_keys` rows cannot be unwrapped,
-org masters are unrecoverable, and every item ciphertext in the vault is
-permanently sealed. There is no backdoor — that is the product. The
-recovery path is owner-level: owners re-add secrets under a freshly
-provisioned org key. This is why escrow is step 0, not an afterthought.
+If the KEK is lost and not escrowed, `org_keys` rows cannot be unwrapped —
+but the org is recoverable if an owner holds a recovery wrap
+(`recovery_wraps`). Recovery material lives with the owner, not the
+deployment, so it survives the loss:
+
+1. Stand up the origin with a **new** `VEIL_KEK` (escrow it first).
+2. `veil key recover-org ORG --owner-kind user --owner-id HUMAN --recovery-file FILE`
+   — opens the wrap (single-use), re-seals the recovered master under the
+   new KEK via `ReseedOrgKey`. Every pre-loss item ciphertext decrypts
+   again — masters and DEKs never changed.
+3. The owner immediately mints a fresh recovery wrap (`store-recovery`) —
+   the old one is spent.
+
+If no owner held a wrap and the KEK is not escrowed, the org is gone:
+`org_keys` can't be unwrapped, every ciphertext stays sealed. There is no
+backdoor — that is the product. Owners re-add secrets under a freshly
+provisioned org key. This is why escrow is step 0 and why owners should
+mint recovery wraps at onboarding, not after an incident.
+
+### Owner recovery wraps (`veil key store-recovery` / `recover-org`)
+
+A recovery wrap is a per-owner copy of the org master sealed under
+owner-held recovery material — escrow that does not depend on the
+deployment KEK or the database's availability guarantees.
+
+- **Mint:** owner generates a 32-byte recovery key, keeps it offline
+  (printed, hardware key, second vault — anywhere that is not this
+  deployment), then `veil key store-recovery ORG --owner-kind user
+  --owner-id HUMAN --recovery-file FILE [--expires 720h]`.
+- **Semantics:** one wrap per owner; re-minting replaces it. Opening is
+  **single-use** — first success stamps `used_at`, and replays, concurrent
+  opens, wrong material, wrong owner, and expiry all fail closed. The wrap
+  is AAD-bound to org+owner: a row copied to another principal opens
+  nothing.
+- **Rotation interaction:** `rotate-org` **deletes** the org's recovery
+  wraps — a wrap that opens a dead master is a trap. Owners re-mint after
+  every org rotation.
+- **Use:** `recover-org` (above) consumes the wrap and re-seeds the org.
+- **No plaintext, ever:** the recovery key never persists; the master never
+  leaves the store unwrapped at rest.
 
 ### Compromised KEK (incident)
 

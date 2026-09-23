@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"crypto/hmac"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
@@ -234,11 +235,128 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 	if n != 1 {
 		return ErrRotationConflict
 	}
+	// Recovery wraps seal the OLD master under owner-held material — after
+	// rotation they would open a dead key. Delete them; owners re-mint.
+	if err := q.DeleteRecoveryWrapsForOrg(ctx, orgID); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	p.km.InvalidateOrg(orgID)
 	return nil
+}
+
+// ReseedOrgKey overwrites the org_keys wrap under this store's KEK. It is
+// the lost-KEK recovery verb: EnsureOrgKey refuses to touch an existing row,
+// so after recovery material yields the master this re-anchors it. Fails
+// ErrOrgKeyMissing when the org has no row — provisioning is EnsureOrgKey's
+// job. The master itself is unchanged, so key_version stays — this is a
+// re-wrap under a new KEK, not a rotation.
+func (p *Postgres) ReseedOrgKey(ctx context.Context, orgID string, master []byte) error {
+	if len(master) != crypto.KeySize {
+		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
+	}
+	p.kekMu.RLock()
+	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	p.kekMu.RUnlock()
+	if err != nil {
+		return err
+	}
+	n, err := retryOnDeadConn(func() (int64, error) {
+		return p.sqlc.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
+	})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrOrgKeyMissing
+	}
+	p.km.InvalidateOrg(orgID)
+	return nil
+}
+
+// recoveryAAD binds a recovery wrap to its org and owner — a row copied to
+// another owner or org does not open.
+func recoveryAAD(orgID string, o protocol.Owner) []byte {
+	return []byte(orgID + "\x00" + string(o.Kind) + "\x00" + o.ID)
+}
+
+// StoreRecoveryWrap seals the org's committed master under owner-held
+// recovery material and upserts the wrap. The recovery key never persists —
+// losing it strands the wrap, not the vault. Re-minting replaces the row and
+// clears used_at.
+func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error {
+	if len(recoveryKey) != crypto.KeySize {
+		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
+	}
+	if o.Kind == "" || o.ID == "" {
+		return fmt.Errorf("store: missing owner")
+	}
+	master, err := p.resolveOrgKey(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	wrapped, err := crypto.SealAAD(recoveryKey, master, recoveryAAD(orgID, o))
+	if err != nil {
+		return err
+	}
+	exp := sql.NullTime{Valid: !expiresAt.IsZero(), Time: expiresAt}
+	_, err = retryOnDeadConn(func() (struct{}, error) {
+		return struct{}{}, p.sqlc.PutRecoveryWrap(ctx, sqlc.PutRecoveryWrapParams{
+			OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
+			Wrapped: wrapped, CreatedAt: time.Now().UTC(), ExpiresAt: exp,
+		})
+	})
+	return err
+}
+
+// OpenRecoveryWrap verifies recoveryKey against the owner's wrap and returns
+// the org master. Single-use: the first successful open stamps used_at inside
+// the same transaction that locked the row — replays, concurrent opens, and
+// expired wraps all fail closed.
+func (p *Postgres) OpenRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) ([]byte, error) {
+	if len(recoveryKey) != crypto.KeySize {
+		return nil, fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.RecoveryWrap(ctx, sqlc.RecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
+	})
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.UsedAt.Valid {
+		return nil, fmt.Errorf("store: recovery wrap already used")
+	}
+	if row.ExpiresAt.Valid && time.Now().UTC().After(row.ExpiresAt.Time) {
+		return nil, fmt.Errorf("store: recovery wrap expired")
+	}
+	master, err := crypto.OpenAAD(recoveryKey, row.Wrapped, recoveryAAD(orgID, o))
+	if err != nil {
+		return nil, fmt.Errorf("store: recovery key does not open this wrap: %w", err)
+	}
+	n, err := q.ConsumeRecoveryWrap(ctx, sqlc.ConsumeRecoveryWrapParams{
+		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID, UsedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, fmt.Errorf("store: recovery wrap consumed concurrently")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return master, nil
 }
 
 // RotateKEK rewraps every org master under newKEK. Masters do not change —
@@ -399,6 +517,16 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_item_versions_item ON item_versions(item_id, id)`,
+		`CREATE TABLE IF NOT EXISTS recovery_wraps (
+			org_id TEXT NOT NULL,
+			owner_kind TEXT NOT NULL,
+			owner_id TEXT NOT NULL,
+			wrapped BYTEA NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			expires_at TIMESTAMPTZ,
+			used_at TIMESTAMPTZ,
+			PRIMARY KEY (org_id, owner_kind, owner_id)
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_workloads_issuer ON workloads(issuer)`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
@@ -482,7 +610,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions"} {
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "sessions", "recovery_wraps"} {
 		if _, err := tx.Exec(ctx, `ALTER TABLE `+table+` ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}

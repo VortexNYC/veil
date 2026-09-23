@@ -120,6 +120,13 @@ func (m *Memory) EnsureOrgKey(context.Context, string, []byte) error { return ni
 func (m *Memory) HasOrgKey(context.Context, string) (bool, error)    { return true, nil }
 func (m *Memory) RotateOrgKey(context.Context, string) error         { return ErrUnsupported }
 func (m *Memory) RotateKEK(context.Context, []byte) error            { return ErrUnsupported }
+func (m *Memory) StoreRecoveryWrap(context.Context, string, protocol.Owner, []byte, time.Time) error {
+	return ErrUnsupported
+}
+func (m *Memory) OpenRecoveryWrap(context.Context, string, protocol.Owner, []byte) ([]byte, error) {
+	return nil, ErrUnsupported
+}
+func (m *Memory) ReseedOrgKey(context.Context, string, []byte) error { return ErrUnsupported }
 
 func (m *Memory) Human(id string) (protocol.Principal, error) {
 	m.mu.Lock()
