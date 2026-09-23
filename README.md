@@ -91,7 +91,7 @@ Paste `mcp config` as the HTTP server block when the process has `VEIL_OIDC_TOKE
 
 `ssh` is the OpenSSH agent. Export `SSH_AUTH_SOCK` from its output. The broker signs. The private key never leaves. `item add --ssh-file` stores the PEM; never argv.
 
-`human invite EMAIL --code-file` is the Ory invite: Kratos creates the identity and a recovery code. Glue stamps `organization_id` and writes Keto owner/member. After the first human, invite requires an owner (`--oidc-token-file` / `VEIL_HUMAN_TOKEN`). Email stays in Kratos. There is no invite table. Membership is Keto. The broker checks it through glue. sqlite `humans` is planted `self` only.
+`human invite EMAIL` is the invite: `POST /v1/invites` mints the Kratos identity plus recovery link and emails it through the mail worker — the invitee's link is their account setup. Owner-gated (`--oidc-token-file` / `VEIL_OIDC_TOKEN_FILE`). With no `VEIL_ORIGIN` the verb talks to Kratos admin directly and `--code-file` writes the code instead. Re-inviting the same email resends. Email stays in Kratos; membership is Keto; there is no invite table.
 
 `device offer` wraps master to another machine's public key (`nacl/box`, same as fill). `Init` writes `device.key` and `wraps/`. `device accept` writes those, not plaintext `master.key`. Copy `vault.db` yourself. That is not sync and it does not pair a model.
 

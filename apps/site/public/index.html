@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veil</title>
+<meta name="description" content="Veil — the credential broker for agents. Private alpha.">
+<style>
+  @font-face {
+    font-family: "Hedvig Letters Serif";
+    src: url("/fonts/hedvig-letters-serif.woff2") format("woff2");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Hedvig Letters Sans";
+    src: url("/fonts/hedvig-letters-sans.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root {
+    --void: oklch(0.1 0 0);
+    --surface: oklch(0.165 0 0);
+    --border: oklch(0.26 0 0);
+    --subtle: oklch(0.52 0 0);
+    --secondary: oklch(0.68 0 0);
+    --foreground: oklch(0.9 0 0);
+    --bright: oklch(0.97 0 0);
+    --serif: "Hedvig Letters Serif", Georgia, serif;
+    --sans: "Hedvig Letters Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--void);
+    color: var(--foreground);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+  main { max-width: 560px; width: 100%; }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(44px, 9vw, 72px);
+    font-weight: 400;
+    color: var(--bright);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .tag {
+    margin-top: 16px;
+    font-size: 17px;
+    color: var(--secondary);
+    line-height: 1.5;
+  }
+  .alpha {
+    display: inline-block;
+    margin-top: 24px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--subtle);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: 999px;
+  }
+  .install {
+    margin-top: 32px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--foreground);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .install .c { color: var(--subtle); }
+  nav {
+    margin-top: 32px;
+    display: flex;
+    gap: 24px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  nav a { color: var(--secondary); text-decoration: none; }
+  nav a:hover { color: var(--bright); }
+  .foot {
+    margin-top: 24px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--subtle);
+    line-height: 1.7;
+  }
+  .foot a { color: var(--secondary); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Veil</h1>
+  <p class="tag">The credential broker for agents.<br>Items, grants, and injectable secrets — your agent never sees the plaintext.</p>
+  <span class="alpha">Private alpha · invite only</span>
+
+  <div class="install"><span class="c">$</span> curl -fsSL https://veil.nyc/install.sh | sh</div>
+
+  <nav>
+    <a href="/docs">Docs</a>
+    <a href="/docs/changelog">Changelog</a>
+    <a href="https://login.veil.nyc">Sign in</a>
+    <a href="https://app.veil.nyc">Vault</a>
+  </nav>
+
+  <p class="foot">
+    Invited? Your setup link arrives by email — check your inbox.<br>
+    Need access? Ask someone with a Veil org to run <code>veil human invite you@example.com</code>.
+  </p>
+</main>
+</body>
+</html>

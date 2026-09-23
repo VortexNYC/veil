@@ -1,0 +1,37 @@
+---
+title: Changelog
+description: What changed in Veil. Private alpha.
+---
+
+# Changelog
+
+Veil is in private alpha. Breaking changes land without notice until `v1`.
+
+## 2026-09-23 — Private alpha surface
+
+- **Invite-only access.** Self-service registration is off. Org owners invite
+  with `veil human invite EMAIL`; the invitee's branded setup email arrives
+  from `noreply@veil.nyc` and the link is their account setup. Re-inviting
+  resends.
+- **`POST /v1/invites`** added to the OpenAPI contract. Owner-authenticated;
+  returns `identity_id` and `emailed`. Not MCP.
+- **Email is Cloudflare Email Sending** behind `mail.veil.nyc` (Bearer-authed
+  Worker, React Email templates, multipart text+HTML). Resend removed.
+- **First-party Hydra client is `veil`.** The legacy `password-manager`
+  client and `password-manager` audience are deleted; agent `.hydra` files now
+  record their own audience as JSON.
+- **Env vars are `VEIL_*` everywhere.** The `PWM_*` compatibility bridge is
+  removed — rename before upgrading.
+- **`veil.nyc/` is a landing page**, and `curl -fsSL https://veil.nyc/install.sh | sh`
+  installs the CLI and prints the full setup path.
+- Login at `login.veil.nyc` no longer offers self-registration; direct visits
+  to `/registration` explain invite-only alpha instead of a raw error.
+- Keto, Hydra admin, and Kratos admin are internal-only — the stray public
+  Railway domains are deleted.
+
+## Agents
+
+Agent tokens mint `aud=veil`. If a `.hydra` credential file predates the
+audience migration it still reads — bare legacy files resolve to the audience
+they were bound under. `veil agent hydra <name> --force` rotates a binding
+onto `veil` explicitly.

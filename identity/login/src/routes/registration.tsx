@@ -1,17 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { Registration } from "@ory/elements-react/theme"
-import { frontend, oryConfig } from "../ory"
-import { flowSearch, loadOrCreateFlow } from "../flow"
+import { createFileRoute, Link } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/registration")({
-  validateSearch: flowSearch,
-  loaderDeps: ({ search }) => ({ flow: search.flow }),
-  loader: ({ deps }) =>
-    loadOrCreateFlow(
-      "/registration",
-      deps.flow,
-      () => frontend.createBrowserRegistrationFlow(),
-      (id) => frontend.getRegistrationFlow({ id }),
-    ),
-  component: () => <Registration flow={Route.useLoaderData()} config={oryConfig} />,
+  component: InviteOnly,
 })
+
+function InviteOnly() {
+  return (
+    <main>
+      <h1>Veil is invite-only</h1>
+      <p>
+        Veil is in private alpha. Accounts are created by invitation — ask the
+        person who invited you for your setup link, which arrives by email.
+      </p>
+      <p>
+        <Link to="/login">Back to log in</Link>
+      </p>
+    </main>
+  )
+}

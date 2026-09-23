@@ -24,11 +24,9 @@ function Home() {
     return (
       <main>
         <p>
-          <Link to="/registration">Register</Link>
-        </p>
-        <p>
           <Link to="/login">Log in</Link>
         </p>
+        <p>Veil is in private alpha — access is by invitation.</p>
       </main>
     )
   }

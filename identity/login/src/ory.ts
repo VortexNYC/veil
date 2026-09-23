@@ -1,14 +1,15 @@
 import type { OryClientConfiguration } from "@ory/elements-react"
 import { Configuration, FrontendApi } from "@ory/client-fetch"
 
-export const kratosURL = "http://127.0.0.1:4433"
+export const kratosURL =
+  (import.meta.env.VITE_KRATOS_URL as string | undefined) ?? "http://127.0.0.1:4433"
 
 export const oryConfig: OryClientConfiguration = {
   project: {
     name: "veil",
     default_redirect_url: "/",
     error_ui_url: "/error",
-    registration_enabled: true,
+    registration_enabled: false,
     verification_enabled: true,
     recovery_enabled: true,
     login_ui_url: "/login",

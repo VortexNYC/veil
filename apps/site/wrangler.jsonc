@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "veil-site",
+  "account_id": "31bfc2c14a28e0a39e8b9e3c556a18be",
+  "compatibility_date": "2026-09-11",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "veil.nyc/", "custom_domain": false },
+    { "pattern": "veil.nyc/install.sh", "custom_domain": false },
+    { "pattern": "veil.nyc/fonts/*", "custom_domain": false },
+    { "pattern": "veil.nyc/favicon.ico", "custom_domain": false },
+    { "pattern": "veil.nyc/robots.txt", "custom_domain": false }
+  ]
+}
