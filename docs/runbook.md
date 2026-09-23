@@ -93,6 +93,44 @@ provisioned human's Hydra id_token, never a session token):
 Support console equivalent: the same calls with an owner token via curl
 — there is no separate admin API.
 
+## Compromised human (operator kill-switch)
+
+A compromised owner cannot be removed by another human — owners remove
+*members*, not owners. The operator path is manual and fail-closed:
+
+1. Freeze the identity: Kratos admin
+   `PATCH /admin/identities/{id}/state` → `inactive` (token mint stops).
+2. Revoke their agents: `POST /v1/agents/{name}/revoke` under the org
+   owner's token — session tokens die at `revoked_at`.
+3. Drop their tuples: Keto write `DELETE /relationships` for
+   `Organization#members@{id}` and `#owners@{id}` on the org object —
+   `RequireOwner` stops honoring them.
+4. Purge the humans row: `DELETE FROM humans WHERE id = '{id}'` — token
+   resolution fails closed even if Keto is unreachable.
+5. Forensics: `audit` rows are append-only — pull the org's rows before
+   and after the compromise window. Nothing is deleted.
+
+If the org itself is burned, `DELETE /v1/org` by a surviving owner (or
+the Keto tuple wipe + `PurgeOrg` by hand) is the teardown.
+
+## RPO / RTO
+
+- **RPO: 24h.** Daily `pg_dump -Fc` of all four databases at 05:17 UTC
+  to the `veil-backups` volume; 14-day retention. Worst case is one day
+  of audit/grant churn — secrets themselves re-wrap on restore.
+- **RTO: hours, not days.** The drill (pg_restore into a fresh schema +
+  `VEIL_KEK` unwrap + wrong-key fails closed) is proven
+  (`TestPostgresBackupRestoreDrill` + the live drill in git history).
+  The run is scripted; the slow part is provisioning a replacement
+  Postgres.
+- **Drill cadence: monthly.** Pull a dump inside the 10-minute
+  post-run window (`railway volume files -v veil-backups`), restore to
+  the throwaway DB, unwrap one item. A backup that has never been
+  restored is a hypothesis.
+- **Alerts**: `veil-monitor` emails `VEIL_ALERT_TO` when the backup or
+  sweep heartbeat is stale, or when `/ready` fails. A missing beat is
+  an incident, not a nit.
+
 ## Audit
 
 `audit` is `PARTITION BY RANGE (at)` monthly. `veil-sweep` creates
