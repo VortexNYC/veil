@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -73,13 +74,64 @@ func Handler(a *app.App, publicURL string) http.Handler {
 	}, opts)(stream)
 }
 
+// errWindow counts 5xx responses over a rolling window — the signal the
+// monitor reads from /ready when a route is failing but the process is up.
+type errWindow struct {
+	mu sync.Mutex
+	ts []int64
+}
+
+const errWindowSecs = 300
+
+func (e *errWindow) add() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ts = append(e.ts, time.Now().Unix())
+}
+
+func (e *errWindow) count() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	cut := time.Now().Unix() - errWindowSecs
+	keep := 0
+	for _, t := range e.ts {
+		if t >= cut {
+			e.ts[keep] = t
+			keep++
+		}
+	}
+	e.ts = e.ts[:keep]
+	return keep
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.code = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (e *errWindow) wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		if rec.code >= 500 {
+			e.add()
+		}
+	})
+}
+
 func Mux(a *app.App, publicURL, issuer string) http.Handler {
 	mux := http.NewServeMux()
+	errs := &errWindow{}
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.HandleFunc("GET /ready", ready(a, issuer))
+	mux.HandleFunc("GET /ready", ready(a, issuer, errs))
 	h := Handler(a, publicURL)
 	mux.Handle(Path, h)
 	mux.Handle(Path+"/", h)
@@ -94,13 +146,15 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 		mux.Handle("/.well-known/oauth-protected-resource", wellKnown)
 		mux.Handle("/.well-known/oauth-protected-resource/", wellKnown)
 	}
-	return publicapi.CORS(otelsetup.Handler(mux))
+	return errs.wrap(publicapi.CORS(otelsetup.Handler(mux)))
 }
 
 // ready is origin truth: the process can answer agents only if Hydra discovery
 // works and the store can serve a round trip. /health stays process liveness
-// so a dead dependency is visible instead of a green lie.
-func ready(a *app.App, issuer string) http.HandlerFunc {
+// so a dead dependency is visible instead of a green lie. The body carries
+// the rolling 5xx count so the monitor sees a route bleeding without the
+// process being down.
+func ready(a *app.App, issuer string, errs *errWindow) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		notReady := func() {
@@ -138,7 +192,7 @@ func ready(a *app.App, issuer string) http.HandlerFunc {
 				return
 			}
 		}
-		_, _ = w.Write([]byte("ok\n"))
+		_, _ = w.Write([]byte(fmt.Sprintf("ok errors_5m=%d\n", errs.count())))
 	}
 }
 

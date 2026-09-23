@@ -400,6 +400,43 @@ func TestReadyFailsWhenIssuerDown(t *testing.T) {
 	}
 }
 
+// The 5xx counter is the monitor's bleed signal: an origin can be "ready"
+// while a route fails every call — the window count must show up in the
+// /ready body.
+func TestReadyReportsErrorWindow(t *testing.T) {
+	e := &errWindow{}
+	for i := 0; i < 3; i++ {
+		e.add()
+	}
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+
+	// Issuer up but store-less: /ready passes issuer discovery and has no
+	// Ping to fail, so the body is the assertion surface.
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(issuer.Close)
+	ts := httptest.NewServer(e.wrap(ready(a, issuer.URL, e)))
+	t.Cleanup(ts.Close)
+
+	res, err := http.Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("ready %d", res.StatusCode)
+	}
+	if !strings.Contains(string(b), "errors_5m=3") {
+		t.Fatalf("body %q missing error window", string(b))
+	}
+}
+
 func connect(t *testing.T, ctx context.Context, endpoint, tok string) *mcp.ClientSession {
 	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)

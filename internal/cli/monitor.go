@@ -133,6 +133,10 @@ func checkBeat(ctx context.Context, pool *pgxpool.Pool, name string, stale time.
 	return nil
 }
 
+// errBudget is the 5xx count over the origin's rolling 5-minute window that
+// counts as an outage — blips below this are noise, at-or-above is a bleed.
+const errBudget = 10
+
 func probeReady(ctx context.Context, u string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -145,9 +149,19 @@ func probeReady(ctx context.Context, u string) error {
 		return err
 	}
 	defer res.Body.Close()
-	_, _ = io.Copy(io.Discard, res.Body)
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s -> %d", u, res.StatusCode)
+	}
+	// /ready reports the rolling 5xx count: "ok errors_5m=N". A process can
+	// be green and still bleeding — this is how the monitor sees it.
+	for _, f := range strings.Fields(string(body)) {
+		if n, ok := strings.CutPrefix(f, "errors_5m="); ok {
+			var c int
+			if _, err := fmt.Sscanf(n, "%d", &c); err == nil && c >= errBudget {
+				return fmt.Errorf("origin 5xx: %d in the last 5m", c)
+			}
+		}
 	}
 	return nil
 }
