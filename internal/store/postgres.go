@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,7 +46,19 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 	config.ConnConfig.RuntimeParams["application_name"] = "veil"
 	config.ConnConfig.RuntimeParams["statement_timeout"] = "5000"
 	config.ConnConfig.RuntimeParams["idle_in_transaction_session_timeout"] = "30000"
-	config.MaxConns = 20
+	// Connection budget: VEIL_PG_MAX_CONNS wins (ops resize without a DSN
+	// change), then DSN pool_max_conns, then the default. Per-replica total
+	// is this pool plus the audit pool — size it against Postgres
+	// max_connections (or the PgBouncer pool) times replica count,
+	// documented in docs/scale.md.
+	if v := poolSizeEnv("VEIL_PG_MAX_CONNS"); v > 0 {
+		config.MaxConns = int32(v)
+	} else if !strings.Contains(connString, "pool_max_conns") {
+		config.MaxConns = 20
+	}
+	if v := poolSizeEnv("VEIL_PG_MIN_CONNS"); v > 0 {
+		config.MinConns = int32(v)
+	}
 	if config.MinConns == 0 {
 		config.MinConns = 2
 	}
@@ -62,6 +77,9 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 	// not queue behind request-path queries when the main pool is saturated.
 	auditCfg := config.Copy()
 	auditCfg.MaxConns = 2
+	if v := poolSizeEnv("VEIL_PG_AUDIT_CONNS"); v > 0 {
+		auditCfg.MaxConns = int32(v)
+	}
 	auditCfg.MinConns = 1
 	auditCfg.ConnConfig.RuntimeParams["application_name"] = "veil-audit"
 	auditPool, err := pgxpool.NewWithConfig(context.Background(), auditCfg)
@@ -76,6 +94,16 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 		return nil, err
 	}
 	return p, nil
+}
+
+// poolSizeEnv parses a positive-int env override; 0/missing/garbage means
+// "not set" so the default or DSN value applies.
+func poolSizeEnv(name string) int {
+	v, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || v <= 0 {
+		return 0
+	}
+	return v
 }
 
 // resolveOrgKey unwraps an org's master key from org_keys under the KEK.
