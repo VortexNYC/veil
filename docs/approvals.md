@@ -7,6 +7,23 @@ exists. What does not exist: a way for the ask to reach a human. Today
 a denied agent has nowhere to put the request and a human has nothing
 to answer. This is that missing object.
 
+## The dial
+
+Access is a per-(agent, item) dial the owner sets — the grant object
+is the whole spectrum, not a binary:
+
+- **No grant** — deny by default; the agent cannot even list the item.
+- **Level1** — every use asks a human first. Micro control.
+- **Level2** — donated identity, no asks. Full trust.
+
+The other axes compose on top: `actions` narrows *how* (an agent can
+`fetch` for browser fill but not `env`-inject into a shell),
+`expires_at` narrows *how long*. And the dial is independent per
+agent — A can be micro-managed on `prod-deploy` while B holds `level2`
+on `dev-db` and C sees nothing but two staging items. Groups apply the
+same dial to a set. The owner picks every point; this loop is what
+makes the Level1 end usable instead of a hang.
+
 ## Prior art
 
 | Player | Their model | What we take | What we skip |
@@ -54,6 +71,13 @@ ask — `need_approval` **is** the ask:
 5. Nobody answers → `expired` at `expires_at`. Next `Use` re-files.
 
 ## Notify
+
+The denial response is itself a notification: for a human-adjacent
+agent the ask lands in the operator's own surface — the Cursor chat,
+the Devin session log — in-band, in real time. The human reads
+"approval required, request REQ-x filed" where they are already
+watching. Email is the backup channel for an owner who stepped away,
+not a dependency the agent waits on.
 
 On insert: email every org owner (Kratos → owner emails) via
 `veil-mail`. Subject carries the ask: `devin wants github`. Body:
