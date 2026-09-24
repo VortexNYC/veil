@@ -680,7 +680,7 @@ func requestFromSqlc(r *sqlc.ApprovalRequest) protocol.ApprovalRequest {
 	out := protocol.ApprovalRequest{
 		ID: r.ID, OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
 		GrantID: r.GrantID, Action: protocol.ActionKind(r.Action),
-		Status: protocol.RequestStatus(r.Status),
+		Status:    protocol.RequestStatus(r.Status),
 		CreatedAt: r.CreatedAt.UTC(), ExpiresAt: r.ExpiresAt.UTC(),
 		ResolvedBy: r.ResolvedBy.String, ApprovalID: r.ApprovalID.String,
 	}
@@ -728,6 +728,27 @@ func (p *Postgres) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error
 	if err != nil {
 		return FileOutcome{}, err
 	}
+	// Audit inside the same commit: the expired predecessor's event and the
+	// fresh file's event land with the rows they describe — a filed or
+	// expired ask can never exist without its line in the log.
+	if expiredID != "" {
+		if err := auditInTx(ctx, tx, sqlc.InsertAuditParams{
+			At: req.CreatedAt.UTC(), OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
+			Action: string(protocol.ActionRequestExpired), Decision: string(protocol.DecisionNeedApproval),
+			Reason: expiredID,
+		}); err != nil {
+			return FileOutcome{}, err
+		}
+	}
+	if created {
+		if err := auditInTx(ctx, tx, sqlc.InsertAuditParams{
+			At: req.CreatedAt.UTC(), OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
+			Action: string(protocol.ActionRequestFiled), Decision: string(protocol.DecisionNeedApproval),
+			Reason: req.ID,
+		}); err != nil {
+			return FileOutcome{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return FileOutcome{}, err
 	}
@@ -765,7 +786,13 @@ func (p *Postgres) ListRequests(orgID string, status protocol.RequestStatus, now
 }
 
 func (p *Postgres) ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (protocol.ApprovalRequest, bool, error) {
-	row, err := p.sqlc.ResolveOpenRequest(context.Background(), sqlc.ResolveOpenRequestParams{
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	row, err := p.sqlc.WithTx(tx).ResolveOpenRequest(ctx, sqlc.ResolveOpenRequestParams{
 		ID: id, Status: string(status), HumanID: humanID, At: at.UTC(),
 		ApprovalID: sql.NullString{String: approvalID, Valid: approvalID != ""},
 	})
@@ -776,7 +803,16 @@ func (p *Postgres) ResolveRequest(id string, status protocol.RequestStatus, huma
 	if err != nil {
 		return protocol.ApprovalRequest{}, false, err
 	}
-	return requestFromSqlc(&row), true, nil
+	out := requestFromSqlc(&row)
+	// Audit in the same commit — a denied/cancelled ask never exists
+	// without the line recording it.
+	if err := auditInTx(ctx, tx, requestAuditEvent(out, at, approvalID)); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	return out, true, nil
 }
 
 func (p *Postgres) ApproveRequest(id string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, bool, error) {
@@ -810,13 +846,20 @@ func (p *Postgres) ApproveRequest(id string, appr protocol.Approval, at time.Tim
 	if err != nil {
 		return nil, false, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, false, err
-	}
 	out := make([]protocol.ApprovalRequest, 0, len(sibs)+1)
 	out = append(out, requestFromSqlc(&target))
 	for i := range sibs {
 		out = append(out, requestFromSqlc(&sibs[i]))
+	}
+	// Audit in the same commit: every ask this approval resolves gets a
+	// request_approved line — the decision never exists without its record.
+	for i := range out {
+		if err := auditInTx(ctx, tx, requestAuditEvent(out[i], at, appr.ID)); err != nil {
+			return nil, false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, err
 	}
 	return out, true, nil
 }
@@ -847,26 +890,54 @@ func (p *Postgres) ApproveGrant(grantID string, appr protocol.Approval, at time.
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 	out := make([]protocol.ApprovalRequest, 0, len(rows))
 	for i := range rows {
 		out = append(out, requestFromSqlc(&rows[i]))
 	}
+	for i := range out {
+		if err := auditInTx(ctx, tx, requestAuditEvent(out[i], at, appr.ID)); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
+// CancelRequestsForItem resolves every open ask on an archived/deleted item
+// as cancelled and writes each request_cancelled event in the same commit —
+// an ask must never vanish without an audit line saying why.
 func (p *Postgres) CancelRequestsForItem(itemID string, at time.Time) error {
-	return p.sqlc.CancelRequestsForItem(context.Background(), sqlc.CancelRequestsForItemParams{
-		ItemID: itemID, At: at.UTC(),
-	})
+	return p.cancelRequests(context.Background(), itemID, true, at)
 }
 
 func (p *Postgres) CancelRequestsForAgent(agentID string, at time.Time) error {
-	return p.sqlc.CancelRequestsForAgent(context.Background(), sqlc.CancelRequestsForAgentParams{
-		AgentID: agentID, At: at.UTC(),
-	})
+	return p.cancelRequests(context.Background(), agentID, false, at)
+}
+
+func (p *Postgres) cancelRequests(ctx context.Context, id string, byItem bool, at time.Time) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	var rows []sqlc.ApprovalRequest
+	if byItem {
+		rows, err = q.CancelRequestsForItem(ctx, sqlc.CancelRequestsForItemParams{ItemID: id, At: at.UTC()})
+	} else {
+		rows, err = q.CancelRequestsForAgent(ctx, sqlc.CancelRequestsForAgentParams{AgentID: id, At: at.UTC()})
+	}
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		if err := auditInTx(ctx, tx, requestAuditEvent(requestFromSqlc(&rows[i]), at, "")); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (p *Postgres) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error) {
@@ -1310,28 +1381,55 @@ func sweepPostgresRun(ctx context.Context, db sqlc.DBTX, before time.Time, audit
 	return rep, nil
 }
 
-// sweepAuditSavepoint inserts each audit row under a savepoint: a failed
+// auditInTx writes one audit event inside tx under a savepoint: a failed
 // statement aborts the whole transaction in Postgres, so rolling back to
-// the savepoint first keeps the sweep tx alive and the outbox row commits
-// with it — the expiry never lands without its event queued.
+// the savepoint first keeps the tx alive and the outbox row commits with
+// it — the state change can never land without its audit line or a durable
+// queue entry. Resolution paths use this so the event is atomic with the
+// decision it records.
+func auditInTx(ctx context.Context, tx pgx.Tx, ev sqlc.InsertAuditParams) error {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	err = sqlc.New(sp).InsertAudit(ctx, ev)
+	if err == nil {
+		return sp.Commit(ctx)
+	}
+	_ = sp.Rollback(ctx)
+	if oerr := sqlc.New(tx).InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
+		At: ev.At, OrgID: ev.OrgID, AgentID: ev.AgentID, ItemID: ev.ItemID,
+		Action: ev.Action, Decision: ev.Decision, Reason: ev.Reason, ApprovalID: ev.ApprovalID,
+	}); oerr != nil {
+		return fmt.Errorf("%w (outbox: %v)", err, oerr)
+	}
+	return nil
+}
+
+// requestAuditEvent maps a resolved ask to its audit row: the action follows
+// the resolution status and Reason names the request so the event joins back
+// to the authoritative row.
+func requestAuditEvent(r protocol.ApprovalRequest, at time.Time, approvalID string) sqlc.InsertAuditParams {
+	action := protocol.ActionRequestApproved
+	decision := protocol.DecisionAllow
+	switch r.Status {
+	case protocol.RequestDenied:
+		action, decision = protocol.ActionRequestDenied, protocol.DecisionDeny
+	case protocol.RequestCancelled:
+		action, decision = protocol.ActionRequestCancelled, protocol.DecisionDeny
+	case protocol.RequestExpired:
+		action, decision = protocol.ActionRequestExpired, protocol.DecisionNeedApproval
+	}
+	return sqlc.InsertAuditParams{
+		At: at.UTC(), OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
+		Action: string(action), Decision: string(decision), Reason: r.ID,
+		ApprovalID: approvalID,
+	}
+}
+
 func sweepAuditSavepoint(tx pgx.Tx) func(context.Context, sqlc.InsertAuditParams) error {
 	return func(ctx context.Context, ev sqlc.InsertAuditParams) error {
-		sp, err := tx.Begin(ctx)
-		if err != nil {
-			return err
-		}
-		err = sqlc.New(sp).InsertAudit(ctx, ev)
-		if err == nil {
-			return sp.Commit(ctx)
-		}
-		_ = sp.Rollback(ctx)
-		if oerr := sqlc.New(tx).InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
-			At: ev.At, OrgID: ev.OrgID, AgentID: ev.AgentID, ItemID: ev.ItemID,
-			Action: ev.Action, Decision: ev.Decision, Reason: ev.Reason, ApprovalID: ev.ApprovalID,
-		}); oerr != nil {
-			return fmt.Errorf("%w (outbox: %v)", err, oerr)
-		}
-		return nil
+		return auditInTx(ctx, tx, ev)
 	}
 }
 

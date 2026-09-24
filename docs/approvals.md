@@ -132,35 +132,34 @@ notification, not the request: the row is durable and surfaces in
 ## Audit
 
 New actions: `request_filed`, `request_approved` (with `approval_id`),
-`request_denied`, `request_expired`. Agent, item, grant, and resolving
-human on every row. `Use` audit already carries `approval_id`.
+`request_denied`, `request_expired`, `request_cancelled`. Agent, item,
+grant, and resolving human on every row. `Use` audit already carries
+`approval_id`.
 
 ### Durability contract
 
-Audit writes never carry secrets and are **durable, not
-atomic-with-state**:
+Audit writes never carry secrets. Every request lifecycle transition is
+**atomic with its audit event** — the store writes the event inside the
+same commit as the state change (VEIL-50):
 
-- Resolution (approve/deny/expire) commits first; the request row itself
-  is the authoritative record (`status`, `resolved_at`, `resolved_by`,
-  `approval_id`). The audit event is a second, searchable copy written
-  immediately after.
-- On Postgres, `AppendAudit` inserts directly; on a provable
-  non-committing failure it falls back to `audit_outbox`, which a relay
-  drains into `audit` later. An ambiguous failure returns an error
-  rather than risking a duplicate row.
-- The sweep is the exception: request expirations and their
-  `request_expired` events commit in **one transaction** (each audit
-  insert under a savepoint so a failed insert queues the event in
-  `audit_outbox` inside that same tx). A mid-sweep crash can delay an
-  expiry to the next tick, never strand it unaudited.
-- Consequence of the ordering on approve/deny: an ambiguous crash
-  between state-commit and audit-write can lose an event, but can never
-  lose the resolution itself. Whether compliance requires events inside
-  the state transaction is tracked as a decision (VEIL-50).
+- File, refile-expiry, approve, grant-approve, deny, cancel, and sweep
+  expiry each emit their event inside the state transaction. A request
+  row can never commit without the record of how it got there.
+- On Postgres each event insert runs under a savepoint: a failed insert
+  rolls back to the savepoint and the event is queued in `audit_outbox`
+  **inside the same transaction**, which a relay drains into `audit`
+  later. If audit and outbox are both unwritable the whole transaction
+  fails — the resolution is refused rather than taken unrecorded.
+- The request row remains authoritative (`status`, `resolved_at`,
+  `resolved_by`, `approval_id`); the audit row and outbox entry are the
+  searchable projection, now guaranteed to exist.
 - SQLite and memory have no outbox — they are local-dev and test
-  backends; a failed audit write there is a dead disk, not a lost
-  event (VEIL-49 tracks parity). The sqlite sweep is still transactional:
-  expire+audit roll back together on failure.
+  backends; a failed audit write there rolls the whole transaction back
+  (VEIL-49 tracks parity as a decision, not a gap).
+- The `Use` hot path was already on this contract — session calls write
+  their event inside `ConsumeSessionAudited`, and agent-token calls use
+  `AppendAudit` with the same outbox fallback. Request lifecycle events
+  now match that standard.
 
 ## Non-goals
 

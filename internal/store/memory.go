@@ -476,11 +476,28 @@ func (m *Memory) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) 
 			r.ResolvedAt = &at
 			m.requests[id] = r
 			expiredID = r.ID
+			m.audit = append(m.audit, auditEventFor(protocol.ActionRequestExpired, r, req.CreatedAt, ""))
 		}
 	}
 	req.Status = protocol.RequestOpen
 	m.requests[req.ID] = req
+	m.audit = append(m.audit, auditEventFor(protocol.ActionRequestFiled, req, req.CreatedAt, ""))
 	return FileOutcome{Request: req, Created: true, ExpiredID: expiredID}, nil
+}
+
+// auditEventFor builds the lifecycle audit row for a request — reason names
+// the request so the event joins back to the authoritative row; decision
+// follows the action.
+func auditEventFor(action protocol.ActionKind, r protocol.ApprovalRequest, at time.Time, approvalID string) protocol.AuditEvent {
+	decision := protocol.DecisionAllow
+	switch action {
+	case protocol.ActionRequestDenied, protocol.ActionRequestCancelled:
+		decision = protocol.DecisionDeny
+	case protocol.ActionRequestFiled, protocol.ActionRequestExpired:
+		decision = protocol.DecisionNeedApproval
+	}
+	return protocol.AuditEvent{Time: at.UTC(), OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
+		Action: action, Decision: decision, Reason: r.ID, ApprovalID: approvalID}
 }
 
 func (m *Memory) Request(id string) (protocol.ApprovalRequest, error) {
@@ -526,6 +543,7 @@ func (m *Memory) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	r.Status, r.ResolvedBy, r.ApprovalID = status, humanID, approvalID
 	r.ResolvedAt = &at
 	m.requests[id] = r
+	m.audit = append(m.audit, auditEventFor(requestActionForStatus(status), r, at, approvalID))
 	return r, true, nil
 }
 
@@ -566,7 +584,11 @@ func (m *Memory) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	m.requests[id] = r
 	appr.GrantID = r.GrantID
 	m.approvals[r.GrantID] = appr
-	return append([]protocol.ApprovalRequest{r}, m.approveRequestsForGrant(r.GrantID, appr.HumanID, appr.ID, at)...), true, nil
+	resolved := append([]protocol.ApprovalRequest{r}, m.approveRequestsForGrant(r.GrantID, appr.HumanID, appr.ID, at)...)
+	for _, rr := range resolved {
+		m.audit = append(m.audit, auditEventFor(protocol.ActionRequestApproved, rr, at, appr.ID))
+	}
+	return resolved, true, nil
 }
 
 // grantEdgeLive reports whether a grant's edge is still usable: grant
@@ -601,7 +623,11 @@ func (m *Memory) ApproveGrant(grantID string, appr protocol.Approval, at time.Ti
 	}
 	appr.GrantID = grantID
 	m.approvals[grantID] = appr
-	return m.approveRequestsForGrant(grantID, appr.HumanID, appr.ID, at), nil
+	resolved := m.approveRequestsForGrant(grantID, appr.HumanID, appr.ID, at)
+	for _, rr := range resolved {
+		m.audit = append(m.audit, auditEventFor(protocol.ActionRequestApproved, rr, at, appr.ID))
+	}
+	return resolved, nil
 }
 
 func (m *Memory) CancelRequestsForItem(itemID string, at time.Time) error {
@@ -612,6 +638,7 @@ func (m *Memory) CancelRequestsForItem(itemID string, at time.Time) error {
 			r.Status = protocol.RequestCancelled
 			r.ResolvedAt = &at
 			m.requests[id] = r
+			m.audit = append(m.audit, auditEventFor(protocol.ActionRequestCancelled, r, at, ""))
 		}
 	}
 	return nil
@@ -625,6 +652,7 @@ func (m *Memory) CancelRequestsForAgent(agentID string, at time.Time) error {
 			r.Status = protocol.RequestCancelled
 			r.ResolvedAt = &at
 			m.requests[id] = r
+			m.audit = append(m.audit, auditEventFor(protocol.ActionRequestCancelled, r, at, ""))
 		}
 	}
 	return nil

@@ -1570,11 +1570,7 @@ func requestCmd(home *string) *cobra.Command {
 			if !won {
 				return fmt.Errorf("request %s is already resolved", args[0])
 			}
-			_ = a.Store.AppendAudit(protocol.AuditEvent{
-				Time: time.Now().UTC(), OrgID: resolved.OrgID, AgentID: resolved.AgentID,
-				ItemID: resolved.ItemID, Action: protocol.ActionRequestDenied,
-				Decision: protocol.DecisionDeny, Reason: resolved.ID,
-			})
+			// request_denied is written by the store inside the resolve transaction.
 			return encode(cmd, resolved)
 		},
 	}

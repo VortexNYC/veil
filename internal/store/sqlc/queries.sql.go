@@ -186,9 +186,11 @@ func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
-const cancelRequestsForAgent = `-- name: CancelRequestsForAgent :exec
+const cancelRequestsForAgent = `-- name: CancelRequestsForAgent :many
 UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
 WHERE agent_id = $2::text AND status = 'open'
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
 `
 
 type CancelRequestsForAgentParams struct {
@@ -196,14 +198,44 @@ type CancelRequestsForAgentParams struct {
 	AgentID string
 }
 
-func (q *Queries) CancelRequestsForAgent(ctx context.Context, arg CancelRequestsForAgentParams) error {
-	_, err := q.db.Exec(ctx, cancelRequestsForAgent, arg.At, arg.AgentID)
-	return err
+func (q *Queries) CancelRequestsForAgent(ctx context.Context, arg CancelRequestsForAgentParams) ([]ApprovalRequest, error) {
+	rows, err := q.db.Query(ctx, cancelRequestsForAgent, arg.At, arg.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApprovalRequest
+	for rows.Next() {
+		var i ApprovalRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.GrantID,
+			&i.Action,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const cancelRequestsForItem = `-- name: CancelRequestsForItem :exec
+const cancelRequestsForItem = `-- name: CancelRequestsForItem :many
 UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
 WHERE item_id = $2::text AND status = 'open'
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
 `
 
 type CancelRequestsForItemParams struct {
@@ -211,9 +243,39 @@ type CancelRequestsForItemParams struct {
 	ItemID string
 }
 
-func (q *Queries) CancelRequestsForItem(ctx context.Context, arg CancelRequestsForItemParams) error {
-	_, err := q.db.Exec(ctx, cancelRequestsForItem, arg.At, arg.ItemID)
-	return err
+// Returns cancelled rows so the caller can write request_cancelled events
+// in the same transaction — an ask must never vanish without an audit line.
+func (q *Queries) CancelRequestsForItem(ctx context.Context, arg CancelRequestsForItemParams) ([]ApprovalRequest, error) {
+	rows, err := q.db.Query(ctx, cancelRequestsForItem, arg.At, arg.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApprovalRequest
+	for rows.Next() {
+		var i ApprovalRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.GrantID,
+			&i.Action,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const claimAuditOutbox = `-- name: ClaimAuditOutbox :many

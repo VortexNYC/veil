@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -593,5 +594,241 @@ func TestSweepExpiresAndAuditsAtScale(t *testing.T) {
 			}
 			t.Logf("sweep: %d expire+audit pairs in %s", asks, time.Since(start).Round(time.Millisecond))
 		})
+	}
+}
+
+// countAction tallies audit events of one action naming one request.
+func countAction(events []protocol.AuditEvent, action protocol.ActionKind, reason string) int {
+	n := 0
+	for _, e := range events {
+		if e.Action == action && e.Reason == reason {
+			n++
+		}
+	}
+	return n
+}
+
+// VEIL-50: every request lifecycle transition commits with its audit event —
+// the store writes the event inside the state transaction, never after it.
+// These tests assert the pairing at the observable level: state visible means
+// the event is visible, exactly once.
+
+func TestFileRequestAuditsFiledInCommit(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			out, err := s.FileRequest(openRequest("a"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			events, err := s.Audit()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := countAction(events, protocol.ActionRequestFiled, out.Request.ID); n != 1 {
+				t.Fatalf("filed ask must carry exactly one request_filed event, got %d in %+v", n, events)
+			}
+			// A deduped refile writes no new row and no new event.
+			if _, err := s.FileRequest(openRequest("a")); err != nil {
+				t.Fatal(err)
+			}
+			events, _ = s.Audit()
+			if n := countAction(events, protocol.ActionRequestFiled, out.Request.ID); n != 1 {
+				t.Fatalf("a deduped refile must not re-audit, got %d events", n)
+			}
+		})
+	}
+}
+
+func TestFileRequestRefireAuditsExpiredAndFiled(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			first := openRequest("a")
+			first.ExpiresAt = time.Now().Add(time.Minute)
+			if _, err := s.FileRequest(first); err != nil {
+				t.Fatal(err)
+			}
+			second := openRequest("a")
+			second.ID = "req-a-2"
+			second.CreatedAt = time.Now().Add(2 * time.Minute)
+			second.ExpiresAt = time.Now().Add(time.Hour)
+			out, err := s.FileRequest(second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !out.Created || out.ExpiredID != first.ID {
+				t.Fatalf("refile past expiry must expire the predecessor: %+v", out)
+			}
+			events, _ := s.Audit()
+			if n := countAction(events, protocol.ActionRequestExpired, first.ID); n != 1 {
+				t.Fatalf("the expired predecessor must carry request_expired, got %d", n)
+			}
+			if n := countAction(events, protocol.ActionRequestFiled, second.ID); n != 1 {
+				t.Fatalf("the fresh ask must carry request_filed, got %d", n)
+			}
+		})
+	}
+}
+
+func TestResolveRequestAuditsDeniedInCommit(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			out, err := s.FileRequest(openRequest("a"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, won, err := s.ResolveRequest(out.Request.ID, protocol.RequestDenied, "owner-1", "", time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !won || resolved.Status != protocol.RequestDenied {
+				t.Fatalf("deny must win: won=%v %+v", won, resolved)
+			}
+			events, _ := s.Audit()
+			if n := countAction(events, protocol.ActionRequestDenied, out.Request.ID); n != 1 {
+				t.Fatalf("denial must commit with exactly one request_denied, got %d in %+v", n, events)
+			}
+		})
+	}
+}
+
+func TestApproveRequestAuditsTargetAndSiblings(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			full, ok := s.(Store)
+			if !ok {
+				t.Skip("needs PutGrant")
+			}
+			putTestGrant(t, full, "grant-a", nil)
+			out, err := s.FileRequest(openRequest("a"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sib := openRequest("a")
+			sib.ID, sib.Action = "req-a-env", protocol.ActionEnv
+			if _, err := s.FileRequest(sib); err != nil {
+				t.Fatal(err)
+			}
+			appr := protocol.Approval{ID: "appr-1", HumanID: "owner-1", ExpiresAt: time.Now().Add(time.Hour)}
+			resolved, won, err := s.ApproveRequest(out.Request.ID, appr, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !won || len(resolved) != 2 {
+				t.Fatalf("one grant approval resolves every open ask: won=%v %+v", won, resolved)
+			}
+			events, _ := s.Audit()
+			for _, r := range resolved {
+				if n := countAction(events, protocol.ActionRequestApproved, r.ID); n != 1 {
+					t.Fatalf("each resolved ask must carry request_approved, got %d for %s", n, r.ID)
+				}
+			}
+		})
+	}
+}
+
+func TestCancelRequestsForAgentAuditsCancelled(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			out, err := s.FileRequest(openRequest("a"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.CancelRequestsForAgent("a", time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := s.Request(out.Request.ID)
+			if got.Status != protocol.RequestCancelled {
+				t.Fatalf("agent revoke must cancel its ask, got %s", got.Status)
+			}
+			events, _ := s.Audit()
+			if n := countAction(events, protocol.ActionRequestCancelled, out.Request.ID); n != 1 {
+				t.Fatalf("a cancelled ask must carry request_cancelled, got %d in %+v", n, events)
+			}
+		})
+	}
+}
+
+// poisonInsert fails every direct INSERT on a table — the failure-injection
+// seam for the outbox-fallback tests. Runs against the test's own schema.
+func poisonInsert(t *testing.T, pg *Postgres, table string) {
+	t.Helper()
+	fn := "reject_" + table
+	_, err := pg.pool.Exec(context.Background(), fmt.Sprintf(`
+		CREATE OR REPLACE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $f$
+		BEGIN RAISE EXCEPTION '%s write rejected'; END; $f$;
+		CREATE TRIGGER %s BEFORE INSERT ON %s FOR EACH ROW EXECUTE FUNCTION %s();`,
+		fn, table, fn, table, fn))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func tableCount(t *testing.T, pg *Postgres, table string) int {
+	t.Helper()
+	var n int
+	if err := pg.pool.QueryRow(context.Background(),
+		fmt.Sprintf(`SELECT count(*) FROM %s`, table)).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// A failed audit insert must not kill the file — the event lands in
+// audit_outbox inside the same commit, so the durable record exists either
+// way and the relay delivers it later.
+func TestFileRequestAuditOutboxFallback(t *testing.T) {
+	if os.Getenv("PG_TEST_DSN") == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	pg := openTestPostgres(t)
+	defer pg.Close()
+	poisonInsert(t, pg, "audit")
+	out, err := pg.FileRequest(openRequest("a"))
+	if err != nil {
+		t.Fatalf("audit failure must fall back to the outbox, not fail the file: %v", err)
+	}
+	if !out.Created {
+		t.Fatal("the ask must be created even with audit broken")
+	}
+	if n := tableCount(t, pg, "audit"); n != 0 {
+		t.Fatalf("the rejected insert must not land in audit, got %d rows", n)
+	}
+	if n := tableCount(t, pg, "audit_outbox"); n != 1 {
+		t.Fatalf("the event must be durable in the outbox, got %d rows", n)
+	}
+	var action string
+	if err := pg.pool.QueryRow(context.Background(),
+		`SELECT action FROM audit_outbox`).Scan(&action); err != nil {
+		t.Fatal(err)
+	}
+	if action != string(protocol.ActionRequestFiled) {
+		t.Fatalf("outbox must carry request_filed, got %q", action)
+	}
+	// The relay drains it — the event reaches audit once the table heals.
+	pg.pool.Exec(context.Background(), `DROP TRIGGER reject_audit ON audit`)
+	if n, err := pg.FlushAuditOutbox(10); err != nil || n != 1 {
+		t.Fatalf("flush must deliver the queued event: n=%d err=%v", n, err)
+	}
+	if n := tableCount(t, pg, "audit"); n != 1 {
+		t.Fatalf("flushed event must land in audit, got %d rows", n)
+	}
+}
+
+// If audit AND outbox are both unwritable the file must fail closed — no
+// request row commits without a durable record of it.
+func TestFileRequestAuditTotalFailureRollsBack(t *testing.T) {
+	if os.Getenv("PG_TEST_DSN") == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	pg := openTestPostgres(t)
+	defer pg.Close()
+	poisonInsert(t, pg, "audit")
+	poisonInsert(t, pg, "audit_outbox")
+	_, err := pg.FileRequest(openRequest("a"))
+	if err == nil {
+		t.Fatal("audit+outbox failure must fail the file — no silent record loss")
+	}
+	if n := tableCount(t, pg, "approval_requests"); n != 0 {
+		t.Fatalf("the request row must roll back with its audit, got %d rows", n)
 	}
 }

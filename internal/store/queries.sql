@@ -286,13 +286,19 @@ WHERE grant_id = @grant_id::text AND status = 'open' AND expires_at > @at::times
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id;
 
--- name: CancelRequestsForItem :exec
+-- name: CancelRequestsForItem :many
+-- Returns cancelled rows so the caller can write request_cancelled events
+-- in the same transaction — an ask must never vanish without an audit line.
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
-WHERE item_id = @item_id::text AND status = 'open';
+WHERE item_id = @item_id::text AND status = 'open'
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
 
--- name: CancelRequestsForAgent :exec
+-- name: CancelRequestsForAgent :many
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
-WHERE agent_id = @agent_id::text AND status = 'open';
+WHERE agent_id = @agent_id::text AND status = 'open'
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
 
 -- name: ExpireStaleRequests :many
 -- Returns the rows it expired so the sweep can audit each request_expired —

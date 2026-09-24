@@ -37,15 +37,15 @@ type UseRequest struct {
 }
 
 type UseResponse struct {
-	Decision          protocol.Decision `json:"decision"`
-	Reason            string            `json:"reason,omitempty"`
-	ApprovalID        string            `json:"approval_id,omitempty"`
-	RequestID         string            `json:"request_id,omitempty"`
-	RequestExpiresAt  *time.Time        `json:"request_expires_at,omitempty"`
-	Status            int               `json:"status,omitempty"`
-	Headers           http.Header       `json:"headers,omitempty"`
-	Body              string            `json:"body,omitempty"`
-	BodyB64           string            `json:"body_b64,omitempty"`
+	Decision         protocol.Decision `json:"decision"`
+	Reason           string            `json:"reason,omitempty"`
+	ApprovalID       string            `json:"approval_id,omitempty"`
+	RequestID        string            `json:"request_id,omitempty"`
+	RequestExpiresAt *time.Time        `json:"request_expires_at,omitempty"`
+	Status           int               `json:"status,omitempty"`
+	Headers          http.Header       `json:"headers,omitempty"`
+	Body             string            `json:"body,omitempty"`
+	BodyB64          string            `json:"body_b64,omitempty"`
 }
 
 type ItemsResponse struct {
@@ -917,10 +917,7 @@ func (s *Server) denyRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "already resolved", http.StatusConflict)
 		return
 	}
-	_ = s.App.Store.AppendAudit(protocol.AuditEvent{
-		Time: time.Now().UTC(), OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
-		Action: protocol.ActionRequestDenied, Decision: protocol.DecisionDeny, Reason: req.ID,
-	})
+	// request_denied is written by the store inside the resolve transaction.
 	writeJSON(w, requestView(resolved))
 }
 

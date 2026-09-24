@@ -334,22 +334,12 @@ func (b *Broker) FileRequest(ctx context.Context, agent protocol.Principal, item
 	if err != nil {
 		return protocol.ApprovalRequest{}, err
 	}
-	// The refile that found the previous ask dead on the wire is the moment
-	// "nobody answered in time" becomes visible — audit it once, named by
-	// the row the store expired.
-	if out.ExpiredID != "" {
-		_ = b.appendAudit(ctx, protocol.AuditEvent{
-			Time: now, OrgID: agent.OrgID, AgentID: agent.ID, ItemID: item.ID,
-			Action: protocol.ActionRequestExpired, Decision: protocol.DecisionNeedApproval, Reason: out.ExpiredID,
-		})
-	}
+	// request_expired (for the dead predecessor) and request_filed (for a
+	// fresh ask) are written by the store inside the file transaction —
+	// a filed ask always lands with its audit line.
 	if !out.Created {
 		return out.Request, nil
 	}
-	_ = b.appendAudit(ctx, protocol.AuditEvent{
-		Time: now, OrgID: agent.OrgID, AgentID: agent.ID, ItemID: item.ID,
-		Action: protocol.ActionRequestFiled, Decision: protocol.DecisionNeedApproval, Reason: out.Request.ID,
-	})
 	if b.OnRequestFiled != nil {
 		b.OnRequestFiled(ctx, out.Request)
 	}
@@ -476,8 +466,9 @@ func (b *Broker) Approve(human protocol.Principal, grantID string, ttl time.Dura
 	if err != nil {
 		return protocol.Approval{}, err
 	}
-	b.auditRequestResolutions(resolved, a.ID)
-	slog.Info("approve", "human", human.ID, "grant", grantID)
+	// request_approved events for every resolved ask are written by the
+	// store inside the approval transaction.
+	slog.Info("approve", "human", human.ID, "grant", grantID, "resolved", len(resolved))
 	return a, nil
 }
 
@@ -513,19 +504,10 @@ func (b *Broker) ApproveRequest(human protocol.Principal, reqID string, ttl time
 	if !won {
 		return protocol.ApprovalRequest{}, store.ErrRequestResolved
 	}
-	b.auditRequestResolutions(resolved, a.ID)
+	// request_approved events for the target and every sibling are written
+	// by the store inside the resolution transaction.
 	slog.Info("approve", "human", human.ID, "request", reqID)
 	return resolved[0], nil
-}
-
-func (b *Broker) auditRequestResolutions(resolved []protocol.ApprovalRequest, approvalID string) {
-	for _, req := range resolved {
-		_ = b.appendAudit(context.Background(), protocol.AuditEvent{
-			Time: b.now(), OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
-			Action: protocol.ActionRequestApproved, Decision: protocol.DecisionAllow,
-			Reason: req.ID, ApprovalID: approvalID,
-		})
-	}
 }
 
 // LogEvent writes a grant event to slog. No secrets, no query string, no body.

@@ -1209,10 +1209,56 @@ func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) 
 		out = req
 		out.Status = protocol.RequestOpen
 	}
+	// Audit inside the same commit — the expired predecessor and the fresh
+	// file land with the rows they describe.
+	if expiredID != "" {
+		old := req
+		old.ID = expiredID
+		if err := auditRequestEventTx(tx, protocol.ActionRequestExpired, old, req.CreatedAt, ""); err != nil {
+			return FileOutcome{}, err
+		}
+	}
+	if n > 0 {
+		if err := auditRequestEventTx(tx, protocol.ActionRequestFiled, req, req.CreatedAt, ""); err != nil {
+			return FileOutcome{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return FileOutcome{}, err
 	}
 	return FileOutcome{Request: out, Created: n > 0, ExpiredID: expiredID}, nil
+}
+
+// auditRequestEventTx writes one request-lifecycle audit row inside tx.
+// Reason names the request so the event joins back to the authoritative
+// row; decision follows the action.
+func auditRequestEventTx(tx *sql.Tx, action protocol.ActionKind, r protocol.ApprovalRequest, at time.Time, approvalID string) error {
+	decision := protocol.DecisionAllow
+	switch action {
+	case protocol.ActionRequestDenied, protocol.ActionRequestCancelled:
+		decision = protocol.DecisionDeny
+	case protocol.ActionRequestFiled, protocol.ActionRequestExpired:
+		decision = protocol.DecisionNeedApproval
+	}
+	_, err := tx.Exec(`INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+		VALUES(?,?,?,?,?,?,?,?)`,
+		at.UTC().Format(time.RFC3339Nano), r.OrgID, r.AgentID, r.ItemID, string(action), string(decision), r.ID, approvalID)
+	return err
+}
+
+// requestActionForStatus maps a resolution status to its audit action —
+// the store emits the event in the same commit that writes the state.
+func requestActionForStatus(status protocol.RequestStatus) protocol.ActionKind {
+	switch status {
+	case protocol.RequestDenied:
+		return protocol.ActionRequestDenied
+	case protocol.RequestCancelled:
+		return protocol.ActionRequestCancelled
+	case protocol.RequestExpired:
+		return protocol.ActionRequestExpired
+	default:
+		return protocol.ActionRequestApproved
+	}
 }
 
 func (s *SQLite) Request(id string) (protocol.ApprovalRequest, error) {
@@ -1257,7 +1303,12 @@ func (s *SQLite) ListRequests(orgID string, status protocol.RequestStatus, now t
 }
 
 func (s *SQLite) ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (protocol.ApprovalRequest, bool, error) {
-	res, err := s.db.Exec(`UPDATE approval_requests SET status=?, resolved_at=?, resolved_by=?, approval_id=?
+	tx, err := s.db.Begin()
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.Exec(`UPDATE approval_requests SET status=?, resolved_at=?, resolved_by=?, approval_id=?
 		WHERE id=? AND status='open' AND expires_at > ?`,
 		string(status), at.Unix(), humanID, sql.NullString{String: approvalID, Valid: approvalID != ""}, id, at.Unix())
 	if err != nil {
@@ -1267,8 +1318,20 @@ func (s *SQLite) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	if err != nil {
 		return protocol.ApprovalRequest{}, false, err
 	}
-	cur, err := s.Request(id)
-	return cur, n > 0, err
+	cur, err := s.scanRequest(tx.QueryRow(`SELECT `+requestCols+` FROM approval_requests WHERE id=?`, id))
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	if n > 0 {
+		// Audit in the same commit — the denial never exists without its line.
+		if err := auditRequestEventTx(tx, requestActionForStatus(cur.Status), cur, at, approvalID); err != nil {
+			return protocol.ApprovalRequest{}, false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	return cur, n > 0, nil
 }
 
 func scanRequestRows(rows *sql.Rows) ([]protocol.ApprovalRequest, error) {
@@ -1345,10 +1408,16 @@ func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	if err != nil {
 		return nil, false, err
 	}
+	resolved := append([]protocol.ApprovalRequest{target}, sibs...)
+	for i := range resolved {
+		if err := auditRequestEventTx(tx, protocol.ActionRequestApproved, resolved[i], at, appr.ID); err != nil {
+			return nil, false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
-	return append([]protocol.ApprovalRequest{target}, sibs...), true, nil
+	return resolved, true, nil
 }
 
 // grantLiveForApprove reports whether a grant's edge is still usable:
@@ -1388,19 +1457,46 @@ func (s *SQLite) ApproveGrant(grantID string, appr protocol.Approval, at time.Ti
 	if err != nil {
 		return nil, err
 	}
+	for i := range out {
+		if err := auditRequestEventTx(tx, protocol.ActionRequestApproved, out[i], at, appr.ID); err != nil {
+			return nil, err
+		}
+	}
 	return out, tx.Commit()
 }
 
+// cancelRequestsTx resolves every open ask on the dead edge as cancelled and
+// writes each request_cancelled event in the same commit — an ask must never
+// vanish without an audit line saying why.
+func (s *SQLite) cancelRequests(where string, id string, at time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	raw, err := tx.Query(`UPDATE approval_requests SET status='cancelled', resolved_at=?
+		WHERE `+where+`=? AND status='open' RETURNING `+requestCols, at.Unix(), id)
+	if err != nil {
+		return err
+	}
+	rows, err := scanRequestRows(raw)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		if err := auditRequestEventTx(tx, protocol.ActionRequestCancelled, rows[i], at, ""); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *SQLite) CancelRequestsForItem(itemID string, at time.Time) error {
-	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
-		WHERE item_id=? AND status='open'`, at.Unix(), itemID)
-	return err
+	return s.cancelRequests("item_id", itemID, at)
 }
 
 func (s *SQLite) CancelRequestsForAgent(agentID string, at time.Time) error {
-	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
-		WHERE agent_id=? AND status='open'`, at.Unix(), agentID)
-	return err
+	return s.cancelRequests("agent_id", agentID, at)
 }
 
 func (s *SQLite) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error) {

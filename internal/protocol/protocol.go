@@ -79,10 +79,11 @@ const (
 	ActionRevoke ActionKind = "revoke"
 	// Audit actions for the approval-request lifecycle. Never grant actions —
 	// actionAllowed only passes fetch/env and Use only accepts fetch.
-	ActionRequestFiled    ActionKind = "request_filed"
-	ActionRequestApproved ActionKind = "request_approved"
-	ActionRequestDenied   ActionKind = "request_denied"
-	ActionRequestExpired  ActionKind = "request_expired"
+	ActionRequestFiled     ActionKind = "request_filed"
+	ActionRequestApproved  ActionKind = "request_approved"
+	ActionRequestDenied    ActionKind = "request_denied"
+	ActionRequestExpired   ActionKind = "request_expired"
+	ActionRequestCancelled ActionKind = "request_cancelled"
 )
 
 type Decision string
@@ -217,7 +218,7 @@ type UseResult struct {
 	ApprovalID string
 	// RequestID and RequestExpiresAt carry the approval request filed on a
 	// need_approval denial — the agent retries Use; the human resolves the ask.
-	RequestID         string
+	RequestID        string
 	RequestExpiresAt *time.Time
 	Fetch            *FetchResult
 }
