@@ -82,6 +82,9 @@ notification, not the request: the row is durable and surfaces in
 - Approval lapses → next `Use` is `need_approval` again → re-file.
 - Two agents, same item → separate grants → separate requests →
   approvals stay per-(agent,item) pair. Approval never widens ambiently.
+- Two owners act at once → the resolve is a conditional update
+  (`WHERE status='open'`): first write wins, the loser sees
+  `already resolved`. `resolved_by` always names the owner who acted.
 - `approval_expired` denial files a request identically — an expired
   approval is just a missing one.
 
