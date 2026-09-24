@@ -144,6 +144,22 @@ type Store interface {
 	PutApproval(protocol.Approval) error
 	LiveApproval(grantID string, now time.Time) (*protocol.Approval, error)
 
+	// FileRequest records an open approval request for (grant, action). A
+	// stale open on the same key is expired first; a live one is returned
+	// unchanged — created=false means the ask was already on file and must
+	// not re-notify owners.
+	FileRequest(protocol.ApprovalRequest) (req protocol.ApprovalRequest, created bool, err error)
+	Request(id string) (protocol.ApprovalRequest, error)
+	// ListRequests returns org requests; status open lists only unexpired.
+	ListRequests(orgID string, status protocol.RequestStatus, now time.Time) ([]protocol.ApprovalRequest, error)
+	// ResolveRequest flips an open, unexpired request to a terminal status —
+	// first write wins; won=false means it was already resolved or expired.
+	ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (req protocol.ApprovalRequest, won bool, err error)
+	CancelRequestsForGrant(grantID string, at time.Time) error
+	CancelRequestsForAgent(agentID string, at time.Time) error
+	// ExpireStaleRequests marks open requests past expiry as expired. Sweep.
+	ExpireStaleRequests(now time.Time) error
+
 	PutWorkload(protocol.Workload) error
 	Workload(issuer, subject string) (*protocol.Workload, error)
 	WorkloadsForIssuer(issuer string) ([]protocol.Workload, error)

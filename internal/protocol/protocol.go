@@ -147,6 +147,35 @@ type Approval struct {
 	ExpiresAt time.Time
 }
 
+// RequestStatus is the approval-request lifecycle. Open is the only state a
+// resolve may leave; every other state is terminal.
+type RequestStatus string
+
+const (
+	RequestOpen      RequestStatus = "open"
+	RequestApproved  RequestStatus = "approved"
+	RequestDenied    RequestStatus = "denied"
+	RequestExpired   RequestStatus = "expired"
+	RequestCancelled RequestStatus = "cancelled"
+)
+
+// ApprovalRequest is a filed ask: this grant wants this action and a human
+// must answer. One open row per (grant, action) — re-filing reuses it.
+type ApprovalRequest struct {
+	ID         string
+	OrgID      string
+	AgentID    string
+	ItemID     string
+	GrantID    string
+	Action     ActionKind
+	Status     RequestStatus
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	ResolvedAt *time.Time
+	ResolvedBy string
+	ApprovalID string
+}
+
 // Workload is an Entra-style federation binding. We verify an OIDC ID token
 // from someone else's issuer and map (issuer, subject) to an existing agent.
 // We do not issue tokens.

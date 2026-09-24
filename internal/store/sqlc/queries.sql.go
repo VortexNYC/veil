@@ -81,6 +81,36 @@ func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const cancelRequestsForAgent = `-- name: CancelRequestsForAgent :exec
+UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
+WHERE agent_id = $2::text AND status = 'open'
+`
+
+type CancelRequestsForAgentParams struct {
+	At      time.Time
+	AgentID string
+}
+
+func (q *Queries) CancelRequestsForAgent(ctx context.Context, arg CancelRequestsForAgentParams) error {
+	_, err := q.db.Exec(ctx, cancelRequestsForAgent, arg.At, arg.AgentID)
+	return err
+}
+
+const cancelRequestsForGrant = `-- name: CancelRequestsForGrant :exec
+UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
+WHERE grant_id = $2::text AND status = 'open'
+`
+
+type CancelRequestsForGrantParams struct {
+	At      time.Time
+	GrantID string
+}
+
+func (q *Queries) CancelRequestsForGrant(ctx context.Context, arg CancelRequestsForGrantParams) error {
+	_, err := q.db.Exec(ctx, cancelRequestsForGrant, arg.At, arg.GrantID)
+	return err
+}
+
 const claimAuditOutbox = `-- name: ClaimAuditOutbox :many
 DELETE FROM audit_outbox WHERE id IN (
     SELECT id FROM audit_outbox ORDER BY id LIMIT $1::bigint FOR UPDATE SKIP LOCKED
@@ -221,6 +251,33 @@ func (q *Queries) DeleteRecoveryWrapsForOrg(ctx context.Context, orgID string) e
 	return err
 }
 
+const expireOpenRequest = `-- name: ExpireOpenRequest :exec
+UPDATE approval_requests SET status = 'expired', resolved_at = $1::timestamptz
+WHERE grant_id = $2::text AND action = $3::text
+    AND status = 'open' AND expires_at <= $1::timestamptz
+`
+
+type ExpireOpenRequestParams struct {
+	Now     time.Time
+	GrantID string
+	Action  string
+}
+
+func (q *Queries) ExpireOpenRequest(ctx context.Context, arg ExpireOpenRequestParams) error {
+	_, err := q.db.Exec(ctx, expireOpenRequest, arg.Now, arg.GrantID, arg.Action)
+	return err
+}
+
+const expireStaleRequests = `-- name: ExpireStaleRequests :exec
+UPDATE approval_requests SET status = 'expired', resolved_at = $1::timestamptz
+WHERE status = 'open' AND expires_at <= $1::timestamptz
+`
+
+func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) error {
+	_, err := q.db.Exec(ctx, expireStaleRequests, at)
+	return err
+}
+
 const grantByID = `-- name: GrantByID :one
 SELECT id, org_id, agent_id, item_id, level, actions, expires_at
 FROM grants WHERE id = $1::text
@@ -335,6 +392,56 @@ func (q *Queries) InsertAuditOutbox(ctx context.Context, arg InsertAuditOutboxPa
 		arg.ApprovalID,
 	)
 	return err
+}
+
+const insertRequest = `-- name: InsertRequest :one
+INSERT INTO approval_requests(id, org_id, agent_id, item_id, grant_id, action,
+    status, created_at, expires_at)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::text,
+    $6::text, 'open', $7::timestamptz, $8::timestamptz)
+ON CONFLICT(grant_id, action) WHERE status = 'open' DO NOTHING
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+`
+
+type InsertRequestParams struct {
+	ID        string
+	OrgID     string
+	AgentID   string
+	ItemID    string
+	GrantID   string
+	Action    string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (ApprovalRequest, error) {
+	row := q.db.QueryRow(ctx, insertRequest,
+		arg.ID,
+		arg.OrgID,
+		arg.AgentID,
+		arg.ItemID,
+		arg.GrantID,
+		arg.Action,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	var i ApprovalRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AgentID,
+		&i.ItemID,
+		&i.GrantID,
+		&i.Action,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.ApprovalID,
+	)
+	return i, err
 }
 
 const itemByID = `-- name: ItemByID :one
@@ -695,6 +802,52 @@ func (q *Queries) ListItems(ctx context.Context, maxResults int64) ([]ListItemsR
 	return items, nil
 }
 
+const listOpenRequests = `-- name: ListOpenRequests :many
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests
+WHERE org_id = $1::text AND status = 'open' AND expires_at > $2::timestamptz
+ORDER BY created_at DESC
+`
+
+type ListOpenRequestsParams struct {
+	OrgID string
+	Now   time.Time
+}
+
+func (q *Queries) ListOpenRequests(ctx context.Context, arg ListOpenRequestsParams) ([]ApprovalRequest, error) {
+	rows, err := q.db.Query(ctx, listOpenRequests, arg.OrgID, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApprovalRequest
+	for rows.Next() {
+		var i ApprovalRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.GrantID,
+			&i.Action,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrgKeys = `-- name: ListOrgKeys :many
 SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at FROM org_keys
 `
@@ -755,6 +908,52 @@ func (q *Queries) ListOwnerKeysForOrg(ctx context.Context, orgID string) ([]Owne
 	return items, nil
 }
 
+const listRequestsByStatus = `-- name: ListRequestsByStatus :many
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests
+WHERE org_id = $1::text AND status = $2::text
+ORDER BY created_at DESC
+`
+
+type ListRequestsByStatusParams struct {
+	OrgID  string
+	Status string
+}
+
+func (q *Queries) ListRequestsByStatus(ctx context.Context, arg ListRequestsByStatusParams) ([]ApprovalRequest, error) {
+	rows, err := q.db.Query(ctx, listRequestsByStatus, arg.OrgID, arg.Status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApprovalRequest
+	for rows.Next() {
+		var i ApprovalRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.GrantID,
+			&i.Action,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessions = `-- name: ListSessions :many
 SELECT id, org_id, agent_id, secret_hash, expires_at, created_at, revoked_at, renewed_at, ttl, max_ttl, max_uses, uses
 FROM sessions ORDER BY expires_at LIMIT $1::bigint
@@ -791,6 +990,38 @@ func (q *Queries) ListSessions(ctx context.Context, maxResults int64) ([]Session
 		return nil, err
 	}
 	return items, nil
+}
+
+const openRequestByGrant = `-- name: OpenRequestByGrant :one
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests
+WHERE grant_id = $1::text AND action = $2::text AND status = 'open'
+`
+
+type OpenRequestByGrantParams struct {
+	GrantID string
+	Action  string
+}
+
+func (q *Queries) OpenRequestByGrant(ctx context.Context, arg OpenRequestByGrantParams) (ApprovalRequest, error) {
+	row := q.db.QueryRow(ctx, openRequestByGrant, arg.GrantID, arg.Action)
+	var i ApprovalRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AgentID,
+		&i.ItemID,
+		&i.GrantID,
+		&i.Action,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.ApprovalID,
+	)
+	return i, err
 }
 
 const orgKey = `-- name: OrgKey :one
@@ -1228,6 +1459,75 @@ type RenewSessionParams struct {
 func (q *Queries) RenewSession(ctx context.Context, arg RenewSessionParams) error {
 	_, err := q.db.Exec(ctx, renewSession, arg.ExpiresAt, arg.RenewedAt, arg.ID)
 	return err
+}
+
+const requestByID = `-- name: RequestByID :one
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests WHERE id = $1::text
+`
+
+func (q *Queries) RequestByID(ctx context.Context, id string) (ApprovalRequest, error) {
+	row := q.db.QueryRow(ctx, requestByID, id)
+	var i ApprovalRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AgentID,
+		&i.ItemID,
+		&i.GrantID,
+		&i.Action,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.ApprovalID,
+	)
+	return i, err
+}
+
+const resolveOpenRequest = `-- name: ResolveOpenRequest :one
+UPDATE approval_requests
+SET status = $1::text, resolved_at = $2::timestamptz,
+    resolved_by = $3::text, approval_id = $4::text
+WHERE id = $5::text AND status = 'open' AND expires_at > $2::timestamptz
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+`
+
+type ResolveOpenRequestParams struct {
+	Status     string
+	At         time.Time
+	HumanID    string
+	ApprovalID sql.NullString
+	ID         string
+}
+
+func (q *Queries) ResolveOpenRequest(ctx context.Context, arg ResolveOpenRequestParams) (ApprovalRequest, error) {
+	row := q.db.QueryRow(ctx, resolveOpenRequest,
+		arg.Status,
+		arg.At,
+		arg.HumanID,
+		arg.ApprovalID,
+		arg.ID,
+	)
+	var i ApprovalRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AgentID,
+		&i.ItemID,
+		&i.GrantID,
+		&i.Action,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.ApprovalID,
+	)
+	return i, err
 }
 
 const restoreItemSecret = `-- name: RestoreItemSecret :exec

@@ -676,6 +676,119 @@ func (p *Postgres) LiveApproval(grantID string, now time.Time) (*protocol.Approv
 	return &a, nil
 }
 
+func requestFromSqlc(r *sqlc.ApprovalRequest) protocol.ApprovalRequest {
+	out := protocol.ApprovalRequest{
+		ID: r.ID, OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
+		GrantID: r.GrantID, Action: protocol.ActionKind(r.Action),
+		Status: protocol.RequestStatus(r.Status),
+		CreatedAt: r.CreatedAt.UTC(), ExpiresAt: r.ExpiresAt.UTC(),
+		ResolvedBy: r.ResolvedBy.String, ApprovalID: r.ApprovalID.String,
+	}
+	if r.ResolvedAt.Valid {
+		at := r.ResolvedAt.Time.UTC()
+		out.ResolvedAt = &at
+	}
+	return out
+}
+
+// FileRequest expires a stale open on (grant, action) then inserts —
+// the dedupe partial index makes a live open swallow the insert, so a
+// missing RETURNING row means "already filed": select and reuse it.
+func (p *Postgres) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalRequest, bool, error) {
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	if err := q.ExpireOpenRequest(ctx, sqlc.ExpireOpenRequestParams{
+		GrantID: req.GrantID, Action: string(req.Action), Now: req.CreatedAt.UTC(),
+	}); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	row, err := q.InsertRequest(ctx, sqlc.InsertRequestParams{
+		ID: req.ID, OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
+		GrantID: req.GrantID, Action: string(req.Action),
+		CreatedAt: req.CreatedAt.UTC(), ExpiresAt: req.ExpiresAt.UTC(),
+	})
+	created := true
+	if err == pgx.ErrNoRows {
+		created = false
+		row, err = q.OpenRequestByGrant(ctx, sqlc.OpenRequestByGrantParams{
+			GrantID: req.GrantID, Action: string(req.Action),
+		})
+	}
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	return requestFromSqlc(&row), created, nil
+}
+
+func (p *Postgres) Request(id string) (protocol.ApprovalRequest, error) {
+	r, err := p.sqlc.RequestByID(context.Background(), id)
+	if err == pgx.ErrNoRows {
+		return protocol.ApprovalRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
+	return requestFromSqlc(&r), nil
+}
+
+func (p *Postgres) ListRequests(orgID string, status protocol.RequestStatus, now time.Time) ([]protocol.ApprovalRequest, error) {
+	ctx := context.Background()
+	var rows []sqlc.ApprovalRequest
+	var err error
+	if status == protocol.RequestOpen {
+		rows, err = p.sqlc.ListOpenRequests(ctx, sqlc.ListOpenRequestsParams{OrgID: orgID, Now: now.UTC()})
+	} else {
+		rows, err = p.sqlc.ListRequestsByStatus(ctx, sqlc.ListRequestsByStatusParams{OrgID: orgID, Status: string(status)})
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.ApprovalRequest, 0, len(rows))
+	for i := range rows {
+		out = append(out, requestFromSqlc(&rows[i]))
+	}
+	return out, nil
+}
+
+func (p *Postgres) ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (protocol.ApprovalRequest, bool, error) {
+	row, err := p.sqlc.ResolveOpenRequest(context.Background(), sqlc.ResolveOpenRequestParams{
+		ID: id, Status: string(status), HumanID: humanID, At: at.UTC(),
+		ApprovalID: sql.NullString{String: approvalID, Valid: approvalID != ""},
+	})
+	if err == pgx.ErrNoRows {
+		cur, err := p.Request(id)
+		return cur, false, err
+	}
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	return requestFromSqlc(&row), true, nil
+}
+
+func (p *Postgres) CancelRequestsForGrant(grantID string, at time.Time) error {
+	return p.sqlc.CancelRequestsForGrant(context.Background(), sqlc.CancelRequestsForGrantParams{
+		GrantID: grantID, At: at.UTC(),
+	})
+}
+
+func (p *Postgres) CancelRequestsForAgent(agentID string, at time.Time) error {
+	return p.sqlc.CancelRequestsForAgent(context.Background(), sqlc.CancelRequestsForAgentParams{
+		AgentID: agentID, At: at.UTC(),
+	})
+}
+
+func (p *Postgres) ExpireStaleRequests(now time.Time) error {
+	return p.sqlc.ExpireStaleRequests(context.Background(), now.UTC())
+}
+
 func (p *Postgres) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
 	wrapped, err := retryOnDeadConn(func() ([]byte, error) {
 		return p.sqlc.OwnerWrapped(ctx, sqlc.OwnerWrappedParams{

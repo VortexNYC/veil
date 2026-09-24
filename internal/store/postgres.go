@@ -735,6 +735,22 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			human_id TEXT NOT NULL,
 			expires_at TIMESTAMPTZ NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS approval_requests (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			grant_id TEXT NOT NULL,
+			action TEXT NOT NULL,
+			status TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			resolved_at TIMESTAMPTZ,
+			resolved_by TEXT,
+			approval_id TEXT
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS approval_requests_one_open
+			ON approval_requests(grant_id, action) WHERE status = 'open'`,
 		// Audit is range-partitioned by month on `at` (VEIL-4): retention is
 		// DETACH PARTITION, not DELETE scans. The partition key must be part
 		// of the PK, hence composite (id, at). id comes from a plain sequence

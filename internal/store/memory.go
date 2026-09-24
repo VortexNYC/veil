@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ type Memory struct {
 	secrets   map[string]Secret
 	grants    map[string]protocol.Grant // key: agentID+"\x00"+itemID
 	approvals map[string]protocol.Approval
+	requests  map[string]protocol.ApprovalRequest
 	audit     []protocol.AuditEvent
 	workloads map[string]protocol.Workload // key: issuer+"\x00"+subject
 	sessions  map[string]protocol.Session  // key: hex(secret_hash)
@@ -34,6 +36,7 @@ func NewMemory() *Memory {
 		secrets:   map[string]Secret{},
 		grants:    map[string]protocol.Grant{},
 		approvals: map[string]protocol.Approval{},
+		requests:  map[string]protocol.ApprovalRequest{},
 		workloads: map[string]protocol.Workload{},
 		sessions:  map[string]protocol.Session{},
 		verSecret: map[int64]Secret{},
@@ -457,6 +460,107 @@ func (m *Memory) LiveApproval(grantID string, now time.Time) (*protocol.Approval
 	}
 	cp := a
 	return &cp, nil
+}
+
+func (m *Memory) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalRequest, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.requests {
+		if r.GrantID == req.GrantID && r.Action == req.Action && r.Status == protocol.RequestOpen {
+			if req.CreatedAt.Before(r.ExpiresAt) {
+				return r, false, nil
+			}
+			r.Status = protocol.RequestExpired
+			at := req.CreatedAt
+			r.ResolvedAt = &at
+			m.requests[id] = r
+		}
+	}
+	req.Status = protocol.RequestOpen
+	m.requests[req.ID] = req
+	return req, true, nil
+}
+
+func (m *Memory) Request(id string) (protocol.ApprovalRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.requests[id]
+	if !ok {
+		return protocol.ApprovalRequest{}, ErrNotFound
+	}
+	return r, nil
+}
+
+func (m *Memory) ListRequests(orgID string, status protocol.RequestStatus, now time.Time) ([]protocol.ApprovalRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []protocol.ApprovalRequest
+	for _, r := range m.requests {
+		if r.OrgID != orgID || r.Status != status {
+			continue
+		}
+		if status == protocol.RequestOpen && !now.Before(r.ExpiresAt) {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (m *Memory) ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (protocol.ApprovalRequest, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.requests[id]
+	if !ok {
+		return protocol.ApprovalRequest{}, false, ErrNotFound
+	}
+	if r.Status != protocol.RequestOpen || !at.Before(r.ExpiresAt) {
+		return r, false, nil
+	}
+	r.Status, r.ResolvedBy, r.ApprovalID = status, humanID, approvalID
+	r.ResolvedAt = &at
+	m.requests[id] = r
+	return r, true, nil
+}
+
+func (m *Memory) CancelRequestsForGrant(grantID string, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.requests {
+		if r.GrantID == grantID && r.Status == protocol.RequestOpen {
+			r.Status = protocol.RequestCancelled
+			r.ResolvedAt = &at
+			m.requests[id] = r
+		}
+	}
+	return nil
+}
+
+func (m *Memory) CancelRequestsForAgent(agentID string, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.requests {
+		if r.AgentID == agentID && r.Status == protocol.RequestOpen {
+			r.Status = protocol.RequestCancelled
+			r.ResolvedAt = &at
+			m.requests[id] = r
+		}
+	}
+	return nil
+}
+
+func (m *Memory) ExpireStaleRequests(now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.requests {
+		if r.Status == protocol.RequestOpen && !now.Before(r.ExpiresAt) {
+			r.Status = protocol.RequestExpired
+			r.ResolvedAt = &now
+			m.requests[id] = r
+		}
+	}
+	return nil
 }
 
 func (m *Memory) AppendAudit(e protocol.AuditEvent) error {

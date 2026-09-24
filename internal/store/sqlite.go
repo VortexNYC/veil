@@ -129,6 +129,22 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			human_id TEXT NOT NULL,
 			expires_at INTEGER NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS approval_requests (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			grant_id TEXT NOT NULL,
+			action TEXT NOT NULL,
+			status TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL,
+			resolved_at INTEGER,
+			resolved_by TEXT,
+			approval_id TEXT
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS approval_requests_one_open
+			ON approval_requests(grant_id, action) WHERE status = 'open'`,
 		`CREATE TABLE IF NOT EXISTS audit (
 			rowid INTEGER PRIMARY KEY AUTOINCREMENT,
 			at TEXT NOT NULL,
@@ -1131,6 +1147,142 @@ func (s *SQLite) LiveApproval(grantID string, now time.Time) (*protocol.Approval
 		return nil, nil
 	}
 	return &a, nil
+}
+
+func (s *SQLite) scanRequest(row *sql.Row) (protocol.ApprovalRequest, error) {
+	var r protocol.ApprovalRequest
+	var created, exp int64
+	var resolvedAt sql.NullInt64
+	var resolvedBy, approvalID sql.NullString
+	err := row.Scan(&r.ID, &r.OrgID, &r.AgentID, &r.ItemID, &r.GrantID, &r.Action,
+		&r.Status, &created, &exp, &resolvedAt, &resolvedBy, &approvalID)
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
+	r.CreatedAt, r.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(exp, 0).UTC()
+	r.ResolvedBy, r.ApprovalID = resolvedBy.String, approvalID.String
+	if resolvedAt.Valid {
+		at := time.Unix(resolvedAt.Int64, 0).UTC()
+		r.ResolvedAt = &at
+	}
+	return r, nil
+}
+
+const requestCols = `id, org_id, agent_id, item_id, grant_id, action, status,
+	created_at, expires_at, resolved_at, resolved_by, approval_id`
+
+func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalRequest, bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`UPDATE approval_requests SET status='expired', resolved_at=?
+		WHERE grant_id=? AND action=? AND status='open' AND expires_at <= ?`,
+		req.CreatedAt.Unix(), req.GrantID, string(req.Action), req.CreatedAt.Unix()); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	res, err := tx.Exec(`INSERT INTO approval_requests(id, org_id, agent_id, item_id,
+		grant_id, action, status, created_at, expires_at) VALUES(?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(grant_id, action) WHERE status='open' DO NOTHING`,
+		req.ID, req.OrgID, req.AgentID, req.ItemID, req.GrantID, string(req.Action),
+		string(protocol.RequestOpen), req.CreatedAt.Unix(), req.ExpiresAt.Unix())
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	var out protocol.ApprovalRequest
+	if n == 0 {
+		out, err = s.scanRequest(tx.QueryRow(`SELECT `+requestCols+` FROM approval_requests
+			WHERE grant_id=? AND action=? AND status='open'`, req.GrantID, string(req.Action)))
+		if err != nil {
+			return protocol.ApprovalRequest{}, false, err
+		}
+	} else {
+		out = req
+		out.Status = protocol.RequestOpen
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	return out, n > 0, nil
+}
+
+func (s *SQLite) Request(id string) (protocol.ApprovalRequest, error) {
+	r, err := s.scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM approval_requests WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return protocol.ApprovalRequest{}, ErrNotFound
+	}
+	return r, err
+}
+
+func (s *SQLite) ListRequests(orgID string, status protocol.RequestStatus, now time.Time) ([]protocol.ApprovalRequest, error) {
+	q := `SELECT ` + requestCols + ` FROM approval_requests WHERE org_id=? AND status=?`
+	args := []any{orgID, string(status)}
+	if status == protocol.RequestOpen {
+		q += ` AND expires_at > ?`
+		args = append(args, now.Unix())
+	}
+	rows, err := s.db.Query(q+` ORDER BY created_at DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.ApprovalRequest
+	for rows.Next() {
+		var r protocol.ApprovalRequest
+		var created, exp int64
+		var resolvedAt sql.NullInt64
+		var resolvedBy, approvalID sql.NullString
+		if err := rows.Scan(&r.ID, &r.OrgID, &r.AgentID, &r.ItemID, &r.GrantID, &r.Action,
+			&r.Status, &created, &exp, &resolvedAt, &resolvedBy, &approvalID); err != nil {
+			return nil, err
+		}
+		r.CreatedAt, r.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(exp, 0).UTC()
+		r.ResolvedBy, r.ApprovalID = resolvedBy.String, approvalID.String
+		if resolvedAt.Valid {
+			at := time.Unix(resolvedAt.Int64, 0).UTC()
+			r.ResolvedAt = &at
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (protocol.ApprovalRequest, bool, error) {
+	res, err := s.db.Exec(`UPDATE approval_requests SET status=?, resolved_at=?, resolved_by=?, approval_id=?
+		WHERE id=? AND status='open' AND expires_at > ?`,
+		string(status), at.Unix(), humanID, sql.NullString{String: approvalID, Valid: approvalID != ""}, id, at.Unix())
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return protocol.ApprovalRequest{}, false, err
+	}
+	cur, err := s.Request(id)
+	return cur, n > 0, err
+}
+
+func (s *SQLite) CancelRequestsForGrant(grantID string, at time.Time) error {
+	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
+		WHERE grant_id=? AND status='open'`, at.Unix(), grantID)
+	return err
+}
+
+func (s *SQLite) CancelRequestsForAgent(agentID string, at time.Time) error {
+	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
+		WHERE agent_id=? AND status='open'`, at.Unix(), agentID)
+	return err
+}
+
+func (s *SQLite) ExpireStaleRequests(now time.Time) error {
+	_, err := s.db.Exec(`UPDATE approval_requests SET status='expired', resolved_at=?
+		WHERE status='open' AND expires_at <= ?`, now.Unix(), now.Unix())
+	return err
 }
 
 func (s *SQLite) AppendAudit(e protocol.AuditEvent) error {

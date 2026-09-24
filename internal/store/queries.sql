@@ -201,6 +201,65 @@ ON CONFLICT(grant_id) DO UPDATE SET
 -- name: ApprovalByGrant :one
 SELECT grant_id, id, human_id, expires_at FROM approvals WHERE grant_id = @grant_id::text;
 
+-- name: ExpireOpenRequest :exec
+UPDATE approval_requests SET status = 'expired', resolved_at = @now::timestamptz
+WHERE grant_id = @grant_id::text AND action = @action::text
+    AND status = 'open' AND expires_at <= @now::timestamptz;
+
+-- name: InsertRequest :one
+INSERT INTO approval_requests(id, org_id, agent_id, item_id, grant_id, action,
+    status, created_at, expires_at)
+VALUES(@id::text, @org_id::text, @agent_id::text, @item_id::text, @grant_id::text,
+    @action::text, 'open', @created_at::timestamptz, @expires_at::timestamptz)
+ON CONFLICT(grant_id, action) WHERE status = 'open' DO NOTHING
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
+
+-- name: OpenRequestByGrant :one
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests
+WHERE grant_id = @grant_id::text AND action = @action::text AND status = 'open';
+
+-- name: RequestByID :one
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests WHERE id = @id::text;
+
+-- name: ListOpenRequests :many
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests
+WHERE org_id = @org_id::text AND status = 'open' AND expires_at > @now::timestamptz
+ORDER BY created_at DESC;
+
+-- name: ListRequestsByStatus :many
+SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+FROM approval_requests
+WHERE org_id = @org_id::text AND status = @status::text
+ORDER BY created_at DESC;
+
+-- name: ResolveOpenRequest :one
+UPDATE approval_requests
+SET status = @status::text, resolved_at = @at::timestamptz,
+    resolved_by = @human_id::text, approval_id = sqlc.narg('approval_id')::text
+WHERE id = @id::text AND status = 'open' AND expires_at > @at::timestamptz
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
+
+-- name: CancelRequestsForGrant :exec
+UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
+WHERE grant_id = @grant_id::text AND status = 'open';
+
+-- name: CancelRequestsForAgent :exec
+UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
+WHERE agent_id = @agent_id::text AND status = 'open';
+
+-- name: ExpireStaleRequests :exec
+UPDATE approval_requests SET status = 'expired', resolved_at = @at::timestamptz
+WHERE status = 'open' AND expires_at <= @at::timestamptz;
+
 -- name: OwnerWrapped :one
 SELECT wrapped FROM owner_keys
 WHERE org_id = @org_id::text AND owner_kind = @owner_kind::text AND owner_id = @owner_id::text;

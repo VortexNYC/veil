@@ -45,6 +45,24 @@ CREATE TABLE approvals (
     expires_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE approval_requests (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    grant_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    resolved_at TIMESTAMPTZ,
+    resolved_by TEXT,
+    approval_id TEXT
+);
+
+CREATE UNIQUE INDEX approval_requests_one_open
+    ON approval_requests(grant_id, action) WHERE status = 'open';
+
 CREATE SEQUENCE audit_id_seq;
 CREATE TABLE audit (
     id BIGINT NOT NULL DEFAULT nextval('audit_id_seq'),

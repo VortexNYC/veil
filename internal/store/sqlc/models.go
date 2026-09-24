@@ -24,6 +24,21 @@ type Approval struct {
 	ExpiresAt time.Time
 }
 
+type ApprovalRequest struct {
+	ID         string
+	OrgID      string
+	AgentID    string
+	ItemID     string
+	GrantID    string
+	Action     string
+	Status     string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	ResolvedAt sql.NullTime
+	ResolvedBy sql.NullString
+	ApprovalID sql.NullString
+}
+
 type Audit struct {
 	ID         int64
 	At         time.Time
