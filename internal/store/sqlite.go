@@ -1936,7 +1936,16 @@ func (s *SQLite) rewrapRows(rows *sql.Rows, ts sqliteTxSource, update func(id st
 func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 	var rep SweepReport
 	cut := before.UTC()
-	res, err := db.Exec(`DELETE FROM sessions WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)`,
+	// One transaction: request expirations and their request_expired audit
+	// rows commit together or not at all — a failed audit insert rolls the
+	// expiry back and the next sweep retries, so an expired ask can never
+	// exist without its audit line.
+	tx, err := db.Begin()
+	if err != nil {
+		return rep, fmt.Errorf("sweep begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.Exec(`DELETE FROM sessions WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)`,
 		cut.Unix(), cut.Format(time.RFC3339))
 	if err != nil {
 		return rep, fmt.Errorf("sweep sessions: %w", err)
@@ -1944,13 +1953,13 @@ func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 	if rep.Sessions, err = res.RowsAffected(); err != nil {
 		return rep, err
 	}
-	if res, err = db.Exec(`DELETE FROM grants WHERE expires_at IS NOT NULL AND expires_at < ?`, cut.Unix()); err != nil {
+	if res, err = tx.Exec(`DELETE FROM grants WHERE expires_at IS NOT NULL AND expires_at < ?`, cut.Unix()); err != nil {
 		return rep, fmt.Errorf("sweep grants: %w", err)
 	}
 	if rep.Grants, err = res.RowsAffected(); err != nil {
 		return rep, err
 	}
-	if res, err = db.Exec(`DELETE FROM approvals WHERE expires_at < ?`, cut.Unix()); err != nil {
+	if res, err = tx.Exec(`DELETE FROM approvals WHERE expires_at < ?`, cut.Unix()); err != nil {
 		return rep, fmt.Errorf("sweep approvals: %w", err)
 	}
 	if rep.Approvals, err = res.RowsAffected(); err != nil {
@@ -1959,7 +1968,7 @@ func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 	// Open asks mark expired at expiry, audited like the postgres sweep —
 	// "nobody answered in time" is a security event on every backend.
 	now := time.Now().UTC()
-	expired, err := db.Query(`UPDATE approval_requests SET status='expired', resolved_at=?
+	expired, err := tx.Query(`UPDATE approval_requests SET status='expired', resolved_at=?
 		WHERE status='open' AND expires_at <= ? RETURNING `+requestCols, now.Unix(), now.Unix())
 	if err != nil {
 		return rep, fmt.Errorf("sweep requests: %w", err)
@@ -1970,11 +1979,14 @@ func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 	}
 	rep.Requests = int64(len(rows))
 	for i := range rows {
-		if _, err := db.Exec(`INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+		if _, err := tx.Exec(`INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
 			VALUES(?,?,?,?,?,?,?,?)`, now.Format(time.RFC3339Nano), rows[i].OrgID, rows[i].AgentID,
 			rows[i].ItemID, protocol.ActionRequestExpired, protocol.DecisionNeedApproval, rows[i].ID, ""); err != nil {
 			return rep, fmt.Errorf("sweep request audit: %w", err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return rep, fmt.Errorf("sweep commit: %w", err)
 	}
 	return rep, nil
 }

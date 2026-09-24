@@ -122,9 +122,10 @@ notification, not the request: the row is durable and surfaces in
   over a misleading resolution.
 - `request_expired` is audited exactly once, whichever path finds the
   stale ask first: a refile names the expired predecessor's ID
-  atomically inside the file transaction, and the sweep audits each row
-  it marks expired (same direct-then-outbox durability as `AppendAudit`).
-  Concurrent refiles cannot double-report the same expiry.
+  atomically inside the file transaction, and the sweep expires each
+  row and writes its event in one transaction — an expired ask always
+  has its audit line. Concurrent refiles cannot double-report the same
+  expiry.
 - `approval_expired` denial files a request identically — an expired
   approval is just a missing one.
 
@@ -146,17 +147,20 @@ atomic-with-state**:
 - On Postgres, `AppendAudit` inserts directly; on a provable
   non-committing failure it falls back to `audit_outbox`, which a relay
   drains into `audit` later. An ambiguous failure returns an error
-  rather than risking a duplicate row. The same contract covers the
-  sweep's `request_expired` writes.
-- Consequence of the ordering: an ambiguous crash between state-commit
-  and audit-write can lose an event, but can never lose the resolution
-  itself. Whether compliance requires events inside the state
-  transaction is tracked as a decision (VEIL-50).
-- The sweep expiry loop is not atomic with its audit inserts — a
-  mid-loop failure can leave expired rows without events (VEIL-51).
+  rather than risking a duplicate row.
+- The sweep is the exception: request expirations and their
+  `request_expired` events commit in **one transaction** (each audit
+  insert under a savepoint so a failed insert queues the event in
+  `audit_outbox` inside that same tx). A mid-sweep crash can delay an
+  expiry to the next tick, never strand it unaudited.
+- Consequence of the ordering on approve/deny: an ambiguous crash
+  between state-commit and audit-write can lose an event, but can never
+  lose the resolution itself. Whether compliance requires events inside
+  the state transaction is tracked as a decision (VEIL-50).
 - SQLite and memory have no outbox — they are local-dev and test
   backends; a failed audit write there is a dead disk, not a lost
-  event (VEIL-49 tracks parity).
+  event (VEIL-49 tracks parity). The sqlite sweep is still transactional:
+  expire+audit roll back together on failure.
 
 ## Non-goals
 

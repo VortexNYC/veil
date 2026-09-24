@@ -1239,10 +1239,44 @@ func (p *Postgres) Audit() ([]protocol.AuditEvent, error) {
 }
 
 // SweepPostgres deletes terminally-expired rows older than before: sessions
-// past expiry or revoked, and grants/approvals past expiry. It takes a bare
-// DBTX so callers that never touch ciphertext (e.g. `veil sweep`) do not need
-// the master key.
+// past expiry or revoked, and grants/approvals past expiry. Open asks past
+// their own TTL mark expired and each expiry writes a request_expired audit
+// event. It takes a bare DBTX so callers that never touch ciphertext (e.g.
+// `veil sweep`) do not need the master key.
+//
+// When db can open a transaction (pool, conn) the whole sweep runs in one:
+// request expirations and their audit rows commit together or not at all —
+// a mid-sweep crash can never strand an expired ask with no audit line.
+// Each audit insert runs under a savepoint so a failed insert falls back to
+// audit_outbox inside the same transaction instead of aborting it. A
+// caller-passed pgx.Tx is already atomic and gets the same treatment; a
+// DBTX that cannot begin a transaction runs autocommitted with the per-row
+// outbox fallback.
 func SweepPostgres(ctx context.Context, db sqlc.DBTX, before time.Time) (SweepReport, error) {
+	if tx, ok := db.(pgx.Tx); ok {
+		return sweepPostgresRun(ctx, tx, before, sweepAuditSavepoint(tx))
+	}
+	if txer, ok := db.(interface {
+		Begin(context.Context) (pgx.Tx, error)
+	}); ok {
+		tx, err := txer.Begin(ctx)
+		if err != nil {
+			return SweepReport{}, fmt.Errorf("sweep begin: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		rep, err := sweepPostgresRun(ctx, tx, before, sweepAuditSavepoint(tx))
+		if err != nil {
+			return rep, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return rep, fmt.Errorf("sweep commit: %w", err)
+		}
+		return rep, nil
+	}
+	return sweepPostgresRun(ctx, db, before, sweepAuditAutocommit(db))
+}
+
+func sweepPostgresRun(ctx context.Context, db sqlc.DBTX, before time.Time, auditFn func(context.Context, sqlc.InsertAuditParams) error) (SweepReport, error) {
 	q := sqlc.New(db)
 	var rep SweepReport
 	var err error
@@ -1269,18 +1303,53 @@ func SweepPostgres(ctx context.Context, db sqlc.DBTX, before time.Time) (SweepRe
 			ItemID: expired[i].ItemID, Action: string(protocol.ActionRequestExpired),
 			Decision: string(protocol.DecisionNeedApproval), Reason: expired[i].ID,
 		}
-		if err := q.InsertAudit(ctx, ev); err != nil {
-			// Same contract as AppendAudit: a provably-uncommitted write
-			// falls back to the outbox for the relay.
-			if oerr := q.InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
-				At: ev.At, OrgID: ev.OrgID, AgentID: ev.AgentID, ItemID: ev.ItemID,
-				Action: ev.Action, Decision: ev.Decision, Reason: ev.Reason,
-			}); oerr != nil {
-				return rep, fmt.Errorf("sweep request audit: %w (outbox: %v)", err, oerr)
-			}
+		if err := auditFn(ctx, ev); err != nil {
+			return rep, fmt.Errorf("sweep request audit: %w", err)
 		}
 	}
 	return rep, nil
+}
+
+// sweepAuditSavepoint inserts each audit row under a savepoint: a failed
+// statement aborts the whole transaction in Postgres, so rolling back to
+// the savepoint first keeps the sweep tx alive and the outbox row commits
+// with it — the expiry never lands without its event queued.
+func sweepAuditSavepoint(tx pgx.Tx) func(context.Context, sqlc.InsertAuditParams) error {
+	return func(ctx context.Context, ev sqlc.InsertAuditParams) error {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		err = sqlc.New(sp).InsertAudit(ctx, ev)
+		if err == nil {
+			return sp.Commit(ctx)
+		}
+		_ = sp.Rollback(ctx)
+		if oerr := sqlc.New(tx).InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
+			At: ev.At, OrgID: ev.OrgID, AgentID: ev.AgentID, ItemID: ev.ItemID,
+			Action: ev.Action, Decision: ev.Decision, Reason: ev.Reason, ApprovalID: ev.ApprovalID,
+		}); oerr != nil {
+			return fmt.Errorf("%w (outbox: %v)", err, oerr)
+		}
+		return nil
+	}
+}
+
+// sweepAuditAutocommit is the no-transaction path: direct insert, outbox on
+// provable failure — the pre-atomic contract for exotic DBTX wrappers.
+func sweepAuditAutocommit(db sqlc.DBTX) func(context.Context, sqlc.InsertAuditParams) error {
+	q := sqlc.New(db)
+	return func(ctx context.Context, ev sqlc.InsertAuditParams) error {
+		if err := q.InsertAudit(ctx, ev); err != nil {
+			if oerr := q.InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
+				At: ev.At, OrgID: ev.OrgID, AgentID: ev.AgentID, ItemID: ev.ItemID,
+				Action: ev.Action, Decision: ev.Decision, Reason: ev.Reason, ApprovalID: ev.ApprovalID,
+			}); oerr != nil {
+				return fmt.Errorf("%w (outbox: %v)", err, oerr)
+			}
+		}
+		return nil
+	}
 }
 
 func (p *Postgres) Sweep(olderThan time.Time) (SweepReport, error) {
