@@ -19,6 +19,23 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      # Real Postgres so the store contract matrix (openTestPostgres,
+      # PG_TEST_DSN) exercises the production engine, not just sqlite.
+      # Same image family as identity/compose.yml.
+      postgres:
+        image: postgres:16.10-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: veil_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d veil_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,3 +70,5 @@ jobs:
 
       - name: CI
         run: make ci
+        env:
+          PG_TEST_DSN: postgres://postgres:postgres@localhost:5432/veil_test?sslmode=disable
