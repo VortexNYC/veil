@@ -38,6 +38,10 @@ var (
 
 const defaultAuditTimeout = 500 * time.Millisecond
 
+// requestTTL bounds an approval ask. An owner answering within the hour
+// resolves it; past it the next Use re-files — and re-notifies.
+const requestTTL = time.Hour
+
 type Clock func() time.Time
 
 type Broker struct {
@@ -46,7 +50,10 @@ type Broker struct {
 	AuditTimeout time.Duration
 	HTTP         *http.Client
 	Now          Clock
-	useLimit     *semaphore.Weighted
+	// OnRequestFiled fires once per newly filed approval request — the app
+	// wires owner notification here. Deduped asks do not re-fire.
+	OnRequestFiled func(context.Context, protocol.ApprovalRequest)
+	useLimit       *semaphore.Weighted
 }
 
 func New(s store.Store) *Broker {
@@ -234,6 +241,9 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	}
 
 	if dec.Decision != protocol.DecisionAllow {
+		if dec.Decision == protocol.DecisionNeedApproval && auth.Grant != nil {
+			dec = b.fileRequest(ctx, agent, item, auth.Grant, req.Action, dec)
+		}
 		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
 	}
 	if !item.Kind.Injects() {
@@ -299,6 +309,51 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	LogEvent(event, item.Name, hostPath(target), status)
 	spanUse(span, agent.ID, item.Name, dec, status, hostPath(target))
 	return dec, nil
+}
+
+// FileRequest turns a need_approval into the ask: one open row per
+// (grant, action), deduped by the store. A fresh file audits request_filed
+// and fires OnRequestFiled once; a deduped refile just returns the live ask.
+func (b *Broker) FileRequest(ctx context.Context, agent protocol.Principal, item protocol.Item, g *protocol.Grant, action protocol.ActionKind) (protocol.ApprovalRequest, error) {
+	now := b.now()
+	filed, created, err := b.Store.FileRequest(protocol.ApprovalRequest{
+		ID:        fmt.Sprintf("req-%d", now.UnixNano()),
+		OrgID:     agent.OrgID,
+		AgentID:   agent.ID,
+		ItemID:    item.ID,
+		GrantID:   g.ID,
+		Action:    action,
+		CreatedAt: now,
+		ExpiresAt: now.Add(requestTTL),
+	})
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
+	if !created {
+		return filed, nil
+	}
+	_ = b.appendAudit(ctx, protocol.AuditEvent{
+		Time: now, OrgID: agent.OrgID, AgentID: agent.ID, ItemID: item.ID,
+		Action: protocol.ActionRequestFiled, Decision: protocol.DecisionNeedApproval, Reason: filed.ID,
+	})
+	if b.OnRequestFiled != nil {
+		b.OnRequestFiled(ctx, filed)
+	}
+	return filed, nil
+}
+
+// fileRequest puts the filed ask on the denial so the agent — and the human
+// it reports to — can name what is pending. A filing failure keeps the
+// denial; it never upgrades it.
+func (b *Broker) fileRequest(ctx context.Context, agent protocol.Principal, item protocol.Item, g *protocol.Grant, action protocol.ActionKind, dec protocol.UseResult) protocol.UseResult {
+	filed, err := b.FileRequest(ctx, agent, item, g, action)
+	if err != nil {
+		slog.Warn("approval request file failed", "grant", g.ID, "err", err)
+		return dec
+	}
+	exp := filed.ExpiresAt
+	dec.RequestID, dec.RequestExpiresAt = filed.ID, &exp
+	return dec
 }
 
 func (b *Broker) auditUse(ctx context.Context, span trace.Span, agent protocol.Principal, item protocol.Item, req protocol.UseRequest, dec protocol.UseResult, target string, status int, now time.Time) protocol.UseResult {

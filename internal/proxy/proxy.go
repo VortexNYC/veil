@@ -201,7 +201,7 @@ func (s *Server) inject(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request
 		return s.injectOrigin(req, ctx)
 	}
 	raw := destURL(req)
-	item, _, dec, err := s.lookup(raw)
+	item, g, dec, err := s.lookup(raw)
 	if err != nil {
 		return nil, jsonResp(req, http.StatusInternalServerError, protocol.UseResult{
 			Decision: protocol.DecisionDeny,
@@ -227,8 +227,17 @@ func (s *Server) inject(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request
 	}
 	broker.LogEvent(event, item.Name, destURL(req), 0)
 	if dec.Decision != protocol.DecisionAllow {
+		if dec.Decision == protocol.DecisionNeedApproval && g != nil {
+			if filed, err := s.App.Broker.FileRequest(req.Context(), s.Agent, item, g, protocol.ActionFetch); err == nil {
+				exp := filed.ExpiresAt
+				dec.RequestID, dec.RequestExpiresAt = filed.ID, &exp
+			}
+		}
 		status := http.StatusForbidden
-		return nil, jsonResp(req, status, protocol.UseResult{Decision: dec.Decision, Reason: dec.Reason})
+		return nil, jsonResp(req, status, protocol.UseResult{
+			Decision: dec.Decision, Reason: dec.Reason,
+			RequestID: dec.RequestID, RequestExpiresAt: dec.RequestExpiresAt,
+		})
 	}
 	secret, err := s.App.Store.Secret(item.ID)
 	if err != nil {

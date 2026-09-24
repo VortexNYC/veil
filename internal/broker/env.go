@@ -63,6 +63,9 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 			ApprovalID: dec.ApprovalID,
 		}
 		if dec.Decision != protocol.DecisionAllow {
+			if dec.Decision == protocol.DecisionNeedApproval {
+				_, _ = b.FileRequest(ctx, agent, item, &cp, protocol.ActionEnv)
+			}
 			_ = b.appendAudit(ctx, event)
 			LogEvent(event, item.Name, "", 0)
 			continue

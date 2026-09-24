@@ -37,13 +37,15 @@ type UseRequest struct {
 }
 
 type UseResponse struct {
-	Decision   protocol.Decision `json:"decision"`
-	Reason     string            `json:"reason,omitempty"`
-	ApprovalID string            `json:"approval_id,omitempty"`
-	Status     int               `json:"status,omitempty"`
-	Headers    http.Header       `json:"headers,omitempty"`
-	Body       string            `json:"body,omitempty"`
-	BodyB64    string            `json:"body_b64,omitempty"`
+	Decision          protocol.Decision `json:"decision"`
+	Reason            string            `json:"reason,omitempty"`
+	ApprovalID        string            `json:"approval_id,omitempty"`
+	RequestID         string            `json:"request_id,omitempty"`
+	RequestExpiresAt  *time.Time        `json:"request_expires_at,omitempty"`
+	Status            int               `json:"status,omitempty"`
+	Headers           http.Header       `json:"headers,omitempty"`
+	Body              string            `json:"body,omitempty"`
+	BodyB64           string            `json:"body_b64,omitempty"`
 }
 
 type ItemsResponse struct {
@@ -769,7 +771,10 @@ func (s *Server) useItem(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "use failed", http.StatusBadRequest)
 		return
 	}
-	out := UseResponse{Decision: got.Decision, Reason: got.Reason, ApprovalID: got.ApprovalID}
+	out := UseResponse{
+		Decision: got.Decision, Reason: got.Reason, ApprovalID: got.ApprovalID,
+		RequestID: got.RequestID, RequestExpiresAt: got.RequestExpiresAt,
+	}
 	if got.Fetch != nil {
 		out.Status = got.Fetch.Status
 		out.Headers = got.Fetch.Header

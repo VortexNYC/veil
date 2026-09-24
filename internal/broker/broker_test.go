@@ -152,6 +152,48 @@ func TestLevel1BlocksUntilHumanApproves(t *testing.T) {
 	mustNoLeak(t, got)
 }
 
+func TestNeedApprovalFilesRequestOnce(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level1)
+	var filed []protocol.ApprovalRequest
+	b.OnRequestFiled = func(_ context.Context, r protocol.ApprovalRequest) {
+		filed = append(filed, r)
+	}
+	req := protocol.UseRequest{
+		ItemID: "item-1",
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1/customers"},
+	}
+	got, err := b.Use(context.Background(), agent, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Decision != protocol.DecisionNeedApproval {
+		t.Fatalf("decision=%s", got.Decision)
+	}
+	if got.RequestID == "" || got.RequestExpiresAt == nil {
+		t.Fatalf("denial must carry the filed request: %+v", got)
+	}
+	mustNoLeak(t, got)
+
+	again, err := b.Use(context.Background(), agent, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.RequestID != got.RequestID {
+		t.Fatalf("refile must dedupe: %s then %s", got.RequestID, again.RequestID)
+	}
+	if len(filed) != 1 {
+		t.Fatalf("one notify per filed ask, got %d", len(filed))
+	}
+	stored, err := b.Store.Request(got.RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != protocol.RequestOpen || stored.GrantID != "grant-1" || stored.AgentID != agent.ID {
+		t.Fatalf("stored=%+v", stored)
+	}
+}
+
 func TestAgentCannotApprove(t *testing.T) {
 	b, agent, _, _, _ := setup(t, protocol.Level1)
 	if _, err := b.Approve(agent, "grant-1", time.Minute); err == nil {
@@ -408,8 +450,14 @@ func TestChildEnvSkipsLevel1WithoutApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 || events[0].Decision != protocol.DecisionNeedApproval {
+	if len(events) != 2 ||
+		events[0].Action != protocol.ActionRequestFiled ||
+		events[1].Action != protocol.ActionEnv || events[1].Decision != protocol.DecisionNeedApproval {
 		t.Fatalf("audit=%+v", events)
+	}
+	at := time.Date(2026, 9, 9, 12, 30, 0, 0, time.UTC)
+	if open, err := b.Store.ListRequests("org-1", protocol.RequestOpen, at); err != nil || len(open) != 1 {
+		t.Fatalf("env denial must file the ask: %v %+v", err, open)
 	}
 	mustNoLeak(t, events)
 }
