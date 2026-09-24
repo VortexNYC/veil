@@ -5,6 +5,7 @@ package confirm
 import (
 	"os"
 	"strings"
+	"testing"
 )
 
 // Enabled is Mac + VEIL_FILL_TOUCHID not "0". Linux/Windows wait for 35–36.
@@ -41,21 +42,48 @@ func interactive() bool {
 	return st.Mode()&os.ModeCharDevice != 0
 }
 
-// CLIAccess is the Ghostty sheet: Allow {app} to get CLI access.
-// Fill uses TouchID. Agents and VEIL_FILL_TOUCHID=0 skip.
+// callerKey is the stable consent key: "b:<bundleID>" for a real app,
+// "p:<exe>" for an unbundled parent (agent CLIs, `go run`, CI).
+func callerKey() string {
+	if b := callerBundle(); b != "" {
+		return "b:" + b
+	}
+	if p := callerLabel(); p != "" {
+		return "p:" + p
+	}
+	return ""
+}
+
+// commandReason names what the human is authorizing — "Allow {app} to
+// run `veil grant add --agent claude`" — instead of a context-free
+// "get CLI access". Secrets never travel argv (files only), so the
+// full verb line is safe to show; it truncates at 72 chars.
+func commandReason() string {
+	verb := strings.Join(os.Args[1:], " ")
+	if strings.TrimSpace(verb) == "" {
+		return "run veil commands"
+	}
+	if len(verb) > 72 {
+		verb = verb[:72] + "…"
+	}
+	return "run `veil " + verb + "`"
+}
+
+// CLIAccess is the consent sheet: Allow {app} to run `veil <verb>`.
+// Fill uses TouchID. Agents, tests, and VEIL_FILL_TOUCHID=0 skip.
 func CLIAccess() error {
-	if !Enabled() || !interactive() {
+	if !Enabled() || !interactive() || testing.Testing() {
 		return nil
 	}
-	bundle := callerBundle()
-	if bundle != "" && cliAllowed(bundle) {
+	key := callerKey()
+	if key != "" && cliAllowed(key) {
 		return nil
 	}
-	if err := TouchID("get CLI access"); err != nil {
+	if err := TouchID(commandReason()); err != nil {
 		return err
 	}
-	if bundle != "" {
-		cliRemember(bundle)
+	if key != "" {
+		cliRemember(key)
 	}
 	return nil
 }

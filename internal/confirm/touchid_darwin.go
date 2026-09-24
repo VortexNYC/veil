@@ -14,6 +14,7 @@ import (
 #include <string.h>
 #include <unistd.h>
 #include <sys/sysctl.h>
+#include <libproc.h>
 #import <LocalAuthentication/LocalAuthentication.h>
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
@@ -250,6 +251,24 @@ static char *veil_caller_bundle(void) {
 	}
 	return strdup(app.bundleIdentifier.UTF8String);
 }
+
+// First non-shell ancestor process name — the consent key for callers
+// with no bundle id (agent CLIs, `go run`, CI). proc_pidpath covers any
+// process, not just .app bundles.
+static char *veil_caller_label(void) {
+	pid_t pid = getppid();
+	char buf[PROC_PIDPATHINFO_MAXSIZE];
+	for (int i = 0; i < 12 && pid > 1; i++) {
+		if (proc_pidpath(pid, buf, sizeof(buf)) > 0) {
+			NSString *name = [[NSString stringWithUTF8String:buf] lastPathComponent];
+			if (name.length > 0 && !veil_skip_exe(name)) {
+				return strdup(name.UTF8String);
+			}
+		}
+		pid = veil_ppid(pid);
+	}
+	return NULL;
+}
 */
 import "C"
 
@@ -276,6 +295,15 @@ func TouchID(reason string) error {
 
 func callerBundle() string {
 	p := C.veil_caller_bundle()
+	if p == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(p))
+	return C.GoString(p)
+}
+
+func callerLabel() string {
+	p := C.veil_caller_label()
 	if p == nil {
 		return ""
 	}

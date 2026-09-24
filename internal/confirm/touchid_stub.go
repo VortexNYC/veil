@@ -12,6 +12,4 @@ func TouchID(reason string) error {
 
 func callerBundle() string { return "" }
 
-func cliAllowed(string) bool { return false }
-
-func cliRemember(string) {}
+func callerLabel() string { return "" }
