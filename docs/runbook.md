@@ -140,16 +140,42 @@ The operational secrets to rotate on suspicion or quarterly:
 
 - `VEIL_MAIL_TOKEN` / `VEIL_MAIL_URL` — Resend worker creds. Rotate on
   the worker (`wrangler secret put`), then on `veil`, `veil-monitor`,
-  `glue` (`preserve()` vars — set by hand).
+  `glue` (`preserve()` vars — set by hand). `veil-monitor` inherits via
+  the `${{veil.VEIL_MAIL_TOKEN}}` reference, so only the worker secret
+  and the `veil` var need setting. Sends fail during the skew window —
+  keep it short; a skew loses a send, never auth.
 - `OFFSITE_TOKEN` / `INGEST_TOKEN` — backup-ingest Bearer. Rotate on the
   worker and `veil-backup` together; a skew fails uploads, not dumps.
-- `HYDRA_SYSTEM_SECRET` / `SECRETS_SYSTEM` — rotating invalidates all
-  live tokens and sessions; do it under an incident, not casually.
+- `HYDRA_SYSTEM_SECRET` / `SECRETS_SYSTEM` — `SECRETS_SYSTEM` is a
+  comma-separated list: the first entry encrypts new grant material,
+  every entry decrypts. Rotate by prepending: `SECRETS_SYSTEM=NEW,OLD`,
+  leave `HYDRA_SYSTEM_SECRET=OLD` untouched — under either env-var
+  precedence decryption keeps working, so the swap is zero-downtime.
+  Remove OLD at the next rotation after old-encrypted grant TTLs expire.
+  Escrow the new value: `~/.config/vortex/veil-hydra-system-secret` plus
+  the `Veil Hydra system secret (escrow)` Agents-vault item (created
+  2026-09-24 — it had no escrow before the drill).
 - `VEIL_KEK` — `veil key rotate-kek` (docs/key-rotation.md). Coordinated
   redeploy; mixed-KEK replicas fail closed.
 
+Agent Hydra client secrets (`agent-NAME` clients, `*.hydra` files):
+`veil agent hydra` is local-vault only. Against production, run inside
+the private network (`railway sandbox --private-network` or any host
+that can reach `hydra.railway.internal:4445`) and drive the admin API:
+`PUT /admin/clients/agent-NAME` with the canonical client body **and an
+explicit `client_secret`** — PUT without one preserves the old secret,
+PATCH 500s on hydra v26. Then rewrite the local `*.hydra` file
+(`{secret, audience, issuer}`) and remint. Verify both directions:
+new secret mints a JWT at `https://id.veil.nyc/oauth2/token`, old
+secret returns 401.
+
 Each rotation ends with the same proof: `veil monitor` clean,
 `/ready` ok, one `Use` smoke through the origin.
+
+Drill log: 2026-09-24 — all three rotations ran live. Mail token:
+worker+service swapped, old 401, real send `{"ok":true}`. `agent-devin`:
+explicit-secret PUT, new JWT minted, old 401, `Use` allow/200. System
+secret: prepended list, zero downtime, JWKS + mint + Use all green.
 
 ## Audit
 
