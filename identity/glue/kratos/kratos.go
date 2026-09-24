@@ -160,6 +160,22 @@ func (c *Client) SetOrganization(ctx context.Context, identityID, orgID string) 
 	return nil
 }
 
+// Email resolves an identity's email trait — notify needs a deliverable
+// address; the store never holds one.
+func (c *Client) Email(ctx context.Context, identityID string) (string, error) {
+	if c == nil || c.admin == nil {
+		return "", fmt.Errorf("kratos: admin is required")
+	}
+	got, _, err := c.admin.IdentityAPI.GetIdentity(ctx, identityID).Execute()
+	if err != nil {
+		return "", fmt.Errorf("kratos: get identity: %w", err)
+	}
+	if got == nil {
+		return "", fmt.Errorf("kratos: get identity: empty")
+	}
+	return emailTrait(got.GetTraits()), nil
+}
+
 func (c *Client) Organization(ctx context.Context, identityID string) (string, error) {
 	if c == nil || c.admin == nil {
 		return "", fmt.Errorf("kratos: admin is required")

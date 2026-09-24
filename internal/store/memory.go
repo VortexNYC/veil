@@ -481,6 +481,18 @@ func (m *Memory) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalReq
 	return req, true, nil
 }
 
+func (m *Memory) OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.requests {
+		if r.GrantID == grantID && r.Action == action && r.Status == protocol.RequestOpen {
+			cp := r
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *Memory) Request(id string) (protocol.ApprovalRequest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -522,6 +534,35 @@ func (m *Memory) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	r.ResolvedAt = &at
 	m.requests[id] = r
 	return r, true, nil
+}
+
+func (m *Memory) ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []protocol.ApprovalRequest
+	for id, r := range m.requests {
+		if r.GrantID == grantID && r.Status == protocol.RequestOpen && at.Before(r.ExpiresAt) {
+			r.Status = protocol.RequestApproved
+			r.ResolvedBy, r.ApprovalID = humanID, approvalID
+			r.ResolvedAt = &at
+			m.requests[id] = r
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *Memory) CancelRequestsForItem(itemID string, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.requests {
+		if r.ItemID == itemID && r.Status == protocol.RequestOpen {
+			r.Status = protocol.RequestCancelled
+			r.ResolvedAt = &at
+			m.requests[id] = r
+		}
+	}
+	return nil
 }
 
 func (m *Memory) CancelRequestsForGrant(grantID string, at time.Time) error {

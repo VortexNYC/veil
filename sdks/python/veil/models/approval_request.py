@@ -18,32 +18,34 @@ import re  # noqa: F401
 import json
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, StrictBytes, StrictInt, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
 
-class UseResponse(BaseModel):
+class ApprovalRequest(BaseModel):
     """
-    UseResponse
+    ApprovalRequest
     """ # noqa: E501
-    decision: StrictStr
-    reason: Optional[StrictStr] = None
-    approval_id: Optional[StrictStr] = None
-    request_id: Optional[StrictStr] = Field(default=None, description="The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}.")
-    request_expires_at: Optional[datetime] = Field(default=None, description="When the filed ask dies unanswered. Agents may keep retrying until then.")
-    status: Optional[StrictInt] = None
-    headers: Optional[Dict[str, List[StrictStr]]] = Field(default=None, description="Upstream response headers, including Content-Type and Content-Encoding.")
-    body: Optional[StrictStr] = Field(default=None, description="Upstream body with vault secrets scrubbed. Present when the body is valid UTF-8.")
-    body_b64: Optional[Union[StrictBytes, StrictStr]] = Field(default=None, description="Base64 upstream body with vault secrets scrubbed. Present when the body is not valid UTF-8 (gzip, images, protobuf).")
-    __properties: ClassVar[List[str]] = ["decision", "reason", "approval_id", "request_id", "request_expires_at", "status", "headers", "body", "body_b64"]
+    id: StrictStr
+    agent_id: StrictStr
+    item_id: StrictStr
+    grant_id: StrictStr
+    action: StrictStr
+    status: StrictStr
+    created_at: datetime
+    expires_at: datetime
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[StrictStr] = Field(default=None, description="The Kratos identity of the owner who answered — first write wins.")
+    approval_id: Optional[StrictStr] = Field(default=None, description="The grant approval created by an approve resolution.")
+    __properties: ClassVar[List[str]] = ["id", "agent_id", "item_id", "grant_id", "action", "status", "created_at", "expires_at", "resolved_at", "resolved_by", "approval_id"]
 
-    @field_validator('decision')
-    def decision_validate_enum(cls, value):
+    @field_validator('status')
+    def status_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(['allow', 'deny', 'need_approval']):
-            raise ValueError("must be one of enum values ('allow', 'deny', 'need_approval')")
+        if value not in set(['open', 'approved', 'denied', 'expired', 'cancelled']):
+            raise ValueError("must be one of enum values ('open', 'approved', 'denied', 'expired', 'cancelled')")
         return value
 
     model_config = ConfigDict(
@@ -64,7 +66,7 @@ class UseResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of UseResponse from a JSON string"""
+        """Create an instance of ApprovalRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -89,7 +91,7 @@ class UseResponse(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of UseResponse from a dict"""
+        """Create an instance of ApprovalRequest from a dict"""
         if obj is None:
             return None
 
@@ -97,15 +99,17 @@ class UseResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "decision": obj.get("decision"),
-            "reason": obj.get("reason"),
-            "approval_id": obj.get("approval_id"),
-            "request_id": obj.get("request_id"),
-            "request_expires_at": obj.get("request_expires_at"),
+            "id": obj.get("id"),
+            "agent_id": obj.get("agent_id"),
+            "item_id": obj.get("item_id"),
+            "grant_id": obj.get("grant_id"),
+            "action": obj.get("action"),
             "status": obj.get("status"),
-            "headers": obj.get("headers"),
-            "body": obj.get("body"),
-            "body_b64": obj.get("body_b64")
+            "created_at": obj.get("created_at"),
+            "expires_at": obj.get("expires_at"),
+            "resolved_at": obj.get("resolved_at"),
+            "resolved_by": obj.get("resolved_by"),
+            "approval_id": obj.get("approval_id")
         })
         return _obj
 

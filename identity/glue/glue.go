@@ -13,7 +13,9 @@ package glue
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/VortexNYC/veil/identity/glue/hydra"
 	"github.com/VortexNYC/veil/identity/glue/keto"
@@ -241,4 +243,51 @@ func (g *Glue) RemoveOrgTuples(ctx context.Context, orgID string) error {
 		return err
 	}
 	return g.members.ForOrg(orgID).DeleteAllRelations(ctx, keto.RelOwners)
+}
+
+// OwnerEmails resolves every owner identity to a deliverable address —
+// approval-request notify. Identities without an email trait are skipped.
+func (g *Glue) OwnerEmails(ctx context.Context, orgID string) ([]string, error) {
+	if g.humans == nil {
+		return nil, fmt.Errorf("glue: kratos admin is required")
+	}
+	ids, err := g.ListOwners(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		email, err := g.humans.Email(ctx, id)
+		if err != nil || email == "" {
+			continue
+		}
+		out = append(out, email)
+	}
+	return out, nil
+}
+
+// NotifyRequest mails every org owner that an agent asked — best-effort:
+// the request row is durable; a mail outage loses the ping, never the ask.
+// The payload is metadata only — no secret, no approve-token.
+func (g *Glue) NotifyRequest(ctx context.Context, req protocol.ApprovalRequest) error {
+	if g == nil || g.mail == nil {
+		return nil
+	}
+	emails, err := g.OwnerEmails(ctx, req.OrgID)
+	if err != nil {
+		slog.Warn("notify owners failed", "org", req.OrgID, "err", err)
+		return nil
+	}
+	data := map[string]string{
+		"agent":   req.AgentID,
+		"item":    req.ItemID,
+		"action":  string(req.Action),
+		"expires": req.ExpiresAt.Format(time.RFC3339),
+	}
+	for _, to := range emails {
+		if err := g.mail.send(ctx, to, "request", data); err != nil {
+			slog.Warn("notify send failed", "request", req.ID, "err", err)
+		}
+	}
+	return nil
 }

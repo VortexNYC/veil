@@ -8,6 +8,8 @@ Name | Type | Description | Notes
 **decision** | **str** |  | 
 **reason** | **str** |  | [optional] 
 **approval_id** | **str** |  | [optional] 
+**request_id** | **str** | The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}. | [optional] 
+**request_expires_at** | **datetime** | When the filed ask dies unanswered. Agents may keep retrying until then. | [optional] 
 **status** | **int** |  | [optional] 
 **headers** | **Dict[str, List[str]]** | Upstream response headers, including Content-Type and Content-Encoding. | [optional] 
 **body** | **str** | Upstream body with vault secrets scrubbed. Present when the body is valid UTF-8. | [optional] 

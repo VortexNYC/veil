@@ -44,6 +44,60 @@ func (q *Queries) ApprovalByGrant(ctx context.Context, grantID string) (Approval
 	return i, err
 }
 
+const approveRequestsForGrant = `-- name: ApproveRequestsForGrant :many
+UPDATE approval_requests
+SET status = 'approved', resolved_at = $1::timestamptz,
+    resolved_by = $2::text, approval_id = $3::text
+WHERE grant_id = $4::text AND status = 'open' AND expires_at > $1::timestamptz
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+`
+
+type ApproveRequestsForGrantParams struct {
+	At         time.Time
+	HumanID    string
+	ApprovalID string
+	GrantID    string
+}
+
+func (q *Queries) ApproveRequestsForGrant(ctx context.Context, arg ApproveRequestsForGrantParams) ([]ApprovalRequest, error) {
+	rows, err := q.db.Query(ctx, approveRequestsForGrant,
+		arg.At,
+		arg.HumanID,
+		arg.ApprovalID,
+		arg.GrantID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApprovalRequest
+	for rows.Next() {
+		var i ApprovalRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.GrantID,
+			&i.Action,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const archiveItem = `-- name: ArchiveItem :execrows
 UPDATE items SET archived = TRUE WHERE id = $1::text
 `
@@ -108,6 +162,21 @@ type CancelRequestsForGrantParams struct {
 
 func (q *Queries) CancelRequestsForGrant(ctx context.Context, arg CancelRequestsForGrantParams) error {
 	_, err := q.db.Exec(ctx, cancelRequestsForGrant, arg.At, arg.GrantID)
+	return err
+}
+
+const cancelRequestsForItem = `-- name: CancelRequestsForItem :exec
+UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
+WHERE item_id = $2::text AND status = 'open'
+`
+
+type CancelRequestsForItemParams struct {
+	At     time.Time
+	ItemID string
+}
+
+func (q *Queries) CancelRequestsForItem(ctx context.Context, arg CancelRequestsForItemParams) error {
+	_, err := q.db.Exec(ctx, cancelRequestsForItem, arg.At, arg.ItemID)
 	return err
 }
 
@@ -268,14 +337,17 @@ func (q *Queries) ExpireOpenRequest(ctx context.Context, arg ExpireOpenRequestPa
 	return err
 }
 
-const expireStaleRequests = `-- name: ExpireStaleRequests :exec
+const expireStaleRequests = `-- name: ExpireStaleRequests :execrows
 UPDATE approval_requests SET status = 'expired', resolved_at = $1::timestamptz
 WHERE status = 'open' AND expires_at <= $1::timestamptz
 `
 
-func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) error {
-	_, err := q.db.Exec(ctx, expireStaleRequests, at)
-	return err
+func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, expireStaleRequests, at)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const grantByID = `-- name: GrantByID :one

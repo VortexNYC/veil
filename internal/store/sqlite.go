@@ -1211,6 +1211,18 @@ func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalReq
 	return out, n > 0, nil
 }
 
+func (s *SQLite) OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error) {
+	r, err := s.scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM approval_requests
+		WHERE grant_id=? AND action=? AND status='open'`, grantID, string(action)))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
 func (s *SQLite) Request(id string) (protocol.ApprovalRequest, error) {
 	r, err := s.scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM approval_requests WHERE id=?`, id))
 	if err == sql.ErrNoRows {
@@ -1265,6 +1277,41 @@ func (s *SQLite) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	}
 	cur, err := s.Request(id)
 	return cur, n > 0, err
+}
+
+func (s *SQLite) ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
+	rows, err := s.db.Query(`UPDATE approval_requests SET status='approved', resolved_at=?,
+		resolved_by=?, approval_id=? WHERE grant_id=? AND status='open' AND expires_at > ?
+		RETURNING `+requestCols, at.Unix(), humanID, approvalID, grantID, at.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.ApprovalRequest
+	for rows.Next() {
+		var r protocol.ApprovalRequest
+		var created, exp int64
+		var resolvedAt sql.NullInt64
+		var resolvedBy, approvalIDOut sql.NullString
+		if err := rows.Scan(&r.ID, &r.OrgID, &r.AgentID, &r.ItemID, &r.GrantID, &r.Action,
+			&r.Status, &created, &exp, &resolvedAt, &resolvedBy, &approvalIDOut); err != nil {
+			return nil, err
+		}
+		r.CreatedAt, r.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(exp, 0).UTC()
+		r.ResolvedBy, r.ApprovalID = resolvedBy.String, approvalIDOut.String
+		if resolvedAt.Valid {
+			atv := time.Unix(resolvedAt.Int64, 0).UTC()
+			r.ResolvedAt = &atv
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) CancelRequestsForItem(itemID string, at time.Time) error {
+	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
+		WHERE item_id=? AND status='open'`, at.Unix(), itemID)
+	return err
 }
 
 func (s *SQLite) CancelRequestsForGrant(grantID string, at time.Time) error {

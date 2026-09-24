@@ -1071,6 +1071,106 @@ func TestFillTOTPEnroll(t *testing.T) {
 	}
 }
 
+func TestApprovalRequestLoop(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer upstream.Close()
+
+	doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+		Name: "cf", URI: upstream.URL, Secret: secret,
+	})
+	doJSON(t, srv, http.MethodPost, "/v1/agents", "human", CreateAgentRequest{Name: "flue"})
+	doJSON(t, srv, http.MethodPost, "/v1/grants", "human", CreateGrantRequest{
+		Agent: "flue", Item: "cf", Level: "level1",
+	})
+
+	use := func() UseResponse {
+		t.Helper()
+		code, raw := doJSON(t, srv, http.MethodPost, "/v1/use", "agent-flue", UseRequest{
+			Item: "cf", URL: upstream.URL, Method: http.MethodGet,
+		})
+		if code != http.StatusOK {
+			t.Fatalf("use %d %s", code, raw)
+		}
+		var out UseResponse
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	got := use()
+	if got.Decision != protocol.DecisionNeedApproval || got.RequestID == "" || got.RequestExpiresAt == nil {
+		t.Fatalf("denial must carry the ask: %+v", got)
+	}
+	if again := use(); again.RequestID != got.RequestID {
+		t.Fatalf("refile must dedupe: %s then %s", got.RequestID, again.RequestID)
+	}
+
+	code, _ := doJSON(t, srv, http.MethodGet, "/v1/requests", "agent-flue", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("requests are owner-only, got %d", code)
+	}
+	list := func(status string) []RequestView {
+		t.Helper()
+		code, raw := doJSON(t, srv, http.MethodGet, "/v1/requests?status="+status, "human", nil)
+		if code != http.StatusOK {
+			t.Fatalf("list %d %s", code, raw)
+		}
+		var out RequestsResponse
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Requests
+	}
+	open := list("open")
+	if len(open) != 1 || open[0].ID != got.RequestID || open[0].AgentID != "flue" || open[0].ItemID != "cf" {
+		t.Fatalf("open=%+v", open)
+	}
+
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/requests/"+got.RequestID+"/deny", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("deny %d %s", code, raw)
+	}
+	var denied RequestView
+	if err := json.Unmarshal(raw, &denied); err != nil {
+		t.Fatal(err)
+	}
+	if denied.Status != protocol.RequestDenied || denied.ResolvedBy == "" {
+		t.Fatalf("denied=%+v", denied)
+	}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/requests/"+got.RequestID+"/approve", "human", nil); code != http.StatusConflict {
+		t.Fatalf("resolved ask must conflict, got %d", code)
+	}
+
+	refiled := use()
+	if refiled.RequestID == got.RequestID {
+		t.Fatal("denial is not sticky — next use must file a fresh ask")
+	}
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/requests/"+refiled.RequestID+"/approve", "human", map[string]string{"ttl": "10m"})
+	if code != http.StatusOK {
+		t.Fatalf("approve %d %s", code, raw)
+	}
+	var approved RequestView
+	if err := json.Unmarshal(raw, &approved); err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != protocol.RequestApproved || approved.ApprovalID == "" || approved.ResolvedBy == "" {
+		t.Fatalf("approved=%+v", approved)
+	}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/requests/"+refiled.RequestID+"/deny", "human", nil); code != http.StatusConflict {
+		t.Fatalf("second owner resolve must conflict, got %d", code)
+	}
+
+	final := use()
+	if final.Decision != protocol.DecisionAllow || final.ApprovalID == "" {
+		t.Fatalf("approved grant must allow: %+v", final)
+	}
+}
+
 func TestUseBinaryBodySurvivesWire(t *testing.T) {
 	a := testApp(t)
 	srv := apiServer(t, a)

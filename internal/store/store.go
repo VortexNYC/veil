@@ -39,11 +39,12 @@ type UseAuth struct {
 	Approval *protocol.Approval
 }
 
-// SweepReport counts rows deleted by a Sweep.
+// SweepReport counts rows deleted by a Sweep — Requests marks, not deletes.
 type SweepReport struct {
 	Sessions  int64
 	Grants    int64
 	Approvals int64
+	Requests  int64
 }
 
 type Store interface {
@@ -149,14 +150,21 @@ type Store interface {
 	// unchanged — created=false means the ask was already on file and must
 	// not re-notify owners.
 	FileRequest(protocol.ApprovalRequest) (req protocol.ApprovalRequest, created bool, err error)
+	// OpenRequest returns the open ask on (grant, action) — stale or live —
+	// or nil,nil. Callers check ExpiresAt; FileRequest expires it on write.
+	OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error)
 	Request(id string) (protocol.ApprovalRequest, error)
 	// ListRequests returns org requests; status open lists only unexpired.
 	ListRequests(orgID string, status protocol.RequestStatus, now time.Time) ([]protocol.ApprovalRequest, error)
 	// ResolveRequest flips an open, unexpired request to a terminal status —
 	// first write wins; won=false means it was already resolved or expired.
 	ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (req protocol.ApprovalRequest, won bool, err error)
+	// ApproveRequestsForGrant resolves every open, unexpired ask on a grant —
+	// a grant-level approval answers all pending asks on it.
+	ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error)
 	CancelRequestsForGrant(grantID string, at time.Time) error
 	CancelRequestsForAgent(agentID string, at time.Time) error
+	CancelRequestsForItem(itemID string, at time.Time) error
 	// ExpireStaleRequests marks open requests past expiry as expired. Sweep.
 	ExpireStaleRequests(now time.Time) error
 

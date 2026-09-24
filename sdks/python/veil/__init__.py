@@ -32,6 +32,8 @@ __all__ = [
     "ApiException",
     "Agent",
     "AgentsResponse",
+    "ApprovalRequest",
+    "ApproveRequestBody",
     "AuditEvent",
     "CardFields",
     "CreateAgentRequest",
@@ -54,6 +56,7 @@ __all__ = [
     "PromoteOwner200Response",
     "ProvisionResponse",
     "RemoveMember200Response",
+    "RequestsResponse",
     "Session",
     "SessionsResponse",
     "UpdateItemRequest",
@@ -80,6 +83,8 @@ from veil.exceptions import ApiException as ApiException
 # import models into sdk package
 from veil.models.agent import Agent as Agent
 from veil.models.agents_response import AgentsResponse as AgentsResponse
+from veil.models.approval_request import ApprovalRequest as ApprovalRequest
+from veil.models.approve_request_body import ApproveRequestBody as ApproveRequestBody
 from veil.models.audit_event import AuditEvent as AuditEvent
 from veil.models.card_fields import CardFields as CardFields
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest
@@ -102,6 +107,7 @@ from veil.models.owner import Owner as Owner
 from veil.models.promote_owner200_response import PromoteOwner200Response as PromoteOwner200Response
 from veil.models.provision_response import ProvisionResponse as ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response as RemoveMember200Response
+from veil.models.requests_response import RequestsResponse as RequestsResponse
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest

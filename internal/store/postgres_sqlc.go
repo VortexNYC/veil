@@ -728,6 +728,20 @@ func (p *Postgres) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalR
 	return requestFromSqlc(&row), created, nil
 }
 
+func (p *Postgres) OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error) {
+	r, err := p.sqlc.OpenRequestByGrant(context.Background(), sqlc.OpenRequestByGrantParams{
+		GrantID: grantID, Action: string(action),
+	})
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := requestFromSqlc(&r)
+	return &out, nil
+}
+
 func (p *Postgres) Request(id string) (protocol.ApprovalRequest, error) {
 	r, err := p.sqlc.RequestByID(context.Background(), id)
 	if err == pgx.ErrNoRows {
@@ -773,6 +787,26 @@ func (p *Postgres) ResolveRequest(id string, status protocol.RequestStatus, huma
 	return requestFromSqlc(&row), true, nil
 }
 
+func (p *Postgres) ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
+	rows, err := p.sqlc.ApproveRequestsForGrant(context.Background(), sqlc.ApproveRequestsForGrantParams{
+		GrantID: grantID, HumanID: humanID, ApprovalID: approvalID, At: at.UTC(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.ApprovalRequest, 0, len(rows))
+	for i := range rows {
+		out = append(out, requestFromSqlc(&rows[i]))
+	}
+	return out, nil
+}
+
+func (p *Postgres) CancelRequestsForItem(itemID string, at time.Time) error {
+	return p.sqlc.CancelRequestsForItem(context.Background(), sqlc.CancelRequestsForItemParams{
+		ItemID: itemID, At: at.UTC(),
+	})
+}
+
 func (p *Postgres) CancelRequestsForGrant(grantID string, at time.Time) error {
 	return p.sqlc.CancelRequestsForGrant(context.Background(), sqlc.CancelRequestsForGrantParams{
 		GrantID: grantID, At: at.UTC(),
@@ -786,7 +820,8 @@ func (p *Postgres) CancelRequestsForAgent(agentID string, at time.Time) error {
 }
 
 func (p *Postgres) ExpireStaleRequests(now time.Time) error {
-	return p.sqlc.ExpireStaleRequests(context.Background(), now.UTC())
+	_, err := p.sqlc.ExpireStaleRequests(context.Background(), now.UTC())
+	return err
 }
 
 func (p *Postgres) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
@@ -1162,6 +1197,10 @@ func SweepPostgres(ctx context.Context, db sqlc.DBTX, before time.Time) (SweepRe
 	}
 	if rep.Approvals, err = q.SweepExpiredApprovals(ctx, before.UTC()); err != nil {
 		return rep, fmt.Errorf("sweep approvals: %w", err)
+	}
+	// Open asks mark expired at expiry — the row stays auditable, the ask dies.
+	if rep.Requests, err = q.ExpireStaleRequests(ctx, time.Now().UTC()); err != nil {
+		return rep, fmt.Errorf("sweep requests: %w", err)
 	}
 	return rep, nil
 }

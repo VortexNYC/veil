@@ -52,6 +52,24 @@ type ItemsResponse struct {
 	Items []protocol.Item `json:"items"`
 }
 
+type RequestView struct {
+	ID         string                 `json:"id"`
+	AgentID    string                 `json:"agent_id"`
+	ItemID     string                 `json:"item_id"`
+	GrantID    string                 `json:"grant_id"`
+	Action     protocol.ActionKind    `json:"action"`
+	Status     protocol.RequestStatus `json:"status"`
+	CreatedAt  time.Time              `json:"created_at"`
+	ExpiresAt  time.Time              `json:"expires_at"`
+	ResolvedAt *time.Time             `json:"resolved_at,omitempty"`
+	ResolvedBy string                 `json:"resolved_by,omitempty"`
+	ApprovalID string                 `json:"approval_id,omitempty"`
+}
+
+type RequestsResponse struct {
+	Requests []RequestView `json:"requests"`
+}
+
 type EventsResponse struct {
 	Events []protocol.AuditEvent `json:"events"`
 }
@@ -252,6 +270,9 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/me", s.deleteMe)
 	mux.HandleFunc("DELETE /v1/org", s.deleteOrg)
 	mux.HandleFunc("POST /v1/use", s.useItem)
+	mux.HandleFunc("GET /v1/requests", s.listRequests)
+	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
+	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
 	mux.HandleFunc("POST /v1/fill/totp", s.fillTOTP)
@@ -785,6 +806,114 @@ func (s *Server) useItem(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, out)
+}
+
+func requestView(r protocol.ApprovalRequest) RequestView {
+	return RequestView{
+		ID: r.ID, AgentID: r.AgentID, ItemID: r.ItemID, GrantID: r.GrantID,
+		Action: r.Action, Status: r.Status, CreatedAt: r.CreatedAt, ExpiresAt: r.ExpiresAt,
+		ResolvedAt: r.ResolvedAt, ResolvedBy: r.ResolvedBy, ApprovalID: r.ApprovalID,
+	}
+}
+
+func (s *Server) listRequests(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	status := protocol.RequestStatus(r.URL.Query().Get("status"))
+	if status == "" {
+		status = protocol.RequestOpen
+	}
+	switch status {
+	case protocol.RequestOpen, protocol.RequestApproved, protocol.RequestDenied,
+		protocol.RequestExpired, protocol.RequestCancelled:
+	default:
+		http.Error(w, "bad status", http.StatusBadRequest)
+		return
+	}
+	reqs, err := s.App.Store.ListRequests(owner.OrgID, status, time.Now())
+	if err != nil {
+		http.Error(w, "list failed", http.StatusBadRequest)
+		return
+	}
+	out := make([]RequestView, 0, len(reqs))
+	for _, req := range reqs {
+		out = append(out, requestView(req))
+	}
+	writeJSON(w, RequestsResponse{Requests: out})
+}
+
+// ownerRequest loads the ask and scopes it to the caller's org — an
+// open, unexpired request is the only one a human may still answer.
+func (s *Server) ownerRequest(w http.ResponseWriter, r *http.Request) (protocol.Principal, protocol.ApprovalRequest, bool) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return protocol.Principal{}, protocol.ApprovalRequest{}, false
+	}
+	req, err := s.App.Store.Request(r.PathValue("id"))
+	if err != nil || req.OrgID != owner.OrgID {
+		http.Error(w, "not found", http.StatusNotFound)
+		return protocol.Principal{}, protocol.ApprovalRequest{}, false
+	}
+	return owner, req, true
+}
+
+func (s *Server) approveRequest(w http.ResponseWriter, r *http.Request) {
+	owner, req, ok := s.ownerRequest(w, r)
+	if !ok {
+		return
+	}
+	if req.Status != protocol.RequestOpen || !time.Now().Before(req.ExpiresAt) {
+		http.Error(w, "already resolved", http.StatusConflict)
+		return
+	}
+	var in struct {
+		TTL string `json:"ttl"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in)
+	}
+	ttl := 15 * time.Minute
+	if in.TTL != "" {
+		d, err := time.ParseDuration(in.TTL)
+		if err != nil {
+			http.Error(w, "bad ttl", http.StatusBadRequest)
+			return
+		}
+		ttl = d
+	}
+	if _, err := s.App.Broker.Approve(owner, req.GrantID, ttl); err != nil {
+		http.Error(w, "approve failed", http.StatusBadRequest)
+		return
+	}
+	cur, err := s.App.Store.Request(req.ID)
+	if err != nil || cur.Status != protocol.RequestApproved {
+		http.Error(w, "already resolved", http.StatusConflict)
+		return
+	}
+	writeJSON(w, requestView(cur))
+}
+
+func (s *Server) denyRequest(w http.ResponseWriter, r *http.Request) {
+	owner, req, ok := s.ownerRequest(w, r)
+	if !ok {
+		return
+	}
+	resolved, won, err := s.App.Store.ResolveRequest(req.ID, protocol.RequestDenied, owner.ID, "", time.Now())
+	if err != nil {
+		http.Error(w, "deny failed", http.StatusBadRequest)
+		return
+	}
+	if !won {
+		http.Error(w, "already resolved", http.StatusConflict)
+		return
+	}
+	_ = s.App.Store.AppendAudit(protocol.AuditEvent{
+		Time: time.Now().UTC(), OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
+		Action: protocol.ActionRequestDenied, Decision: protocol.DecisionDeny, Reason: req.ID,
+	})
+	writeJSON(w, requestView(resolved))
 }
 
 func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {

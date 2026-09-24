@@ -12,6 +12,7 @@ package veil
 
 import (
 	"encoding/json"
+	"time"
 	"bytes"
 	"fmt"
 )
@@ -24,6 +25,10 @@ type UseResponse struct {
 	Decision string `json:"decision"`
 	Reason *string `json:"reason,omitempty"`
 	ApprovalId *string `json:"approval_id,omitempty"`
+	// The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}.
+	RequestId *string `json:"request_id,omitempty"`
+	// When the filed ask dies unanswered. Agents may keep retrying until then.
+	RequestExpiresAt *time.Time `json:"request_expires_at,omitempty"`
 	Status *int32 `json:"status,omitempty"`
 	// Upstream response headers, including Content-Type and Content-Encoding.
 	Headers map[string][]string `json:"headers,omitempty"`
@@ -139,6 +144,70 @@ func (o *UseResponse) HasApprovalId() bool {
 // SetApprovalId gets a reference to the given string and assigns it to the ApprovalId field.
 func (o *UseResponse) SetApprovalId(v string) {
 	o.ApprovalId = &v
+}
+
+// GetRequestId returns the RequestId field value if set, zero value otherwise.
+func (o *UseResponse) GetRequestId() string {
+	if o == nil || IsNil(o.RequestId) {
+		var ret string
+		return ret
+	}
+	return *o.RequestId
+}
+
+// GetRequestIdOk returns a tuple with the RequestId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *UseResponse) GetRequestIdOk() (*string, bool) {
+	if o == nil || IsNil(o.RequestId) {
+		return nil, false
+	}
+	return o.RequestId, true
+}
+
+// HasRequestId returns a boolean if a field has been set.
+func (o *UseResponse) HasRequestId() bool {
+	if o != nil && !IsNil(o.RequestId) {
+		return true
+	}
+
+	return false
+}
+
+// SetRequestId gets a reference to the given string and assigns it to the RequestId field.
+func (o *UseResponse) SetRequestId(v string) {
+	o.RequestId = &v
+}
+
+// GetRequestExpiresAt returns the RequestExpiresAt field value if set, zero value otherwise.
+func (o *UseResponse) GetRequestExpiresAt() time.Time {
+	if o == nil || IsNil(o.RequestExpiresAt) {
+		var ret time.Time
+		return ret
+	}
+	return *o.RequestExpiresAt
+}
+
+// GetRequestExpiresAtOk returns a tuple with the RequestExpiresAt field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *UseResponse) GetRequestExpiresAtOk() (*time.Time, bool) {
+	if o == nil || IsNil(o.RequestExpiresAt) {
+		return nil, false
+	}
+	return o.RequestExpiresAt, true
+}
+
+// HasRequestExpiresAt returns a boolean if a field has been set.
+func (o *UseResponse) HasRequestExpiresAt() bool {
+	if o != nil && !IsNil(o.RequestExpiresAt) {
+		return true
+	}
+
+	return false
+}
+
+// SetRequestExpiresAt gets a reference to the given time.Time and assigns it to the RequestExpiresAt field.
+func (o *UseResponse) SetRequestExpiresAt(v time.Time) {
+	o.RequestExpiresAt = &v
 }
 
 // GetStatus returns the Status field value if set, zero value otherwise.
@@ -285,6 +354,12 @@ func (o UseResponse) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.ApprovalId) {
 		toSerialize["approval_id"] = o.ApprovalId
+	}
+	if !IsNil(o.RequestId) {
+		toSerialize["request_id"] = o.RequestId
+	}
+	if !IsNil(o.RequestExpiresAt) {
+		toSerialize["request_expires_at"] = o.RequestExpiresAt
 	}
 	if !IsNil(o.Status) {
 		toSerialize["status"] = o.Status

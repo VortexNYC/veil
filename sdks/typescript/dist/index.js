@@ -879,6 +879,25 @@ var useItem = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var listRequests = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/requests",
+  ...options
+});
+var approveRequest = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/requests/{id}/approve",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var denyRequest = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/requests/{id}/deny",
+  ...options
+});
 var listEvents = (options) => (options?.client ?? client).get({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/events",
@@ -924,6 +943,7 @@ var deleteOrg = (options) => (options?.client ?? client).delete({
   ...options
 });
 export {
+  approveRequest,
   archiveItem,
   createAgent,
   createClient,
@@ -935,6 +955,7 @@ export {
   deleteMe,
   deleteOrg,
   demoteOwner,
+  denyRequest,
   getHealth,
   getOpenApi,
   importItems,
@@ -942,6 +963,7 @@ export {
   listEvents,
   listGrants,
   listItems,
+  listRequests,
   listSessions,
   promoteOwner,
   provision,

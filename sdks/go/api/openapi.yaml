@@ -385,6 +385,106 @@ paths:
         secret is never in the response.
       tags:
       - Agent
+  /v1/requests:
+    get:
+      operationId: listRequests
+      parameters:
+      - explode: true
+        in: query
+        name: status
+        required: false
+        schema:
+          default: open
+          enum:
+          - open
+          - approved
+          - denied
+          - expired
+          - cancelled
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestsResponse"
+          description: Requests
+        "400":
+          description: bad status
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Approval requests filed by level-1 agents. status=open lists only unexpired
+        asks. Not MCP.
+      tags:
+      - Owner
+  /v1/requests/{id}/approve:
+    post:
+      operationId: approveRequest
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveRequestBody"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequest"
+          description: The approved request
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+        "404":
+          description: no such request in this org
+        "409":
+          description: already resolved or expired
+      summary: Approve an open request — unlocks its level-1 grant for ttl. First
+        write wins.
+      tags:
+      - Owner
+  /v1/requests/{id}/deny:
+    post:
+      operationId: denyRequest
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequest"
+          description: The denied request
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+        "404":
+          description: no such request in this org
+        "409":
+          description: already resolved or expired
+      summary: Deny an open request. First write wins; the agent's next use files
+        a fresh ask.
+      tags:
+      - Owner
   /v1/events:
     get:
       operationId: listEvents
@@ -743,6 +843,8 @@ components:
         decision: allow
         reason: reason
         approval_id: approval_id
+        request_id: request_id
+        request_expires_at: 2000-01-23T04:56:07.000+00:00
         status: 0
         headers:
           key:
@@ -760,6 +862,15 @@ components:
         reason:
           type: string
         approval_id:
+          type: string
+        request_id:
+          description: "The filed approval request when decision is need_approval.\
+            \ Owners resolve it via /v1/requests/{id}."
+          type: string
+        request_expires_at:
+          description: When the filed ask dies unanswered. Agents may keep retrying
+            until then.
+          format: date-time
           type: string
         status:
           type: integer
@@ -1370,6 +1481,106 @@ components:
       required:
       - emailed
       - identity_id
+    ApprovalRequest:
+      additionalProperties: false
+      example:
+        id: id
+        agent_id: agent_id
+        item_id: item_id
+        grant_id: grant_id
+        action: action
+        status: open
+        created_at: 2000-01-23T04:56:07.000+00:00
+        expires_at: 2000-01-23T04:56:07.000+00:00
+        resolved_at: 2000-01-23T04:56:07.000+00:00
+        resolved_by: resolved_by
+        approval_id: approval_id
+      properties:
+        id:
+          type: string
+        agent_id:
+          type: string
+        item_id:
+          type: string
+        grant_id:
+          type: string
+        action:
+          type: string
+        status:
+          enum:
+          - open
+          - approved
+          - denied
+          - expired
+          - cancelled
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        resolved_at:
+          format: date-time
+          type: string
+        resolved_by:
+          description: The Kratos identity of the owner who answered — first write
+            wins.
+          type: string
+        approval_id:
+          description: The grant approval created by an approve resolution.
+          type: string
+      required:
+      - action
+      - agent_id
+      - created_at
+      - expires_at
+      - grant_id
+      - id
+      - item_id
+      - status
+    RequestsResponse:
+      additionalProperties: false
+      example:
+        requests:
+        - id: id
+          agent_id: agent_id
+          item_id: item_id
+          grant_id: grant_id
+          action: action
+          status: open
+          created_at: 2000-01-23T04:56:07.000+00:00
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          resolved_at: 2000-01-23T04:56:07.000+00:00
+          resolved_by: resolved_by
+          approval_id: approval_id
+        - id: id
+          agent_id: agent_id
+          item_id: item_id
+          grant_id: grant_id
+          action: action
+          status: open
+          created_at: 2000-01-23T04:56:07.000+00:00
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          resolved_at: 2000-01-23T04:56:07.000+00:00
+          resolved_by: resolved_by
+          approval_id: approval_id
+      properties:
+        requests:
+          items:
+            $ref: "#/components/schemas/ApprovalRequest"
+          type: array
+          default: null
+      required:
+      - requests
+    ApproveRequestBody:
+      additionalProperties: false
+      example:
+        ttl: ttl
+      properties:
+        ttl:
+          description: Go duration for the grant approval lifetime (default 15m).
+          type: string
     removeMember_200_response:
       example:
         removed: true

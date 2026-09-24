@@ -248,6 +248,18 @@ WHERE id = @id::text AND status = 'open' AND expires_at > @at::timestamptz
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id;
 
+-- name: ApproveRequestsForGrant :many
+UPDATE approval_requests
+SET status = 'approved', resolved_at = @at::timestamptz,
+    resolved_by = @human_id::text, approval_id = @approval_id::text
+WHERE grant_id = @grant_id::text AND status = 'open' AND expires_at > @at::timestamptz
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
+
+-- name: CancelRequestsForItem :exec
+UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
+WHERE item_id = @item_id::text AND status = 'open';
+
 -- name: CancelRequestsForGrant :exec
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
 WHERE grant_id = @grant_id::text AND status = 'open';
@@ -256,7 +268,7 @@ WHERE grant_id = @grant_id::text AND status = 'open';
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
 WHERE agent_id = @agent_id::text AND status = 'open';
 
--- name: ExpireStaleRequests :exec
+-- name: ExpireStaleRequests :execrows
 UPDATE approval_requests SET status = 'expired', resolved_at = @at::timestamptz
 WHERE status = 'open' AND expires_at <= @at::timestamptz;
 

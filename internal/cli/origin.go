@@ -535,6 +535,53 @@ func originSessionList(cmd *cobra.Command) error {
 	return encode(cmd, out.Sessions)
 }
 
+func originRequestList(cmd *cobra.Command, status string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	path := "/v1/requests"
+	if status != "" {
+		path += "?status=" + url.QueryEscape(status)
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, path, tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.RequestsResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	if out.Requests == nil {
+		out.Requests = []publicapi.RequestView{}
+	}
+	return encode(cmd, out.Requests)
+}
+
+func originRequestResolve(cmd *cobra.Command, id, verb string, ttl time.Duration) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	var payload []byte
+	if verb == "approve" {
+		payload, err = json.Marshal(map[string]string{"ttl": ttl.String()})
+		if err != nil {
+			return err
+		}
+	}
+	path := "/v1/requests/" + url.PathEscape(id) + "/" + verb
+	raw, err := originDo(cmd.Context(), http.MethodPost, path, tok, payload)
+	if err != nil {
+		return err
+	}
+	var out publicapi.RequestView
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
 func originAgentRevoke(cmd *cobra.Command, id string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {

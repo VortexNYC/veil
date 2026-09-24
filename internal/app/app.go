@@ -75,6 +75,12 @@ type Inviter interface {
 	Invite(ctx context.Context, email, actor, orgID string) (InviteResult, error)
 }
 
+// RequestNotify pings org owners when an ask lands — veil-mail via glue;
+// nil in local vaults. Best-effort: the request row is the durable part.
+type RequestNotify interface {
+	NotifyRequest(ctx context.Context, req protocol.ApprovalRequest) error
+}
+
 var ErrExists = errors.New("app: vault already exists")
 
 type config struct {
@@ -101,6 +107,7 @@ type App struct {
 	Provision Provisioner
 	Invites   Inviter
 	OrgAdmin  OrgAdmin
+	Notify    RequestNotify
 
 	inviteLim inviteLimiter
 }
@@ -277,6 +284,11 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 		Workload: workload.New(s),
 	}
 	a.Broker.Auditor = auditor
+	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {
+		if a.Notify != nil {
+			_ = a.Notify.NotifyRequest(ctx, req)
+		}
+	}
 	if err := a.attachHydra(); err != nil {
 		_ = s.Close()
 		return nil, err
@@ -550,11 +562,17 @@ func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login
 }
 
 func (a *App) ArchiveItem(name string) error {
-	return a.Store.ArchiveItem(name)
+	if err := a.Store.ArchiveItem(name); err != nil {
+		return err
+	}
+	return a.Store.CancelRequestsForItem(name, time.Now().UTC())
 }
 
 func (a *App) DeleteItem(name string) error {
-	return a.Store.DeleteItem(name)
+	if err := a.Store.DeleteItem(name); err != nil {
+		return err
+	}
+	return a.Store.CancelRequestsForItem(name, time.Now().UTC())
 }
 
 func (a *App) WriteFile(name, dest string) error {
@@ -669,7 +687,10 @@ func (a *App) RevokeAgent(actor protocol.Principal, agentID string) error {
 		Decision: protocol.DecisionAllow,
 		Reason:   "",
 	}
-	return a.Store.RevokeAgent(agentID, now, event)
+	if err := a.Store.RevokeAgent(agentID, now, event); err != nil {
+		return err
+	}
+	return a.Store.CancelRequestsForAgent(agentID, now)
 }
 
 func (a *App) BindWorkload(agentID, issuer, subject, audience string) (protocol.Workload, error) {

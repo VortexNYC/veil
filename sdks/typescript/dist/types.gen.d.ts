@@ -53,6 +53,14 @@ export type UseResponse = {
     decision: 'allow' | 'deny' | 'need_approval';
     reason?: string;
     approval_id?: string;
+    /**
+     * The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}.
+     */
+    request_id?: string;
+    /**
+     * When the filed ask dies unanswered. Agents may keep retrying until then.
+     */
+    request_expires_at?: string;
     status?: number;
     /**
      * Upstream response headers, including Content-Type and Content-Encoding.
@@ -265,6 +273,34 @@ export type InviteResponse = {
      * Only present when mail delivery is not configured (local dev).
      */
     recovery_url?: string;
+};
+export type ApprovalRequest = {
+    id: string;
+    agent_id: string;
+    item_id: string;
+    grant_id: string;
+    action: string;
+    status: 'open' | 'approved' | 'denied' | 'expired' | 'cancelled';
+    created_at: string;
+    expires_at: string;
+    resolved_at?: string;
+    /**
+     * The Kratos identity of the owner who answered — first write wins.
+     */
+    resolved_by?: string;
+    /**
+     * The grant approval created by an approve resolution.
+     */
+    approval_id?: string;
+};
+export type RequestsResponse = {
+    requests: Array<ApprovalRequest>;
+};
+export type ApproveRequestBody = {
+    /**
+     * Go duration for the grant approval lifetime (default 15m).
+     */
+    ttl?: string;
 };
 export type GetHealthData = {
     body?: never;
@@ -659,6 +695,101 @@ export type UseItemResponses = {
     200: UseResponse;
 };
 export type UseItemResponse = UseItemResponses[keyof UseItemResponses];
+export type ListRequestsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        status?: 'open' | 'approved' | 'denied' | 'expired' | 'cancelled';
+    };
+    url: '/v1/requests';
+};
+export type ListRequestsErrors = {
+    /**
+     * bad status
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+export type ListRequestsResponses = {
+    /**
+     * Requests
+     */
+    200: RequestsResponse;
+};
+export type ListRequestsResponse = ListRequestsResponses[keyof ListRequestsResponses];
+export type ApproveRequestData = {
+    body?: ApproveRequestBody;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/requests/{id}/approve';
+};
+export type ApproveRequestErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+    /**
+     * no such request in this org
+     */
+    404: unknown;
+    /**
+     * already resolved or expired
+     */
+    409: unknown;
+};
+export type ApproveRequestResponses = {
+    /**
+     * The approved request
+     */
+    200: ApprovalRequest;
+};
+export type ApproveRequestResponse = ApproveRequestResponses[keyof ApproveRequestResponses];
+export type DenyRequestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/requests/{id}/deny';
+};
+export type DenyRequestErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+    /**
+     * no such request in this org
+     */
+    404: unknown;
+    /**
+     * already resolved or expired
+     */
+    409: unknown;
+};
+export type DenyRequestResponses = {
+    /**
+     * The denied request
+     */
+    200: ApprovalRequest;
+};
+export type DenyRequestResponse = DenyRequestResponses[keyof DenyRequestResponses];
 export type ListEventsData = {
     body?: never;
     path?: never;

@@ -140,6 +140,98 @@ func TestCLILevel1NeedsApprove(t *testing.T) {
 	}
 }
 
+func TestCLIRequestLoop(t *testing.T) {
+	home := t.TempDir()
+	if _, err := run(t, home, "", "init"); err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(204)
+	}))
+	t.Cleanup(upstream.Close)
+	secFile := filepath.Join(home, "sec")
+	if err := os.WriteFile(secFile, []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "item", "add", "stripe", "--uri", upstream.URL, "--secret-file", secFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "agent", "add", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "grant", "add", "--agent", "claude", "--item", "stripe", "--level", "level1"); err != nil {
+		t.Fatal(err)
+	}
+	use := func() useDTO {
+		t.Helper()
+		out, err := run(t, home, "", "use", "--agent", "claude", "--item", "stripe", "--url", upstream.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got useDTO
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatal(err, out)
+		}
+		return got
+	}
+
+	got := use()
+	if got.Decision != protocol.DecisionNeedApproval || got.RequestID == "" {
+		t.Fatalf("denial must carry the ask: %+v", got)
+	}
+
+	out, err := run(t, home, "", "request", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var open []protocol.ApprovalRequest
+	if err := json.Unmarshal([]byte(out), &open); err != nil {
+		t.Fatal(err, out)
+	}
+	if len(open) != 1 || open[0].ID != got.RequestID || open[0].Status != protocol.RequestOpen {
+		t.Fatalf("open=%+v", open)
+	}
+
+	out, err = run(t, home, "", "request", "deny", got.RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var denied protocol.ApprovalRequest
+	if err := json.Unmarshal([]byte(out), &denied); err != nil {
+		t.Fatal(err)
+	}
+	if denied.Status != protocol.RequestDenied || denied.ResolvedBy == "" {
+		t.Fatalf("denied=%+v", denied)
+	}
+	if _, err := run(t, home, "", "request", "approve", got.RequestID); err == nil {
+		t.Fatal("a resolved ask must refuse a second answer")
+	}
+
+	refiled := use()
+	if refiled.RequestID == "" || refiled.RequestID == got.RequestID {
+		t.Fatalf("denial is not sticky — expected a fresh ask: %+v", refiled)
+	}
+	out, err = run(t, home, "", "request", "approve", refiled.RequestID, "--ttl", "10m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var approved protocol.ApprovalRequest
+	if err := json.Unmarshal([]byte(out), &approved); err != nil {
+		t.Fatal(err)
+	}
+	if approved.Status != protocol.RequestApproved || approved.ApprovalID == "" || approved.ResolvedBy == "" {
+		t.Fatalf("approved=%+v", approved)
+	}
+
+	final := use()
+	if final.Decision != protocol.DecisionAllow || final.ApprovalID == "" {
+		t.Fatalf("approved grant must allow: %+v", final)
+	}
+	if scrub.Contains([]byte(final.Body), []byte(secret)) {
+		t.Fatal(final.Body)
+	}
+}
+
 func TestCLIApproveOIDCNeedsIssuer(t *testing.T) {
 	home := t.TempDir()
 	if _, err := run(t, home, "", "init"); err != nil {

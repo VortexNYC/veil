@@ -73,6 +73,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(grantCmd(&home))
 	root.AddCommand(useCmd(&home))
 	root.AddCommand(approveCmd(&home))
+	root.AddCommand(requestCmd(&home))
 	root.AddCommand(mcpCmd(&home))
 	root.AddCommand(proxyCmd(&home))
 	root.AddCommand(runCmd(&home))
@@ -161,7 +162,7 @@ func sweepCmd(home *string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "sessions=%d grants=%d approvals=%d\n", rep.Sessions, rep.Grants, rep.Approvals)
+				fmt.Fprintf(cmd.OutOrStdout(), "sessions=%d grants=%d approvals=%d requests=%d\n", rep.Sessions, rep.Grants, rep.Approvals, rep.Requests)
 				if err := store.EnsureAuditPartitions(cmd.Context(), pool, 3); err != nil {
 					return fmt.Errorf("sweep: audit partitions: %w", err)
 				}
@@ -349,6 +350,7 @@ func openOriginApp(home string) (*app.App, error) {
 		a.Provision = g
 		a.Invites = glueInviter{g}
 		a.OrgAdmin = g
+		a.Notify = g
 		return a, nil
 	}
 	return openOrInitApp(home)
@@ -1492,6 +1494,102 @@ func approveCmd(home *string) *cobra.Command {
 	return c
 }
 
+// requestCmd is the owner answer side of the approval-request loop:
+// list the open asks, approve or deny one. Agent asks land at the denial
+// edge; these verbs are the human's reply.
+func requestCmd(home *string) *cobra.Command {
+	var status string
+	var ttl time.Duration
+	c := &cobra.Command{
+		Use:   "request",
+		Short: "Approval requests filed by level-1 agents",
+	}
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List approval requests (--status, default open)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originRequestList(cmd, status)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			reqs, err := a.Store.ListRequests(a.OrgID, protocol.RequestStatus(status), time.Now())
+			if err != nil {
+				return err
+			}
+			if reqs == nil {
+				reqs = []protocol.ApprovalRequest{}
+			}
+			return encode(cmd, reqs)
+		},
+	}
+	approve := &cobra.Command{
+		Use:   "approve REQUEST_ID",
+		Short: "Approve an open request — unlocks the level-1 grant for --ttl",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originRequestResolve(cmd, args[0], "approve", ttl)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			req, err := a.Store.Request(args[0])
+			if err != nil {
+				return err
+			}
+			if req.Status != protocol.RequestOpen || !time.Now().Before(req.ExpiresAt) {
+				return fmt.Errorf("request %s is already resolved", req.ID)
+			}
+			if _, err := a.Approve(req.GrantID, ttl); err != nil {
+				return err
+			}
+			cur, err := a.Store.Request(req.ID)
+			if err != nil || cur.Status != protocol.RequestApproved {
+				return fmt.Errorf("request %s is already resolved", req.ID)
+			}
+			return encode(cmd, cur)
+		},
+	}
+	deny := &cobra.Command{
+		Use:   "deny REQUEST_ID",
+		Short: "Deny an open request — the agent's next use files a fresh ask",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originRequestResolve(cmd, args[0], "deny", 0)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			resolved, won, err := a.Store.ResolveRequest(args[0], protocol.RequestDenied, a.HumanID, "", time.Now())
+			if err != nil {
+				return err
+			}
+			if !won {
+				return fmt.Errorf("request %s is already resolved", args[0])
+			}
+			_ = a.Store.AppendAudit(protocol.AuditEvent{
+				Time: time.Now().UTC(), OrgID: resolved.OrgID, AgentID: resolved.AgentID,
+				ItemID: resolved.ItemID, Action: protocol.ActionRequestDenied,
+				Decision: protocol.DecisionDeny, Reason: resolved.ID,
+			})
+			return encode(cmd, resolved)
+		},
+	}
+	list.Flags().StringVar(&status, "status", "open", "open|approved|denied|expired|cancelled")
+	approve.Flags().DurationVar(&ttl, "ttl", 15*time.Minute, "approval lifetime")
+	c.AddCommand(list, approve, deny)
+	return c
+}
+
 func humanToken(tokenFile string) (string, error) {
 	if tokenFile != "" {
 		b, err := os.ReadFile(tokenFile)
@@ -1969,17 +2067,22 @@ func mcpPublicURL(flag, listen string) string {
 }
 
 type useDTO struct {
-	Decision   protocol.Decision `json:"decision"`
-	Reason     string            `json:"reason,omitempty"`
-	ApprovalID string            `json:"approval_id,omitempty"`
-	Status     int               `json:"status,omitempty"`
-	Headers    http.Header       `json:"headers,omitempty"`
-	Body       string            `json:"body,omitempty"`
-	BodyB64    string            `json:"body_b64,omitempty"`
+	Decision          protocol.Decision `json:"decision"`
+	Reason            string            `json:"reason,omitempty"`
+	ApprovalID        string            `json:"approval_id,omitempty"`
+	RequestID         string            `json:"request_id,omitempty"`
+	RequestExpiresAt  *time.Time        `json:"request_expires_at,omitempty"`
+	Status            int               `json:"status,omitempty"`
+	Headers           http.Header       `json:"headers,omitempty"`
+	Body              string            `json:"body,omitempty"`
+	BodyB64           string            `json:"body_b64,omitempty"`
 }
 
 func useView(got protocol.UseResult) useDTO {
-	v := useDTO{Decision: got.Decision, Reason: got.Reason, ApprovalID: got.ApprovalID}
+	v := useDTO{
+		Decision: got.Decision, Reason: got.Reason, ApprovalID: got.ApprovalID,
+		RequestID: got.RequestID, RequestExpiresAt: got.RequestExpiresAt,
+	}
 	if got.Fetch != nil {
 		v.Status = got.Fetch.Status
 		v.Headers = got.Fetch.Header

@@ -4,19 +4,105 @@ All URIs are relative to *https://veil.nyc*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**approve_request**](OwnerApi.md#approve_request) | **POST** /v1/requests/{id}/approve | Approve an open request — unlocks its level-1 grant for ttl. First write wins.
 [**archive_item**](OwnerApi.md#archive_item) | **POST** /v1/items/{name}/archive | Hide from Use and list. History stays.
 [**create_agent**](OwnerApi.md#create_agent) | **POST** /v1/agents | Register an agent principal. Not a Hydra secret. Not MCP.
 [**create_grant**](OwnerApi.md#create_grant) | **POST** /v1/grants | Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.
 [**create_item**](OwnerApi.md#create_item) | **POST** /v1/items | Create an item. Secret is in the request over TLS. Never in the response. Not MCP.
 [**create_session**](OwnerApi.md#create_session) | **POST** /v1/sessions | Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.
 [**delete_item**](OwnerApi.md#delete_item) | **DELETE** /v1/items/{name} | Remove the item and its grants. Not MCP.
+[**deny_request**](OwnerApi.md#deny_request) | **POST** /v1/requests/{id}/deny | Deny an open request. First write wins; the agent&#39;s next use files a fresh ask.
 [**import_items**](OwnerApi.md#import_items) | **POST** /v1/import | One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.
 [**list_agents**](OwnerApi.md#list_agents) | **GET** /v1/agents | Agents in this org. Ids only. Never secrets. Not MCP.
 [**list_grants**](OwnerApi.md#list_grants) | **GET** /v1/grants | Grants in this org. No secrets. Not MCP.
+[**list_requests**](OwnerApi.md#list_requests) | **GET** /v1/requests | Approval requests filed by level-1 agents. status&#x3D;open lists only unexpired asks. Not MCP.
 [**list_sessions**](OwnerApi.md#list_sessions) | **GET** /v1/sessions | Active sandbox sessions. Metadata only. Never the token. Not MCP.
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
 [**update_item**](OwnerApi.md#update_item) | **PATCH** /v1/items/{name} | Replace URIs, tags, and fill username. No secret.
 
+
+# **approve_request**
+> ApprovalRequest approve_request(id, approve_request_body=approve_request_body)
+
+Approve an open request — unlocks its level-1 grant for ttl. First write wins.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.approval_request import ApprovalRequest
+from veil.models.approve_request_body import ApproveRequestBody
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    id = 'id_example' # str | 
+    approve_request_body = veil.ApproveRequestBody() # ApproveRequestBody |  (optional)
+
+    try:
+        # Approve an open request — unlocks its level-1 grant for ttl. First write wins.
+        api_response = api_instance.approve_request(id, approve_request_body=approve_request_body)
+        print("The response of OwnerApi->approve_request:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->approve_request: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **str**|  | 
+ **approve_request_body** | [**ApproveRequestBody**](ApproveRequestBody.md)|  | [optional] 
+
+### Return type
+
+[**ApprovalRequest**](ApprovalRequest.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | The approved request |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+**404** | no such request in this org |  -  |
+**409** | already resolved or expired |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **archive_item**
 > archive_item(name)
@@ -490,6 +576,86 @@ void (empty response body)
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **deny_request**
+> ApprovalRequest deny_request(id)
+
+Deny an open request. First write wins; the agent's next use files a fresh ask.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.approval_request import ApprovalRequest
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    id = 'id_example' # str | 
+
+    try:
+        # Deny an open request. First write wins; the agent's next use files a fresh ask.
+        api_response = api_instance.deny_request(id)
+        print("The response of OwnerApi->deny_request:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->deny_request: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **str**|  | 
+
+### Return type
+
+[**ApprovalRequest**](ApprovalRequest.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | The denied request |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+**404** | no such request in this org |  -  |
+**409** | already resolved or expired |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **import_items**
 > ImportResponse import_items(body, filename=filename)
 
@@ -714,6 +880,85 @@ This endpoint does not need any parameter.
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Grants |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **list_requests**
+> RequestsResponse list_requests(status=status)
+
+Approval requests filed by level-1 agents. status=open lists only unexpired asks. Not MCP.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.requests_response import RequestsResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    status = open # str |  (optional) (default to open)
+
+    try:
+        # Approval requests filed by level-1 agents. status=open lists only unexpired asks. Not MCP.
+        api_response = api_instance.list_requests(status=status)
+        print("The response of OwnerApi->list_requests:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_requests: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **status** | **str**|  | [optional] [default to open]
+
+### Return type
+
+[**RequestsResponse**](RequestsResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Requests |  -  |
+**400** | bad status |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
 

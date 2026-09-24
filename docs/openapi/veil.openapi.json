@@ -582,6 +582,148 @@
     }
    }
   },
+  "/v1/requests": {
+   "get": {
+    "operationId": "listRequests",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Approval requests filed by level-1 agents. status=open lists only unexpired asks. Not MCP.",
+    "parameters": [
+     {
+      "name": "status",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "open",
+        "approved",
+        "denied",
+        "expired",
+        "cancelled"
+       ],
+       "default": "open"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Requests",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RequestsResponse"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad status"
+     },
+     "401": {
+      "description": "missing or invalid Bearer"
+     },
+     "403": {
+      "description": "not owner"
+     }
+    }
+   }
+  },
+  "/v1/requests/{id}/approve": {
+   "post": {
+    "operationId": "approveRequest",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Approve an open request — unlocks its level-1 grant for ttl. First write wins.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ApproveRequestBody"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The approved request",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ApprovalRequest"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "missing or invalid Bearer"
+     },
+     "403": {
+      "description": "not owner"
+     },
+     "404": {
+      "description": "no such request in this org"
+     },
+     "409": {
+      "description": "already resolved or expired"
+     }
+    }
+   }
+  },
+  "/v1/requests/{id}/deny": {
+   "post": {
+    "operationId": "denyRequest",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Deny an open request. First write wins; the agent's next use files a fresh ask.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The denied request",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ApprovalRequest"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "missing or invalid Bearer"
+     },
+     "403": {
+      "description": "not owner"
+     },
+     "404": {
+      "description": "no such request in this org"
+     },
+     "409": {
+      "description": "already resolved or expired"
+     }
+    }
+   }
+  },
   "/v1/events": {
    "get": {
     "operationId": "listEvents",
@@ -1051,6 +1193,15 @@
      },
      "approval_id": {
       "type": "string"
+     },
+     "request_id": {
+      "type": "string",
+      "description": "The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}."
+     },
+     "request_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the filed ask dies unanswered. Agents may keep retrying until then."
      },
      "status": {
       "type": "integer"
@@ -1632,6 +1783,92 @@
      "recovery_url": {
       "type": "string",
       "description": "Only present when mail delivery is not configured (local dev)."
+     }
+    }
+   },
+   "ApprovalRequest": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "agent_id",
+     "item_id",
+     "grant_id",
+     "action",
+     "status",
+     "created_at",
+     "expires_at"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "agent_id": {
+      "type": "string"
+     },
+     "item_id": {
+      "type": "string"
+     },
+     "grant_id": {
+      "type": "string"
+     },
+     "action": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "approved",
+       "denied",
+       "expired",
+       "cancelled"
+      ]
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "resolved_by": {
+      "type": "string",
+      "description": "The Kratos identity of the owner who answered — first write wins."
+     },
+     "approval_id": {
+      "type": "string",
+      "description": "The grant approval created by an approve resolution."
+     }
+    }
+   },
+   "RequestsResponse": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "requests"
+    ],
+    "properties": {
+     "requests": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ApprovalRequest"
+      }
+     }
+    }
+   },
+   "ApproveRequestBody": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ttl": {
+      "type": "string",
+      "description": "Go duration for the grant approval lifetime (default 15m)."
      }
     }
    }

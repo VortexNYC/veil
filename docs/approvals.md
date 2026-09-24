@@ -94,9 +94,10 @@ notification, not the request: the row is durable and surfaces in
   - `GET /v1/requests?status=open`
   - `POST /v1/requests/{id}/approve` `{ttl}` → PutApproval + resolve
   - `POST /v1/requests/{id}/deny` → resolve denied
-- **CLI**: `veil requests` lists open asks; `veil approve REQ_ID`
-  resolves by request (grant-level `veil approve GRANT_ID` stays —
-  pre-approval for a known window is a valid pattern).
+- **CLI**: `veil request list [--status]` lists asks;
+  `veil request approve REQ_ID [--ttl]` and `veil request deny REQ_ID`
+  resolve them (grant-level `veil approve GRANT_ID` stays — pre-approval
+  for a known window is a valid pattern).
 - **SPA**: approvals card on the vault home — pending asks, approve /
   deny, expiry countdown. v2 surface; the loop is complete without it.
 
@@ -136,5 +137,5 @@ grant-subject redesign, orthogonal to this loop.
 2. Denial-edge filing in the `Use`/`Env` need_approval path + response
    fields.
 3. `GET`/`POST` request endpoints (owner-scoped) + mail notify.
-4. `veil requests` + request-scoped `veil approve`/`deny`.
+4. `veil request list` + `veil request approve`/`deny`.
 5. SPA approvals card.

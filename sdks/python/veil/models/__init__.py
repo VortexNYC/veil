@@ -15,6 +15,8 @@
 # import models into model package
 from veil.models.agent import Agent
 from veil.models.agents_response import AgentsResponse
+from veil.models.approval_request import ApprovalRequest
+from veil.models.approve_request_body import ApproveRequestBody
 from veil.models.audit_event import AuditEvent
 from veil.models.card_fields import CardFields
 from veil.models.create_agent_request import CreateAgentRequest
@@ -37,6 +39,7 @@ from veil.models.owner import Owner
 from veil.models.promote_owner200_response import PromoteOwner200Response
 from veil.models.provision_response import ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response
+from veil.models.requests_response import RequestsResponse
 from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest

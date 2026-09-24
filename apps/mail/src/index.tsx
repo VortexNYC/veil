@@ -44,6 +44,23 @@ function templateFor(req: SendRequest): Rendered | null {
 			element: <InviteEmail url={str(d.url)} code={str(d.code)} />,
 		};
 	}
+	if (req.kind === "request") {
+		const agent = str(d.agent);
+		const item = str(d.item);
+		const action = str(d.action) || "use";
+		const expires = str(d.expires);
+		return {
+			subject: `Veil: ${agent} asks to ${action} ${item}`,
+			element: (
+				<LinkEmail
+					action="Approval requested"
+					body={`Agent "${agent}" asked to ${action} "${item}".${expires ? ` The request expires at ${expires}.` : ""} Approving requires your owner session — this email cannot approve it.`}
+					button="Review in Veil"
+					url="https://app.veil.nyc/"
+				/>
+			),
+		};
+	}
 	switch (req.template_type) {
 		case "recovery_code_valid":
 			return {
