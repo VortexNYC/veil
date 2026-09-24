@@ -201,10 +201,11 @@ ON CONFLICT(grant_id) DO UPDATE SET
 -- name: ApprovalByGrant :one
 SELECT grant_id, id, human_id, expires_at FROM approvals WHERE grant_id = @grant_id::text;
 
--- name: ExpireOpenRequest :exec
+-- name: ExpireOpenRequest :one
 UPDATE approval_requests SET status = 'expired', resolved_at = @now::timestamptz
 WHERE grant_id = @grant_id::text AND action = @action::text
-    AND status = 'open' AND expires_at <= @now::timestamptz;
+    AND status = 'open' AND expires_at <= @now::timestamptz
+RETURNING id;
 
 -- name: InsertRequest :one
 INSERT INTO approval_requests(id, org_id, agent_id, item_id, grant_id, action,
@@ -248,6 +249,19 @@ WHERE id = @id::text AND status = 'open' AND expires_at > @at::timestamptz
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id;
 
+-- name: ApproveOpenRequest :one
+-- Request-scoped approve: the ask must be open AND unexpired AND its grant
+-- still live — approving an ask on a dead grant would mint a useless
+-- approval and a misleading 'approved' resolution.
+UPDATE approval_requests
+SET status = 'approved', resolved_at = @at::timestamptz,
+    resolved_by = @human_id::text, approval_id = @approval_id::text
+WHERE id = @id::text AND status = 'open' AND expires_at > @at::timestamptz
+    AND EXISTS (SELECT 1 FROM grants g WHERE g.id = grant_id
+        AND (g.expires_at IS NULL OR g.expires_at > @at::timestamptz))
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
+
 -- name: ApproveRequestsForGrant :many
 UPDATE approval_requests
 SET status = 'approved', resolved_at = @at::timestamptz,
@@ -259,10 +273,6 @@ RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
 -- name: CancelRequestsForItem :exec
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
 WHERE item_id = @item_id::text AND status = 'open';
-
--- name: CancelRequestsForGrant :exec
-UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
-WHERE grant_id = @grant_id::text AND status = 'open';
 
 -- name: CancelRequestsForAgent :exec
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz

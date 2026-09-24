@@ -294,6 +294,7 @@ func glueFromEnv() (*glue.Glue, error) {
 		OrgID:        envOr("VEIL_ORG_ID", glue.LocalOrgID),
 		MailURL:      envOr("VEIL_MAIL_URL", ""),
 		MailToken:    os.Getenv("VEIL_MAIL_TOKEN"),
+		AppURL:       envOr("VEIL_APP_URL", ""),
 	})
 }
 
@@ -1539,21 +1540,14 @@ func requestCmd(home *string) *cobra.Command {
 				return err
 			}
 			defer a.Close()
-			req, err := a.Store.Request(args[0])
+			resolved, err := a.ApproveRequest(args[0], ttl)
+			if errors.Is(err, store.ErrRequestResolved) {
+				return fmt.Errorf("request %s is already resolved", args[0])
+			}
 			if err != nil {
 				return err
 			}
-			if req.Status != protocol.RequestOpen || !time.Now().Before(req.ExpiresAt) {
-				return fmt.Errorf("request %s is already resolved", req.ID)
-			}
-			if _, err := a.Approve(req.GrantID, ttl); err != nil {
-				return err
-			}
-			cur, err := a.Store.Request(req.ID)
-			if err != nil || cur.Status != protocol.RequestApproved {
-				return fmt.Errorf("request %s is already resolved", req.ID)
-			}
-			return encode(cmd, cur)
+			return encode(cmd, resolved)
 		},
 	}
 	deny := &cobra.Command{

@@ -56,7 +56,7 @@ function templateFor(req: SendRequest): Rendered | null {
 					action="Approval requested"
 					body={`Agent "${agent}" asked to ${action} "${item}".${expires ? ` The request expires at ${expires}.` : ""} Approving requires your owner session — this email cannot approve it.`}
 					button="Review in Veil"
-					url="https://app.veil.nyc/"
+					url={str(d.url) || "https://app.veil.nyc/"}
 				/>
 			),
 		};

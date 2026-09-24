@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/VortexNYC/veil/identity/glue/hydra"
@@ -52,6 +53,9 @@ type Config struct {
 	OrgID        string
 	MailURL      string
 	MailToken    string
+	// AppURL is where mail CTAs land — the vault UI. Default production is
+	// https://app.veil.nyc; set VEIL_APP_URL for staging/preview deploys.
+	AppURL string
 }
 
 type Glue struct {
@@ -59,6 +63,7 @@ type Glue struct {
 	tokens  *hydra.Client
 	members *keto.Client
 	mail    *mailer
+	appURL  string
 }
 
 func New(cfg Config) (*Glue, error) {
@@ -74,11 +79,16 @@ func New(cfg Config) (*Glue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("glue: %w", err)
 	}
+	appURL := strings.TrimSpace(cfg.AppURL)
+	if appURL == "" {
+		appURL = "https://app.veil.nyc"
+	}
 	return &Glue{
 		humans:  humans,
 		tokens:  tokens,
 		members: members,
 		mail:    newMailer(cfg.MailURL, cfg.MailToken),
+		appURL:  appURL,
 	}, nil
 }
 
@@ -283,6 +293,7 @@ func (g *Glue) NotifyRequest(ctx context.Context, req protocol.ApprovalRequest) 
 		"item":    req.ItemID,
 		"action":  string(req.Action),
 		"expires": req.ExpiresAt.Format(time.RFC3339),
+		"url":     g.appURL,
 	}
 	for _, to := range emails {
 		if err := g.mail.send(ctx, to, "request", data); err != nil {

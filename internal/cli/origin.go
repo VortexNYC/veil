@@ -211,6 +211,13 @@ func originDo(ctx context.Context, method, path, token string, body []byte) ([]b
 		return nil, err
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		msg := strings.TrimSpace(string(raw))
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		if msg != "" {
+			return raw, fmt.Errorf("origin %s %s: http %d: %s", method, path, res.StatusCode, msg)
+		}
 		return raw, fmt.Errorf("origin %s %s: http %d", method, path, res.StatusCode)
 	}
 	return raw, nil

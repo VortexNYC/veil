@@ -883,16 +883,16 @@ func (s *Server) approveRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		ttl = d
 	}
-	if _, err := s.App.Broker.Approve(owner, req.GrantID, ttl); err != nil {
-		http.Error(w, "approve failed", http.StatusBadRequest)
-		return
-	}
-	cur, err := s.App.Store.Request(req.ID)
-	if err != nil || cur.Status != protocol.RequestApproved {
+	resolved, err := s.App.Broker.ApproveRequest(owner, req.ID, ttl)
+	if errors.Is(err, store.ErrRequestResolved) {
 		http.Error(w, "already resolved", http.StatusConflict)
 		return
 	}
-	writeJSON(w, requestView(cur))
+	if err != nil {
+		http.Error(w, "approve failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, requestView(resolved))
 }
 
 func (s *Server) denyRequest(w http.ResponseWriter, r *http.Request) {

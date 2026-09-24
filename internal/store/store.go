@@ -22,6 +22,10 @@ var (
 	// ErrOrgKeyMismatch means EnsureOrgKey was handed a master that does not
 	// match the committed org_keys row — the asserted key is wrong.
 	ErrOrgKeyMismatch = errors.New("store: org key mismatch")
+	// ErrRequestResolved means an approval request was already resolved,
+	// expired, or its grant died before the resolution landed — nothing was
+	// written.
+	ErrRequestResolved = errors.New("store: request already resolved")
 	// ErrUnsupported means the store backend has no such surface — e.g.
 	// key-rotation verbs on a single-key store.
 	ErrUnsupported = errors.New("store: unsupported")
@@ -37,6 +41,15 @@ type UseAuth struct {
 	Item     protocol.Item
 	Grant    *protocol.Grant
 	Approval *protocol.Approval
+}
+
+// FileOutcome is what one FileRequest did: the live ask, whether this call
+// created it (a deduped refile returns Created=false and must not re-notify
+// owners), and the stale open ask it expired on the way in, if any.
+type FileOutcome struct {
+	Request   protocol.ApprovalRequest
+	Created   bool
+	ExpiredID string
 }
 
 // SweepReport counts rows deleted by a Sweep — Requests marks, not deletes.
@@ -145,24 +158,28 @@ type Store interface {
 	PutApproval(protocol.Approval) error
 	LiveApproval(grantID string, now time.Time) (*protocol.Approval, error)
 
-	// FileRequest records an open approval request for (grant, action). A
-	// stale open on the same key is expired first; a live one is returned
-	// unchanged — created=false means the ask was already on file and must
-	// not re-notify owners.
-	FileRequest(protocol.ApprovalRequest) (req protocol.ApprovalRequest, created bool, err error)
-	// OpenRequest returns the open ask on (grant, action) — stale or live —
-	// or nil,nil. Callers check ExpiresAt; FileRequest expires it on write.
-	OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error)
+	// FileRequest records an open approval request for (grant, action) in
+	// one transaction: a stale open on the same key is expired first
+	// (ExpiredID names it), a live one is returned unchanged — Created=false
+	// means the ask was already on file and must not re-notify owners.
+	FileRequest(protocol.ApprovalRequest) (FileOutcome, error)
 	Request(id string) (protocol.ApprovalRequest, error)
 	// ListRequests returns org requests; status open lists only unexpired.
 	ListRequests(orgID string, status protocol.RequestStatus, now time.Time) ([]protocol.ApprovalRequest, error)
 	// ResolveRequest flips an open, unexpired request to a terminal status —
 	// first write wins; won=false means it was already resolved or expired.
 	ResolveRequest(id string, status protocol.RequestStatus, humanID, approvalID string, at time.Time) (req protocol.ApprovalRequest, won bool, err error)
-	// ApproveRequestsForGrant resolves every open, unexpired ask on a grant —
-	// a grant-level approval answers all pending asks on it.
-	ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error)
-	CancelRequestsForGrant(grantID string, at time.Time) error
+	// ApproveRequest resolves ONE open ask by minting its grant's approval:
+	// conditional resolve + approval insert + sibling asks resolve, all in
+	// one transaction — and only while the ask AND its grant are live.
+	// won=false means the ask was resolved, expired, or its grant died —
+	// nothing was written, so a lost race leaves no side effects.
+	// resolved[0] is the ask named by id; the rest are siblings the same
+	// grant-approval answered.
+	ApproveRequest(id string, appr protocol.Approval, at time.Time) (resolved []protocol.ApprovalRequest, won bool, err error)
+	// ApproveGrant mints a grant-level approval and resolves every open ask
+	// on it in one transaction — grant-scoped `veil approve`.
+	ApproveGrant(grantID string, appr protocol.Approval, at time.Time) (resolved []protocol.ApprovalRequest, err error)
 	CancelRequestsForAgent(agentID string, at time.Time) error
 	CancelRequestsForItem(itemID string, at time.Time) error
 	// ExpireStaleRequests marks open requests past expiry as expired. Sweep.

@@ -44,6 +44,52 @@ func (q *Queries) ApprovalByGrant(ctx context.Context, grantID string) (Approval
 	return i, err
 }
 
+const approveOpenRequest = `-- name: ApproveOpenRequest :one
+UPDATE approval_requests
+SET status = 'approved', resolved_at = $1::timestamptz,
+    resolved_by = $2::text, approval_id = $3::text
+WHERE id = $4::text AND status = 'open' AND expires_at > $1::timestamptz
+    AND EXISTS (SELECT 1 FROM grants g WHERE g.id = grant_id
+        AND (g.expires_at IS NULL OR g.expires_at > $1::timestamptz))
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
+`
+
+type ApproveOpenRequestParams struct {
+	At         time.Time
+	HumanID    string
+	ApprovalID string
+	ID         string
+}
+
+// Request-scoped approve: the ask must be open AND unexpired AND its grant
+// still live — approving an ask on a dead grant would mint a useless
+// approval and a misleading 'approved' resolution.
+func (q *Queries) ApproveOpenRequest(ctx context.Context, arg ApproveOpenRequestParams) (ApprovalRequest, error) {
+	row := q.db.QueryRow(ctx, approveOpenRequest,
+		arg.At,
+		arg.HumanID,
+		arg.ApprovalID,
+		arg.ID,
+	)
+	var i ApprovalRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.AgentID,
+		&i.ItemID,
+		&i.GrantID,
+		&i.Action,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.ApprovalID,
+	)
+	return i, err
+}
+
 const approveRequestsForGrant = `-- name: ApproveRequestsForGrant :many
 UPDATE approval_requests
 SET status = 'approved', resolved_at = $1::timestamptz,
@@ -147,21 +193,6 @@ type CancelRequestsForAgentParams struct {
 
 func (q *Queries) CancelRequestsForAgent(ctx context.Context, arg CancelRequestsForAgentParams) error {
 	_, err := q.db.Exec(ctx, cancelRequestsForAgent, arg.At, arg.AgentID)
-	return err
-}
-
-const cancelRequestsForGrant = `-- name: CancelRequestsForGrant :exec
-UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
-WHERE grant_id = $2::text AND status = 'open'
-`
-
-type CancelRequestsForGrantParams struct {
-	At      time.Time
-	GrantID string
-}
-
-func (q *Queries) CancelRequestsForGrant(ctx context.Context, arg CancelRequestsForGrantParams) error {
-	_, err := q.db.Exec(ctx, cancelRequestsForGrant, arg.At, arg.GrantID)
 	return err
 }
 
@@ -320,10 +351,11 @@ func (q *Queries) DeleteRecoveryWrapsForOrg(ctx context.Context, orgID string) e
 	return err
 }
 
-const expireOpenRequest = `-- name: ExpireOpenRequest :exec
+const expireOpenRequest = `-- name: ExpireOpenRequest :one
 UPDATE approval_requests SET status = 'expired', resolved_at = $1::timestamptz
 WHERE grant_id = $2::text AND action = $3::text
     AND status = 'open' AND expires_at <= $1::timestamptz
+RETURNING id
 `
 
 type ExpireOpenRequestParams struct {
@@ -332,9 +364,11 @@ type ExpireOpenRequestParams struct {
 	Action  string
 }
 
-func (q *Queries) ExpireOpenRequest(ctx context.Context, arg ExpireOpenRequestParams) error {
-	_, err := q.db.Exec(ctx, expireOpenRequest, arg.Now, arg.GrantID, arg.Action)
-	return err
+func (q *Queries) ExpireOpenRequest(ctx context.Context, arg ExpireOpenRequestParams) (string, error) {
+	row := q.db.QueryRow(ctx, expireOpenRequest, arg.Now, arg.GrantID, arg.Action)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const expireStaleRequests = `-- name: ExpireStaleRequests :execrows

@@ -316,16 +316,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 // and fires OnRequestFiled once; a deduped refile just returns the live ask.
 func (b *Broker) FileRequest(ctx context.Context, agent protocol.Principal, item protocol.Item, g *protocol.Grant, action protocol.ActionKind) (protocol.ApprovalRequest, error) {
 	now := b.now()
-	// A refile that finds the previous ask dead on the wire is the moment
-	// "nobody answered in time" becomes visible — audit it before the store
-	// marks the row expired.
-	if prev, err := b.Store.OpenRequest(g.ID, action); err == nil && prev != nil && !prev.ExpiresAt.After(now) {
-		_ = b.appendAudit(ctx, protocol.AuditEvent{
-			Time: now, OrgID: agent.OrgID, AgentID: agent.ID, ItemID: item.ID,
-			Action: protocol.ActionRequestExpired, Decision: protocol.DecisionNeedApproval, Reason: prev.ID,
-		})
-	}
-	filed, created, err := b.Store.FileRequest(protocol.ApprovalRequest{
+	out, err := b.Store.FileRequest(protocol.ApprovalRequest{
 		ID:        fmt.Sprintf("req-%d", now.UnixNano()),
 		OrgID:     agent.OrgID,
 		AgentID:   agent.ID,
@@ -338,17 +329,26 @@ func (b *Broker) FileRequest(ctx context.Context, agent protocol.Principal, item
 	if err != nil {
 		return protocol.ApprovalRequest{}, err
 	}
-	if !created {
-		return filed, nil
+	// The refile that found the previous ask dead on the wire is the moment
+	// "nobody answered in time" becomes visible — audit it once, named by
+	// the row the store expired.
+	if out.ExpiredID != "" {
+		_ = b.appendAudit(ctx, protocol.AuditEvent{
+			Time: now, OrgID: agent.OrgID, AgentID: agent.ID, ItemID: item.ID,
+			Action: protocol.ActionRequestExpired, Decision: protocol.DecisionNeedApproval, Reason: out.ExpiredID,
+		})
+	}
+	if !out.Created {
+		return out.Request, nil
 	}
 	_ = b.appendAudit(ctx, protocol.AuditEvent{
 		Time: now, OrgID: agent.OrgID, AgentID: agent.ID, ItemID: item.ID,
-		Action: protocol.ActionRequestFiled, Decision: protocol.DecisionNeedApproval, Reason: filed.ID,
+		Action: protocol.ActionRequestFiled, Decision: protocol.DecisionNeedApproval, Reason: out.Request.ID,
 	})
 	if b.OnRequestFiled != nil {
-		b.OnRequestFiled(ctx, filed)
+		b.OnRequestFiled(ctx, out.Request)
 	}
-	return filed, nil
+	return out.Request, nil
 }
 
 // fileRequest puts the filed ask on the denial so the agent — and the human
@@ -442,7 +442,9 @@ func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Enve
 	}, code, access, nil
 }
 
-// Approve records a human approval for a level-1 grant.
+// Approve records a human approval for a level-1 grant — approval insert
+// and ask resolution commit together, so a grant can never be approved
+// while its asks still read open.
 // Membership is Keto via App.ApproveOIDC. This store does not decide who is a human.
 func (b *Broker) Approve(human protocol.Principal, grantID string, ttl time.Duration) (protocol.Approval, error) {
 	if human.Kind != protocol.PrincipalHuman {
@@ -454,24 +456,53 @@ func (b *Broker) Approve(human protocol.Principal, grantID string, ttl time.Dura
 		HumanID:   human.ID,
 		ExpiresAt: b.now().Add(ttl),
 	}
-	if err := b.Store.PutApproval(a); err != nil {
+	resolved, err := b.Store.ApproveGrant(grantID, a, b.now())
+	if err != nil {
 		return protocol.Approval{}, err
 	}
-	// A grant approval answers every open ask on it. Resolution hygiene never
-	// fails the approve — the approval row is the substance.
-	resolved, err := b.Store.ApproveRequestsForGrant(grantID, human.ID, a.ID, b.now())
-	if err != nil {
-		slog.Warn("request resolve failed", "grant", grantID, "err", err)
+	b.auditRequestResolutions(resolved, a.ID)
+	slog.Info("approve", "human", human.ID, "grant", grantID)
+	return a, nil
+}
+
+// ApproveRequest resolves ONE pending ask: the minted approval lands only
+// while the ask is still open and its grant still live — a lost race
+// (another owner resolved it, it expired, the grant died) writes nothing
+// and returns ErrRequestResolved.
+func (b *Broker) ApproveRequest(human protocol.Principal, reqID string, ttl time.Duration) (protocol.ApprovalRequest, error) {
+	if human.Kind != protocol.PrincipalHuman {
+		return protocol.ApprovalRequest{}, store.ErrDenied
 	}
+	req, err := b.Store.Request(reqID)
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
+	a := protocol.Approval{
+		ID:        fmt.Sprintf("appr-%d", b.now().UnixNano()),
+		GrantID:   req.GrantID,
+		HumanID:   human.ID,
+		ExpiresAt: b.now().Add(ttl),
+	}
+	resolved, won, err := b.Store.ApproveRequest(reqID, a, b.now())
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
+	if !won {
+		return protocol.ApprovalRequest{}, store.ErrRequestResolved
+	}
+	b.auditRequestResolutions(resolved, a.ID)
+	slog.Info("approve", "human", human.ID, "request", reqID)
+	return resolved[0], nil
+}
+
+func (b *Broker) auditRequestResolutions(resolved []protocol.ApprovalRequest, approvalID string) {
 	for _, req := range resolved {
 		_ = b.appendAudit(context.Background(), protocol.AuditEvent{
 			Time: b.now(), OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
 			Action: protocol.ActionRequestApproved, Decision: protocol.DecisionAllow,
-			Reason: req.ID, ApprovalID: a.ID,
+			Reason: req.ID, ApprovalID: approvalID,
 		})
 	}
-	slog.Info("approve", "human", human.ID, "grant", grantID)
-	return a, nil
 }
 
 // LogEvent writes a grant event to slog. No secrets, no query string, no body.

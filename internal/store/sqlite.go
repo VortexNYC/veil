@@ -1171,16 +1171,20 @@ func (s *SQLite) scanRequest(row *sql.Row) (protocol.ApprovalRequest, error) {
 const requestCols = `id, org_id, agent_id, item_id, grant_id, action, status,
 	created_at, expires_at, resolved_at, resolved_by, approval_id`
 
-func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalRequest, bool, error) {
+func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`UPDATE approval_requests SET status='expired', resolved_at=?
-		WHERE grant_id=? AND action=? AND status='open' AND expires_at <= ?`,
-		req.CreatedAt.Unix(), req.GrantID, string(req.Action), req.CreatedAt.Unix()); err != nil {
-		return protocol.ApprovalRequest{}, false, err
+	var expiredID string
+	err = tx.QueryRow(`UPDATE approval_requests SET status='expired', resolved_at=?
+		WHERE grant_id=? AND action=? AND status='open' AND expires_at <= ? RETURNING id`,
+		req.CreatedAt.Unix(), req.GrantID, string(req.Action), req.CreatedAt.Unix()).Scan(&expiredID)
+	if err == sql.ErrNoRows {
+		expiredID = ""
+	} else if err != nil {
+		return FileOutcome{}, err
 	}
 	res, err := tx.Exec(`INSERT INTO approval_requests(id, org_id, agent_id, item_id,
 		grant_id, action, status, created_at, expires_at) VALUES(?,?,?,?,?,?,?,?,?)
@@ -1188,39 +1192,27 @@ func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalReq
 		req.ID, req.OrgID, req.AgentID, req.ItemID, req.GrantID, string(req.Action),
 		string(protocol.RequestOpen), req.CreatedAt.Unix(), req.ExpiresAt.Unix())
 	if err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
 	var out protocol.ApprovalRequest
 	if n == 0 {
 		out, err = s.scanRequest(tx.QueryRow(`SELECT `+requestCols+` FROM approval_requests
 			WHERE grant_id=? AND action=? AND status='open'`, req.GrantID, string(req.Action)))
 		if err != nil {
-			return protocol.ApprovalRequest{}, false, err
+			return FileOutcome{}, err
 		}
 	} else {
 		out = req
 		out.Status = protocol.RequestOpen
 	}
 	if err := tx.Commit(); err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
-	return out, n > 0, nil
-}
-
-func (s *SQLite) OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error) {
-	r, err := s.scanRequest(s.db.QueryRow(`SELECT `+requestCols+` FROM approval_requests
-		WHERE grant_id=? AND action=? AND status='open'`, grantID, string(action)))
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &r, nil
+	return FileOutcome{Request: out, Created: n > 0, ExpiredID: expiredID}, nil
 }
 
 func (s *SQLite) Request(id string) (protocol.ApprovalRequest, error) {
@@ -1279,26 +1271,20 @@ func (s *SQLite) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	return cur, n > 0, err
 }
 
-func (s *SQLite) ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
-	rows, err := s.db.Query(`UPDATE approval_requests SET status='approved', resolved_at=?,
-		resolved_by=?, approval_id=? WHERE grant_id=? AND status='open' AND expires_at > ?
-		RETURNING `+requestCols, at.Unix(), humanID, approvalID, grantID, at.Unix())
-	if err != nil {
-		return nil, err
-	}
+func scanRequestRows(rows *sql.Rows) ([]protocol.ApprovalRequest, error) {
 	defer rows.Close()
 	var out []protocol.ApprovalRequest
 	for rows.Next() {
 		var r protocol.ApprovalRequest
 		var created, exp int64
 		var resolvedAt sql.NullInt64
-		var resolvedBy, approvalIDOut sql.NullString
+		var resolvedBy, approvalID sql.NullString
 		if err := rows.Scan(&r.ID, &r.OrgID, &r.AgentID, &r.ItemID, &r.GrantID, &r.Action,
-			&r.Status, &created, &exp, &resolvedAt, &resolvedBy, &approvalIDOut); err != nil {
+			&r.Status, &created, &exp, &resolvedAt, &resolvedBy, &approvalID); err != nil {
 			return nil, err
 		}
 		r.CreatedAt, r.ExpiresAt = time.Unix(created, 0).UTC(), time.Unix(exp, 0).UTC()
-		r.ResolvedBy, r.ApprovalID = resolvedBy.String, approvalIDOut.String
+		r.ResolvedBy, r.ApprovalID = resolvedBy.String, approvalID.String
 		if resolvedAt.Valid {
 			atv := time.Unix(resolvedAt.Int64, 0).UTC()
 			r.ResolvedAt = &atv
@@ -1308,15 +1294,79 @@ func (s *SQLite) ApproveRequestsForGrant(grantID, humanID, approvalID string, at
 	return out, rows.Err()
 }
 
-func (s *SQLite) CancelRequestsForItem(itemID string, at time.Time) error {
-	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
-		WHERE item_id=? AND status='open'`, at.Unix(), itemID)
+// approveRequestsForGrantTx resolves every open, unexpired ask on a grant —
+// a grant-level approval answers all pending asks on it. Runs inside the
+// caller's transaction.
+func approveRequestsForGrantTx(tx *sql.Tx, grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
+	rows, err := tx.Query(`UPDATE approval_requests SET status='approved', resolved_at=?,
+		resolved_by=?, approval_id=? WHERE grant_id=? AND status='open' AND expires_at > ?
+		RETURNING `+requestCols, at.Unix(), humanID, approvalID, grantID, at.Unix())
+	if err != nil {
+		return nil, err
+	}
+	return scanRequestRows(rows)
+}
+
+func putApprovalTx(tx *sql.Tx, a protocol.Approval) error {
+	_, err := tx.Exec(`INSERT INTO approvals(grant_id, id, human_id, expires_at) VALUES(?,?,?,?)
+		ON CONFLICT(grant_id) DO UPDATE SET id=excluded.id, human_id=excluded.human_id, expires_at=excluded.expires_at`,
+		a.GrantID, a.ID, a.HumanID, a.ExpiresAt.Unix())
 	return err
 }
 
-func (s *SQLite) CancelRequestsForGrant(grantID string, at time.Time) error {
+func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// The ask must be open AND unexpired AND its grant still live —
+	// approving an ask on a dead grant would mint a useless approval and a
+	// misleading 'approved' resolution.
+	target, err := s.scanRequest(tx.QueryRow(`UPDATE approval_requests SET status='approved',
+		resolved_at=?, resolved_by=?, approval_id=? WHERE id=? AND status='open' AND expires_at > ?
+		AND EXISTS (SELECT 1 FROM grants g WHERE g.id=grant_id AND (g.expires_at IS NULL OR g.expires_at > ?))
+		RETURNING `+requestCols, at.Unix(), appr.HumanID, appr.ID, id, at.Unix(), at.Unix()))
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	appr.GrantID = target.GrantID
+	if err := putApprovalTx(tx, appr); err != nil {
+		return nil, false, err
+	}
+	sibs, err := approveRequestsForGrantTx(tx, target.GrantID, appr.HumanID, appr.ID, at)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	return append([]protocol.ApprovalRequest{target}, sibs...), true, nil
+}
+
+func (s *SQLite) ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	appr.GrantID = grantID
+	if err := putApprovalTx(tx, appr); err != nil {
+		return nil, err
+	}
+	out, err := approveRequestsForGrantTx(tx, grantID, appr.HumanID, appr.ID, at)
+	if err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
+}
+
+func (s *SQLite) CancelRequestsForItem(itemID string, at time.Time) error {
 	_, err := s.db.Exec(`UPDATE approval_requests SET status='cancelled', resolved_at=?
-		WHERE grant_id=? AND status='open'`, at.Unix(), grantID)
+		WHERE item_id=? AND status='open'`, at.Unix(), itemID)
 	return err
 }
 

@@ -462,35 +462,25 @@ func (m *Memory) LiveApproval(grantID string, now time.Time) (*protocol.Approval
 	return &cp, nil
 }
 
-func (m *Memory) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalRequest, bool, error) {
+func (m *Memory) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var expiredID string
 	for id, r := range m.requests {
 		if r.GrantID == req.GrantID && r.Action == req.Action && r.Status == protocol.RequestOpen {
 			if req.CreatedAt.Before(r.ExpiresAt) {
-				return r, false, nil
+				return FileOutcome{Request: r}, nil
 			}
 			r.Status = protocol.RequestExpired
 			at := req.CreatedAt
 			r.ResolvedAt = &at
 			m.requests[id] = r
+			expiredID = r.ID
 		}
 	}
 	req.Status = protocol.RequestOpen
 	m.requests[req.ID] = req
-	return req, true, nil
-}
-
-func (m *Memory) OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, r := range m.requests {
-		if r.GrantID == grantID && r.Action == action && r.Status == protocol.RequestOpen {
-			cp := r
-			return &cp, nil
-		}
-	}
-	return nil, nil
+	return FileOutcome{Request: req, Created: true, ExpiredID: expiredID}, nil
 }
 
 func (m *Memory) Request(id string) (protocol.ApprovalRequest, error) {
@@ -536,9 +526,9 @@ func (m *Memory) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	return r, true, nil
 }
 
-func (m *Memory) ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// approveRequestsForGrant resolves every open, unexpired ask on a grant.
+// Callers hold m.mu.
+func (m *Memory) approveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) []protocol.ApprovalRequest {
 	var out []protocol.ApprovalRequest
 	for id, r := range m.requests {
 		if r.GrantID == grantID && r.Status == protocol.RequestOpen && at.Before(r.ExpiresAt) {
@@ -549,7 +539,47 @@ func (m *Memory) ApproveRequestsForGrant(grantID, humanID, approvalID string, at
 			out = append(out, r)
 		}
 	}
-	return out, nil
+	return out
+}
+
+func (m *Memory) ApproveRequest(id string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.requests[id]
+	if !ok {
+		return nil, false, ErrNotFound
+	}
+	if r.Status != protocol.RequestOpen || !at.Before(r.ExpiresAt) {
+		return nil, false, nil
+	}
+	// The grant must exist and still be live — approving an ask on a dead
+	// grant would mint a useless approval and a misleading 'approved'
+	// resolution.
+	live := false
+	for _, g := range m.grants {
+		if g.ID == r.GrantID {
+			live = g.ExpiresAt == nil || at.Before(*g.ExpiresAt)
+			break
+		}
+	}
+	if !live {
+		return nil, false, nil
+	}
+	r.Status = protocol.RequestApproved
+	r.ResolvedBy, r.ApprovalID = appr.HumanID, appr.ID
+	r.ResolvedAt = &at
+	m.requests[id] = r
+	appr.GrantID = r.GrantID
+	m.approvals[r.GrantID] = appr
+	return append([]protocol.ApprovalRequest{r}, m.approveRequestsForGrant(r.GrantID, appr.HumanID, appr.ID, at)...), true, nil
+}
+
+func (m *Memory) ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	appr.GrantID = grantID
+	m.approvals[grantID] = appr
+	return m.approveRequestsForGrant(grantID, appr.HumanID, appr.ID, at), nil
 }
 
 func (m *Memory) CancelRequestsForItem(itemID string, at time.Time) error {
@@ -557,19 +587,6 @@ func (m *Memory) CancelRequestsForItem(itemID string, at time.Time) error {
 	defer m.mu.Unlock()
 	for id, r := range m.requests {
 		if r.ItemID == itemID && r.Status == protocol.RequestOpen {
-			r.Status = protocol.RequestCancelled
-			r.ResolvedAt = &at
-			m.requests[id] = r
-		}
-	}
-	return nil
-}
-
-func (m *Memory) CancelRequestsForGrant(grantID string, at time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, r := range m.requests {
-		if r.GrantID == grantID && r.Status == protocol.RequestOpen {
 			r.Status = protocol.RequestCancelled
 			r.ResolvedAt = &at
 			m.requests[id] = r

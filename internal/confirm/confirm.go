@@ -43,7 +43,8 @@ func interactive() bool {
 }
 
 // callerKey is the stable consent key: "b:<bundleID>" for a real app,
-// "p:<exe>" for an unbundled parent (agent CLIs, `go run`, CI).
+// "p:<exe path>" for an unbundled parent (agent CLIs, `go run`, CI) —
+// the full path, so a same-named binary elsewhere does not inherit it.
 func callerKey() string {
 	if b := callerBundle(); b != "" {
 		return "b:" + b

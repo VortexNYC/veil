@@ -1622,6 +1622,22 @@ func (a *App) Approve(grantID string, ttl time.Duration) (protocol.Approval, err
 	return a.Broker.Approve(humanP, grantID, ttl)
 }
 
+// ApproveRequest resolves one pending ask locally — the approval lands only
+// while the ask is open; a lost race is ErrRequestResolved, no side effects.
+func (a *App) ApproveRequest(reqID string, ttl time.Duration) (protocol.ApprovalRequest, error) {
+	if a.Human != nil {
+		return protocol.ApprovalRequest{}, fmt.Errorf("app: use the origin API")
+	}
+	humanP, err := a.Store.Human(a.HumanID)
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	return a.Broker.ApproveRequest(humanP, reqID, ttl)
+}
+
 // ApproveOIDC is Approve with a Hydra ID token. Membership is Keto, not sqlite.
 // Planted `self` is the laptop stand-in when no issuer is configured.
 func (a *App) ApproveOIDC(ctx context.Context, grantID, rawToken string, ttl time.Duration) (protocol.Approval, error) {

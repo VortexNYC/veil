@@ -694,18 +694,24 @@ func requestFromSqlc(r *sqlc.ApprovalRequest) protocol.ApprovalRequest {
 // FileRequest expires a stale open on (grant, action) then inserts —
 // the dedupe partial index makes a live open swallow the insert, so a
 // missing RETURNING row means "already filed": select and reuse it.
-func (p *Postgres) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalRequest, bool, error) {
+func (p *Postgres) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) {
 	ctx := context.Background()
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := p.sqlc.WithTx(tx)
-	if err := q.ExpireOpenRequest(ctx, sqlc.ExpireOpenRequestParams{
+	var expiredID string
+	exp, err := q.ExpireOpenRequest(ctx, sqlc.ExpireOpenRequestParams{
 		GrantID: req.GrantID, Action: string(req.Action), Now: req.CreatedAt.UTC(),
-	}); err != nil {
-		return protocol.ApprovalRequest{}, false, err
+	})
+	switch {
+	case err == nil:
+		expiredID = exp
+	case errors.Is(err, pgx.ErrNoRows):
+	default:
+		return FileOutcome{}, err
 	}
 	row, err := q.InsertRequest(ctx, sqlc.InsertRequestParams{
 		ID: req.ID, OrgID: req.OrgID, AgentID: req.AgentID, ItemID: req.ItemID,
@@ -720,26 +726,12 @@ func (p *Postgres) FileRequest(req protocol.ApprovalRequest) (protocol.ApprovalR
 		})
 	}
 	if err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return protocol.ApprovalRequest{}, false, err
+		return FileOutcome{}, err
 	}
-	return requestFromSqlc(&row), created, nil
-}
-
-func (p *Postgres) OpenRequest(grantID string, action protocol.ActionKind) (*protocol.ApprovalRequest, error) {
-	r, err := p.sqlc.OpenRequestByGrant(context.Background(), sqlc.OpenRequestByGrantParams{
-		GrantID: grantID, Action: string(action),
-	})
-	if err == pgx.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	out := requestFromSqlc(&r)
-	return &out, nil
+	return FileOutcome{Request: requestFromSqlc(&row), Created: created, ExpiredID: expiredID}, nil
 }
 
 func (p *Postgres) Request(id string) (protocol.ApprovalRequest, error) {
@@ -787,11 +779,68 @@ func (p *Postgres) ResolveRequest(id string, status protocol.RequestStatus, huma
 	return requestFromSqlc(&row), true, nil
 }
 
-func (p *Postgres) ApproveRequestsForGrant(grantID, humanID, approvalID string, at time.Time) ([]protocol.ApprovalRequest, error) {
-	rows, err := p.sqlc.ApproveRequestsForGrant(context.Background(), sqlc.ApproveRequestsForGrantParams{
-		GrantID: grantID, HumanID: humanID, ApprovalID: approvalID, At: at.UTC(),
+func (p *Postgres) ApproveRequest(id string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, bool, error) {
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	target, err := q.ApproveOpenRequest(ctx, sqlc.ApproveOpenRequestParams{
+		ID: id, HumanID: appr.HumanID, ApprovalID: appr.ID, At: at.UTC(),
+	})
+	if err == pgx.ErrNoRows {
+		// Ask already resolved, expired, or its grant died — roll back so
+		// nothing is written.
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if err := q.PutApproval(ctx, sqlc.PutApprovalParams{
+		GrantID: target.GrantID, ID: appr.ID, HumanID: appr.HumanID,
+		ExpiresAt: appr.ExpiresAt.UTC(),
+	}); err != nil {
+		return nil, false, err
+	}
+	sibs, err := q.ApproveRequestsForGrant(ctx, sqlc.ApproveRequestsForGrantParams{
+		GrantID: target.GrantID, HumanID: appr.HumanID, ApprovalID: appr.ID, At: at.UTC(),
 	})
 	if err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, err
+	}
+	out := make([]protocol.ApprovalRequest, 0, len(sibs)+1)
+	out = append(out, requestFromSqlc(&target))
+	for i := range sibs {
+		out = append(out, requestFromSqlc(&sibs[i]))
+	}
+	return out, true, nil
+}
+
+func (p *Postgres) ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error) {
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	if err := q.PutApproval(ctx, sqlc.PutApprovalParams{
+		GrantID: grantID, ID: appr.ID, HumanID: appr.HumanID, ExpiresAt: appr.ExpiresAt.UTC(),
+	}); err != nil {
+		return nil, err
+	}
+	rows, err := q.ApproveRequestsForGrant(ctx, sqlc.ApproveRequestsForGrantParams{
+		GrantID: grantID, HumanID: appr.HumanID, ApprovalID: appr.ID, At: at.UTC(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	out := make([]protocol.ApprovalRequest, 0, len(rows))
@@ -804,12 +853,6 @@ func (p *Postgres) ApproveRequestsForGrant(grantID, humanID, approvalID string, 
 func (p *Postgres) CancelRequestsForItem(itemID string, at time.Time) error {
 	return p.sqlc.CancelRequestsForItem(context.Background(), sqlc.CancelRequestsForItemParams{
 		ItemID: itemID, At: at.UTC(),
-	})
-}
-
-func (p *Postgres) CancelRequestsForGrant(grantID string, at time.Time) error {
-	return p.sqlc.CancelRequestsForGrant(context.Background(), sqlc.CancelRequestsForGrantParams{
-		GrantID: grantID, At: at.UTC(),
 	})
 }
 
