@@ -1,0 +1,107 @@
+# Approval requests
+
+The human-in-the-loop half of grants. Level1 already means "agent
+prepares, a human approves the last step" — `need_approval` is a
+first-class decision, `approvals` rows gate the grant, `veil approve`
+exists. What does not exist: a way for the ask to reach a human. Today
+a denied agent has nowhere to put the request and a human has nothing
+to answer. This is that missing object.
+
+## Prior art
+
+| Player | Their model | What we take | What we skip |
+|---|---|---|---|
+| Vault control groups | Approval as a factor on the ACL; K-of-N approvers; request wraps an accessor token you poll | Approval-on-the-grant semantics (already ours) | The accessor indirection — our grant *is* the object; retrying `Use` is idempotent. Enterprise license for the whole feature. |
+| Infisical access requests | Access policies, multi-step approver chains, approver groups, break-glass bypass, self-approval toggle | The request as a durable object + notify + break-glass framing | Chains, groups, policies — org size makes them YAML-drag. Self-approval is structurally impossible here: the requester is always an agent, never the approver. |
+| CIBA | Backchannel: client polls a request id until approved/expired | Agent mental model: retry the same call | A new protocol — `Use` retry already is the poll. |
+| Apple / Tailscale | "New device" notification → approve on a trusted surface | Single-action email → approval card | Bearer approve-links — a leaked email must never be able to approve; approval requires the owner session. |
+
+Break-glass already exists by design: a Level2 grant is a donated
+identity — no human in the loop, permanently. That is the bypass;
+audit carries it.
+
+## The object
+
+`approval_requests` — one row per open ask:
+
+```sql
+id, org_id, agent_id, item_id, grant_id, action,
+status      -- open | approved | denied | expired | cancelled
+created_at, expires_at,
+resolved_at, resolved_by,       -- human id
+approval_id                     -- set when approved
+```
+
+One open request per `(grant_id, action)` — a partial unique index.
+An agent hammering `Use` cannot spawn asks or emails.
+
+## The flow
+
+The denial edge files the request. The agent never asks permission to
+ask — `need_approval` **is** the ask:
+
+1. Agent calls `Use` on a Level1 grant with no live approval →
+   `need_approval` + `request_id` + `request_expires_at`. The row is
+   inserted and owners are notified, once, on the denial edge.
+2. Agent retries `Use` on backoff. Nothing new to learn, no new tool —
+   the retry is the poll.
+3. An owner approves → `approvals` row (existing TTL semantics) +
+   request resolves `approved`. Next `Use` returns `allow` and audit
+   carries `approval_id` — already wired.
+4. Owner denies → request resolves `denied`. Next `Use` files a fresh
+   request — denial applies to the ask, not the item. Permanent denial
+   is `grant revoke`/`agent revoke`, a different lever.
+5. Nobody answers → `expired` at `expires_at`. Next `Use` re-files.
+
+## Notify
+
+On insert: email every org owner (Kratos → owner emails) via
+`veil-mail`. Subject carries the ask: `devin wants github`. Body:
+agent, item, action, expiry, and a link to the approvals card at
+`app.veil.nyc` — never an approve token. Mail down loses the
+notification, not the request: the row is durable and surfaces in
+`GET /v1/requests`, the SPA card, and `veil requests`.
+
+## Surfaces
+
+- **Agent/MCP**: no new tools. The `need_approval` denial payload gains
+  `request_id` and `request_expires_at`. Agents keep calling `Use`.
+- **Origin API** (owner JWT, Keto owner check):
+  - `GET /v1/requests?status=open`
+  - `POST /v1/requests/{id}/approve` `{ttl}` → PutApproval + resolve
+  - `POST /v1/requests/{id}/deny` → resolve denied
+- **CLI**: `veil requests` lists open asks; `veil approve REQ_ID`
+  resolves by request (grant-level `veil approve GRANT_ID` stays —
+  pre-approval for a known window is a valid pattern).
+- **SPA**: approvals card on the vault home — pending asks, approve /
+  deny, expiry countdown. v2 surface; the loop is complete without it.
+
+## Edges
+
+- Grant revoked or agent revoked while a request is open → `cancelled`.
+- Approval lapses → next `Use` is `need_approval` again → re-file.
+- Two agents, same item → separate grants → separate requests →
+  approvals stay per-(agent,item) pair. Approval never widens ambiently.
+- `approval_expired` denial files a request identically — an expired
+  approval is just a missing one.
+
+## Audit
+
+New actions: `request_filed`, `request_approved` (with `approval_id`),
+`request_denied`, `request_expired`. Agent, item, grant, and resolving
+human on every row. `Use` audit already carries `approval_id`.
+
+## Non-goals
+
+Multi-step approval chains, approver groups, K-of-N quorums, and
+approval policies — revisit if orgs grow past one-owner decides. Any
+MCP tool that asks for secrets. Bearer approve-links in email.
+
+## Build order
+
+1. `approval_requests` table + dedupe index + store CRUD.
+2. Denial-edge filing in the `Use`/`Env` need_approval path + response
+   fields.
+3. `GET`/`POST` request endpoints (owner-scoped) + mail notify.
+4. `veil requests` + request-scoped `veil approve`/`deny`.
+5. SPA approvals card.
