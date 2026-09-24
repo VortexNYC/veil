@@ -113,6 +113,29 @@ the binary.
   drill — a restored prod dump decrypts under the escrowed key and fails
   closed (`crypto: authentication failed`) under a wrong one.
 - Ransom/drills cadence: run the restore, not just the backup. A backup
-  that has never been restored is a hypothesis. First real-dump drill
-  ran 2026-09-23 (all four databases restored, `Secret()` unwrap
-  verified).
+  that has never been restored is a hypothesis. Real-dump drills:
+  - 2026-09-23 — all four databases restored, `Secret()` unwrap verified.
+  - 2026-09-24 — all four offsite R2 artifacts pulled through the ingest
+    worker, restored into scratch databases on the production instance
+    (262 items, 32 grants, 1547 audit rows, 2 kratos identities, 5 keto
+    tuples, 6 hydra clients), `Secret()` decrypt verified under the
+    escrowed KEK, wrong-KEK read fails closed
+    (`crypto: authentication failed`). Driven by `cmd/drillrestore`.
+
+## The drill tool
+
+`cmd/drillrestore` runs the assertion half against any restored database —
+it exercises the production unwrap path (`OpenPostgres` → `Secret()`: org
+master under the KEK, owner DEK under the master, item blob under the DEK)
+and prints only pass/fail, never secret bytes:
+
+```bash
+drillrestore -dsn "$PG/drill_veil" -kek /path/to/veil-kek \
+  -item <item-id> -org <org-id>            # expect DRILL PASS
+drillrestore -dsn "$PG/drill_veil" -kek /path/to/veil-kek \
+  -item <item-id> -org <org-id> -wrongkek  # expect DRILL PASS (fail-closed)
+```
+
+The KEK file may be 64 hex chars or raw 32 bytes. Run it inside the
+database's network (a private-network `railway sandbox` works); the
+escrowed KEK transits ssh stdin, never argv or logs.
