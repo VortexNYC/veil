@@ -100,6 +100,12 @@ Multi-step approval chains, approver groups, K-of-N quorums, and
 approval policies — revisit if orgs grow past one-owner decides. Any
 MCP tool that asks for secrets. Bearer approve-links in email.
 
+The 1Password-Teams analog worth revisiting first is group grants
+(grant → role: "eng gets eng items" as one inherited object), not
+approval routing — grants are already per-secret-per-principal ACLs,
+but today they are 1:1 and a team multiplies them by N×M. That is a
+grant-subject redesign, orthogonal to this loop.
+
 ## Build order
 
 1. `approval_requests` table + dedupe index + store CRUD.
