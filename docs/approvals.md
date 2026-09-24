@@ -151,12 +151,12 @@ atomic-with-state**:
 - Consequence of the ordering: an ambiguous crash between state-commit
   and audit-write can lose an event, but can never lose the resolution
   itself. Whether compliance requires events inside the state
-  transaction is tracked as a decision (VOR-231).
+  transaction is tracked as a decision (VEIL-50).
 - The sweep expiry loop is not atomic with its audit inserts — a
-  mid-loop failure can leave expired rows without events (VOR-230).
+  mid-loop failure can leave expired rows without events (VEIL-51).
 - SQLite and memory have no outbox — they are local-dev and test
   backends; a failed audit write there is a dead disk, not a lost
-  event (VOR-232 tracks parity).
+  event (VEIL-49 tracks parity).
 
 ## Non-goals
 
