@@ -114,12 +114,17 @@ notification, not the request: the row is durable and surfaces in
   sibling-ask resolution in one transaction. A lost race writes nothing —
   no approval is minted for a request the loser did not win, and a 409
   means the world is exactly as it was.
-- An ask on a dead grant cannot approve: the conditional also requires
-  `grants.expires_at` to be live. It stays open until its own TTL marks
-  it `expired` — honest state over a misleading resolution.
-- `request_expired` is audited exactly once: the refile that finds the
-  stale ask names its ID atomically inside the file transaction, so
-  concurrent refiles cannot double-report the same expiry.
+- An ask on a dead grant edge cannot approve: the conditional requires
+  the grant to exist and be unexpired, the agent un-revoked, and the
+  item un-archived. Grant-scoped `veil approve GRANT_ID` checks the same
+  predicate and fails with `ErrGrantNotLive` writing nothing. A stranded
+  ask stays open until its own TTL marks it `expired` — honest state
+  over a misleading resolution.
+- `request_expired` is audited exactly once, whichever path finds the
+  stale ask first: a refile names the expired predecessor's ID
+  atomically inside the file transaction, and the sweep audits each row
+  it marks expired (same direct-then-outbox durability as `AppendAudit`).
+  Concurrent refiles cannot double-report the same expiry.
 - `approval_expired` denial files a request identically — an expired
   approval is just a missing one.
 

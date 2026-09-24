@@ -13,6 +13,12 @@ import (
 // The Keychain version prompted for the login password on every unsigned or
 // freshly built binary (each rebuild is a new "app" to the item's ACL) and
 // could never remember unbundled callers at all.
+//
+// Honest trust boundary: p:<path> keys are TOFU — consent belongs to
+// whatever binary sits at that path, and any same-user process that can
+// write this file can mint consent. That is a weaker gate than a Keychain
+// ACL — deliberately: this guards human-presence UX, not malware, and a
+// same-user writer already sits inside the vault dir's trust boundary.
 type allowList struct {
 	Approved []string `json:"approved,omitempty"`
 }

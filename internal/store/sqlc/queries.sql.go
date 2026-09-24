@@ -49,8 +49,12 @@ UPDATE approval_requests
 SET status = 'approved', resolved_at = $1::timestamptz,
     resolved_by = $2::text, approval_id = $3::text
 WHERE id = $4::text AND status = 'open' AND expires_at > $1::timestamptz
-    AND EXISTS (SELECT 1 FROM grants g WHERE g.id = grant_id
-        AND (g.expires_at IS NULL OR g.expires_at > $1::timestamptz))
+    AND EXISTS (SELECT 1 FROM grants g
+        JOIN agents ag ON ag.id = g.agent_id
+        JOIN items i ON i.id = g.item_id
+        WHERE g.id = grant_id
+        AND (g.expires_at IS NULL OR g.expires_at > $1::timestamptz)
+        AND ag.revoked_at IS NULL AND NOT i.archived)
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
 `
@@ -63,8 +67,9 @@ type ApproveOpenRequestParams struct {
 }
 
 // Request-scoped approve: the ask must be open AND unexpired AND its grant
-// still live — approving an ask on a dead grant would mint a useless
-// approval and a misleading 'approved' resolution.
+// still live — grant unexpired, agent unrevoked, item not archived.
+// Approving a dead edge would mint a useless approval and a misleading
+// 'approved' resolution.
 func (q *Queries) ApproveOpenRequest(ctx context.Context, arg ApproveOpenRequestParams) (ApprovalRequest, error) {
 	row := q.db.QueryRow(ctx, approveOpenRequest,
 		arg.At,
@@ -371,17 +376,46 @@ func (q *Queries) ExpireOpenRequest(ctx context.Context, arg ExpireOpenRequestPa
 	return id, err
 }
 
-const expireStaleRequests = `-- name: ExpireStaleRequests :execrows
+const expireStaleRequests = `-- name: ExpireStaleRequests :many
 UPDATE approval_requests SET status = 'expired', resolved_at = $1::timestamptz
 WHERE status = 'open' AND expires_at <= $1::timestamptz
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id
 `
 
-func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) (int64, error) {
-	result, err := q.db.Exec(ctx, expireStaleRequests, at)
+// Returns the rows it expired so the sweep can audit each request_expired —
+// "nobody answered in time" is a security event, not hygiene.
+func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) ([]ApprovalRequest, error) {
+	rows, err := q.db.Query(ctx, expireStaleRequests, at)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []ApprovalRequest
+	for rows.Next() {
+		var i ApprovalRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.GrantID,
+			&i.Action,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const grantByID = `-- name: GrantByID :one
@@ -913,16 +947,17 @@ SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
 FROM approval_requests
 WHERE org_id = $1::text AND status = 'open' AND expires_at > $2::timestamptz
-ORDER BY created_at DESC
+ORDER BY created_at DESC LIMIT $3::bigint
 `
 
 type ListOpenRequestsParams struct {
-	OrgID string
-	Now   time.Time
+	OrgID      string
+	Now        time.Time
+	MaxResults int64
 }
 
 func (q *Queries) ListOpenRequests(ctx context.Context, arg ListOpenRequestsParams) ([]ApprovalRequest, error) {
-	rows, err := q.db.Query(ctx, listOpenRequests, arg.OrgID, arg.Now)
+	rows, err := q.db.Query(ctx, listOpenRequests, arg.OrgID, arg.Now, arg.MaxResults)
 	if err != nil {
 		return nil, err
 	}
@@ -1019,16 +1054,17 @@ SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
 FROM approval_requests
 WHERE org_id = $1::text AND status = $2::text
-ORDER BY created_at DESC
+ORDER BY created_at DESC LIMIT $3::bigint
 `
 
 type ListRequestsByStatusParams struct {
-	OrgID  string
-	Status string
+	OrgID      string
+	Status     string
+	MaxResults int64
 }
 
 func (q *Queries) ListRequestsByStatus(ctx context.Context, arg ListRequestsByStatusParams) ([]ApprovalRequest, error) {
-	rows, err := q.db.Query(ctx, listRequestsByStatus, arg.OrgID, arg.Status)
+	rows, err := q.db.Query(ctx, listRequestsByStatus, arg.OrgID, arg.Status, arg.MaxResults)
 	if err != nil {
 		return nil, err
 	}
@@ -1096,6 +1132,30 @@ func (q *Queries) ListSessions(ctx context.Context, maxResults int64) ([]Session
 		return nil, err
 	}
 	return items, nil
+}
+
+const liveGrantForApprove = `-- name: LiveGrantForApprove :one
+SELECT g.id FROM grants g
+JOIN agents ag ON ag.id = g.agent_id
+JOIN items i ON i.id = g.item_id
+WHERE g.id = $1::text
+    AND (g.expires_at IS NULL OR g.expires_at > $2::timestamptz)
+    AND ag.revoked_at IS NULL AND NOT i.archived
+`
+
+type LiveGrantForApproveParams struct {
+	GrantID string
+	At      time.Time
+}
+
+// Grant-scoped approve (`veil approve GRANT_ID`) must fail on a dead edge —
+// expired grant, revoked agent, or archived item — rather than mint an
+// approval that can never be used.
+func (q *Queries) LiveGrantForApprove(ctx context.Context, arg LiveGrantForApproveParams) (string, error) {
+	row := q.db.QueryRow(ctx, liveGrantForApprove, arg.GrantID, arg.At)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const openRequestByGrant = `-- name: OpenRequestByGrant :one

@@ -883,6 +883,14 @@ func (s *Server) approveRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		ttl = d
 	}
+	// An approval is "no asks for a while", not a silent level2: clamp to a
+	// day. Longer trust is expressed by raising the grant to level2.
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	if ttl > 24*time.Hour {
+		ttl = 24 * time.Hour
+	}
 	resolved, err := s.App.Broker.ApproveRequest(owner, req.ID, ttl)
 	if errors.Is(err, store.ErrRequestResolved) {
 		http.Error(w, "already resolved", http.StatusConflict)

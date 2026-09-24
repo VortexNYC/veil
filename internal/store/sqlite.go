@@ -1230,7 +1230,7 @@ func (s *SQLite) ListRequests(orgID string, status protocol.RequestStatus, now t
 		q += ` AND expires_at > ?`
 		args = append(args, now.Unix())
 	}
-	rows, err := s.db.Query(q+` ORDER BY created_at DESC`, args...)
+	rows, err := s.db.Query(q+` ORDER BY created_at DESC LIMIT ?`, append(args, maxListResults)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1320,12 +1320,16 @@ func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	// The ask must be open AND unexpired AND its grant still live —
-	// approving an ask on a dead grant would mint a useless approval and a
-	// misleading 'approved' resolution.
+	// The ask must be open AND unexpired AND its grant's edge still live —
+	// grant unexpired, agent unrevoked, item not archived. Approving a dead
+	// edge would mint a useless approval and a misleading resolution.
 	target, err := s.scanRequest(tx.QueryRow(`UPDATE approval_requests SET status='approved',
 		resolved_at=?, resolved_by=?, approval_id=? WHERE id=? AND status='open' AND expires_at > ?
-		AND EXISTS (SELECT 1 FROM grants g WHERE g.id=grant_id AND (g.expires_at IS NULL OR g.expires_at > ?))
+		AND EXISTS (SELECT 1 FROM grants g
+			JOIN agents ag ON ag.id = g.agent_id
+			JOIN items i ON i.id = g.item_id
+			WHERE g.id=grant_id AND (g.expires_at IS NULL OR g.expires_at > ?)
+			AND ag.revoked_at IS NULL AND NOT i.archived)
 		RETURNING `+requestCols, at.Unix(), appr.HumanID, appr.ID, id, at.Unix(), at.Unix()))
 	if err == sql.ErrNoRows {
 		return nil, false, nil
@@ -1347,12 +1351,35 @@ func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	return append([]protocol.ApprovalRequest{target}, sibs...), true, nil
 }
 
+// grantLiveForApprove reports whether a grant's edge is still usable:
+// grant unexpired, agent unrevoked, item not archived. Runs in the
+// caller's transaction.
+func grantLiveForApproveTx(tx *sql.Tx, grantID string, at time.Time) (bool, error) {
+	var one int
+	err := tx.QueryRow(`SELECT 1 FROM grants g
+		JOIN agents ag ON ag.id = g.agent_id
+		JOIN items i ON i.id = g.item_id
+		WHERE g.id=? AND (g.expires_at IS NULL OR g.expires_at > ?)
+		AND ag.revoked_at IS NULL AND NOT i.archived`, grantID, at.Unix()).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (s *SQLite) ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	live, err := grantLiveForApproveTx(tx, grantID, at)
+	if err != nil {
+		return nil, err
+	}
+	if !live {
+		return nil, ErrGrantNotLive
+	}
 	appr.GrantID = grantID
 	if err := putApprovalTx(tx, appr); err != nil {
 		return nil, err
@@ -1376,10 +1403,14 @@ func (s *SQLite) CancelRequestsForAgent(agentID string, at time.Time) error {
 	return err
 }
 
-func (s *SQLite) ExpireStaleRequests(now time.Time) error {
-	_, err := s.db.Exec(`UPDATE approval_requests SET status='expired', resolved_at=?
-		WHERE status='open' AND expires_at <= ?`, now.Unix(), now.Unix())
-	return err
+func (s *SQLite) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error) {
+	rows, err := s.db.Query(`UPDATE approval_requests SET status='expired', resolved_at=?
+		WHERE status='open' AND expires_at <= ? RETURNING `+requestCols,
+		now.Unix(), now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	return scanRequestRows(rows)
 }
 
 func (s *SQLite) AppendAudit(e protocol.AuditEvent) error {
@@ -1924,6 +1955,26 @@ func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 	}
 	if rep.Approvals, err = res.RowsAffected(); err != nil {
 		return rep, err
+	}
+	// Open asks mark expired at expiry, audited like the postgres sweep —
+	// "nobody answered in time" is a security event on every backend.
+	now := time.Now().UTC()
+	expired, err := db.Query(`UPDATE approval_requests SET status='expired', resolved_at=?
+		WHERE status='open' AND expires_at <= ? RETURNING `+requestCols, now.Unix(), now.Unix())
+	if err != nil {
+		return rep, fmt.Errorf("sweep requests: %w", err)
+	}
+	rows, err := scanRequestRows(expired)
+	if err != nil {
+		return rep, fmt.Errorf("sweep requests: %w", err)
+	}
+	rep.Requests = int64(len(rows))
+	for i := range rows {
+		if _, err := db.Exec(`INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+			VALUES(?,?,?,?,?,?,?,?)`, now.Format(time.RFC3339Nano), rows[i].OrgID, rows[i].AgentID,
+			rows[i].ItemID, protocol.ActionRequestExpired, protocol.DecisionNeedApproval, rows[i].ID, ""); err != nil {
+			return rep, fmt.Errorf("sweep request audit: %w", err)
+		}
 	}
 	return rep, nil
 }

@@ -1638,7 +1638,8 @@ func (a *App) ApproveRequest(reqID string, ttl time.Duration) (protocol.Approval
 	return a.Broker.ApproveRequest(humanP, reqID, ttl)
 }
 
-// ApproveOIDC is Approve with a Hydra ID token. Membership is Keto, not sqlite.
+// ApproveOIDC is Approve with a Hydra ID token. An approval mints the
+// credential release — the same owner-scope as administering the grant.
 // Planted `self` is the laptop stand-in when no issuer is configured.
 func (a *App) ApproveOIDC(ctx context.Context, grantID, rawToken string, ttl time.Duration) (protocol.Approval, error) {
 	if a.Human == nil {
@@ -1656,12 +1657,12 @@ func (a *App) ApproveOIDC(ctx context.Context, grantID, rawToken string, ttl tim
 		return protocol.Approval{}, fmt.Errorf("app: not provisioned")
 	}
 	p := protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: h.OrgID}
-	ok, err := a.Members.IsMember(ctx, p.OrgID, p.ID)
+	ok, err := a.Members.IsOwner(ctx, p.OrgID, p.ID)
 	if err != nil {
 		return protocol.Approval{}, err
 	}
 	if !ok {
-		return protocol.Approval{}, fmt.Errorf("app: not a member")
+		return protocol.Approval{}, fmt.Errorf("app: not an owner")
 	}
 	g, err := a.Store.Grant(grantID)
 	if err != nil {

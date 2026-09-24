@@ -25,6 +25,7 @@ import (
 
 	"github.com/VortexNYC/veil/internal/audit"
 	"github.com/VortexNYC/veil/internal/grant"
+	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/scrub"
@@ -316,8 +317,12 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 // and fires OnRequestFiled once; a deduped refile just returns the live ask.
 func (b *Broker) FileRequest(ctx context.Context, agent protocol.Principal, item protocol.Item, g *protocol.Grant, action protocol.ActionKind) (protocol.ApprovalRequest, error) {
 	now := b.now()
+	reqID, err := id.NewRequest()
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
 	out, err := b.Store.FileRequest(protocol.ApprovalRequest{
-		ID:        fmt.Sprintf("req-%d", now.UnixNano()),
+		ID:        reqID,
 		OrgID:     agent.OrgID,
 		AgentID:   agent.ID,
 		ItemID:    item.ID,
@@ -450,8 +455,19 @@ func (b *Broker) Approve(human protocol.Principal, grantID string, ttl time.Dura
 	if human.Kind != protocol.PrincipalHuman {
 		return protocol.Approval{}, store.ErrDenied
 	}
+	g, err := b.Store.Grant(grantID)
+	if err != nil {
+		return protocol.Approval{}, err
+	}
+	if human.OrgID != "" && g.OrgID != human.OrgID {
+		return protocol.Approval{}, store.ErrDenied
+	}
+	apprID, err := id.NewApproval()
+	if err != nil {
+		return protocol.Approval{}, err
+	}
 	a := protocol.Approval{
-		ID:        fmt.Sprintf("appr-%d", b.now().UnixNano()),
+		ID:        apprID,
 		GrantID:   grantID,
 		HumanID:   human.ID,
 		ExpiresAt: b.now().Add(ttl),
@@ -477,8 +493,15 @@ func (b *Broker) ApproveRequest(human protocol.Principal, reqID string, ttl time
 	if err != nil {
 		return protocol.ApprovalRequest{}, err
 	}
+	if human.OrgID != "" && req.OrgID != human.OrgID {
+		return protocol.ApprovalRequest{}, store.ErrDenied
+	}
+	apprID, err := id.NewApproval()
+	if err != nil {
+		return protocol.ApprovalRequest{}, err
+	}
 	a := protocol.Approval{
-		ID:        fmt.Sprintf("appr-%d", b.now().UnixNano()),
+		ID:        apprID,
 		GrantID:   req.GrantID,
 		HumanID:   human.ID,
 		ExpiresAt: b.now().Add(ttl),

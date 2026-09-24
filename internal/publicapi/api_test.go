@@ -42,6 +42,8 @@ func identity(a *app.App) func(context.Context, string) (protocol.Principal, err
 			return protocol.Principal{Kind: protocol.PrincipalHuman, ID: "self", OrgID: protocol.LocalOrgID}, nil
 		case raw == "member":
 			return protocol.Principal{Kind: protocol.PrincipalHuman, ID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", OrgID: protocol.LocalOrgID}, nil
+		case raw == "otherorg":
+			return protocol.Principal{Kind: protocol.PrincipalHuman, ID: "other-owner", OrgID: "org-other"}, nil
 		case strings.HasPrefix(raw, "agent"):
 			agentID := "claude"
 			if rest := strings.TrimPrefix(raw, "agent"); rest != "" {
@@ -1168,6 +1170,61 @@ func TestApprovalRequestLoop(t *testing.T) {
 	final := use()
 	if final.Decision != protocol.DecisionAllow || final.ApprovalID == "" {
 		t.Fatalf("approved grant must allow: %+v", final)
+	}
+}
+
+func TestRequestsCrossOrg(t *testing.T) {
+	a := testApp(t)
+	// The other org's owner is still an owner — org scope, not role, is the wall.
+	a.Members = fakeMembers{owners: map[string]bool{"other-owner": true}}
+	srv := apiServer(t, a)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+		Name: "cf", URI: upstream.URL, Secret: secret,
+	})
+	doJSON(t, srv, http.MethodPost, "/v1/agents", "human", CreateAgentRequest{Name: "flue"})
+	doJSON(t, srv, http.MethodPost, "/v1/grants", "human", CreateGrantRequest{
+		Agent: "flue", Item: "cf", Level: "level1",
+	})
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/use", "agent-flue", UseRequest{
+		Item: "cf", URL: upstream.URL, Method: http.MethodGet,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("use %d %s", code, raw)
+	}
+	var out UseResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.RequestID == "" {
+		t.Fatal("level1 denial must file a request")
+	}
+
+	// Another org's owner sees nothing and can resolve nothing.
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/requests?status=open", "otherorg", nil)
+	if code != http.StatusOK {
+		t.Fatalf("other-org list %d %s", code, raw)
+	}
+	var list RequestsResponse
+	if err := json.Unmarshal(raw, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Requests) != 0 {
+		t.Fatalf("cross-org list leaked %d asks", len(list.Requests))
+	}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/requests/"+out.RequestID+"/approve", "otherorg", nil); code != http.StatusNotFound {
+		t.Fatalf("cross-org approve must be not-found, got %d", code)
+	}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/requests/"+out.RequestID+"/deny", "otherorg", nil); code != http.StatusNotFound {
+		t.Fatalf("cross-org deny must be not-found, got %d", code)
+	}
+	// The ask survives untouched — same-org owner can still answer it.
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/requests/"+out.RequestID+"/approve", "human", nil); code != http.StatusOK {
+		t.Fatalf("same-org approve after cross-org probe %d", code)
 	}
 }
 

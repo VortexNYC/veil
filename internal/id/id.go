@@ -48,6 +48,25 @@ func NewOrg() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }
 
+// NewRequest is a random approval-request row id — names must survive
+// same-nanosecond files and clock rewinds, so time is not the entropy.
+func NewRequest() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "req-" + hex.EncodeToString(b[:]), nil
+}
+
+// NewApproval is a random approval row id.
+func NewApproval() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "appr-" + hex.EncodeToString(b[:]), nil
+}
+
 // NewSession is a random row id for a sandbox session. Not the bearer token.
 func NewSession() (string, error) {
 	var b [8]byte

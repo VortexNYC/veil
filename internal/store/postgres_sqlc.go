@@ -750,9 +750,9 @@ func (p *Postgres) ListRequests(orgID string, status protocol.RequestStatus, now
 	var rows []sqlc.ApprovalRequest
 	var err error
 	if status == protocol.RequestOpen {
-		rows, err = p.sqlc.ListOpenRequests(ctx, sqlc.ListOpenRequestsParams{OrgID: orgID, Now: now.UTC()})
+		rows, err = p.sqlc.ListOpenRequests(ctx, sqlc.ListOpenRequestsParams{OrgID: orgID, Now: now.UTC(), MaxResults: maxListResults})
 	} else {
-		rows, err = p.sqlc.ListRequestsByStatus(ctx, sqlc.ListRequestsByStatusParams{OrgID: orgID, Status: string(status)})
+		rows, err = p.sqlc.ListRequestsByStatus(ctx, sqlc.ListRequestsByStatusParams{OrgID: orgID, Status: string(status), MaxResults: maxListResults})
 	}
 	if err != nil {
 		return nil, err
@@ -829,6 +829,13 @@ func (p *Postgres) ApproveGrant(grantID string, appr protocol.Approval, at time.
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := p.sqlc.WithTx(tx)
+	if _, err := q.LiveGrantForApprove(ctx, sqlc.LiveGrantForApproveParams{
+		GrantID: grantID, At: at.UTC(),
+	}); err == pgx.ErrNoRows {
+		return nil, ErrGrantNotLive
+	} else if err != nil {
+		return nil, err
+	}
 	if err := q.PutApproval(ctx, sqlc.PutApprovalParams{
 		GrantID: grantID, ID: appr.ID, HumanID: appr.HumanID, ExpiresAt: appr.ExpiresAt.UTC(),
 	}); err != nil {
@@ -862,9 +869,16 @@ func (p *Postgres) CancelRequestsForAgent(agentID string, at time.Time) error {
 	})
 }
 
-func (p *Postgres) ExpireStaleRequests(now time.Time) error {
-	_, err := p.sqlc.ExpireStaleRequests(context.Background(), now.UTC())
-	return err
+func (p *Postgres) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error) {
+	rows, err := p.sqlc.ExpireStaleRequests(context.Background(), now.UTC())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.ApprovalRequest, 0, len(rows))
+	for i := range rows {
+		out = append(out, requestFromSqlc(&rows[i]))
+	}
+	return out, nil
 }
 
 func (p *Postgres) loadOwnerWrapped(ctx context.Context, orgID string, o protocol.Owner) ([]byte, error) {
@@ -1241,9 +1255,30 @@ func SweepPostgres(ctx context.Context, db sqlc.DBTX, before time.Time) (SweepRe
 	if rep.Approvals, err = q.SweepExpiredApprovals(ctx, before.UTC()); err != nil {
 		return rep, fmt.Errorf("sweep approvals: %w", err)
 	}
-	// Open asks mark expired at expiry — the row stays auditable, the ask dies.
-	if rep.Requests, err = q.ExpireStaleRequests(ctx, time.Now().UTC()); err != nil {
+	// Open asks mark expired at expiry — the row stays auditable, the ask
+	// dies, and each expiry is itself a security event: "nobody answered in
+	// time" lands in audit, not just in the row.
+	expired, err := q.ExpireStaleRequests(ctx, time.Now().UTC())
+	if err != nil {
 		return rep, fmt.Errorf("sweep requests: %w", err)
+	}
+	rep.Requests = int64(len(expired))
+	for i := range expired {
+		ev := sqlc.InsertAuditParams{
+			At: time.Now().UTC(), OrgID: expired[i].OrgID, AgentID: expired[i].AgentID,
+			ItemID: expired[i].ItemID, Action: string(protocol.ActionRequestExpired),
+			Decision: string(protocol.DecisionNeedApproval), Reason: expired[i].ID,
+		}
+		if err := q.InsertAudit(ctx, ev); err != nil {
+			// Same contract as AppendAudit: a provably-uncommitted write
+			// falls back to the outbox for the relay.
+			if oerr := q.InsertAuditOutbox(ctx, sqlc.InsertAuditOutboxParams{
+				At: ev.At, OrgID: ev.OrgID, AgentID: ev.AgentID, ItemID: ev.ItemID,
+				Action: ev.Action, Decision: ev.Decision, Reason: ev.Reason,
+			}); oerr != nil {
+				return rep, fmt.Errorf("sweep request audit: %w (outbox: %v)", err, oerr)
+			}
+		}
 	}
 	return rep, nil
 }

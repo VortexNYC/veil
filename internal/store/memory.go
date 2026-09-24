@@ -507,6 +507,9 @@ func (m *Memory) ListRequests(orgID string, status protocol.RequestStatus, now t
 		out = append(out, r)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if len(out) > maxListResults {
+		out = out[:maxListResults]
+	}
 	return out, nil
 }
 
@@ -552,17 +555,9 @@ func (m *Memory) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	if r.Status != protocol.RequestOpen || !at.Before(r.ExpiresAt) {
 		return nil, false, nil
 	}
-	// The grant must exist and still be live — approving an ask on a dead
-	// grant would mint a useless approval and a misleading 'approved'
-	// resolution.
-	live := false
-	for _, g := range m.grants {
-		if g.ID == r.GrantID {
-			live = g.ExpiresAt == nil || at.Before(*g.ExpiresAt)
-			break
-		}
-	}
-	if !live {
+	// The grant's whole edge must be live — grant unexpired, agent
+	// unrevoked, item not archived — or the approval mints on a dead edge.
+	if !m.grantEdgeLive(r.GrantID, at) {
 		return nil, false, nil
 	}
 	r.Status = protocol.RequestApproved
@@ -574,9 +569,36 @@ func (m *Memory) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	return append([]protocol.ApprovalRequest{r}, m.approveRequestsForGrant(r.GrantID, appr.HumanID, appr.ID, at)...), true, nil
 }
 
+// grantEdgeLive reports whether a grant's edge is still usable: grant
+// exists and unexpired, agent unrevoked, item not archived.
+// Callers hold m.mu.
+func (m *Memory) grantEdgeLive(grantID string, at time.Time) bool {
+	var g *protocol.Grant
+	for i := range m.grants {
+		if m.grants[i].ID == grantID {
+			gg := m.grants[i]
+			g = &gg
+			break
+		}
+	}
+	if g == nil || (g.ExpiresAt != nil && !at.Before(*g.ExpiresAt)) {
+		return false
+	}
+	if a, ok := m.agents[g.AgentID]; ok && a.RevokedAt != nil {
+		return false
+	}
+	if it, ok := m.items[g.ItemID]; ok && it.Archived {
+		return false
+	}
+	return true
+}
+
 func (m *Memory) ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !m.grantEdgeLive(grantID, at) {
+		return nil, ErrGrantNotLive
+	}
 	appr.GrantID = grantID
 	m.approvals[grantID] = appr
 	return m.approveRequestsForGrant(grantID, appr.HumanID, appr.ID, at), nil
@@ -608,17 +630,19 @@ func (m *Memory) CancelRequestsForAgent(agentID string, at time.Time) error {
 	return nil
 }
 
-func (m *Memory) ExpireStaleRequests(now time.Time) error {
+func (m *Memory) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var out []protocol.ApprovalRequest
 	for id, r := range m.requests {
 		if r.Status == protocol.RequestOpen && !now.Before(r.ExpiresAt) {
 			r.Status = protocol.RequestExpired
 			r.ResolvedAt = &now
 			m.requests[id] = r
+			out = append(out, r)
 		}
 	}
-	return nil
+	return out, nil
 }
 
 func (m *Memory) AppendAudit(e protocol.AuditEvent) error {
@@ -796,6 +820,19 @@ func (m *Memory) Sweep(olderThan time.Time) (SweepReport, error) {
 		if a.ExpiresAt.Before(cut) {
 			delete(m.approvals, k)
 			rep.Approvals++
+		}
+	}
+	now := time.Now().UTC()
+	for k, r := range m.requests {
+		if r.Status == protocol.RequestOpen && !now.Before(r.ExpiresAt) {
+			r.Status = protocol.RequestExpired
+			r.ResolvedAt = &now
+			m.requests[k] = r
+			rep.Requests++
+			m.audit = append(m.audit, protocol.AuditEvent{
+				Time: now, OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
+				Action: protocol.ActionRequestExpired, Decision: protocol.DecisionNeedApproval, Reason: r.ID,
+			})
 		}
 	}
 	return rep, nil

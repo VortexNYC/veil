@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/VortexNYC/veil/internal/grant"
@@ -64,7 +65,9 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 		}
 		if dec.Decision != protocol.DecisionAllow {
 			if dec.Decision == protocol.DecisionNeedApproval {
-				_, _ = b.FileRequest(ctx, agent, item, &cp, protocol.ActionEnv)
+				if _, err := b.FileRequest(ctx, agent, item, &cp, protocol.ActionEnv); err != nil {
+					slog.Warn("approval request file failed", "grant", cp.ID, "err", err)
+				}
 			}
 			_ = b.appendAudit(ctx, event)
 			LogEvent(event, item.Name, "", 0)

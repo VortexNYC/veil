@@ -18,7 +18,7 @@ type requestStore interface {
 	ApproveRequest(id string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, bool, error)
 	ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error)
 	CancelRequestsForAgent(agentID string, at time.Time) error
-	ExpireStaleRequests(now time.Time) error
+	ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error)
 }
 
 func requestStores(t *testing.T) map[string]requestStore {
@@ -58,6 +58,13 @@ func openRequest(agent string) protocol.ApprovalRequest {
 
 func putTestGrant(t *testing.T, s Store, id string, exp *time.Time) {
 	t.Helper()
+	owner := protocol.Owner{Kind: protocol.OwnerUser, ID: "owner-1"}
+	if err := s.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: "a", OrgID: "org", Owner: owner}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutItem(protocol.Item{ID: "github", OrgID: "org", Name: "github", Kind: protocol.ItemAPIKey, Owner: owner}, Secret("x")); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.PutGrant(protocol.Grant{
 		ID: id, OrgID: "org", AgentID: "a", ItemID: "github",
 		Level: protocol.Level1, ExpiresAt: exp,
@@ -313,8 +320,12 @@ func TestListRequestsFiltersLiveOpens(t *testing.T) {
 			if len(open) != 1 || open[0].ID != "req-a" {
 				t.Fatalf("live opens only, got %+v", open)
 			}
-			if err := s.ExpireStaleRequests(time.Now()); err != nil {
+			expired, err := s.ExpireStaleRequests(time.Now())
+			if err != nil {
 				t.Fatal(err)
+			}
+			if len(expired) != 1 || expired[0].ID != "req-b" {
+				t.Fatalf("sweep returns the rows it expired for audit: %+v", expired)
 			}
 			exp, err := s.ListRequests("org", protocol.RequestExpired, time.Now())
 			if err != nil {
@@ -322,6 +333,41 @@ func TestListRequestsFiltersLiveOpens(t *testing.T) {
 			}
 			if len(exp) != 1 || exp[0].ID != "req-b" {
 				t.Fatalf("sweep must mark stale opens expired, got %+v", exp)
+			}
+		})
+	}
+}
+
+func TestApproveRequestDeadEdgesLose(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			full, ok := s.(Store)
+			if !ok {
+				t.Skip("needs agents/items/grants")
+			}
+			putTestGrant(t, full, "grant-a", nil)
+			out, err := s.FileRequest(openRequest("a"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Agent revoked mid-ask → the approve edge is dead.
+			if err := full.RevokeAgent("a", time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			appr := protocol.Approval{ID: "appr-1", HumanID: "owner-1", ExpiresAt: time.Now().Add(time.Hour)}
+			_, won, err := s.ApproveRequest(out.Request.ID, appr, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if won {
+				t.Fatal("an ask whose agent was revoked must not approve")
+			}
+			if live, _ := full.LiveApproval("grant-a", time.Now()); live != nil {
+				t.Fatal("a lost approve must not mint the approval")
+			}
+			// Grant-scoped approve on the same dead edge fails outright.
+			if _, err := s.ApproveGrant("grant-a", appr, time.Now()); err != ErrGrantNotLive {
+				t.Fatalf("grant approve on a revoked agent must fail, got %v", err)
 			}
 		})
 	}

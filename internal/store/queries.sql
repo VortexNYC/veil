@@ -232,14 +232,14 @@ SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
 FROM approval_requests
 WHERE org_id = @org_id::text AND status = 'open' AND expires_at > @now::timestamptz
-ORDER BY created_at DESC;
+ORDER BY created_at DESC LIMIT @max_results::bigint;
 
 -- name: ListRequestsByStatus :many
 SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
 FROM approval_requests
 WHERE org_id = @org_id::text AND status = @status::text
-ORDER BY created_at DESC;
+ORDER BY created_at DESC LIMIT @max_results::bigint;
 
 -- name: ResolveOpenRequest :one
 UPDATE approval_requests
@@ -251,16 +251,32 @@ RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
 
 -- name: ApproveOpenRequest :one
 -- Request-scoped approve: the ask must be open AND unexpired AND its grant
--- still live — approving an ask on a dead grant would mint a useless
--- approval and a misleading 'approved' resolution.
+-- still live — grant unexpired, agent unrevoked, item not archived.
+-- Approving a dead edge would mint a useless approval and a misleading
+-- 'approved' resolution.
 UPDATE approval_requests
 SET status = 'approved', resolved_at = @at::timestamptz,
     resolved_by = @human_id::text, approval_id = @approval_id::text
 WHERE id = @id::text AND status = 'open' AND expires_at > @at::timestamptz
-    AND EXISTS (SELECT 1 FROM grants g WHERE g.id = grant_id
-        AND (g.expires_at IS NULL OR g.expires_at > @at::timestamptz))
+    AND EXISTS (SELECT 1 FROM grants g
+        JOIN agents ag ON ag.id = g.agent_id
+        JOIN items i ON i.id = g.item_id
+        WHERE g.id = grant_id
+        AND (g.expires_at IS NULL OR g.expires_at > @at::timestamptz)
+        AND ag.revoked_at IS NULL AND NOT i.archived)
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id;
+
+-- name: LiveGrantForApprove :one
+-- Grant-scoped approve (`veil approve GRANT_ID`) must fail on a dead edge —
+-- expired grant, revoked agent, or archived item — rather than mint an
+-- approval that can never be used.
+SELECT g.id FROM grants g
+JOIN agents ag ON ag.id = g.agent_id
+JOIN items i ON i.id = g.item_id
+WHERE g.id = @grant_id::text
+    AND (g.expires_at IS NULL OR g.expires_at > @at::timestamptz)
+    AND ag.revoked_at IS NULL AND NOT i.archived;
 
 -- name: ApproveRequestsForGrant :many
 UPDATE approval_requests
@@ -278,9 +294,13 @@ WHERE item_id = @item_id::text AND status = 'open';
 UPDATE approval_requests SET status = 'cancelled', resolved_at = @at::timestamptz
 WHERE agent_id = @agent_id::text AND status = 'open';
 
--- name: ExpireStaleRequests :execrows
+-- name: ExpireStaleRequests :many
+-- Returns the rows it expired so the sweep can audit each request_expired —
+-- "nobody answered in time" is a security event, not hygiene.
 UPDATE approval_requests SET status = 'expired', resolved_at = @at::timestamptz
-WHERE status = 'open' AND expires_at <= @at::timestamptz;
+WHERE status = 'open' AND expires_at <= @at::timestamptz
+RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
+    expires_at, resolved_at, resolved_by, approval_id;
 
 -- name: OwnerWrapped :one
 SELECT wrapped FROM owner_keys

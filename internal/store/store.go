@@ -26,6 +26,10 @@ var (
 	// expired, or its grant died before the resolution landed — nothing was
 	// written.
 	ErrRequestResolved = errors.New("store: request already resolved")
+	// ErrGrantNotLive means the grant's edge is dead — expired grant,
+	// revoked agent, or archived item — so an approval minted on it could
+	// never be used.
+	ErrGrantNotLive = errors.New("store: grant no longer live")
 	// ErrUnsupported means the store backend has no such surface — e.g.
 	// key-rotation verbs on a single-key store.
 	ErrUnsupported = errors.New("store: unsupported")
@@ -182,8 +186,9 @@ type Store interface {
 	ApproveGrant(grantID string, appr protocol.Approval, at time.Time) (resolved []protocol.ApprovalRequest, err error)
 	CancelRequestsForAgent(agentID string, at time.Time) error
 	CancelRequestsForItem(itemID string, at time.Time) error
-	// ExpireStaleRequests marks open requests past expiry as expired. Sweep.
-	ExpireStaleRequests(now time.Time) error
+	// ExpireStaleRequests marks open requests past expiry as expired and
+	// returns the rows it marked — the sweep audits request_expired per row.
+	ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error)
 
 	PutWorkload(protocol.Workload) error
 	Workload(issuer, subject string) (*protocol.Workload, error)
