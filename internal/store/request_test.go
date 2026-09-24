@@ -466,3 +466,132 @@ func TestSweepAuditsRequestExpired(t *testing.T) {
 		})
 	}
 }
+
+// A level1 denial under real agent concurrency is a stampede on the same
+// (grant, action) key — every retrying agent files at once. The partial
+// unique index must collapse it to one open ask; callers that lose get the
+// existing row back with Created=false. This is the write path the origin
+// runs per denied Use, so contention here is the production shape.
+func TestFileRequestStampede(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			full, ok := s.(Store)
+			if !ok {
+				t.Skip("needs agents/items/grants")
+			}
+			putTestGrant(t, full, "grant-a", nil)
+
+			const racers = 32
+			var wg sync.WaitGroup
+			created := make(chan FileOutcome, racers)
+			errs := make(chan error, racers)
+			start := time.Now()
+			for i := range racers {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					r := openRequest("a")
+					r.ID = fmt.Sprintf("req-stampede-%d", i)
+					out, err := s.FileRequest(r)
+					if err != nil {
+						errs <- err
+						return
+					}
+					created <- out
+				}(i)
+			}
+			wg.Wait()
+			close(created)
+			close(errs)
+			for err := range errs {
+				t.Fatalf("stampede file: %v", err)
+			}
+			var winners int
+			var liveID string
+			for out := range created {
+				if out.Created {
+					winners++
+					liveID = out.Request.ID
+				} else if liveID != "" && out.Request.ID != liveID {
+					t.Fatalf("dedupe returned a different row: %q vs %q", out.Request.ID, liveID)
+				}
+			}
+			if winners != 1 {
+				t.Fatalf("%d creates, want exactly 1", winners)
+			}
+			opens, err := s.ListRequests("org", protocol.RequestOpen, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(opens) != 1 {
+				t.Fatalf("%d open asks after stampede, want 1", len(opens))
+			}
+			t.Logf("stampede: %d racers -> 1 open ask in %s", racers, time.Since(start).Round(time.Microsecond))
+		})
+	}
+}
+
+// The sweep expires every stale open ask and writes one audit event per row
+// in the same transaction. At alpha scale a backlog is hundreds of asks, not
+// millions — this proves the loop stays correct and cheap at that size, and
+// guards the expire+audit pairing against regressions that drop events.
+func TestSweepExpiresAndAuditsAtScale(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			full, ok := s.(Store)
+			if !ok {
+				t.Skip("needs agents/items/grants")
+			}
+			owner := protocol.Owner{Kind: protocol.OwnerUser, ID: "owner-1"}
+			if err := full.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: "a", OrgID: "org", Owner: owner}); err != nil {
+				t.Fatal(err)
+			}
+			if err := full.PutItem(protocol.Item{ID: "github", OrgID: "org", Name: "github", Kind: protocol.ItemAPIKey, Owner: owner}, Secret("x")); err != nil {
+				t.Fatal(err)
+			}
+			const asks = 200
+			for i := range asks {
+				gid := fmt.Sprintf("grant-%d", i)
+				if err := full.PutGrant(protocol.Grant{
+					ID: gid, OrgID: "org", AgentID: "a", ItemID: "github",
+					Level: protocol.Level1,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				r := openRequest("a")
+				r.ID = fmt.Sprintf("req-scale-%d", i)
+				r.GrantID = gid
+				r.ExpiresAt = time.Now().Add(-time.Minute) // already stale
+				if _, err := s.FileRequest(r); err != nil {
+					t.Fatal(err)
+				}
+			}
+			start := time.Now()
+			rep, err := s.Sweep(time.Now().Add(-time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Requests != asks {
+				t.Fatalf("sweep expired %d asks, want %d", rep.Requests, asks)
+			}
+			events, err := s.Audit()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var expired int
+			for _, e := range events {
+				if e.Action == protocol.ActionRequestExpired {
+					expired++
+				}
+			}
+			if expired != asks {
+				t.Fatalf("%d request_expired events, want %d", expired, asks)
+			}
+			opens, _ := s.ListRequests("org", protocol.RequestOpen, time.Now())
+			if len(opens) != 0 {
+				t.Fatalf("%d asks still open after sweep", len(opens))
+			}
+			t.Logf("sweep: %d expire+audit pairs in %s", asks, time.Since(start).Round(time.Millisecond))
+		})
+	}
+}
