@@ -194,6 +194,58 @@ func TestNeedApprovalFilesRequestOnce(t *testing.T) {
 	}
 }
 
+func TestRequestExpiresAndRefilesWithAudit(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level1)
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	b.Now = func() time.Time { return now }
+	req := protocol.UseRequest{
+		ItemID: "item-1",
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1/customers"},
+	}
+	got, err := b.Use(context.Background(), agent, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := got.RequestID
+
+	now = now.Add(requestTTL + time.Minute)
+	again, err := b.Use(context.Background(), agent, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.RequestID == "" || again.RequestID == first {
+		t.Fatalf("stale ask must be replaced by a fresh one: %s then %s", first, again.RequestID)
+	}
+	old, err := b.Store.Request(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.Status != protocol.RequestExpired {
+		t.Fatalf("old ask must be expired, got %s", old.Status)
+	}
+	events, err := b.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawExpired, sawFiled int
+	for _, e := range events {
+		switch e.Action {
+		case protocol.ActionRequestExpired:
+			sawExpired++
+			if e.Reason != first {
+				t.Fatalf("expired audit must name the dead ask, got %q", e.Reason)
+			}
+		case protocol.ActionRequestFiled:
+			sawFiled++
+		}
+	}
+	if sawExpired != 1 || sawFiled != 2 {
+		t.Fatalf("audit: expired=%d filed=%d", sawExpired, sawFiled)
+	}
+	mustNoLeak(t, again)
+}
+
 func TestAgentCannotApprove(t *testing.T) {
 	b, agent, _, _, _ := setup(t, protocol.Level1)
 	if _, err := b.Approve(agent, "grant-1", time.Minute); err == nil {
