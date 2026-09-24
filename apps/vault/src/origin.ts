@@ -1,12 +1,15 @@
 import {
+  approveRequest,
   createAgent,
   createClient,
   createGrant,
   createItem,
+  denyRequest,
   listAgents,
   listEvents,
   listGrants,
   listItems,
+  listRequests,
 } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
 
@@ -92,4 +95,16 @@ export function addAgent(name: string) {
 
 export function events() {
   return listEvents({ client: client() })
+}
+
+export function requests(status: "open" | "approved" | "denied" | "expired" | "cancelled") {
+  return listRequests({ client: client(), query: { status } })
+}
+
+export function approveReq(id: string, ttl?: string) {
+  return approveRequest({ client: client(), path: { id }, body: ttl ? { ttl } : {} })
+}
+
+export function denyReq(id: string) {
+  return denyRequest({ client: client(), path: { id } })
 }

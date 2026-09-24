@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OidcCallbackRouteImport } from './routes/oidc.callback'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as AppItemsRouteImport } from './routes/_app/items'
 import { Route as AppInvitesRouteImport } from './routes/_app/invites'
 import { Route as AppGrantsRouteImport } from './routes/_app/grants'
@@ -36,6 +37,11 @@ const OidcCallbackRoute = OidcCallbackRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRequestsRoute = AppRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
   getParentRoute: () => AppRoute,
 } as any)
 const AppItemsRoute = AppItemsRouteImport.update({
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/grants': typeof AppGrantsRoute
   '/invites': typeof AppInvitesRoute
   '/items': typeof AppItemsRoute
+  '/requests': typeof AppRequestsRoute
   '/settings': typeof AppSettingsRoute
   '/oidc/callback': typeof OidcCallbackRoute
 }
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/grants': typeof AppGrantsRoute
   '/invites': typeof AppInvitesRoute
   '/items': typeof AppItemsRoute
+  '/requests': typeof AppRequestsRoute
   '/settings': typeof AppSettingsRoute
   '/oidc/callback': typeof OidcCallbackRoute
 }
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/_app/grants': typeof AppGrantsRoute
   '/_app/invites': typeof AppInvitesRoute
   '/_app/items': typeof AppItemsRoute
+  '/_app/requests': typeof AppRequestsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/oidc/callback': typeof OidcCallbackRoute
 }
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/grants'
     | '/invites'
     | '/items'
+    | '/requests'
     | '/settings'
     | '/oidc/callback'
   fileRoutesByTo: FileRoutesByTo
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
     | '/grants'
     | '/invites'
     | '/items'
+    | '/requests'
     | '/settings'
     | '/oidc/callback'
   id:
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '/_app/grants'
     | '/_app/invites'
     | '/_app/items'
+    | '/_app/requests'
     | '/_app/settings'
     | '/oidc/callback'
   fileRoutesById: FileRoutesById
@@ -164,6 +176,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/requests': {
+      id: '/_app/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof AppRequestsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/items': {
@@ -210,6 +229,7 @@ interface AppRouteChildren {
   AppGrantsRoute: typeof AppGrantsRoute
   AppInvitesRoute: typeof AppInvitesRoute
   AppItemsRoute: typeof AppItemsRoute
+  AppRequestsRoute: typeof AppRequestsRoute
   AppSettingsRoute: typeof AppSettingsRoute
 }
 
@@ -219,6 +239,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGrantsRoute: AppGrantsRoute,
   AppInvitesRoute: AppInvitesRoute,
   AppItemsRoute: AppItemsRoute,
+  AppRequestsRoute: AppRequestsRoute,
   AppSettingsRoute: AppSettingsRoute,
 }
 

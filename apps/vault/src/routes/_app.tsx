@@ -7,6 +7,7 @@ import {
   Robot,
   EnvelopeSimple,
   SignOut,
+  Stamp,
   Users,
   type Icon,
 } from "@phosphor-icons/react";
@@ -24,12 +25,13 @@ export const Route = createFileRoute("/_app")({
 });
 
 const nav: ReadonlyArray<{
-  to: "/items" | "/grants" | "/agents" | "/invites" | "/audit" | "/settings";
+  to: "/items" | "/grants" | "/requests" | "/agents" | "/invites" | "/audit" | "/settings";
   label: string;
   icon: Icon;
 }> = [
   { to: "/items", label: "Items", icon: Key },
   { to: "/grants", label: "Grants", icon: Users },
+  { to: "/requests", label: "Requests", icon: Stamp },
   { to: "/agents", label: "Agents", icon: Robot },
   { to: "/invites", label: "Invites", icon: EnvelopeSimple },
   { to: "/audit", label: "Audit", icon: ListBullets },
