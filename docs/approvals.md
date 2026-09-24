@@ -134,6 +134,30 @@ New actions: `request_filed`, `request_approved` (with `approval_id`),
 `request_denied`, `request_expired`. Agent, item, grant, and resolving
 human on every row. `Use` audit already carries `approval_id`.
 
+### Durability contract
+
+Audit writes never carry secrets and are **durable, not
+atomic-with-state**:
+
+- Resolution (approve/deny/expire) commits first; the request row itself
+  is the authoritative record (`status`, `resolved_at`, `resolved_by`,
+  `approval_id`). The audit event is a second, searchable copy written
+  immediately after.
+- On Postgres, `AppendAudit` inserts directly; on a provable
+  non-committing failure it falls back to `audit_outbox`, which a relay
+  drains into `audit` later. An ambiguous failure returns an error
+  rather than risking a duplicate row. The same contract covers the
+  sweep's `request_expired` writes.
+- Consequence of the ordering: an ambiguous crash between state-commit
+  and audit-write can lose an event, but can never lose the resolution
+  itself. Whether compliance requires events inside the state
+  transaction is tracked as a decision (VOR-231).
+- The sweep expiry loop is not atomic with its audit inserts — a
+  mid-loop failure can leave expired rows without events (VOR-230).
+- SQLite and memory have no outbox — they are local-dev and test
+  backends; a failed audit write there is a dead disk, not a lost
+  event (VOR-232 tracks parity).
+
 ## Non-goals
 
 Multi-step approval chains, approver groups, K-of-N quorums, and

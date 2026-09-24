@@ -1,8 +1,10 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +21,8 @@ type requestStore interface {
 	ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error)
 	CancelRequestsForAgent(agentID string, at time.Time) error
 	ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error)
+	Sweep(olderThan time.Time) (SweepReport, error)
+	Audit() ([]protocol.AuditEvent, error)
 }
 
 func requestStores(t *testing.T) map[string]requestStore {
@@ -368,6 +372,96 @@ func TestApproveRequestDeadEdgesLose(t *testing.T) {
 			// Grant-scoped approve on the same dead edge fails outright.
 			if _, err := s.ApproveGrant("grant-a", appr, time.Now()); err != ErrGrantNotLive {
 				t.Fatalf("grant approve on a revoked agent must fail, got %v", err)
+			}
+		})
+	}
+}
+
+func TestApproveRequestRaceFirstWriteWins(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			full, ok := s.(Store)
+			if !ok {
+				t.Skip("needs agents/items/grants")
+			}
+			putTestGrant(t, full, "grant-a", nil)
+			out, err := s.FileRequest(openRequest("a"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// N owners answer the same ask at once: exactly one wins, every
+			// loser writes nothing — no duplicate approvals, no torn state.
+			const racers = 8
+			var wg sync.WaitGroup
+			wins := make(chan bool, racers)
+			for i := range racers {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					appr := protocol.Approval{
+						ID: fmt.Sprintf("appr-%d", i), HumanID: fmt.Sprintf("owner-%d", i),
+						ExpiresAt: time.Now().Add(time.Hour),
+					}
+					_, won, err := s.ApproveRequest(out.Request.ID, appr, time.Now())
+					if err != nil {
+						t.Errorf("approve racer %d: %v", i, err)
+						return
+					}
+					wins <- won
+				}(i)
+			}
+			wg.Wait()
+			close(wins)
+			n := 0
+			for won := range wins {
+				if won {
+					n++
+				}
+			}
+			if n != 1 {
+				t.Fatalf("%d winners, want exactly 1", n)
+			}
+			req, err := s.Request(out.Request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if req.Status != protocol.RequestApproved || req.ApprovalID == "" {
+				t.Fatalf("ask must be approved once: %+v", req)
+			}
+			if live, _ := full.LiveApproval("grant-a", time.Now()); live == nil || live.ID != req.ApprovalID {
+				t.Fatalf("exactly one approval minted, named by the ask: %+v vs %q", live, req.ApprovalID)
+			}
+		})
+	}
+}
+
+func TestSweepAuditsRequestExpired(t *testing.T) {
+	for name, s := range requestStores(t) {
+		t.Run(name, func(t *testing.T) {
+			stale := openRequest("a")
+			stale.ExpiresAt = time.Now().Add(-time.Minute)
+			if _, err := s.FileRequest(stale); err != nil {
+				t.Fatal(err)
+			}
+			rep, err := s.Sweep(time.Now().Add(-time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Requests != 1 {
+				t.Fatalf("sweep must report the expired ask: %+v", rep)
+			}
+			events, err := s.Audit()
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, e := range events {
+				if e.Action == protocol.ActionRequestExpired && e.Reason == stale.ID {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("sweep must audit request_expired naming the ask, got %+v", events)
 			}
 		})
 	}
