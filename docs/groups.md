@@ -23,6 +23,24 @@ The 1Password mapping: a shared vault is an **org-owned item + a grant
 to a group**. Personal items stay user-owned with 1:1 grants — nothing
 about the solo model changes.
 
+## Personas — where grant levels live
+
+The two agent classes want different levels, and the group is where
+that difference is expressed:
+
+- **Human-adjacent agents** (laptop IDE, CLI) — `level1` + the
+  approval-request loop. A human is near enough to answer in seconds.
+- **Deployed agents** (CI runners, cloud coding sessions, services) —
+  `level2` on a narrow item set, always. A headless job that hits
+  `need_approval` doesn't get approved — it hangs and dies. Granting
+  `level1` to a fleet agent is a failure mode, not a flow.
+
+Group membership is the provisioning path for the second class:
+instances are ephemeral, `group:ci` is stable. Spawn → member →
+inherit → die → membership ends; grants never churn. A filed approval
+request from a deployed agent is telemetry — the owner under-scoped
+the group's grants; fix the set, don't approve the recurrence.
+
 ## Evaluation
 
 `Use` resolves the caller's groups once — a Keto `expand` or per-
