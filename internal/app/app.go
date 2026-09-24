@@ -285,9 +285,18 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 	}
 	a.Broker.Auditor = auditor
 	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {
-		if a.Notify != nil {
-			_ = a.Notify.NotifyRequest(ctx, req)
+		n := a.Notify
+		if n == nil {
+			return
 		}
+		// Notify is remote hops (Keto owners, Kratos emails, mail POST) —
+		// it must never sit on the agent's denial path. The request row
+		// is the durable part; the ping detaches.
+		go func() {
+			dctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = n.NotifyRequest(dctx, req)
+		}()
 	}
 	if err := a.attachHydra(); err != nil {
 		_ = s.Close()
