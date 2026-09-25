@@ -14,7 +14,18 @@ Use    ──▶ local usage_counters claim (VEIL_FREE_USE_CAP)    ──▶ pay
 tick   ──▶ POST /v1/usage-events (delta = used − reported)   ──▶ usage_counters.reported
 Vortex ──▶ POST /v1/billing/webhook (Vortex-Signature HMAC)  ──▶ org_billing.plan flips
 owner  ──▶ GET /v1/billing                                   ──▶ vault cap banner + upgrade_url
+owner  ──▶ POST /v1/billing/checkout                         ──▶ {checkout_url} hosted upgrade
 ```
+
+**Upgrade checkout (VEIL-67).** `POST /v1/billing/checkout` (owner-only)
+lazily provisions the billing link — same `ensureBillingLink` path the
+flusher uses — then composes a hosted Vortex subscription checkout against
+`VEIL_VORTEX_PRICE_ID` and returns `checkout_url`. Each click mints a fresh
+session: Vortex replays an already-seen idempotency key with
+`checkoutUrl: null`, so keys are per-call, never per-org. Payment lands as
+`subscription.created`/`entitlement.granted` webhooks → plan flips → the
+cap lifts. `VEIL_VORTEX_PRICE_ID` unset → endpoint 404s (checkout off, the
+rest of the billing plane unaffected).
 
 **Usage dual-write (VEIL-65).** `usage_counters.reported` is the watermark of
 units already sent to Vortex; a once-a-minute flusher posts each pending
@@ -63,7 +74,10 @@ first-party merchants)
 | `VEIL_FREE_USE_CAP` | free-tier monthly use allowance; 0/unset = metering off |
 | `VEIL_VORTEX_METER_ID` | meter usage deltas report against (`mtr_…`); unset = dual-write off |
 | `VEIL_VORTEX_USAGE_EVENT` | event name on usage rows; default `credential_use` |
-| `VEIL_BILLING_UPGRADE_URL` | interim upgrade link until checkout sessions land (VOR-577) |
+| `VEIL_VORTEX_PRICE_ID` | paid-plan catalog price (`veil-pro-monthly`); unset = checkout endpoint 404s |
+| `VEIL_CHECKOUT_SUCCESS_URL` | post-payment return target; optional |
+| `VEIL_CHECKOUT_CANCEL_URL` | checkout-abandon return target; optional |
+| `VEIL_BILLING_UPGRADE_URL` | legacy static link in `GET /v1/billing`; superseded by `POST /v1/billing/checkout` |
 
 ## Failure posture
 
