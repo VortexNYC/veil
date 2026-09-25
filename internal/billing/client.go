@@ -23,7 +23,11 @@ type Client struct {
 	Key         string
 	MerchantID  string
 	Environment string // "sandbox" | "production"
-	HTTP        *http.Client
+	// MeterID + UsageEvent configure usage reporting (VEIL-65); empty MeterID
+	// disables the flusher — the webhook receiver works without it.
+	MeterID    string
+	UsageEvent string
+	HTTP       *http.Client
 }
 
 func (c *Client) http() *http.Client {
@@ -149,4 +153,125 @@ func (c *Client) findByExternalRef(ctx context.Context, orgID string) (string, e
 		}
 	}
 	return "", nil
+}
+
+// EnsureBillingAccount returns the org's billing account id — the account
+// usage events post to. Lookup-first like EnsureCustomer: list the
+// customer's accounts, create on miss. Veil provisions api_only + manual
+// collection + no auto-charge: the account binds usage to the customer;
+// collection flips to automatic when a payment profile lands.
+func (c *Client) EnsureBillingAccount(ctx context.Context, orgID, customerID string) (string, error) {
+	path := "/v1/customers/" + url.PathEscape(customerID) + "/billing-accounts?environment=" +
+		url.QueryEscape(c.Environment) + "&merchantAccountId=" + url.QueryEscape(c.MerchantID)
+	status, raw, err := c.do(ctx, http.MethodGet, path, nil, "")
+	if err != nil {
+		return "", err
+	}
+	if status >= 300 {
+		return "", fmt.Errorf("vortex billing-accounts list: %d", status)
+	}
+	var list struct {
+		Data struct {
+			Items []struct {
+				BillingAccountID string `json:"billingAccountId"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return "", fmt.Errorf("vortex billing-accounts list: bad response: %w", err)
+	}
+	for _, it := range list.Data.Items {
+		if it.BillingAccountID != "" {
+			return it.BillingAccountID, nil
+		}
+	}
+	body, err := json.Marshal(map[string]any{
+		"environment":           c.Environment,
+		"merchantAccountId":     c.MerchantID,
+		"customerId":            customerID,
+		"invoiceDeliveryMode":   "api_only",
+		"collectionMode":        "manual",
+		"autoCollectionEnabled": false,
+		"metadata":              map[string]string{"source": "veil", "orgId": orgID},
+	})
+	if err != nil {
+		return "", err
+	}
+	status, raw, err = c.do(ctx, http.MethodPost, "/v1/customers/"+url.PathEscape(customerID)+"/billing-accounts", body, "veil-bacc-"+orgID)
+	if err != nil {
+		return "", err
+	}
+	if status >= 300 {
+		return "", fmt.Errorf("vortex billing-accounts: %d", status)
+	}
+	var out struct {
+		Data struct {
+			BillingAccountID string `json:"billingAccountId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("vortex billing-accounts: bad response: %w", err)
+	}
+	if out.Data.BillingAccountID == "" {
+		return "", fmt.Errorf("vortex billing-accounts: empty billingAccountId")
+	}
+	return out.Data.BillingAccountID, nil
+}
+
+// UsageDelta is one flushed usage delta for an org's billing account.
+// IdempotencyKey is deterministic per delta (org + window + watermark) so
+// upstream dedupes retries of the same send.
+type UsageDelta struct {
+	CustomerID       string
+	BillingAccountID string
+	Quantity         int64
+	OccurredAt       time.Time
+	IdempotencyKey   string
+}
+
+// RecordUsage posts one usage event. Contract:
+// createBillingUsageEventCommandSchema — environment + merchantAccountId +
+// customerId + billingAccountId + meterId + eventName + quantity +
+// occurredAt + idempotencyKey, all required.
+func (c *Client) RecordUsage(ctx context.Context, d UsageDelta) error {
+	occurredAt := d.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now()
+	}
+	body, err := json.Marshal(map[string]any{
+		"environment":       c.Environment,
+		"merchantAccountId": c.MerchantID,
+		"customerId":        d.CustomerID,
+		"billingAccountId":  d.BillingAccountID,
+		"meterId":           c.MeterID,
+		"eventName":         c.UsageEvent,
+		"quantity":          d.Quantity,
+		"occurredAt":        occurredAt.UTC().Format(time.RFC3339Nano),
+		"idempotencyKey":    d.IdempotencyKey,
+		"metadata":          map[string]string{"source": "veil"},
+	})
+	if err != nil {
+		return err
+	}
+	status, raw, err := c.do(ctx, http.MethodPost, "/v1/usage-events", body, d.IdempotencyKey)
+	if err != nil {
+		return err
+	}
+	// 409 on the idempotency key means the delta already landed — a retry
+	// that has nothing to do.
+	if status == http.StatusConflict {
+		return nil
+	}
+	if status >= 300 {
+		return fmt.Errorf("vortex usage-events: %d", status)
+	}
+	var out struct {
+		Data struct {
+			UsageEventID string `json:"usageEventId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("vortex usage-events: bad response: %w", err)
+	}
+	return nil
 }
