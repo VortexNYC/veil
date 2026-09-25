@@ -449,7 +449,7 @@ DELETE FROM grants WHERE expires_at IS NOT NULL AND expires_at < @before::timest
 DELETE FROM approvals WHERE expires_at < @before::timestamptz;
 
 -- name: GetOrgBilling :one
-SELECT org_id, plan, customer_id, updated_at FROM org_billing
+SELECT org_id, plan, customer_id, billing_account_id, updated_at FROM org_billing
 WHERE org_id = @org_id::text;
 
 -- name: GetOrgIDByBillingCustomer :one
@@ -457,10 +457,11 @@ SELECT org_id FROM org_billing
 WHERE customer_id = @customer_id::text;
 
 -- name: UpsertOrgBilling :exec
-INSERT INTO org_billing(org_id, plan, customer_id, updated_at)
-VALUES(@org_id::text, @plan::text, @customer_id::text, @updated_at::timestamptz)
+INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_at)
+VALUES(@org_id::text, @plan::text, @customer_id::text, @billing_account_id::text, @updated_at::timestamptz)
 ON CONFLICT(org_id) DO UPDATE SET
   plan = EXCLUDED.plan, customer_id = EXCLUDED.customer_id,
+  billing_account_id = EXCLUDED.billing_account_id,
   updated_at = EXCLUDED.updated_at;
 
 -- name: ConsumeUse :one
@@ -475,4 +476,22 @@ RETURNING used;
 
 -- name: GetUsage :one
 SELECT used FROM usage_counters
+WHERE org_id = @org_id::text AND window_start = @window_start::timestamptz;
+
+-- name: GetUsageReportPending :many
+-- The dual-write backlog: local deltas the flusher owes the provider. The
+-- billing link is a left join — unlinked orgs still appear so the flusher
+-- can provision the link before sending.
+SELECT u.org_id, u.window_start, u.used, u.reported,
+  COALESCE(b.customer_id, '') AS customer_id,
+  COALESCE(b.billing_account_id, '') AS billing_account_id
+FROM usage_counters u
+LEFT JOIN org_billing b ON b.org_id = u.org_id
+WHERE u.used > u.reported
+ORDER BY u.window_start, u.org_id
+LIMIT @lim::bigint;
+
+-- name: MarkUsageReported :exec
+UPDATE usage_counters
+SET reported = LEAST(reported + @amount::bigint, used)
 WHERE org_id = @org_id::text AND window_start = @window_start::timestamptz;

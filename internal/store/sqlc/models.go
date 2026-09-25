@@ -102,10 +102,11 @@ type ItemVersion struct {
 }
 
 type OrgBilling struct {
-	OrgID      string
-	Plan       string
-	CustomerID string
-	UpdatedAt  time.Time
+	OrgID            string
+	Plan             string
+	CustomerID       string
+	BillingAccountID string
+	UpdatedAt        time.Time
 }
 
 type OrgKey struct {
@@ -153,6 +154,7 @@ type UsageCounter struct {
 	OrgID       string
 	WindowStart time.Time
 	Used        int64
+	Reported    int64
 }
 
 type Workload struct {

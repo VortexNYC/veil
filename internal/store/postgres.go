@@ -873,12 +873,14 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			org_id TEXT PRIMARY KEY,
 			plan TEXT NOT NULL DEFAULT 'free',
 			customer_id TEXT NOT NULL DEFAULT '',
+			billing_account_id TEXT NOT NULL DEFAULT '',
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS usage_counters (
 			org_id TEXT NOT NULL,
 			window_start TIMESTAMPTZ NOT NULL,
 			used BIGINT NOT NULL,
+			reported BIGINT NOT NULL DEFAULT 0,
 			PRIMARY KEY (org_id, window_start)
 		)`,
 	} {
@@ -955,6 +957,8 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 	for _, q := range []string{
+		`ALTER TABLE org_billing ADD COLUMN IF NOT EXISTS billing_account_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE usage_counters ADD COLUMN IF NOT EXISTS reported BIGINT NOT NULL DEFAULT 0`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01T00:00:00Z'`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS renewed_at TIMESTAMPTZ`,

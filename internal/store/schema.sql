@@ -175,6 +175,7 @@ CREATE TABLE org_billing (
     org_id TEXT PRIMARY KEY,
     plan TEXT NOT NULL DEFAULT 'free',
     customer_id TEXT NOT NULL DEFAULT '',
+    billing_account_id TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL
 );
 
@@ -182,6 +183,7 @@ CREATE TABLE usage_counters (
     org_id TEXT NOT NULL,
     window_start TIMESTAMPTZ NOT NULL,
     used BIGINT NOT NULL,
+    reported BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (org_id, window_start)
 );
 

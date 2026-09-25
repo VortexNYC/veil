@@ -71,7 +71,21 @@ type OrgBilling struct {
 	OrgID      string
 	Plan       string
 	CustomerID string
-	UpdatedAt  time.Time
+	// BillingAccountID is the provider billing account usage events post to.
+	BillingAccountID string
+	UpdatedAt        time.Time
+}
+
+// UsageReportRow is one pending usage delta for the billing flusher: the
+// locally metered units not yet reported to the billing provider. The billing
+// link fields are empty when the org has no billing row yet.
+type UsageReportRow struct {
+	OrgID            string
+	WindowStart      time.Time
+	Used             int64
+	Reported         int64
+	CustomerID       string
+	BillingAccountID string
 }
 
 type Store interface {
@@ -229,6 +243,13 @@ type Store interface {
 	// the counter still accrues). Over-cap claims count too: blocked demand
 	// is signal. Every claim lands exactly once, safe under concurrency.
 	ConsumeUse(orgID string, window time.Time, cap int64) (used int64, ok bool, err error)
+	// UsageReportPending returns the usage deltas the billing flusher has
+	// not yet reported: rows where used exceeds the reported watermark.
+	UsageReportPending(limit int) ([]UsageReportRow, error)
+	// MarkUsageReported advances the reported watermark by amount, clamped
+	// to used — over-marks (double flush, racing claims) never push the
+	// watermark past the counter.
+	MarkUsageReported(orgID string, window time.Time, amount int64) error
 	// Usage reads the org's counter for window; absent rows read 0.
 	Usage(orgID string, window time.Time) (int64, error)
 	// FlushAuditOutbox relays queued audit events into the audit table.

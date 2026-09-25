@@ -250,18 +250,19 @@ func TestApplySameTransactionEvents(t *testing.T) {
 	}
 }
 
-// A plan update must preserve the stored billing customer link — dropping it
-// breaks both reverse resolution and the provisioning "already linked" check.
+// A plan update must preserve the stored billing links — dropping them breaks
+// reverse resolution, the provisioning "already linked" check, and the usage
+// flusher's account join.
 func TestApplyPreservesCustomerLink(t *testing.T) {
 	s := newFake()
-	if err := s.SetBilling(store.OrgBilling{OrgID: "org-1", CustomerID: "cus_9"}); err != nil {
+	if err := s.SetBilling(store.OrgBilling{OrgID: "org-1", CustomerID: "cus_9", BillingAccountID: "bacc_9"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := Apply(s, event(t, "e1", "subscription.updated", 1000, `{"subscription":{"customerExternalId":"org-1","status":"active"}}`)); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.Billing("org-1")
-	if got.CustomerID != "cus_9" {
-		t.Fatalf("customer link lost: %q", got.CustomerID)
+	if got.CustomerID != "cus_9" || got.BillingAccountID != "bacc_9" {
+		t.Fatalf("billing links lost: %+v", got)
 	}
 }

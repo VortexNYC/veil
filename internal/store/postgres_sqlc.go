@@ -1463,19 +1463,21 @@ func (p *Postgres) Billing(orgID string) (OrgBilling, error) {
 		return OrgBilling{}, err
 	}
 	return OrgBilling{
-		OrgID:      row.OrgID,
-		Plan:       row.Plan,
-		CustomerID: row.CustomerID,
-		UpdatedAt:  row.UpdatedAt.UTC(),
+		OrgID:            row.OrgID,
+		Plan:             row.Plan,
+		CustomerID:       row.CustomerID,
+		BillingAccountID: row.BillingAccountID,
+		UpdatedAt:        row.UpdatedAt.UTC(),
 	}, nil
 }
 
 func (p *Postgres) SetBilling(ob OrgBilling) error {
 	return p.sqlc.UpsertOrgBilling(context.Background(), sqlc.UpsertOrgBillingParams{
-		OrgID:      ob.OrgID,
-		Plan:       ob.Plan,
-		CustomerID: ob.CustomerID,
-		UpdatedAt:  ob.UpdatedAt.UTC(),
+		OrgID:            ob.OrgID,
+		Plan:             ob.Plan,
+		CustomerID:       ob.CustomerID,
+		BillingAccountID: ob.BillingAccountID,
+		UpdatedAt:        ob.UpdatedAt.UTC(),
 	})
 }
 
@@ -1509,4 +1511,31 @@ func (p *Postgres) Usage(orgID string, window time.Time) (int64, error) {
 		return 0, nil
 	}
 	return used, err
+}
+
+func (p *Postgres) UsageReportPending(limit int) ([]UsageReportRow, error) {
+	rows, err := p.sqlc.GetUsageReportPending(context.Background(), int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UsageReportRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, UsageReportRow{
+			OrgID:            r.OrgID,
+			WindowStart:      r.WindowStart.UTC(),
+			Used:             r.Used,
+			Reported:         r.Reported,
+			CustomerID:       r.CustomerID,
+			BillingAccountID: r.BillingAccountID,
+		})
+	}
+	return out, nil
+}
+
+func (p *Postgres) MarkUsageReported(orgID string, window time.Time, amount int64) error {
+	return p.sqlc.MarkUsageReported(context.Background(), sqlc.MarkUsageReportedParams{
+		OrgID:       orgID,
+		WindowStart: window.UTC(),
+		Amount:      amount,
+	})
 }

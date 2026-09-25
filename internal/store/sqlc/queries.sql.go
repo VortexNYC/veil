@@ -504,7 +504,7 @@ func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) ([]Appr
 }
 
 const getOrgBilling = `-- name: GetOrgBilling :one
-SELECT org_id, plan, customer_id, updated_at FROM org_billing
+SELECT org_id, plan, customer_id, billing_account_id, updated_at FROM org_billing
 WHERE org_id = $1::text
 `
 
@@ -515,6 +515,7 @@ func (q *Queries) GetOrgBilling(ctx context.Context, orgID string) (OrgBilling, 
 		&i.OrgID,
 		&i.Plan,
 		&i.CustomerID,
+		&i.BillingAccountID,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -547,6 +548,56 @@ func (q *Queries) GetUsage(ctx context.Context, arg GetUsageParams) (int64, erro
 	var used int64
 	err := row.Scan(&used)
 	return used, err
+}
+
+const getUsageReportPending = `-- name: GetUsageReportPending :many
+SELECT u.org_id, u.window_start, u.used, u.reported,
+  COALESCE(b.customer_id, '') AS customer_id,
+  COALESCE(b.billing_account_id, '') AS billing_account_id
+FROM usage_counters u
+LEFT JOIN org_billing b ON b.org_id = u.org_id
+WHERE u.used > u.reported
+ORDER BY u.window_start, u.org_id
+LIMIT $1::bigint
+`
+
+type GetUsageReportPendingRow struct {
+	OrgID            string
+	WindowStart      time.Time
+	Used             int64
+	Reported         int64
+	CustomerID       string
+	BillingAccountID string
+}
+
+// The dual-write backlog: local deltas the flusher owes the provider. The
+// billing link is a left join — unlinked orgs still appear so the flusher
+// can provision the link before sending.
+func (q *Queries) GetUsageReportPending(ctx context.Context, lim int64) ([]GetUsageReportPendingRow, error) {
+	rows, err := q.db.Query(ctx, getUsageReportPending, lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUsageReportPendingRow
+	for rows.Next() {
+		var i GetUsageReportPendingRow
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.WindowStart,
+			&i.Used,
+			&i.Reported,
+			&i.CustomerID,
+			&i.BillingAccountID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const grantByID = `-- name: GrantByID :one
@@ -1289,6 +1340,23 @@ func (q *Queries) LiveGrantForApprove(ctx context.Context, arg LiveGrantForAppro
 	return id, err
 }
 
+const markUsageReported = `-- name: MarkUsageReported :exec
+UPDATE usage_counters
+SET reported = LEAST(reported + $1::bigint, used)
+WHERE org_id = $2::text AND window_start = $3::timestamptz
+`
+
+type MarkUsageReportedParams struct {
+	Amount      int64
+	OrgID       string
+	WindowStart time.Time
+}
+
+func (q *Queries) MarkUsageReported(ctx context.Context, arg MarkUsageReportedParams) error {
+	_, err := q.db.Exec(ctx, markUsageReported, arg.Amount, arg.OrgID, arg.WindowStart)
+	return err
+}
+
 const openRequestByGrant = `-- name: OpenRequestByGrant :one
 SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
@@ -2021,18 +2089,20 @@ func (q *Queries) SweepExpiredSessions(ctx context.Context, before time.Time) (i
 }
 
 const upsertOrgBilling = `-- name: UpsertOrgBilling :exec
-INSERT INTO org_billing(org_id, plan, customer_id, updated_at)
-VALUES($1::text, $2::text, $3::text, $4::timestamptz)
+INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_at)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::timestamptz)
 ON CONFLICT(org_id) DO UPDATE SET
   plan = EXCLUDED.plan, customer_id = EXCLUDED.customer_id,
+  billing_account_id = EXCLUDED.billing_account_id,
   updated_at = EXCLUDED.updated_at
 `
 
 type UpsertOrgBillingParams struct {
-	OrgID      string
-	Plan       string
-	CustomerID string
-	UpdatedAt  time.Time
+	OrgID            string
+	Plan             string
+	CustomerID       string
+	BillingAccountID string
+	UpdatedAt        time.Time
 }
 
 func (q *Queries) UpsertOrgBilling(ctx context.Context, arg UpsertOrgBillingParams) error {
@@ -2040,6 +2110,7 @@ func (q *Queries) UpsertOrgBilling(ctx context.Context, arg UpsertOrgBillingPara
 		arg.OrgID,
 		arg.Plan,
 		arg.CustomerID,
+		arg.BillingAccountID,
 		arg.UpdatedAt,
 	)
 	return err

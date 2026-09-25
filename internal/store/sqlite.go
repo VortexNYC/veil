@@ -197,12 +197,14 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			org_id TEXT PRIMARY KEY,
 			plan TEXT NOT NULL DEFAULT 'free',
 			customer_id TEXT NOT NULL DEFAULT '',
+			billing_account_id TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS usage_counters (
 			org_id TEXT NOT NULL,
 			window_start TEXT NOT NULL,
 			used INTEGER NOT NULL,
+			reported INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (org_id, window_start)
 		)`,
 		`CREATE TABLE IF NOT EXISTS schema_version (
@@ -215,6 +217,8 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 		}
 	}
 	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN has_totp INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE org_billing ADD COLUMN billing_account_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE usage_counters ADD COLUMN reported INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN owner_kind TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE agents ADD COLUMN revoked_at TEXT`)
@@ -1581,8 +1585,8 @@ func (s *SQLite) AppendAudits(events []protocol.AuditEvent) error {
 func (s *SQLite) Billing(orgID string) (OrgBilling, error) {
 	var ob OrgBilling
 	var updated string
-	err := s.db.QueryRow(`SELECT org_id, plan, customer_id, updated_at FROM org_billing WHERE org_id = ?`, orgID).
-		Scan(&ob.OrgID, &ob.Plan, &ob.CustomerID, &updated)
+	err := s.db.QueryRow(`SELECT org_id, plan, customer_id, billing_account_id, updated_at FROM org_billing WHERE org_id = ?`, orgID).
+		Scan(&ob.OrgID, &ob.Plan, &ob.CustomerID, &ob.BillingAccountID, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return OrgBilling{OrgID: orgID, Plan: "free"}, nil
 	}
@@ -1597,9 +1601,9 @@ func (s *SQLite) Billing(orgID string) (OrgBilling, error) {
 }
 
 func (s *SQLite) SetBilling(ob OrgBilling) error {
-	_, err := s.db.Exec(`INSERT INTO org_billing(org_id, plan, customer_id, updated_at) VALUES(?,?,?,?)
-		ON CONFLICT(org_id) DO UPDATE SET plan = excluded.plan, customer_id = excluded.customer_id, updated_at = excluded.updated_at`,
-		ob.OrgID, ob.Plan, ob.CustomerID, ob.UpdatedAt.UTC().Format(time.RFC3339Nano))
+	_, err := s.db.Exec(`INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_at) VALUES(?,?,?,?,?)
+		ON CONFLICT(org_id) DO UPDATE SET plan = excluded.plan, customer_id = excluded.customer_id, billing_account_id = excluded.billing_account_id, updated_at = excluded.updated_at`,
+		ob.OrgID, ob.Plan, ob.CustomerID, ob.BillingAccountID, ob.UpdatedAt.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
@@ -1635,6 +1639,37 @@ func (s *SQLite) Usage(orgID string, window time.Time) (int64, error) {
 		return 0, nil
 	}
 	return used, err
+}
+
+func (s *SQLite) UsageReportPending(limit int) ([]UsageReportRow, error) {
+	rows, err := s.db.Query(`SELECT u.org_id, u.window_start, u.used, u.reported,
+		COALESCE(b.customer_id, ''), COALESCE(b.billing_account_id, '')
+		FROM usage_counters u LEFT JOIN org_billing b ON b.org_id = u.org_id
+		WHERE u.used > u.reported ORDER BY u.window_start, u.org_id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageReportRow
+	for rows.Next() {
+		var r UsageReportRow
+		var ws string
+		if err := rows.Scan(&r.OrgID, &ws, &r.Used, &r.Reported, &r.CustomerID, &r.BillingAccountID); err != nil {
+			return nil, err
+		}
+		if r.WindowStart, err = time.Parse(time.RFC3339Nano, ws); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) MarkUsageReported(orgID string, window time.Time, amount int64) error {
+	_, err := s.db.Exec(`UPDATE usage_counters SET reported = MIN(reported + ?, used)
+		WHERE org_id = ? AND window_start = ?`,
+		amount, orgID, window.UTC().Format(time.RFC3339Nano))
+	return err
 }
 
 // FlushAuditOutbox: sqlite writes audit rows directly — there is no outbox.

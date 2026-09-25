@@ -154,17 +154,19 @@ func Apply(s Store, ev Event) error {
 	}
 	if cur.Plan == plan {
 		return s.SetBilling(store.OrgBilling{
-			OrgID:      orgID,
-			Plan:       plan,
-			CustomerID: cur.CustomerID,
-			UpdatedAt:  at,
+			OrgID:            orgID,
+			Plan:             plan,
+			CustomerID:       cur.CustomerID,
+			BillingAccountID: cur.BillingAccountID,
+			UpdatedAt:        at,
 		})
 	}
 	if err := s.SetBilling(store.OrgBilling{
-		OrgID:      orgID,
-		Plan:       plan,
-		CustomerID: cur.CustomerID,
-		UpdatedAt:  at,
+		OrgID:            orgID,
+		Plan:             plan,
+		CustomerID:       cur.CustomerID,
+		BillingAccountID: cur.BillingAccountID,
+		UpdatedAt:        at,
 	}); err != nil {
 		return err
 	}

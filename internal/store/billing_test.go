@@ -18,6 +18,8 @@ type billingStore interface {
 	OrgByBillingCustomer(customerID string) (string, error)
 	ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error)
 	Usage(orgID string, window time.Time) (int64, error)
+	UsageReportPending(limit int) ([]UsageReportRow, error)
+	MarkUsageReported(orgID string, window time.Time, amount int64) error
 }
 
 func billingStores(t *testing.T) map[string]billingStore {
@@ -217,6 +219,147 @@ func TestConsumeUseConcurrentClaims(t *testing.T) {
 			}
 			if got, _ := s.Usage("org-1", w); got != total {
 				t.Fatalf("counter = %d, want %d (every claim lands once)", got, total)
+			}
+		})
+	}
+}
+
+// VEIL-65 — usage dual-write. usage_counters.reported is the watermark of
+// units already sent to the billing provider; UsageReportPending returns the
+// deltas the flusher still owes, joined to the org's billing link.
+
+func TestBillingAccountIDRoundTrip(t *testing.T) {
+	for name, s := range billingStores(t) {
+		t.Run(name, func(t *testing.T) {
+			ob := OrgBilling{OrgID: "org-1", Plan: "active", CustomerID: "cus_1", BillingAccountID: "bacc_1", UpdatedAt: time.Now().UTC()}
+			if err := s.SetBilling(ob); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Billing("org-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.BillingAccountID != "bacc_1" {
+				t.Fatalf("billing account = %q, want bacc_1", got.BillingAccountID)
+			}
+		})
+	}
+}
+
+func TestUsageReportPending(t *testing.T) {
+	for name, s := range billingStores(t) {
+		t.Run(name, func(t *testing.T) {
+			w := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+			if err := s.SetBilling(OrgBilling{OrgID: "org-linked", CustomerID: "cus_1", BillingAccountID: "bacc_1", UpdatedAt: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 5; i++ {
+				if _, _, err := s.ConsumeUse("org-linked", w, 0); err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err := s.ConsumeUse("org-unlinked", w, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Org with no usage never appears.
+			if err := s.SetBilling(OrgBilling{OrgID: "org-quiet", BillingAccountID: "bacc_2", UpdatedAt: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := s.UsageReportPending(100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 2 {
+				t.Fatalf("pending rows = %d, want 2: %+v", len(rows), rows)
+			}
+			byOrg := map[string]UsageReportRow{}
+			for _, r := range rows {
+				byOrg[r.OrgID] = r
+			}
+			linked, ok := byOrg["org-linked"]
+			if !ok {
+				t.Fatalf("org-linked absent from pending: %+v", rows)
+			}
+			if linked.Used != 5 || linked.Reported != 0 || linked.CustomerID != "cus_1" || linked.BillingAccountID != "bacc_1" {
+				t.Fatalf("linked row = %+v", linked)
+			}
+			unlinked, ok := byOrg["org-unlinked"]
+			if !ok {
+				t.Fatalf("org-unlinked absent from pending: %+v", rows)
+			}
+			if unlinked.Used != 5 || unlinked.CustomerID != "" || unlinked.BillingAccountID != "" {
+				t.Fatalf("unlinked row = %+v", unlinked)
+			}
+		})
+	}
+}
+
+func TestMarkUsageReported(t *testing.T) {
+	for name, s := range billingStores(t) {
+		t.Run(name, func(t *testing.T) {
+			w := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+			for i := 0; i < 5; i++ {
+				if _, _, err := s.ConsumeUse("org-1", w, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.MarkUsageReported("org-1", w, 5); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := s.UsageReportPending(100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 0 {
+				t.Fatalf("pending after full mark = %+v", rows)
+			}
+			// New claims re-open the delta from the watermark.
+			for i := 0; i < 2; i++ {
+				if _, _, err := s.ConsumeUse("org-1", w, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rows, err = s.UsageReportPending(100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 || rows[0].Used != 7 || rows[0].Reported != 5 {
+				t.Fatalf("delta after mark = %+v", rows)
+			}
+		})
+	}
+}
+
+// A mark larger than the real delta (double-flush, racing claims) must not
+// push reported past used — the watermark only ever trails the counter.
+func TestMarkUsageReportedClampsToUsed(t *testing.T) {
+	for name, s := range billingStores(t) {
+		t.Run(name, func(t *testing.T) {
+			w := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+			for i := 0; i < 3; i++ {
+				if _, _, err := s.ConsumeUse("org-1", w, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.MarkUsageReported("org-1", w, 99); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := s.UsageReportPending(100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 0 {
+				t.Fatalf("over-marked row still pending: %+v", rows)
+			}
+			if _, _, err := s.ConsumeUse("org-1", w, 0); err != nil {
+				t.Fatal(err)
+			}
+			rows, err = s.UsageReportPending(100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 || rows[0].Used != 4 || rows[0].Reported != 3 {
+				t.Fatalf("post-clamp delta = %+v, want used=4 reported=3", rows)
 			}
 		})
 	}

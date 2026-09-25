@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ type Memory struct {
 	verSecret map[int64]Secret
 	nextVer   int64
 	billing   map[string]OrgBilling // key: org_id
-	usage     map[string]int64      // key: org_id+"\x00"+window unix
+	usage     map[string]usageCounter // key: org_id+"\x00"+window unix
 }
 
 func NewMemory() *Memory {
@@ -45,7 +46,7 @@ func NewMemory() *Memory {
 		sessions:  map[string]protocol.Session{},
 		verSecret: map[int64]Secret{},
 		billing:   map[string]OrgBilling{},
-		usage:     map[string]int64{},
+		usage:     map[string]usageCounter{},
 	}
 }
 
@@ -744,6 +745,11 @@ func (m *Memory) OrgByBillingCustomer(customerID string) (string, error) {
 	return "", ErrNotFound
 }
 
+type usageCounter struct {
+	used     int64
+	reported int64
+}
+
 func usageKey(orgID string, window time.Time) string {
 	return orgID + "\x00" + window.UTC().Format(time.RFC3339Nano)
 }
@@ -752,15 +758,60 @@ func (m *Memory) ConsumeUse(orgID string, window time.Time, cap int64) (int64, b
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := usageKey(orgID, window)
-	m.usage[k]++
-	used := m.usage[k]
-	return used, cap <= 0 || used <= cap, nil
+	c := m.usage[k]
+	c.used++
+	m.usage[k] = c
+	return c.used, cap <= 0 || c.used <= cap, nil
 }
 
 func (m *Memory) Usage(orgID string, window time.Time) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.usage[usageKey(orgID, window)], nil
+	return m.usage[usageKey(orgID, window)].used, nil
+}
+
+func (m *Memory) UsageReportPending(limit int) ([]UsageReportRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []UsageReportRow
+	for k, c := range m.usage {
+		if c.used <= c.reported {
+			continue
+		}
+		orgID, ws, _ := strings.Cut(k, "\x00")
+		window, err := time.Parse(time.RFC3339Nano, ws)
+		if err != nil {
+			return nil, err
+		}
+		r := UsageReportRow{OrgID: orgID, WindowStart: window, Used: c.used, Reported: c.reported}
+		if ob, ok := m.billing[orgID]; ok {
+			r.CustomerID = ob.CustomerID
+			r.BillingAccountID = ob.BillingAccountID
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].WindowStart.Equal(out[j].WindowStart) {
+			return out[i].WindowStart.Before(out[j].WindowStart)
+		}
+		return out[i].OrgID < out[j].OrgID
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (m *Memory) MarkUsageReported(orgID string, window time.Time, amount int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := usageKey(orgID, window)
+	c := m.usage[k]
+	if c.reported += amount; c.reported > c.used {
+		c.reported = c.used
+	}
+	m.usage[k] = c
+	return nil
 }
 
 // FlushAuditOutbox: memory has no outbox.
