@@ -15,6 +15,7 @@ import (
 type billingStore interface {
 	Billing(orgID string) (OrgBilling, error)
 	SetBilling(OrgBilling) error
+	OrgByBillingCustomer(customerID string) (string, error)
 	ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error)
 	Usage(orgID string, window time.Time) (int64, error)
 }
@@ -67,6 +68,28 @@ func TestSetBillingRoundTrip(t *testing.T) {
 			}
 			if got.Plan != "past_due" {
 				t.Fatalf("plan update = %q, want past_due", got.Plan)
+			}
+		})
+	}
+}
+
+// The billing customer id (Vortex's cus_…) must reverse-map to its org so
+// webhook events that only carry the billing id still resolve.
+func TestOrgByBillingCustomer(t *testing.T) {
+	for name, s := range billingStores(t) {
+		t.Run(name, func(t *testing.T) {
+			if err := s.SetBilling(OrgBilling{OrgID: "org-1", CustomerID: "cus_9"}); err != nil {
+				t.Fatal(err)
+			}
+			org, err := s.OrgByBillingCustomer("cus_9")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if org != "org-1" {
+				t.Fatalf("org = %q, want org-1", org)
+			}
+			if _, err := s.OrgByBillingCustomer("cus_absent"); err == nil {
+				t.Fatal("unknown customer must not resolve")
 			}
 		})
 	}

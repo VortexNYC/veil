@@ -733,6 +733,17 @@ func (m *Memory) SetBilling(ob OrgBilling) error {
 	return nil
 }
 
+func (m *Memory) OrgByBillingCustomer(customerID string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, ob := range m.billing {
+		if ob.CustomerID == customerID {
+			return ob.OrgID, nil
+		}
+	}
+	return "", ErrNotFound
+}
+
 func usageKey(orgID string, window time.Time) string {
 	return orgID + "\x00" + window.UTC().Format(time.RFC3339Nano)
 }

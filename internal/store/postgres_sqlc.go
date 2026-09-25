@@ -1479,6 +1479,14 @@ func (p *Postgres) SetBilling(ob OrgBilling) error {
 	})
 }
 
+func (p *Postgres) OrgByBillingCustomer(customerID string) (string, error) {
+	orgID, err := p.sqlc.GetOrgIDByBillingCustomer(context.Background(), customerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return orgID, err
+}
+
 func (p *Postgres) ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error) {
 	used, err := retryOnDeadConn(func() (int64, error) {
 		return p.sqlc.ConsumeUse(context.Background(), sqlc.ConsumeUseParams{

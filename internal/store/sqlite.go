@@ -1603,6 +1603,18 @@ func (s *SQLite) SetBilling(ob OrgBilling) error {
 	return err
 }
 
+func (s *SQLite) OrgByBillingCustomer(customerID string) (string, error) {
+	var orgID string
+	err := s.db.QueryRow(`SELECT org_id FROM org_billing WHERE customer_id = ?`, customerID).Scan(&orgID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return orgID, nil
+}
+
 func (s *SQLite) ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error) {
 	var used int64
 	err := s.db.QueryRow(`INSERT INTO usage_counters(org_id, window_start, used) VALUES(?,?,1)

@@ -221,6 +221,9 @@ type Store interface {
 	// SetBilling upserts the org's billing state — the billing webhook
 	// receiver is the writer.
 	SetBilling(OrgBilling) error
+	// OrgByBillingCustomer resolves the org that owns a billing customer id
+	// (Vortex cus_…), ErrNotFound when unlinked.
+	OrgByBillingCustomer(customerID string) (string, error)
 	// ConsumeUse atomically increments the org's counter for window and
 	// reports whether the claim is within cap (cap <= 0 means unlimited —
 	// the counter still accrues). Over-cap claims count too: blocked demand

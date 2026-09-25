@@ -39,6 +39,7 @@ func (c *Client) EnsureCustomer(ctx context.Context, orgID string) (string, erro
 	body, err := json.Marshal(map[string]any{
 		"environment":         c.Environment,
 		"merchantAccountId":   c.MerchantID,
+		"customerId":          orgID, // caller-chosen: events then carry the org id as customerExternalId
 		"name":                orgID,
 		"defaultCurrency":     "usd",
 		"externalCustomerRef": orgID,

@@ -89,6 +89,14 @@ func (f *fakeStore) SetBilling(ob store.OrgBilling) error {
 	f.billing[ob.OrgID] = ob
 	return nil
 }
+func (f *fakeStore) OrgByBillingCustomer(customerID string) (string, error) {
+	for _, ob := range f.billing {
+		if ob.CustomerID == customerID {
+			return ob.OrgID, nil
+		}
+	}
+	return "", store.ErrNotFound
+}
 func (f *fakeStore) AppendAudit(e protocol.AuditEvent) error {
 	f.audit = append(f.audit, e)
 	return nil
@@ -191,5 +199,69 @@ func TestApplyReplayAndStale(t *testing.T) {
 	}
 	if got, _ := s.Billing("org-1"); got.Plan != "active" {
 		t.Fatalf("stale event overwrote newer state: %q", got.Plan)
+	}
+}
+
+// externalCustomerRef is the canonical org join — it wins over the Vortex
+// billing customer id, which may be an opaque cus_… rather than the org id.
+func TestApplyExternalCustomerRefWins(t *testing.T) {
+	s := newFake()
+	if err := Apply(s, event(t, "e1", "subscription.updated", 1000,
+		`{"subscription":{"customerExternalId":"cus_9","externalCustomerRef":"org-1","status":"active"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Billing("org-1"); got.Plan != "active" {
+		t.Fatalf("org-1 plan=%q", got.Plan)
+	}
+}
+
+// When the event carries only the billing customer id, resolve it through the
+// stored customer link — a customer minted outside EnsureCustomer still works.
+func TestApplyResolvesBillingCustomerID(t *testing.T) {
+	s := newFake()
+	if err := s.SetBilling(store.OrgBilling{OrgID: "org-1", CustomerID: "cus_9"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(s, event(t, "e1", "subscription.updated", 1000,
+		`{"subscription":{"customerExternalId":"cus_9","status":"active"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Billing("org-1"); got.Plan != "active" {
+		t.Fatalf("org-1 plan=%q", got.Plan)
+	}
+	if got, _ := s.Billing("cus_9"); got.Plan != "free" {
+		t.Fatalf("billing id must not become an org: %q", got.Plan)
+	}
+}
+
+// One checkout composes subscription.created + entitlement.granted in the
+// same transaction — same createdAt. Both must apply; neither is "stale".
+func TestApplySameTransactionEvents(t *testing.T) {
+	s := newFake()
+	const ts = 2000
+	if err := Apply(s, event(t, "e1", "subscription.updated", ts, `{"subscription":{"customerExternalId":"org-1","status":"paused"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(s, event(t, "e2", "entitlement.granted", ts, `{"entitlement":{"customerExternalId":"org-1","entitlementKey":"veil"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Billing("org-1"); got.Plan != "active" {
+		t.Fatalf("same-tx grant dropped: %q", got.Plan)
+	}
+}
+
+// A plan update must preserve the stored billing customer link — dropping it
+// breaks both reverse resolution and the provisioning "already linked" check.
+func TestApplyPreservesCustomerLink(t *testing.T) {
+	s := newFake()
+	if err := s.SetBilling(store.OrgBilling{OrgID: "org-1", CustomerID: "cus_9"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(s, event(t, "e1", "subscription.updated", 1000, `{"subscription":{"customerExternalId":"org-1","status":"active"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Billing("org-1")
+	if got.CustomerID != "cus_9" {
+		t.Fatalf("customer link lost: %q", got.CustomerID)
 	}
 }

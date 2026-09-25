@@ -92,34 +92,56 @@ type Event struct {
 type Store interface {
 	Billing(orgID string) (store.OrgBilling, error)
 	SetBilling(store.OrgBilling) error
+	OrgByBillingCustomer(customerID string) (string, error)
 	AppendAudit(protocol.AuditEvent) error
 }
 
+// subscriptionData carries both join keys Vortex emits: externalCustomerRef
+// is the consumer's own id (the Veil org); customerExternalId is Vortex's
+// billing customer id — which for Veil-provisioned customers is also the org
+// id. Both are accepted so the receiver works however the customer was minted.
 type subscriptionData struct {
-	Subscription struct {
-		CustomerExternalID string `json:"customerExternalId"`
-		CustomerID         string `json:"customerId"`
-		Status             string `json:"status"`
+	ExternalCustomerRef string `json:"externalCustomerRef"`
+	Subscription        struct {
+		CustomerExternalID  string `json:"customerExternalId"`
+		ExternalCustomerRef string `json:"externalCustomerRef"`
+		CustomerID          string `json:"customerId"`
+		Status              string `json:"status"`
 	} `json:"subscription"`
 }
 
 type entitlementData struct {
-	Entitlement struct {
-		CustomerExternalID string `json:"customerExternalId"`
-		CustomerID         string `json:"customerId"`
-		Key                string `json:"entitlementKey"`
-		Status             string `json:"status"`
+	ExternalCustomerRef string `json:"externalCustomerRef"`
+	Entitlement         struct {
+		CustomerExternalID  string `json:"customerExternalId"`
+		ExternalCustomerRef string `json:"externalCustomerRef"`
+		CustomerID          string `json:"customerId"`
+		Key                 string `json:"entitlementKey"`
+		Status              string `json:"status"`
 	} `json:"entitlement"`
 }
 
 // Apply maps a verified event to org billing state. Unknown types, missing
 // customers, and malformed payloads are durable no-ops — the endpoint must
 // survive events from Vortex versions newer than this build. Ordering is
-// guarded by the event's createdAt: a replayed or stale event never
-// overwrites a newer plan state.
+// guarded by the event's createdAt: an event older than the applied state
+// never overwrites it. Events emitted in the same transaction share createdAt
+// (e.g. subscription.created + entitlement.granted from one checkout) — they
+// all apply; re-applying the same plan is an idempotent write with no audit.
 func Apply(s Store, ev Event) error {
-	orgID, plan, ok := planFor(ev)
+	extRef, customerID, plan, ok := planFor(ev)
 	if !ok {
+		return nil
+	}
+	orgID := extRef
+	if orgID == "" && customerID != "" {
+		if o, err := s.OrgByBillingCustomer(customerID); err == nil {
+			orgID = o
+		} else {
+			orgID = customerID // customer minted with org id as customer id
+		}
+	}
+	if orgID == "" {
 		return nil
 	}
 	cur, err := s.Billing(orgID)
@@ -127,20 +149,22 @@ func Apply(s Store, ev Event) error {
 		return fmt.Errorf("billing read: %w", err)
 	}
 	at := time.UnixMilli(ev.CreatedAt).UTC()
-	if !cur.UpdatedAt.IsZero() && !at.After(cur.UpdatedAt) {
-		return nil // replayed or stale — newer state already landed
+	if at.Before(cur.UpdatedAt) {
+		return nil // strictly stale — newer state already landed
 	}
 	if cur.Plan == plan {
 		return s.SetBilling(store.OrgBilling{
-			OrgID:     orgID,
-			Plan:      plan,
-			UpdatedAt: at,
+			OrgID:      orgID,
+			Plan:       plan,
+			CustomerID: cur.CustomerID,
+			UpdatedAt:  at,
 		})
 	}
 	if err := s.SetBilling(store.OrgBilling{
-		OrgID:     orgID,
-		Plan:      plan,
-		UpdatedAt: at,
+		OrgID:      orgID,
+		Plan:       plan,
+		CustomerID: cur.CustomerID,
+		UpdatedAt:  at,
 	}); err != nil {
 		return err
 	}
@@ -157,49 +181,55 @@ func Apply(s Store, ev Event) error {
 	})
 }
 
-// planFor extracts (orgID, plan) from the event data. Subscription-active
-// statuses map to "active" — past_due keeps access through the dunning grace;
-// paused/canceled/draft return to "free". The veil entitlement grant/revoke
-// is the operator override.
-func planFor(ev Event) (orgID, plan string, ok bool) {
+// planFor extracts (externalCustomerRef, customerId, plan) join candidates
+// and the plan from the event data. Subscription-active statuses map to
+// "active" — past_due keeps access through the dunning grace; paused/canceled/
+// draft return to "free". The veil entitlement grant/revoke is the operator
+// override.
+func planFor(ev Event) (extRef, customerID, plan string, ok bool) {
 	switch {
 	case strings.HasPrefix(ev.Type, "subscription."):
 		var d subscriptionData
 		if json.Unmarshal(ev.Data, &d) != nil {
-			return "", "", false
+			return "", "", "", false
 		}
-		orgID = d.Subscription.CustomerExternalID
-		if orgID == "" {
-			orgID = d.Subscription.CustomerID
-		}
-		if orgID == "" {
-			return "", "", false
+		extRef = firstNonEmpty(d.Subscription.ExternalCustomerRef, d.ExternalCustomerRef)
+		customerID = firstNonEmpty(d.Subscription.CustomerExternalID, d.Subscription.CustomerID)
+		if extRef == "" && customerID == "" {
+			return "", "", "", false
 		}
 		switch d.Subscription.Status {
 		case "active", "trialing", "past_due":
-			return orgID, "active", true
+			return extRef, customerID, "active", true
 		default: // draft, paused, canceled
-			return orgID, "free", true
+			return extRef, customerID, "free", true
 		}
 	case ev.Type == "entitlement.granted" || ev.Type == "entitlement.revoked":
 		var d entitlementData
 		if json.Unmarshal(ev.Data, &d) != nil {
-			return "", "", false
+			return "", "", "", false
 		}
 		if d.Entitlement.Key != "veil" {
-			return "", "", false
+			return "", "", "", false
 		}
-		orgID = d.Entitlement.CustomerExternalID
-		if orgID == "" {
-			orgID = d.Entitlement.CustomerID
-		}
-		if orgID == "" {
-			return "", "", false
+		extRef = firstNonEmpty(d.Entitlement.ExternalCustomerRef, d.ExternalCustomerRef)
+		customerID = firstNonEmpty(d.Entitlement.CustomerExternalID, d.Entitlement.CustomerID)
+		if extRef == "" && customerID == "" {
+			return "", "", "", false
 		}
 		if ev.Type == "entitlement.granted" && d.Entitlement.Status != "revoked" {
-			return orgID, "active", true
+			return extRef, customerID, "active", true
 		}
-		return orgID, "free", true
+		return extRef, customerID, "free", true
 	}
-	return "", "", false
+	return "", "", "", false
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }

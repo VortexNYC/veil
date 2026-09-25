@@ -520,6 +520,18 @@ func (q *Queries) GetOrgBilling(ctx context.Context, orgID string) (OrgBilling, 
 	return i, err
 }
 
+const getOrgIDByBillingCustomer = `-- name: GetOrgIDByBillingCustomer :one
+SELECT org_id FROM org_billing
+WHERE customer_id = $1::text
+`
+
+func (q *Queries) GetOrgIDByBillingCustomer(ctx context.Context, customerID string) (string, error) {
+	row := q.db.QueryRow(ctx, getOrgIDByBillingCustomer, customerID)
+	var org_id string
+	err := row.Scan(&org_id)
+	return org_id, err
+}
+
 const getUsage = `-- name: GetUsage :one
 SELECT used FROM usage_counters
 WHERE org_id = $1::text AND window_start = $2::timestamptz
