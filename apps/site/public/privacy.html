@@ -106,15 +106,17 @@
     <li><strong>Railway</strong> hosts the service and database (encrypted at rest).</li>
     <li><strong>Cloudflare</strong> terminates TLS at the edge, runs our mail and backup workers, and holds encrypted offsite backup copies.</li>
     <li><strong>1Password</strong> escrows the deployment wrapping key, separately from any backup.</li>
+    <li><strong>Vortex</strong> processes billing — plan state, subscription, and usage counts per organization. Card details never transit Veil: payment happens on Vortex's hosted checkout and its payment processor, so we never see card data.</li>
   </ul>
   <p style="margin-top:8px">No other vendor touches your data. Identity is self-hosted Ory
-  software running in our infrastructure — it is not a data processor.</p>
+  software running in our infrastructure — it is not a data processor. Vortex is our
+  sister company under the same operator.</p>
 
   <h2>Retention &amp; deletion</h2>
   <ul>
     <li>Secrets and vault data are yours: an owner can delete the whole organization at any time, which purges all vault rows in one operation.</li>
     <li>You can delete your own account from inside the product — membership and your identity mapping are removed immediately.</li>
-    <li>Audit records are retained on a fixed 90-day live window and survive organization deletion deliberately — they are the forensic record of who used what, and they contain no secrets.</li>
+    <li>Audit records are retained on a fixed 90-day live window — exported hourly to offsite object storage before any roll — and survive organization deletion deliberately: they are the forensic record of who used what, and they contain no secrets.</li>
     <li>Encrypted backups roll off on a fixed retention schedule (14 days on-host, replicated offsite).</li>
   </ul>
 

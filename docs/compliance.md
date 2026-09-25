@@ -32,8 +32,8 @@ Legend: **met** / **partial** / **gap** / **N/A**.
 | Criterion | State | Evidence |
 |---|---|---|
 | CC2.1 Internal communication of security objectives | met | `docs/SPEC.md`, AGENTS.md load-bearing rules (agents never see secrets, fail-closed audit). |
-| CC2.2 External communication to customers | gap | No ToS, no privacy policy, no security whitepaper. `/security` page + `security.txt` exist but state facts, not commitments. **A customer who reads the invite email has no document describing what we do with their data.** |
-| CC2.3 Confidentiality commitments | gap | No NDA template, no data-handling commitment document. Alpha is invite-only so this is manageable — but the first "what do you promise" email has no answer. |
+| CC2.2 External communication to customers | met | `/privacy` (collection, subprocessors, retention, alpha terms) + `/security` (encryption model, agent isolation, audit ledger, disclosure path) are live and linked from the homepage. Formal ToS precedes public launch — not needed for invite-only alpha. |
+| CC2.3 Confidentiality commitments | partial | No NDA template; `/privacy` is the plain-terms data-handling commitment. Invite-only alpha keeps this manageable — first enterprise ask needs a DPA answer (subprocessor list already published). |
 
 ## CC3 — Risk assessment
 
@@ -72,7 +72,7 @@ Legend: **met** / **partial** / **gap** / **N/A**.
 |---|---|---|
 | CC7.1 Vulnerability detection | met | `govulncheck` in `make ci`; toolchain pinned to patched `go1.26.8`. |
 | CC7.2 Security monitoring | partial | Origin 5xx window + heartbeat monitoring + audit trail. No IDS/WAF tuning beyond Cloudflare defaults — acceptable for alpha, revisit at public launch. |
-| CC7.3 Incident response | **gap** | Runbook has kill-switch + restore verbs but **no severity ladder, no comms template, no postmortem format.** → `docs/incident-response.md`. |
+| CC7.3 Incident response | met | `docs/incident-response.md`: S1–S3 severity ladder, first-hour checklist, customer comms template, postmortem format, bus-factor recovery. |
 | CC7.4 Incident recovery | met | Restore drill proven (live dump → KEK unwrap → wrong-key fail-closed). |
 
 ## CC8 — Change management
@@ -85,7 +85,7 @@ Legend: **met** / **partial** / **gap** / **N/A**.
 
 | Criterion | State | Evidence |
 |---|---|---|
-| CC9.1 Vendor management | **gap** | **No vendor register.** Vendors holding customer data or production access: Railway (compute+DB), Cloudflare (DNS, workers, R2 backups), Ory (identity images, pinned), GitHub (source), 1Password (KEK escrow), PostHog (traces — check no PII), Resend-equivalent = own mail worker (none). Action: vendor register + collect each SOC 2 report where offered. |
+| CC9.1 Vendor management | met | Vendor register below — every data-touching processor named with role + assurance. Vortex added when billing went live. Collect SOC 2 reports annually (railway + cloudflare published today). |
 | CC9.2 Business continuity | met | RPO 24h / RTO hours, documented; offsite replication to R2 verified end-to-end; KEK escrowed separately; restore drill monthly. |
 
 ## Availability (A-series)
@@ -114,7 +114,7 @@ Legend: **met** / **partial** / **gap** / **N/A**.
 
 | Criterion | State | Evidence |
 |---|---|---|
-| P1.x Notice, collection, use | **gap** | We collect: email, name (Kratos), org membership, audit events, secrets ciphertext. **No privacy policy** — must exist before the first non-founder invite. |
+| P1.x Notice, collection, use | met | `/privacy` enumerates collection (email/name, ciphertext, audit, ops logs), subprocessors, retention, deletion. Kept in sync — Vortex was added when billing went live. |
 | P4.x Data subject rights | met | Self-delete + org teardown are real API verbs, not a support ticket. Recovery codes enabled (`lookup_secret`) for lockout. |
 
 ---
@@ -125,14 +125,14 @@ Ordered by what hurts a real customer first. Every gap has an owner action.
 
 | # | Gap | Severity | Action |
 |---|---|---|---|
-| G1 | No privacy policy / ToS — invite email links to nothing legal | **high** — first external invite needs it | Draft minimal privacy policy (data collected, retention, deletion rights, subprocessors) + alpha ToS. Needs one legal pass before public launch; for alpha a clear plain-English doc beats none. |
-| G2 | No incident response plan | **high** | `docs/incident-response.md` — severity ladder, comms, postmortem. |
-| G3 | No vendor register | medium | List vendors + SOC 2 report links; review annually. |
+| G1 | ~~No privacy policy~~ — `/privacy` shipped (collection, subprocessors, retention, alpha terms) | closed for alpha | Formal ToS + legal pass remain a pre-launch item, not an alpha blocker. |
+| G2 | ~~No incident response plan~~ | closed | `docs/incident-response.md` shipped — severity ladder, comms, postmortem, bus factor. |
+| G3 | ~~No vendor register~~ | closed | Register below; Vortex added when billing went live. Annual SOC-report collection stands. |
 | G4 | No scheduled access review | medium | Quarterly checklist in runbook; first one at next calendar quarter. |
-| G5 | No consolidated risk register | medium | Section in this doc or `docs/risk-register.md`. |
+| G5 | ~~No consolidated risk register~~ | closed | Risk register section below is it — promote to `docs/risk-register.md` only if it outgrows this doc. |
 | G6 | No external security review | medium | Schedule a scoped review (or self-review pass) before public launch; alpha is invite-only so blast radius is bounded. |
 | G7 | Support impersonation = owner curl | low | Document as procedure; formal support role only when volume demands. |
-| G8 | Operator bus factor | low | KEK + escrow + runbook are documented; write "if I'm hit by a bus" recovery into `docs/incident-response.md`. |
+| G8 | ~~Operator bus factor~~ | closed | Bus-factor section in `docs/incident-response.md` — KEK escrow path + restore procedure written down. |
 | G9 | No data classification doc | low | Done in C1.1 above — three lines, promote if needed. |
 | G10 | Change-mgmt policy unwritten | low | Write the CC8.1 paragraph above into this doc — done. |
 
@@ -161,6 +161,7 @@ annually; collect SOC 2 / security docs where offered.
 | Ory | Kratos/Hydra/Keto images | identity data lives in OUR Postgres — Ory is software, not a processor | none (self-hosted images) | n/a — pin + govulncheck covers it |
 | GitHub | source hosting | none (secrets never committed — enforce) | full repo | SOC 2 |
 | 1Password | KEK escrow + agent creds | KEK (the crown jewel) | escrow only | SOC 2 |
+| Vortex | Billing processor | org id, plan, subscription, usage counts; card data goes to Vortex's hosted checkout + its payment processor — never transits Veil | billing webhooks + API | sister company, same operator; VOR-tracked |
 | PostHog | OTEL traces | spans only — secrets/PII verified out: `veil.host` is scheme://host (no path/query), `url.path` overwritten with the route pattern, `client.address` blanked (360622a) | read | SOC 2 |
 | Resend | NOT USED — mail worker is ours | — | — | — |
 | Docker Hub / GHCR | base images | none | supply chain | pin digests on prod images |

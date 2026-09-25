@@ -107,8 +107,9 @@
 
   <h2>Operations</h2>
   <ul>
-    <li>Daily encrypted-at-rest dumps of every backing database, with restore drills run against real artifacts.</li>
-    <li>Audit rows are append-only and retained on a fixed schedule; deleting an org purges its vault data but never its audit history.</li>
+    <li>Daily encrypted-at-rest dumps of every backing database, with restore drills run against real artifacts; offsite copies land in object storage on a separate failure domain.</li>
+    <li>Audit rows are append-only, exported hourly offsite, and retained on a fixed schedule; deleting an org purges its vault data but never its audit history.</li>
+    <li>Billing enforcement is local and fail-closed: metered use is counted per organization, plan state is confirmed by signed webhook, and a billing outage never becomes an auth outage.</li>
     <li>Edge and origin both terminate TLS with valid certificates (strict mode, no HTTP path).</li>
   </ul>
 
