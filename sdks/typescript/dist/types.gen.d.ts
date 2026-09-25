@@ -302,6 +302,26 @@ export type ApproveRequestBody = {
      */
     ttl?: string;
 };
+export type BillingView = {
+    /**
+     * Plan as enforced by the Use gate
+     */
+    plan: 'free' | 'active';
+    /**
+     * Uses consumed in the current window
+     */
+    used: number;
+    /**
+     * Free allowance per window; null when unlimited (metering off or paid plan)
+     */
+    included: number | null;
+    window_start: string;
+    window_end: string;
+    /**
+     * Vortex checkout/portal link for capped owners
+     */
+    upgrade_url?: string;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1039,6 +1059,29 @@ export type DeleteOrgResponses = {
     };
 };
 export type DeleteOrgResponse = DeleteOrgResponses[keyof DeleteOrgResponses];
+export type GetBillingData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/billing';
+};
+export type GetBillingErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+export type GetBillingResponses = {
+    /**
+     * Billing state
+     */
+    200: BillingView;
+};
+export type GetBillingResponse = GetBillingResponses[keyof GetBillingResponses];
 export type BillingWebhookData = {
     body: {
         [key: string]: unknown;

@@ -1,3 +1,4 @@
+import { Banner } from "@cloudflare/kumo/components/banner";
 import { Sidebar } from "@cloudflare/kumo/components/sidebar";
 import { Text } from "@cloudflare/kumo/components/text";
 import {
@@ -12,7 +13,10 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { beginLogin, signedIn, signOut, token, amrOf } from "../auth";
+import { billing } from "../origin";
+import type { BillingView } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async () => {
@@ -37,6 +41,53 @@ const nav: ReadonlyArray<{
   { to: "/audit", label: "Audit", icon: ListBullets },
   { to: "/settings", label: "Settings", icon: Gear },
 ];
+
+// BillingBanner is the cap surface: at/over the free allowance the org's
+// agents and API calls are already being denied — this is where the owner
+// finds out why. Members (403) and paid plans render nothing.
+function BillingBanner() {
+  const [view, setView] = useState<BillingView | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      const res = await billing();
+      if (live) {
+        setView(res.error || !res.data ? null : res.data);
+      }
+    };
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+  if (!view || view.included == null) {
+    return null;
+  }
+  const capped = view.used >= view.included;
+  const near = !capped && view.used >= view.included * 0.8;
+  if (!capped && !near) {
+    return null;
+  }
+  const action = view.upgrade_url ? (
+    <Banner.Action onClick={() => window.location.assign(view.upgrade_url!)}>
+      Subscribe
+    </Banner.Action>
+  ) : undefined;
+  return (
+    <Banner
+      variant={capped ? "error" : "alert"}
+      title={capped ? "Free usage exhausted" : "Approaching free limit"}
+      description={
+        capped
+          ? `${view.used} of ${view.included} uses this month — agent and API access is denied until the window resets or you subscribe.`
+          : `${view.used} of ${view.included} uses this month.`
+      }
+      action={action}
+    />
+  );
+}
 
 function Shell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -102,6 +153,7 @@ function Shell() {
             </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+            <BillingBanner />
             <Outlet />
           </div>
         </main>

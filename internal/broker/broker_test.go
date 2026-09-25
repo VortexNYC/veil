@@ -1123,7 +1123,7 @@ func TestUseMeteringDisabled(t *testing.T) {
 			t.Fatalf("unmetered use %d: decision=%s", i+1, got.Decision)
 		}
 	}
-	if got, _ := b.Store.Usage(agent.OrgID, monthWindow(b.Now())); got != 0 {
+	if got, _ := b.Store.Usage(agent.OrgID, MonthWindow(b.Now())); got != 0 {
 		t.Fatalf("metering disabled but counter moved: %d", got)
 	}
 }
@@ -1142,7 +1142,7 @@ func TestUseDeniedCallsDoNotConsume(t *testing.T) {
 			t.Fatalf("unauthorized use %d: decision=%s reason=%s", i+1, got.Decision, got.Reason)
 		}
 	}
-	if got, _ := b.Store.Usage("org-1", monthWindow(b.Now())); got != 0 {
+	if got, _ := b.Store.Usage("org-1", MonthWindow(b.Now())); got != 0 {
 		t.Fatalf("denied uses consumed allowance: %d", got)
 	}
 }

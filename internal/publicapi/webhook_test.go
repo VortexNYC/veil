@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/VortexNYC/veil/internal/app"
+	"github.com/VortexNYC/veil/internal/store"
 )
 
 const webhookSecret = "whsec_test_0123456789abcdef"
@@ -93,5 +95,56 @@ func TestBillingWebhookFlipsPlan(t *testing.T) {
 	// Replay is harmless — same event again is a no-op, not an error.
 	if got := postWebhook(t, srv, body, signBody(webhookSecret, body)); got != http.StatusNoContent {
 		t.Fatalf("replay: %d", got)
+	}
+}
+
+// GET /v1/billing is the cap banner's data source: owner-only, absent billing
+// row reads plan=free with the configured cap as included.
+func TestGetBilling(t *testing.T) {
+	a := testApp(t)
+	a.Broker.FreeUseCap = 5
+	mux := http.NewServeMux()
+	(&Server{App: a, Identity: identity(a), BillingUpgradeURL: "https://pay.vortex.nyc/x"}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	get := func(token string) (int, map[string]any) {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/billing", nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var body map[string]any
+		_ = json.NewDecoder(res.Body).Decode(&body)
+		return res.StatusCode, body
+	}
+
+	if code, _ := get(""); code != http.StatusUnauthorized {
+		t.Fatalf("anon: %d", code)
+	}
+	if code, _ := get("member"); code != http.StatusForbidden {
+		t.Fatalf("member: %d", code)
+	}
+	code, body := get("human")
+	if code != http.StatusOK {
+		t.Fatalf("owner: %d", code)
+	}
+	if body["plan"] != "free" || body["included"] != float64(5) || body["used"] != float64(0) {
+		t.Fatalf("billing view: %v", body)
+	}
+	if body["upgrade_url"] != "https://pay.vortex.nyc/x" {
+		t.Fatalf("upgrade_url: %v", body["upgrade_url"])
+	}
+	// Paid plan → included is null (uncapped).
+	if err := a.Store.SetBilling(store.OrgBilling{OrgID: a.OrgID, Plan: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	_, body = get("human")
+	if body["plan"] != "active" || body["included"] != nil {
+		t.Fatalf("paid view: %v", body)
 	}
 }

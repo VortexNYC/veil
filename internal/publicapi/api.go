@@ -246,10 +246,17 @@ type Server struct {
 	// BillingSecret verifies Vortex-Signature on the billing webhook.
 	// Empty disables the endpoint (404).
 	BillingSecret string
+	// BillingUpgradeURL is where capped owners are sent to subscribe —
+	// the Vortex checkout/portal link once VOR-577 lands. Empty omits it.
+	BillingUpgradeURL string
 }
 
 func Mount(mux *http.ServeMux, a *app.App) {
-	(&Server{App: a, BillingSecret: os.Getenv("VEIL_BILLING_WEBHOOK_SECRET")}).Mount(mux)
+	(&Server{
+		App:               a,
+		BillingSecret:     os.Getenv("VEIL_BILLING_WEBHOOK_SECRET"),
+		BillingUpgradeURL: os.Getenv("VEIL_BILLING_UPGRADE_URL"),
+	}).Mount(mux)
 }
 
 func (s *Server) Mount(mux *http.ServeMux) {
@@ -280,6 +287,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
 	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
+	mux.HandleFunc("GET /v1/billing", s.getBilling)
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
 	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -975,6 +983,49 @@ func (s *Server) denyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	// request_denied is written by the store inside the resolve transaction.
 	writeJSON(w, requestView(resolved))
+}
+
+// BillingView is the owner-facing billing state: plan as enforced by the Use
+// gate plus this window's consumption against the free allowance. included is
+// null when metering is off (cap unset) or the plan is paid.
+type BillingView struct {
+	Plan        string     `json:"plan"`
+	Used        int64      `json:"used"`
+	Included    *int64     `json:"included"`
+	WindowStart time.Time  `json:"window_start"`
+	WindowEnd   time.Time  `json:"window_end"`
+	UpgradeURL  string     `json:"upgrade_url,omitempty"`
+}
+
+// GET /v1/billing — the vault's cap-banner data source. Owner-only: plan and
+// consumption are billing facts, not member data.
+func (s *Server) getBilling(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	ob, err := s.App.Store.Billing(p.OrgID)
+	if err != nil {
+		http.Error(w, "billing read failed", http.StatusInternalServerError)
+		return
+	}
+	window := broker.MonthWindow(time.Now())
+	used, err := s.App.Store.Usage(p.OrgID, window)
+	if err != nil {
+		http.Error(w, "usage read failed", http.StatusInternalServerError)
+		return
+	}
+	v := BillingView{
+		Plan:        ob.Plan,
+		Used:        used,
+		WindowStart: window,
+		WindowEnd:   window.AddDate(0, 1, 0),
+		UpgradeURL:  s.BillingUpgradeURL,
+	}
+	if cap := s.App.Broker.FreeUseCap; cap > 0 && ob.Plan == "free" {
+		v.Included = &cap
+	}
+	writeJSON(w, v)
 }
 
 // billingWebhook is the inbound edge of the billing plane. Vortex-Signature

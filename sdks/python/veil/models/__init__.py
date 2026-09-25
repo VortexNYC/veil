@@ -18,6 +18,7 @@ from veil.models.agents_response import AgentsResponse
 from veil.models.approval_request import ApprovalRequest
 from veil.models.approve_request_body import ApproveRequestBody
 from veil.models.audit_event import AuditEvent
+from veil.models.billing_view import BillingView
 from veil.models.card_fields import CardFields
 from veil.models.create_agent_request import CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest

@@ -694,6 +694,25 @@ paths:
         \ Audit rows are kept — teardown must not erase the forensic record. Not MCP."
       tags:
       - Human
+  /v1/billing:
+    get:
+      operationId: getBilling
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingView"
+          description: Billing state
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: "Owner-facing billing state: enforced plan plus this window's use count\
+        \ against the free allowance. included is null when metering is off or the\
+        \ plan is paid. The vault's cap banner reads this. Not MCP."
+      tags:
+      - Billing
   /v1/billing/webhook:
     post:
       operationId: billingWebhook
@@ -1636,6 +1655,46 @@ components:
         ttl:
           description: Go duration for the grant approval lifetime (default 15m).
           type: string
+    BillingView:
+      example:
+        plan: free
+        used: 0
+        included: 6
+        window_start: 2000-01-23T04:56:07.000+00:00
+        window_end: 2000-01-23T04:56:07.000+00:00
+        upgrade_url: upgrade_url
+      properties:
+        plan:
+          description: Plan as enforced by the Use gate
+          enum:
+          - free
+          - active
+          type: string
+        used:
+          description: Uses consumed in the current window
+          format: int64
+          type: integer
+        included:
+          description: Free allowance per window; null when unlimited (metering off
+            or paid plan)
+          format: int64
+          nullable: true
+          type: integer
+        window_start:
+          format: date-time
+          type: string
+        window_end:
+          format: date-time
+          type: string
+        upgrade_url:
+          description: Vortex checkout/portal link for capped owners
+          type: string
+      required:
+      - included
+      - plan
+      - used
+      - window_end
+      - window_start
     removeMember_200_response:
       example:
         removed: true

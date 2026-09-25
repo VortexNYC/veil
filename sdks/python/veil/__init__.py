@@ -36,6 +36,7 @@ __all__ = [
     "ApprovalRequest",
     "ApproveRequestBody",
     "AuditEvent",
+    "BillingView",
     "CardFields",
     "CreateAgentRequest",
     "CreateGrantRequest",
@@ -88,6 +89,7 @@ from veil.models.agents_response import AgentsResponse as AgentsResponse
 from veil.models.approval_request import ApprovalRequest as ApprovalRequest
 from veil.models.approve_request_body import ApproveRequestBody as ApproveRequestBody
 from veil.models.audit_event import AuditEvent as AuditEvent
+from veil.models.billing_view import BillingView as BillingView
 from veil.models.card_fields import CardFields as CardFields
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest as CreateGrantRequest

@@ -5,6 +5,7 @@ import {
   createGrant,
   createItem,
   denyRequest,
+  getBilling,
   listAgents,
   listEvents,
   listGrants,
@@ -95,6 +96,12 @@ export function addAgent(name: string) {
 
 export function events() {
   return listEvents({ client: client() })
+}
+
+// billing reads the owner's plan + window usage for the cap banner.
+// Members get 403 — callers render nothing on error.
+export function billing() {
+  return getBilling({ client: client() })
 }
 
 export function requests(status: "open" | "approved" | "denied" | "expired" | "cancelled") {

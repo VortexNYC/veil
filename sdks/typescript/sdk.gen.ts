@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses } from './types.gen';
+import type { ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -296,6 +296,15 @@ export const deleteMe = <ThrowOnError extends boolean = false>(options?: Options
 export const deleteOrg = <ThrowOnError extends boolean = false>(options?: Options<DeleteOrgData, ThrowOnError>): RequestResult<DeleteOrgResponses, DeleteOrgErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteOrgResponses, DeleteOrgErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/v1/org',
+    ...options
+});
+
+/**
+ * Owner-facing billing state: enforced plan plus this window's use count against the free allowance. included is null when metering is off or the plan is paid. The vault's cap banner reads this. Not MCP.
+ */
+export const getBilling = <ThrowOnError extends boolean = false>(options?: Options<GetBillingData, ThrowOnError>): RequestResult<GetBillingResponses, GetBillingErrors, ThrowOnError> => (options?.client ?? client).get<GetBillingResponses, GetBillingErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/billing',
     ...options
 });
 

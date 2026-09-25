@@ -1057,6 +1057,33 @@
         }
       }
     },
+    "/v1/billing": {
+      "get": {
+        "operationId": "getBilling",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Owner-facing billing state: enforced plan plus this window's use count against the free allowance. included is null when metering is off or the plan is paid. The vault's cap banner reads this. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Billing state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
     "/v1/billing/webhook": {
       "post": {
         "operationId": "billingWebhook",
@@ -1945,6 +1972,51 @@
           "ttl": {
             "type": "string",
             "description": "Go duration for the grant approval lifetime (default 15m)."
+          }
+        }
+      },
+      "BillingView": {
+        "type": "object",
+        "required": [
+          "plan",
+          "used",
+          "included",
+          "window_start",
+          "window_end"
+        ],
+        "properties": {
+          "plan": {
+            "type": "string",
+            "enum": [
+              "free",
+              "active"
+            ],
+            "description": "Plan as enforced by the Use gate"
+          },
+          "used": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Uses consumed in the current window"
+          },
+          "included": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Free allowance per window; null when unlimited (metering off or paid plan)"
+          },
+          "window_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "upgrade_url": {
+            "type": "string",
+            "description": "Vortex checkout/portal link for capped owners"
           }
         }
       }

@@ -550,9 +550,9 @@ func LogEvent(e protocol.AuditEvent, item, host string, status int) {
 	slog.Info("use", attrs...)
 }
 
-// monthWindow is the UTC calendar month containing t — the billing window a
+// MonthWindow is the UTC calendar month containing t — the billing window a
 // use claims against.
-func monthWindow(t time.Time) time.Time {
+func MonthWindow(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
 }
@@ -573,7 +573,7 @@ func (b *Broker) claimUse(orgID string, now time.Time) (bool, error) {
 	if ob.Plan == "" || ob.Plan == "free" {
 		cap = b.FreeUseCap
 	}
-	_, ok, err := b.Store.ConsumeUse(orgID, monthWindow(now), cap)
+	_, ok, err := b.Store.ConsumeUse(orgID, MonthWindow(now), cap)
 	if err != nil {
 		return false, fmt.Errorf("meter: %w", err)
 	}

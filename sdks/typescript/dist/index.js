@@ -947,6 +947,11 @@ var deleteOrg = (options) => (options?.client ?? client).delete({
   url: "/v1/org",
   ...options
 });
+var getBilling = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/billing",
+  ...options
+});
 var billingWebhook = (options) => (options.client ?? client).post({
   url: "/v1/billing/webhook",
   ...options,
@@ -970,6 +975,7 @@ export {
   deleteOrg,
   demoteOwner,
   denyRequest,
+  getBilling,
   getHealth,
   getOpenApi,
   importItems,
