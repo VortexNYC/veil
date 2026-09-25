@@ -75,6 +75,29 @@ vault and the `INGEST_TOKEN` worker secret. A dump plus its KEK is a
 plaintext export — the token only gates the ciphertext; `VEIL_KEK` stays
 in its own escrow.
 
+## Audit archive (offsite, append-only)
+
+Nightly dumps are the coarse net; the audit trail also exports continuously
+through the same worker. The `veil-audit-export` Railway cron runs
+`veil audit-export` hourly at :42 — every `audit` row past the
+`audit_export_cursor` watermark is batched into `audit-<ts>-<first>-<last>.jsonl`
+objects in the same `veil-backups` bucket. The cursor advances only after a
+PUT lands; a failed run re-sends the identical object under the identical
+name, so the archive is exactly-once by idempotency, not by luck. Audit rows
+carry no secret material by design, so this export is safe to hold in the
+same bucket as the ciphertext dumps. The sweep detaches `audit` partitions
+after `--audit-keep` (90d) — the hourly export always precedes detach, so R2
+holds the complete trail even after local retention rolls. The monitor pages
+on a stale `audit-export` beat (`--audit-export-stale`, default 3h) or when
+the exporter was never seen at all.
+
+Re-read an exported range:
+
+```bash
+curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
+  https://backup-ingest.veil.nyc/v1/audit-YYYYMMDD-HHMMSS-<first>-<last>.jsonl
+```
+
 ## Restoring
 
 Custom-format restore onto a fresh instance:

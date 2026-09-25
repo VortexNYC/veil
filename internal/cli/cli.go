@@ -84,6 +84,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(migrateCmd(&home))
 	root.AddCommand(sweepCmd(&home))
 	root.AddCommand(monitorCmd())
+	root.AddCommand(auditExportCmd())
 	root.AddCommand(keyCmd())
 	return root
 }

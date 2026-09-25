@@ -116,3 +116,70 @@ func TestOpsUsageReportLag(t *testing.T) {
 		t.Fatalf("lag = (%d, %d, %d), want (2, 1, 6)", pending, stale, units)
 	}
 }
+
+// The export cursor starts at zero, only moves forward, and the read
+// cursor returns rows after it in sequence order.
+func TestOpsAuditExport(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := EnsurePostgresSchema(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureAuditExport(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM audit WHERE org_id = 'export-org'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM audit_export_cursor`); err != nil {
+		t.Fatal(err)
+	}
+
+	cur, err := AuditExportCursor(ctx, pool)
+	if err != nil || cur != 0 {
+		t.Fatalf("fresh cursor = %d, %v — want 0", cur, err)
+	}
+
+	at := time.Now().UTC().Truncate(time.Microsecond)
+	var ids [3]int64
+	for i := range ids {
+		err := pool.QueryRow(ctx,
+			`INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+			 VALUES($1, 'export-org', 'agent-x', 'item-y', 'use', 'allow', 't', '') RETURNING id`,
+			at.Add(time.Duration(i)*time.Second)).Scan(&ids[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rows, err := ExportableAudits(ctx, pool, ids[0], 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].ID != ids[1] || rows[1].ID != ids[2] {
+		t.Fatalf("export after %d = %+v", ids[0], rows)
+	}
+	if rows[0].OrgID != "export-org" || rows[0].Decision != "allow" {
+		t.Fatalf("row fields lost: %+v", rows[0])
+	}
+
+	if err := SetAuditExportCursor(ctx, pool, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetAuditExportCursor(ctx, pool, ids[0]); err == nil {
+		t.Fatal("regressing the cursor must fail")
+	}
+	cur, err = AuditExportCursor(ctx, pool)
+	if err != nil || cur != ids[1] {
+		t.Fatalf("cursor = %d, %v — want %d", cur, err, ids[1])
+	}
+}

@@ -100,6 +100,22 @@ export default defineRailway(() => {
       OFFSITE_TOKEN: preserve(),
     },
   });
+  // Hourly audit archive: every audit row past the export cursor is shipped
+  // through backup-ingest.veil.nyc into R2 as append-only JSONL. Postgres is
+  // the store of record, but it is one blast radius — this is the copy that
+  // survives it, and the feed a per-org SIEM export builds on later. The
+  // beat is stamped only on a fully-drained run; monitor pages when it goes
+  // stale. Same bearer as the backup push — one worker, one token.
+  const veilAuditExport = service("veil-audit-export", {
+    build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
+    start: "/veil audit-export",
+    deploy: { restartPolicyType: "NEVER", cronSchedule: "42 * * * *" },
+    replicas: { "sfo": 1 },
+    env: {
+      VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
+      VEIL_AUDIT_INGEST_TOKEN: preserve(),
+    },
+  });
   // Dead-man's switch: every 15 min, check the backup/sweep beats,
   // audit_outbox lag, and public /ready — email on findings. A cron that
   // dies silently is worse than no cron; this is the thing that notices.
@@ -133,6 +149,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport],
   });
 });
