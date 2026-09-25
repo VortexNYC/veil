@@ -288,6 +288,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
 	mux.HandleFunc("GET /v1/billing", s.getBilling)
+	mux.HandleFunc("POST /v1/billing/checkout", s.postBillingCheckout)
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
 	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -1026,6 +1027,27 @@ func (s *Server) getBilling(w http.ResponseWriter, r *http.Request) {
 		v.Included = &cap
 	}
 	writeJSON(w, v)
+}
+
+// POST /v1/billing/checkout — the upgrade click (VEIL-67). Owner-only:
+// composes a hosted Vortex subscription checkout against the org's billing
+// link and returns the URL. The cap banner's action.
+func (s *Server) postBillingCheckout(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	url, err := s.App.BillingCheckoutURL(r.Context(), p.OrgID)
+	if err != nil {
+		if errors.Is(err, app.ErrBillingDisabled) {
+			http.Error(w, "billing not configured", http.StatusNotFound)
+			return
+		}
+		slog.Warn("billing checkout failed", "org", p.OrgID, "err", err)
+		http.Error(w, "checkout failed", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, map[string]string{"checkout_url": url})
 }
 
 // billingWebhook is the inbound edge of the billing plane. Vortex-Signature

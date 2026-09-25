@@ -27,6 +27,13 @@ type Client struct {
 	// disables the flusher — the webhook receiver works without it.
 	MeterID    string
 	UsageEvent string
+	// PriceID is the paid plan's catalog price (VEIL-67) — the upgrade
+	// checkout composes a subscription session against it. Empty disables
+	// checkout. SuccessURL/CancelURL are the hosted page's return targets;
+	// empty omits them from the request.
+	PriceID    string
+	SuccessURL string
+	CancelURL  string
 	HTTP       *http.Client
 }
 
@@ -274,4 +281,63 @@ func (c *Client) RecordUsage(ctx context.Context, d UsageDelta) error {
 		return fmt.Errorf("vortex usage-events: bad response: %w", err)
 	}
 	return nil
+}
+
+// CheckoutIntent is one upgrade-click against the org's billing link.
+type CheckoutIntent struct {
+	OrgID            string
+	CustomerID       string
+	BillingAccountID string
+}
+
+// CheckoutSession mints a hosted subscription checkout and returns the URL.
+// Contract: createCheckoutSessionCommandSchema — mode=subscription requires
+// customerId + billingAccountId + items[priceId]. The idempotency key is
+// fresh per call on purpose: Vortex replays an already-seen key with
+// checkoutUrl:null, which would strand a second upgrade click.
+func (c *Client) CheckoutSession(ctx context.Context, in CheckoutIntent) (string, error) {
+	if c.PriceID == "" {
+		return "", fmt.Errorf("vortex checkout: price not configured")
+	}
+	cmd := map[string]any{
+		"environment":       c.Environment,
+		"merchantAccountId": c.MerchantID,
+		"mode":              "subscription",
+		"customerId":        in.CustomerID,
+		"billingAccountId":  in.BillingAccountID,
+		"items":             []map[string]any{{"priceId": c.PriceID}},
+		"metadata":          map[string]string{"source": "veil", "orgId": in.OrgID},
+	}
+	if c.SuccessURL != "" {
+		cmd["successUrl"] = c.SuccessURL
+	}
+	if c.CancelURL != "" {
+		cmd["cancelUrl"] = c.CancelURL
+	}
+	body, err := json.Marshal(cmd)
+	if err != nil {
+		return "", err
+	}
+	idem := fmt.Sprintf("veil-checkout-%s-%d", in.OrgID, time.Now().UnixNano())
+	status, raw, err := c.do(ctx, http.MethodPost, "/v1/checkout-sessions", body, idem)
+	if err != nil {
+		return "", err
+	}
+	if status >= 300 {
+		return "", fmt.Errorf("vortex checkout-sessions: %d", status)
+	}
+	var out struct {
+		Data struct {
+			CheckoutSession struct {
+				CheckoutURL *string `json:"checkoutUrl"`
+			} `json:"checkoutSession"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("vortex checkout-sessions: bad response: %w", err)
+	}
+	if out.Data.CheckoutSession.CheckoutURL == nil || *out.Data.CheckoutSession.CheckoutURL == "" {
+		return "", fmt.Errorf("vortex checkout-sessions: empty checkoutUrl")
+	}
+	return *out.Data.CheckoutSession.CheckoutURL, nil
 }

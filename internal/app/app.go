@@ -318,6 +318,10 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 			MeterID:     os.Getenv("VEIL_VORTEX_METER_ID"),
 			UsageEvent:  firstEnv("VEIL_VORTEX_USAGE_EVENT"),
 			Environment: env,
+			// VEIL-67: plan price + return targets power the upgrade checkout.
+			PriceID:    os.Getenv("VEIL_VORTEX_PRICE_ID"),
+			SuccessURL: firstEnv("VEIL_CHECKOUT_SUCCESS_URL"),
+			CancelURL:  firstEnv("VEIL_CHECKOUT_CANCEL_URL"),
 		}
 		if a.BillingCustomers.UsageEvent == "" {
 			a.BillingCustomers.UsageEvent = "credential_use"
@@ -938,6 +942,32 @@ func (a *App) ensureBillingCustomer(ctx context.Context, orgID string) {
 		})
 	}
 }
+
+// BillingCheckoutURL mints the org's hosted upgrade link — the owner clicks
+// it, pays, and the subscription webhook flips the plan. Provisions the
+// billing link lazily so orgs that predate billing (or hit a provisioning
+// outage) can still upgrade. ErrBillingDisabled when checkout isn't wired.
+func (a *App) BillingCheckoutURL(ctx context.Context, orgID string) (string, error) {
+	c := a.BillingCustomers
+	if c == nil || c.PriceID == "" {
+		return "", ErrBillingDisabled
+	}
+	bctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	ob, err := a.ensureBillingLink(bctx, orgID)
+	if err != nil {
+		return "", err
+	}
+	return c.CheckoutSession(bctx, billing.CheckoutIntent{
+		OrgID:            orgID,
+		CustomerID:       ob.CustomerID,
+		BillingAccountID: ob.BillingAccountID,
+	})
+}
+
+// ErrBillingDisabled — checkout/reporting needs the Vortex wiring
+// (VEIL_VORTEX_* envs) plus VEIL_VORTEX_PRICE_ID for the plan price.
+var ErrBillingDisabled = errors.New("app: billing checkout not configured")
 
 // ensureBillingLink resolves (and persists) the org's customer + billing
 // account, each step writing through SetBillingLink so partial progress

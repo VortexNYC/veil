@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/VortexNYC/veil/internal/app"
+	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/store"
 )
 
@@ -146,5 +148,82 @@ func TestGetBilling(t *testing.T) {
 	_, body = get("human")
 	if body["plan"] != "active" || body["included"] != nil {
 		t.Fatalf("paid view: %v", body)
+	}
+}
+
+// POST /v1/billing/checkout — the upgrade click. Owner-only; composes a
+// hosted Vortex subscription checkout against the org's billing link.
+func TestBillingCheckout(t *testing.T) {
+	a := testApp(t)
+	var posted map[string]any
+	vx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/customers"):
+			if strings.HasSuffix(r.URL.Path, "/billing-accounts") {
+				_, _ = w.Write([]byte(`{"data":{"items":[{"billingAccountId":"bacc_1"}]}}`))
+				return
+			}
+			fmt.Fprintf(w, `{"data":{"items":[{"customerId":"cus_1","externalCustomerRef":%q}]}}`, a.OrgID)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout-sessions":
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &posted)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"data":{"checkoutSession":{"checkoutUrl":"https://pay.sandbox.vortex.nyc/c/plink_9"},"replayed":false}}`))
+		default:
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(vx.Close)
+
+	mux := http.NewServeMux()
+	(&Server{App: a, Identity: identity(a)}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	post := func(token string) (int, map[string]any) {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/billing/checkout", nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var body map[string]any
+		_ = json.NewDecoder(res.Body).Decode(&body)
+		return res.StatusCode, body
+	}
+
+	if code, _ := post(""); code != http.StatusUnauthorized {
+		t.Fatalf("anon: %d", code)
+	}
+	if code, _ := post("member"); code != http.StatusForbidden {
+		t.Fatalf("member: %d", code)
+	}
+	// Unconfigured billing → clean error, not a panic.
+	if code, _ := post("human"); code == http.StatusOK {
+		t.Fatal("checkout without billing client")
+	}
+
+	a.BillingCustomers = &billing.Client{BaseURL: vx.URL, Key: "vp_t", MerchantID: "ma_7", Environment: "sandbox", PriceID: "price_pro"}
+	code, body := post("human")
+	if code != http.StatusOK {
+		t.Fatalf("owner checkout: %d %v", code, body)
+	}
+	if body["checkout_url"] != "https://pay.sandbox.vortex.nyc/c/plink_9" {
+		t.Fatalf("checkout_url: %v", body)
+	}
+	if posted["customerId"] != "cus_1" || posted["billingAccountId"] != "bacc_1" || posted["mode"] != "subscription" {
+		t.Fatalf("posted %v", posted)
+	}
+	// The link persisted — the flusher + later clicks reuse it.
+	ob, err := a.Store.Billing(a.OrgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ob.CustomerID != "cus_1" || ob.BillingAccountID != "bacc_1" {
+		t.Fatalf("link %v", ob)
 	}
 }

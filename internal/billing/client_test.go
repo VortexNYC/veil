@@ -263,3 +263,83 @@ func TestRecordUsageFailure(t *testing.T) {
 		t.Fatal("expected error on 500")
 	}
 }
+
+// VEIL-67 — upgrade checkout. POST /v1/checkout-sessions composes a hosted
+// subscription link: mode=subscription + customerId + billingAccountId +
+// items[priceId]. Response is {data: {checkoutSession: {checkoutUrl, ...}}}.
+// Vortex drops checkoutUrl on replayed responses, so each call sends a fresh
+// idempotency key — a second upgrade click must mint a fresh session.
+func TestCheckoutSession(t *testing.T) {
+	var got map[string]any
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/checkout-sessions" || r.Method != http.MethodPost {
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &got)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"data":{"checkoutSession":{"checkoutSessionId":"plink_1","checkoutUrl":"https://pay.sandbox.vortex.nyc/c/plink_1","status":"open"},"replayed":false}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := &Client{BaseURL: srv.URL, Key: "vp_test", MerchantID: "ma_7", Environment: "sandbox", PriceID: "price_29", SuccessURL: "https://app.veil.nyc/billing?ok=1", CancelURL: "https://app.veil.nyc/billing"}
+	url, err := c.CheckoutSession(context.Background(), CheckoutIntent{
+		OrgID:            "org-1",
+		CustomerID:       "cus_1",
+		BillingAccountID: "bacc_1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url != "https://pay.sandbox.vortex.nyc/c/plink_1" {
+		t.Fatalf("checkoutUrl %q", url)
+	}
+	if got["mode"] != "subscription" || got["customerId"] != "cus_1" || got["billingAccountId"] != "bacc_1" {
+		t.Fatalf("body %v", got)
+	}
+	items, _ := got["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["priceId"] != "price_29" {
+		t.Fatalf("items %v", got["items"])
+	}
+	if got["environment"] != "sandbox" || got["merchantAccountId"] != "ma_7" {
+		t.Fatalf("body %v", got)
+	}
+	if got["successUrl"] != "https://app.veil.nyc/billing?ok=1" || got["cancelUrl"] != "https://app.veil.nyc/billing" {
+		t.Fatalf("urls %v", got)
+	}
+	if len(keys) != 1 || keys[0] == "" {
+		t.Fatalf("idempotency keys %v", keys)
+	}
+}
+
+// Repeat clicks must not replay the same key — a replayed session comes back
+// without checkoutUrl and strands the owner mid-upgrade.
+func TestCheckoutSessionFreshKeyPerCall(t *testing.T) {
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"checkoutSession":{"checkoutUrl":"https://x/c/1"},"replayed":false}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{BaseURL: srv.URL, Key: "k", MerchantID: "ma_7", Environment: "sandbox", PriceID: "p"}
+	for i := 0; i < 2; i++ {
+		if _, err := c.CheckoutSession(context.Background(), CheckoutIntent{OrgID: "o", CustomerID: "c", BillingAccountID: "b"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(keys) != 2 || keys[0] == keys[1] {
+		t.Fatalf("reused idempotency key %v", keys)
+	}
+}
+
+func TestCheckoutSessionNoPrice(t *testing.T) {
+	c := &Client{BaseURL: "http://x", Key: "k", MerchantID: "m", Environment: "sandbox"}
+	if _, err := c.CheckoutSession(context.Background(), CheckoutIntent{OrgID: "o", CustomerID: "c", BillingAccountID: "b"}); err == nil {
+		t.Fatal("expected error without PriceID")
+	}
+}
