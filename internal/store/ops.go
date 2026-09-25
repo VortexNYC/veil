@@ -69,3 +69,17 @@ func OutboxLag(ctx context.Context, pool *pgxpool.Pool) (depth int, oldest time.
 	}
 	return depth, oldest, nil
 }
+
+// UsageReportLag reports billing-flusher backlog: pending rows are
+// org-windows with unreported deltas, stale is the subset from closed
+// windows (before currentWindow) — those have survived at least one full
+// tick plus a window boundary, so they are stuck rather than merely queued.
+// units is the total unreported usage.
+func UsageReportLag(ctx context.Context, pool *pgxpool.Pool, currentWindow time.Time) (pending, stale int64, units int64, err error) {
+	err = pool.QueryRow(ctx,
+		`SELECT count(*),
+		        count(*) FILTER (WHERE window_start < $1),
+		        COALESCE(sum(used - reported), 0)
+		 FROM usage_counters WHERE used > reported`, currentWindow).Scan(&pending, &stale, &units)
+	return pending, stale, units, err
+}

@@ -2262,3 +2262,7 @@ func (s *SQLite) requestOrgs(where string, args ...any) map[string]struct{} {
 	}
 	return orgs
 }
+
+// MarkHeartbeat: sqlite has no ops_heartbeat table — the monitor is a
+// postgres deployment concern.
+func (s *SQLite) MarkHeartbeat(string) error { return nil }

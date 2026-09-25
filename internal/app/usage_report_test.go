@@ -179,6 +179,34 @@ func TestUsageFlushFailureKeepsDelta(t *testing.T) {
 	}
 }
 
+// The flusher heartbeat is the monitor's liveness signal for the loop —
+// a metered flush marks "usage-report" so a stalled reporter pages.
+func TestUsageFlushMarksHeartbeat(t *testing.T) {
+	f := &fakeVortex{}
+	srv := fakeVortexServer(t, f)
+	t.Cleanup(srv.Close)
+	a := testUsageApp(srv)
+
+	a.flushUsageReports(context.Background())
+
+	m, ok := a.Store.(*store.Memory)
+	if !ok {
+		t.Fatalf("store = %T, want *store.Memory", a.Store)
+	}
+	if _, ok := m.HeartbeatAt("usage-report"); !ok {
+		t.Fatal("usage-report heartbeat unmarked after flush")
+	}
+
+	// Unmetered flush marks nothing — an unmetered deploy never reports.
+	a.BillingCustomers.MeterID = ""
+	m2 := store.NewMemory()
+	a.Store = m2
+	a.flushUsageReports(context.Background())
+	if _, ok := m2.HeartbeatAt("usage-report"); ok {
+		t.Fatal("unmetered flush must not mark the beat")
+	}
+}
+
 // No meter configured — billing on for webhooks, usage reporting off.
 func TestUsageFlushSkipsWithoutMeter(t *testing.T) {
 	f := &fakeVortex{}

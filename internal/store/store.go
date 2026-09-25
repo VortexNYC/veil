@@ -260,6 +260,10 @@ type Store interface {
 	// Postgres queues events that fail the direct write so a transient
 	// outage cannot lose them; stores without an outbox report 0.
 	FlushAuditOutbox(limit int) (int, error)
+	// MarkHeartbeat stamps the named job's liveness beat in ops_heartbeat —
+	// the monitor pages when a beat goes stale. Stores without the ops
+	// table no-op.
+	MarkHeartbeat(name string) error
 
 	// Sweep deletes terminally-expired rows (sessions past expiry or revoked,
 	// grants and approvals past expiry) older than the cutoff. It keeps the

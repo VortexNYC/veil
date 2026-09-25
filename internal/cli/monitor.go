@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
+	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/store"
 )
 
@@ -24,7 +25,8 @@ import (
 // once, not every tick.
 func monitorCmd() *cobra.Command {
 	var dsn, mailURL, mailToken, alertTo, readyURL string
-	var backupStale, sweepStale, alertCooldown time.Duration
+	var backupStale, sweepStale, alertCooldown, usageStale time.Duration
+	var usagePending int64
 	c := &cobra.Command{
 		Use:   "monitor",
 		Short: "Check ops heartbeats and outbox lag; email on failure. Not MCP.",
@@ -45,6 +47,27 @@ func monitorCmd() *cobra.Command {
 				defer pool.Close()
 				findings = append(findings, checkBeat(ctx, pool, "backup", backupStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "sweep", sweepStale)...)
+				// usage-report is opt-in: unmetered deploys never run the
+				// flusher, so a missing beat is silence, not a finding. A
+				// beat that exists and goes stale means the reporter wedged.
+				if age, ok, err := store.HeartbeatAge(ctx, pool, "usage-report"); err != nil {
+					findings = append(findings, "usage-report heartbeat unreadable: "+err.Error())
+				} else if ok && age > usageStale {
+					findings = append(findings,
+						fmt.Sprintf("usage-report last reported %s ago", age.Round(time.Minute)))
+				}
+				if pending, stale, units, err := store.UsageReportLag(ctx, pool, broker.MonthWindow(time.Now())); err != nil {
+					findings = append(findings, "usage backlog unreadable: "+err.Error())
+				} else {
+					if stale > 0 {
+						findings = append(findings,
+							fmt.Sprintf("usage report stuck: %d deltas from closed windows unreported", stale))
+					}
+					if pending > usagePending {
+						findings = append(findings,
+							fmt.Sprintf("usage report backlog: %d org-windows, %d units unreported", pending, units))
+					}
+				}
 				if depth, oldest, err := store.OutboxLag(ctx, pool); err != nil {
 					findings = append(findings, "audit_outbox unreadable: "+err.Error())
 				} else if depth > 500 || oldest > 2*time.Minute {
@@ -94,6 +117,8 @@ func monitorCmd() *cobra.Command {
 	c.Flags().StringVar(&readyURL, "ready-url", "", "public readiness URL (default env VEIL_READY_URL)")
 	c.Flags().DurationVar(&backupStale, "backup-stale", 26*time.Hour, "backup beat older than this is a finding")
 	c.Flags().DurationVar(&sweepStale, "sweep-stale", 100*time.Minute, "sweep beat older than this is a finding")
+	c.Flags().DurationVar(&usageStale, "usage-stale", 10*time.Minute, "usage-report beat older than this is a finding (absent beat = unmetered deploy, skipped)")
+	c.Flags().Int64Var(&usagePending, "usage-pending", 25, "unreported usage org-windows beyond this is a finding")
 	c.Flags().DurationVar(&alertCooldown, "alert-cooldown", 6*time.Hour, "minimum time between alert emails")
 	c.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if dsn == "" {

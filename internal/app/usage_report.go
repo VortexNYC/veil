@@ -65,6 +65,11 @@ func (a *App) flushUsageReports(ctx context.Context) {
 	if c == nil || c.MeterID == "" {
 		return
 	}
+	// The liveness beat precedes the work so a wedged drain still tells the
+	// monitor when it was last alive; unmetered callers never mark.
+	if err := a.Store.MarkHeartbeat("usage-report"); err != nil {
+		slog.Warn("usage report: heartbeat unwritten", "err", err)
+	}
 	rows, err := a.Store.UsageReportPending(usageReportBatch)
 	if err != nil {
 		slog.Warn("usage report: pending read failed", "err", err)

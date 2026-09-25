@@ -1547,3 +1547,9 @@ func (p *Postgres) MarkUsageReported(orgID string, window time.Time, amount int6
 		Amount:      amount,
 	})
 }
+
+// MarkHeartbeat delegates to the ops_heartbeat writer — the flusher runs
+// inside the app process, so the beat goes through the store interface.
+func (p *Postgres) MarkHeartbeat(name string) error {
+	return MarkHeartbeat(context.Background(), p.pool, name)
+}

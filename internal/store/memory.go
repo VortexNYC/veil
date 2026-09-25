@@ -30,6 +30,7 @@ type Memory struct {
 	nextVer   int64
 	billing   map[string]OrgBilling   // key: org_id
 	usage     map[string]usageCounter // key: org_id+"\x00"+window unix
+	beats     map[string]time.Time    // key: job name — ops liveness
 }
 
 func NewMemory() *Memory {
@@ -47,6 +48,7 @@ func NewMemory() *Memory {
 		verSecret: map[int64]Secret{},
 		billing:   map[string]OrgBilling{},
 		usage:     map[string]usageCounter{},
+		beats:     map[string]time.Time{},
 	}
 }
 
@@ -831,6 +833,22 @@ func (m *Memory) MarkUsageReported(orgID string, window time.Time, amount int64)
 
 // FlushAuditOutbox: memory has no outbox.
 func (m *Memory) FlushAuditOutbox(int) (int, error) { return 0, nil }
+
+// MarkHeartbeat records the beat — tests read it back via HeartbeatAt.
+func (m *Memory) MarkHeartbeat(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.beats[name] = time.Now()
+	return nil
+}
+
+// HeartbeatAt reports when name last beat. Test surface, not Store.
+func (m *Memory) HeartbeatAt(name string) (time.Time, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	at, ok := m.beats[name]
+	return at, ok
+}
 
 func (m *Memory) Audit() ([]protocol.AuditEvent, error) {
 	m.mu.Lock()
