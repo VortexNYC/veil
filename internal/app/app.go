@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/VortexNYC/veil/internal/audit"
+	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/device"
@@ -109,6 +111,9 @@ type App struct {
 	Invites   Inviter
 	OrgAdmin  OrgAdmin
 	Notify    RequestNotify
+	// BillingCustomers is the merchant-scoped Vortex client — nil when the
+	// VEIL_VORTEX_* envs are unset (billing off; dev and tests unaffected).
+	BillingCustomers *billing.Client
 
 	inviteLim inviteLimiter
 }
@@ -290,6 +295,13 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 	if v := os.Getenv("VEIL_FREE_USE_CAP"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			a.Broker.FreeUseCap = n
+		}
+	}
+	// VEIL-61: the Vortex billing link. All four envs required — partial
+	// config is off, not half-on.
+	if base, key, merchant, env := os.Getenv("VEIL_VORTEX_API_URL"), os.Getenv("VEIL_VORTEX_API_KEY"), os.Getenv("VEIL_VORTEX_MERCHANT_ID"), os.Getenv("VEIL_VORTEX_ENV"); base != "" && key != "" && merchant != "" && env != "" {
+		a.BillingCustomers = &billing.Client{
+			BaseURL: base, Key: key, MerchantID: merchant, Environment: env,
 		}
 	}
 	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {
@@ -874,7 +886,47 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 			return protocol.Principal{}, err
 		}
 	}
+	a.ensureBillingCustomer(ctx, orgID)
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
+}
+
+// ensureBillingCustomer links the org to a Vortex billing customer
+// (externalCustomerRef = orgID). Best-effort by doctrine: billing must never
+// block auth, so failure audits billing_provision_failed — orgs carrying
+// that audit action are the reconcile set — and signup proceeds. Skips when
+// the link already exists.
+func (a *App) ensureBillingCustomer(ctx context.Context, orgID string) {
+	if a.BillingCustomers == nil {
+		return
+	}
+	if ob, err := a.Store.Billing(orgID); err == nil && ob.CustomerID != "" {
+		return
+	}
+	bctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	customerID, err := a.BillingCustomers.EnsureCustomer(bctx, orgID)
+	cancel()
+	if err != nil {
+		slog.Warn("billing customer provision failed", "org", orgID, "err", err)
+		_ = a.Store.AppendAudit(protocol.AuditEvent{
+			Time:     time.Now().UTC(),
+			OrgID:    orgID,
+			AgentID:  "vortex-provision",
+			Action:   protocol.ActionBillingProvisionFailed,
+			Decision: protocol.DecisionDeny,
+			Reason:   err.Error(),
+		})
+		return
+	}
+	ob, _ := a.Store.Billing(orgID)
+	ob.OrgID = orgID
+	ob.CustomerID = customerID
+	if ob.Plan == "" {
+		ob.Plan = "free"
+	}
+	ob.UpdatedAt = time.Now().UTC()
+	if err := a.Store.SetBilling(ob); err != nil {
+		slog.Warn("billing link persist failed", "org", orgID, "err", err)
+	}
 }
 
 // InviteHuman is the private-alpha gate: a verified, provisioned human invites

@@ -86,6 +86,9 @@ const (
 	ActionRequestCancelled ActionKind = "request_cancelled"
 	// Billing plane: the Vortex webhook receiver flips org plan state.
 	ActionBillingPlanChanged ActionKind = "billing_plan_changed"
+	// billing_provision_failed — Vortex customer upsert failed during
+	// provision; signup succeeded anyway. Reconcile target.
+	ActionBillingProvisionFailed ActionKind = "billing_provision_failed"
 )
 
 type Decision string

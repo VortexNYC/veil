@@ -2,13 +2,18 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
@@ -408,5 +413,89 @@ func TestProvisionHumanConcurrentPostgres(t *testing.T) {
 		if item.OrgID != p.OrgID {
 			t.Fatalf("item org %q want %q", item.OrgID, p.OrgID)
 		}
+	}
+}
+
+// VEIL-61 — every new org becomes a Vortex billing customer
+// (externalCustomerRef = orgID). The link is best-effort: billing down must
+// never block signup, but the failure is audited so a reconcile can find it.
+func TestProvisionCreatesBillingCustomer(t *testing.T) {
+	var calls []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		calls = append(calls, fmt.Sprint(body["externalCustomerRef"]))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"data":{"customerId":"cus_9","externalCustomerRef":"` + fmt.Sprint(body["externalCustomerRef"]) + `"},"requestId":"r"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	a, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.Provision = &fakeProvision{}
+	a.Members = orgMembers{}
+	a.BillingCustomers = &billing.Client{
+		BaseURL: srv.URL, Key: "vp_test", MerchantID: "ma_7", Environment: "sandbox",
+	}
+
+	p := provisioned(t, a, a.Provision.(*fakeProvision), "sub-bill")
+	if len(calls) != 1 || calls[0] != p.OrgID {
+		t.Fatalf("customer calls %v for org %q", calls, p.OrgID)
+	}
+	ob, err := a.Store.Billing(p.OrgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ob.CustomerID != "cus_9" {
+		t.Fatalf("org billing link %q", ob.CustomerID)
+	}
+	// Reprovision does not re-post — the link exists.
+	_ = provisioned(t, a, a.Provision.(*fakeProvision), "sub-bill")
+	if len(calls) != 1 {
+		t.Fatalf("reprovision re-posted customer: %d calls", len(calls))
+	}
+}
+
+func TestProvisionSurvivesBillingOutage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	a, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.Provision = &fakeProvision{}
+	a.Members = orgMembers{}
+	a.BillingCustomers = &billing.Client{
+		BaseURL: srv.URL, Key: "vp_test", MerchantID: "ma_7", Environment: "sandbox",
+	}
+
+	p := provisioned(t, a, a.Provision.(*fakeProvision), "sub-down")
+	if p.OrgID == "" {
+		t.Fatal("billing outage blocked provision")
+	}
+	// Failure is audited so a reconcile sweep can find unlinked orgs.
+	events, err := a.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range events {
+		if e.Action == protocol.ActionBillingProvisionFailed {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("billing provision failure not audited")
 	}
 }
