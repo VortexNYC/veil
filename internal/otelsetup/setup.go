@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Start installs a tracer provider. No endpoint: no-op, not an error.
@@ -47,9 +48,25 @@ func Start(ctx context.Context) (func(context.Context) error, error) {
 	return tp.Shutdown, nil
 }
 
-// Handler traces the mux. GET /health and /ready are skipped.
+// Handler traces the mux. GET /health and /ready are skipped. After the
+// route serves, url.path is overwritten with the matched mux pattern and
+// client.address is blanked — raw paths carry item/agent/member names and
+// client IPs, neither of which belongs in the trace sink.
 func Handler(h http.Handler) http.Handler {
-	return otelhttp.NewHandler(h, "veil", otelhttp.WithFilter(func(r *http.Request) bool {
+	scrub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r)
+		span := trace.SpanFromContext(r.Context())
+		if p := r.Pattern; p != "" {
+			span.SetAttributes(
+				semconv.URLPath(p),
+				semconv.HTTPRoute(p),
+			)
+		} else {
+			span.SetAttributes(semconv.URLPath(""))
+		}
+		span.SetAttributes(semconv.ClientAddress(""))
+	})
+	return otelhttp.NewHandler(scrub, "veil", otelhttp.WithFilter(func(r *http.Request) bool {
 		switch r.URL.Path {
 		case "/health", "/ready":
 			return false

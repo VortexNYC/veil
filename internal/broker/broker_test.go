@@ -773,10 +773,12 @@ func TestUseLogHasNoSecret(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	// Secret in path AND query — webhook-style URLs carry the credential in
+	// the path segment, so the log line must show host only.
 	got, err := b.Use(context.Background(), agent, protocol.UseRequest{
 		ItemID: "item-1",
 		Action: protocol.ActionFetch,
-		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1/customers?token=" + secret},
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/services/" + secret + "?token=" + secret},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -804,10 +806,12 @@ func TestUseSpanHasNoSecret(t *testing.T) {
 	t.Cleanup(func() { otel.SetTracerProvider(prev) })
 
 	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	// Secret in path AND query — webhook-style URLs carry the credential in
+	// the path segment, so veil.host must be scheme://host and nothing more.
 	got, err := b.Use(context.Background(), agent, protocol.UseRequest{
 		ItemID: "item-1",
 		Action: protocol.ActionFetch,
-		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1/customers?token=" + secret},
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/services/" + secret + "?token=" + secret},
 	})
 	if err != nil {
 		t.Fatal(err)

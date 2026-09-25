@@ -534,12 +534,16 @@ func LogEvent(e protocol.AuditEvent, item, host string, status int) {
 	slog.Info("use", attrs...)
 }
 
+// hostPath reduces an upstream URL to scheme://host for the veil.host span
+// attribute. The path stays out: upstream paths can carry embedded
+// credentials (webhook tokens, signed path segments), and telemetry must
+// never be a place a secret can leak to.
 func hostPath(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
 		return ""
 	}
-	return u.Scheme + "://" + u.Host + u.Path
+	return u.Scheme + "://" + u.Host
 }
 
 func spanUse(span trace.Span, agent, item string, dec protocol.UseResult, status int, host string) {
