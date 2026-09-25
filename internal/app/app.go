@@ -326,6 +326,12 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 		if a.BillingCustomers.UsageEvent == "" {
 			a.BillingCustomers.UsageEvent = "credential_use"
 		}
+		// VEIL-62: the capped-deny path asks Vortex once per org per TTL
+		// whether a missed webhook left the plan stale; a definitive allow
+		// heals the local row. Only deny paths reach it — entitled requests
+		// never see it.
+		checker := &billing.AccessChecker{Lookuper: a.BillingCustomers}
+		a.Broker.AccessCheck = checker.Allowed
 		a.startUsageReporter()
 	}
 	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {

@@ -1128,6 +1128,80 @@ func TestUseMeteringDisabled(t *testing.T) {
 	}
 }
 
+// VEIL-62 — the access-check backstop. A capped org may actually be paid: the
+// webhook missed and local plan went stale. The deny path asks Vortex's
+// access endpoint (cached elsewhere); a definitive allow heals the local
+// plan and lets the request through. Any checker error or negative answer
+// leaves the local denial standing — billing outage never adds an outage.
+func TestUseCappedOrgAccessCheckHeals(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	b.FreeUseCap = 1
+	if got := useOnce(t, b, agent, upstream.URL); got.Decision != protocol.DecisionAllow {
+		t.Fatalf("first use: decision=%s", got.Decision)
+	}
+	var calls int
+	var gotCustomer string
+	b.AccessCheck = func(_ context.Context, orgID, customerID string) bool {
+		calls++
+		gotCustomer = customerID
+		return true
+	}
+	got := useOnce(t, b, agent, upstream.URL)
+	if got.Decision != protocol.DecisionAllow {
+		t.Fatalf("healed use: decision=%s reason=%s", got.Decision, got.Reason)
+	}
+	if calls != 1 {
+		t.Fatalf("access check calls = %d, want 1", calls)
+	}
+	if gotCustomer != agent.OrgID {
+		t.Fatalf("customerID = %q, want org id %q", gotCustomer, agent.OrgID)
+	}
+	ob, err := b.Store.Billing(agent.OrgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ob.Plan != "active" {
+		t.Fatalf("healed plan = %q, want active", ob.Plan)
+	}
+	// Plan is healed: the next allow never touches the checker.
+	if got := useOnce(t, b, agent, upstream.URL); got.Decision != protocol.DecisionAllow {
+		t.Fatalf("post-heal use: decision=%s", got.Decision)
+	}
+	if calls != 1 {
+		t.Fatalf("checker called after heal: %d calls", calls)
+	}
+	events, err := b.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var healed bool
+	for _, e := range events {
+		if e.Action == protocol.ActionBillingPlanChanged && e.Reason == "access_check:active" {
+			healed = true
+		}
+	}
+	if !healed {
+		t.Fatal("healing plan flip not audited")
+	}
+}
+
+func TestUseCappedOrgAccessCheckNegativeDenies(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	b.FreeUseCap = 1
+	if got := useOnce(t, b, agent, upstream.URL); got.Decision != protocol.DecisionAllow {
+		t.Fatalf("first use: decision=%s", got.Decision)
+	}
+	b.AccessCheck = func(context.Context, string, string) bool { return false }
+	got := useOnce(t, b, agent, upstream.URL)
+	if got.Decision != protocol.DecisionDeny || got.Reason != "payment_required" {
+		t.Fatalf("denied use: decision=%s reason=%s", got.Decision, got.Reason)
+	}
+	ob, _ := b.Store.Billing(agent.OrgID)
+	if ob.Plan != "free" {
+		t.Fatalf("plan mutated on negative check: %q", ob.Plan)
+	}
+}
+
 func TestUseDeniedCallsDoNotConsume(t *testing.T) {
 	b, _, _, upstream, _ := setup(t, protocol.Level2)
 	b.FreeUseCap = 1

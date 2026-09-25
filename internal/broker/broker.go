@@ -57,7 +57,13 @@ type Broker struct {
 	// FreeUseCap is the per-org per-window use allowance on the free plan —
 	// the Paper-style gate (VEIL-60). 0 disables metering entirely.
 	FreeUseCap int64
-	useLimit   *semaphore.Weighted
+	// AccessCheck is the VEIL-62 billing backstop: on a capped deny it asks
+	// Vortex whether the org's entitlement is live — a definitive answer
+	// heals a plan a missed webhook left stale. Caching lives inside the
+	// implementation; the deny path is the only caller, and any error inside
+	// the check resolves to false (the local denial stands).
+	AccessCheck func(ctx context.Context, orgID, customerID string) bool
+	useLimit    *semaphore.Weighted
 }
 
 func New(s store.Store) *Broker {
@@ -263,7 +269,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	// window counter before the secret is released. Over cap → deny
 	// payment_required, audited like every other decision. Denials and
 	// need_approval asks never consume.
-	ok, err := b.claimUse(agent.OrgID, now)
+	ok, err := b.claimUse(ctx, agent.OrgID, now)
 	if err != nil {
 		return protocol.UseResult{}, err
 	}
@@ -561,7 +567,7 @@ func MonthWindow(t time.Time) time.Time {
 // FreeUseCap per window; paid plans accrue usage uncapped. Metering is off
 // when FreeUseCap <= 0. Store errors fail closed like every other store
 // error on the Use path.
-func (b *Broker) claimUse(orgID string, now time.Time) (bool, error) {
+func (b *Broker) claimUse(ctx context.Context, orgID string, now time.Time) (bool, error) {
 	if b.FreeUseCap <= 0 {
 		return true, nil
 	}
@@ -573,11 +579,41 @@ func (b *Broker) claimUse(orgID string, now time.Time) (bool, error) {
 	if ob.Plan == "" || ob.Plan == "free" {
 		cap = b.FreeUseCap
 	}
-	_, ok, err := b.Store.ConsumeUse(orgID, MonthWindow(now), cap)
+	used, ok, err := b.Store.ConsumeUse(orgID, MonthWindow(now), cap)
 	if err != nil {
 		return false, fmt.Errorf("meter: %w", err)
 	}
-	return ok, nil
+	if ok {
+		return true, nil
+	}
+	// Over cap on a free plan — before denying, ask the access backstop
+	// whether Vortex knows a webhook missed (VEIL-62). A definitive allow
+	// heals the local plan row so the next claim never re-checks; the
+	// webhook remains the durable truth and converges it afterward.
+	if b.AccessCheck == nil {
+		return false, nil
+	}
+	customerID := ob.CustomerID
+	if customerID == "" {
+		customerID = orgID // Veil provisions customer ids caller-chosen = org id
+	}
+	if !b.AccessCheck(ctx, orgID, customerID) {
+		return false, nil
+	}
+	slog.Info("billing access check healed plan", "org", orgID, "used", used)
+	heal := ob
+	heal.Plan = "active"
+	heal.UpdatedAt = now.UTC()
+	if err := b.Store.SetBilling(heal); err != nil {
+		slog.Warn("access-check heal write failed", "org", orgID, "err", err)
+	}
+	// Best-effort heal audit — a failed append must not deny an entitled org.
+	_ = b.appendAudit(ctx, protocol.AuditEvent{
+		Time: now, OrgID: orgID, AgentID: "vortex-access-check",
+		Action: protocol.ActionBillingPlanChanged, Decision: protocol.DecisionAllow,
+		Reason: "access_check:active",
+	})
+	return true, nil
 }
 
 // hostPath reduces an upstream URL to scheme://host for the veil.host span
