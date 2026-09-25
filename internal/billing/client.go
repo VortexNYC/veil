@@ -88,7 +88,7 @@ func (c *Client) createCustomer(ctx context.Context, orgID string) (string, erro
 		"merchantAccountId":   c.MerchantID,
 		"customerId":          orgID, // caller-chosen: events then carry the org id as customerExternalId
 		"name":                orgID,
-		"defaultCurrency":     "usd",
+		"defaultCurrency":     "USD", // ISO code, case-sensitive — PROCESSABLE_CURRENCIES is uppercase
 		"externalCustomerRef": orgID,
 		"metadata":            map[string]string{"source": "veil", "orgId": orgID},
 	})
@@ -122,7 +122,10 @@ func (c *Client) createCustomer(ctx context.Context, orgID string) (string, erro
 // findByExternalRef resolves the org's billing customer by the join key;
 // "" means unlinked.
 func (c *Client) findByExternalRef(ctx context.Context, orgID string) (string, error) {
-	status, raw, err := c.do(ctx, http.MethodGet, "/v1/customers?externalCustomerRef="+url.QueryEscape(orgID), nil, "")
+	path := "/v1/customers?environment=" + url.QueryEscape(c.Environment) +
+		"&merchantAccountId=" + url.QueryEscape(c.MerchantID) +
+		"&externalCustomerRef=" + url.QueryEscape(orgID)
+	status, raw, err := c.do(ctx, http.MethodGet, path, nil, "")
 	if err != nil {
 		return "", err
 	}
