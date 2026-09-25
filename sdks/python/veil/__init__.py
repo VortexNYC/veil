@@ -19,6 +19,7 @@ __version__ = "0.1.1"
 # Define package exports
 __all__ = [
     "AgentApi",
+    "BillingApi",
     "HumanApi",
     "OwnerApi",
     "ApiResponse",
@@ -66,6 +67,7 @@ __all__ = [
 
 # import apis into sdk package
 from veil.api.agent_api import AgentApi as AgentApi
+from veil.api.billing_api import BillingApi as BillingApi
 from veil.api.human_api import HumanApi as HumanApi
 from veil.api.owner_api import OwnerApi as OwnerApi
 

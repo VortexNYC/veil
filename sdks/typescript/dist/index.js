@@ -947,9 +947,18 @@ var deleteOrg = (options) => (options?.client ?? client).delete({
   url: "/v1/org",
   ...options
 });
+var billingWebhook = (options) => (options.client ?? client).post({
+  url: "/v1/billing/webhook",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
 export {
   approveRequest,
   archiveItem,
+  billingWebhook,
   createAgent,
   createClient,
   createGrant,

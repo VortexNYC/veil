@@ -84,6 +84,8 @@ const (
 	ActionRequestDenied    ActionKind = "request_denied"
 	ActionRequestExpired   ActionKind = "request_expired"
 	ActionRequestCancelled ActionKind = "request_cancelled"
+	// Billing plane: the Vortex webhook receiver flips org plan state.
+	ActionBillingPlanChanged ActionKind = "billing_plan_changed"
 )
 
 type Decision string

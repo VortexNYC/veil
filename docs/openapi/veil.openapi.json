@@ -1,1904 +1,1953 @@
 {
- "openapi": "3.1.0",
- "info": {
-  "title": "Veil",
-  "version": "0.1.1",
-  "description": "Agent credential broker. Use injects the secret at the edge. Responses never include vault material. CLI, MCP, and generated SDKs are projections of this contract."
- },
- "servers": [
-  {
-   "url": "https://veil.nyc"
-  }
- ],
- "tags": [
-  {
-   "name": "Agent",
-   "description": "Bearer is the agent. listItems is metadata. useItem injects. Never GetSecret."
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Veil",
+    "version": "0.1.1",
+    "description": "Agent credential broker. Use injects the secret at the edge. Responses never include vault material. CLI, MCP, and generated SDKs are projections of this contract."
   },
-  {
-   "name": "Owner",
-   "description": "Bearer is a Keto member human. Create items and grants. Secret may be sent, never returned."
-  },
-  {
-   "name": "Human",
-   "description": "Bearer is a verified human ID token. Pre-membership — provision creates the membership."
-  }
- ],
- "security": [
-  {
-   "bearerAuth": []
-  }
- ],
- "paths": {
-  "/health": {
-   "get": {
-    "operationId": "getHealth",
-    "tags": [
-     "Agent"
-    ],
-    "security": [],
-    "summary": "Liveness. No secrets.",
-    "responses": {
-     "200": {
-      "description": "ok",
-      "content": {
-       "text/plain": {
-        "schema": {
-         "type": "string",
-         "examples": [
-          "ok\n"
-         ]
-        }
-       }
-      }
-     }
+  "servers": [
+    {
+      "url": "https://veil.nyc"
     }
-   }
-  },
-  "/openapi.json": {
-   "get": {
-    "operationId": "getOpenApi",
-    "tags": [
-     "Agent"
-    ],
-    "security": [],
-    "summary": "This contract.",
-    "responses": {
-     "200": {
-      "description": "OpenAPI document",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object"
-        }
-       }
-      }
-     }
-    }
-   }
-  },
-  "/v1/items": {
-   "get": {
-    "operationId": "listItems",
-    "tags": [
-     "Agent"
-    ],
-    "summary": "Items this principal may see. Agent: granted. Human owner: the org. Human member: granted. Names and URIs. Never secrets.",
-    "responses": {
-     "200": {
-      "description": "Items",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/ItemsResponse"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     }
-    }
-   },
-   "post": {
-    "operationId": "createItem",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Create an item. Secret is in the request over TLS. Never in the response. Not MCP.",
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/CreateItemRequest"
-       }
-      }
-     }
+  ],
+  "tags": [
+    {
+      "name": "Agent",
+      "description": "Bearer is the agent. listItems is metadata. useItem injects. Never GetSecret."
     },
-    "responses": {
-     "200": {
-      "description": "Item metadata. No secret.",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Item"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "agent cannot create items"
-     }
-    }
-   }
-  },
-  "/v1/import": {
-   "post": {
-    "operationId": "importItems",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.",
-    "parameters": [
-     {
-      "name": "filename",
-      "in": "query",
-      "schema": {
-       "type": "string"
-      },
-      "description": "export.1pux or chrome.csv. Sniffed from bytes when empty."
-     }
-    ],
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/octet-stream": {
-       "schema": {
-        "type": "string",
-        "format": "binary"
-       }
-      },
-      "text/csv": {
-       "schema": {
-        "type": "string",
-        "format": "binary"
-       }
-      }
-     }
+    {
+      "name": "Owner",
+      "description": "Bearer is a Keto member human. Create items and grants. Secret may be sent, never returned."
     },
-    "responses": {
-     "200": {
-      "description": "Created item names. No secrets.",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/ImportResponse"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "agent cannot import"
-     }
+    {
+      "name": "Human",
+      "description": "Bearer is a verified human ID token. Pre-membership — provision creates the membership."
     }
-   }
-  },
-  "/v1/items/{name}": {
-   "patch": {
-    "operationId": "updateItem",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Replace URIs, tags, and fill username. No secret.",
-    "parameters": [
-     {
-      "name": "name",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/UpdateItemRequest"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Item metadata",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Item"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "agent cannot update items"
-     }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
     }
-   },
-   "delete": {
-    "operationId": "deleteItem",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Remove the item and its grants. Not MCP.",
-    "parameters": [
-     {
-      "name": "name",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "deleted"
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "agent cannot delete items"
-     }
-    }
-   }
-  },
-  "/v1/items/{name}/archive": {
-   "post": {
-    "operationId": "archiveItem",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Hide from Use and list. History stays.",
-    "parameters": [
-     {
-      "name": "name",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "archived"
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "agent cannot archive items"
-     }
-    }
-   }
-  },
-  "/v1/grants": {
-   "get": {
-    "operationId": "listGrants",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Grants in this org. No secrets. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Grants",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/GrantsResponse"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   },
-   "post": {
-    "operationId": "createGrant",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.",
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/CreateGrantRequest"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Grant",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Grant"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   }
-  },
-  "/v1/agents": {
-   "get": {
-    "operationId": "listAgents",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Agents in this org. Ids only. Never secrets. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Agents",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/AgentsResponse"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   },
-   "post": {
-    "operationId": "createAgent",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Register an agent principal. Not a Hydra secret. Not MCP.",
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/CreateAgentRequest"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Agent principal. No secret.",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Agent"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   }
-  },
-  "/v1/agents/{name}/revoke": {
-   "post": {
-    "operationId": "revokeAgent",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.",
-    "parameters": [
-     {
-      "name": "name",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Revoked agent. No token or secret.",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Agent"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   }
-  },
-  "/v1/sessions": {
-   "get": {
-    "operationId": "listSessions",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Active sandbox sessions. Metadata only. Never the token. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Sessions",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/SessionsResponse"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   },
-   "post": {
-    "operationId": "createSession",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.",
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/CreateSessionRequest"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Session plus token once.",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/CreateSessionResponse"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   }
-  },
-  "/v1/use": {
-   "post": {
-    "operationId": "useItem",
-    "tags": [
-     "Agent"
-    ],
-    "summary": "Call a URL as this agent. The broker injects the credential. The vault secret is never in the response.",
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/UseRequest"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Decision plus upstream result, scrubbed",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/UseResponse"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad request"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     }
-    }
-   }
-  },
-  "/v1/requests": {
-   "get": {
-    "operationId": "listRequests",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Approval requests filed by level-1 agents. status=open lists only unexpired asks. Not MCP.",
-    "parameters": [
-     {
-      "name": "status",
-      "in": "query",
-      "schema": {
-       "type": "string",
-       "enum": [
-        "open",
-        "approved",
-        "denied",
-        "expired",
-        "cancelled"
-       ],
-       "default": "open"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Requests",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/RequestsResponse"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "bad status"
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   }
-  },
-  "/v1/requests/stream": {
-   "get": {
-    "operationId": "streamRequests",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "text/event-stream; stays open until the client disconnects",
-      "content": {
-       "text/event-stream": {
-        "schema": {
-         "type": "string"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     }
-    }
-   }
-  },
-  "/v1/requests/{id}/approve": {
-   "post": {
-    "operationId": "approveRequest",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Approve an open request — unlocks its level-1 grant for ttl. First write wins.",
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "requestBody": {
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/ApproveRequestBody"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "The approved request",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/ApprovalRequest"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     },
-     "404": {
-      "description": "no such request in this org"
-     },
-     "409": {
-      "description": "already resolved or expired"
-     }
-    }
-   }
-  },
-  "/v1/requests/{id}/deny": {
-   "post": {
-    "operationId": "denyRequest",
-    "tags": [
-     "Owner"
-    ],
-    "summary": "Deny an open request. First write wins; the agent's next use files a fresh ask.",
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "The denied request",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/ApprovalRequest"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     },
-     "403": {
-      "description": "not owner"
-     },
-     "404": {
-      "description": "no such request in this org"
-     },
-     "409": {
-      "description": "already resolved or expired"
-     }
-    }
-   }
-  },
-  "/v1/events": {
-   "get": {
-    "operationId": "listEvents",
-    "tags": [
-     "Agent"
-    ],
-    "summary": "This agent's grant events. Decision, item, action. Never secrets. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Recent events for the Bearer agent",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/EventsResponse"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid Bearer"
-     }
-    }
-   }
-  },
-  "/v1/provision": {
-   "post": {
-    "operationId": "provision",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Provisioned principal",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/ProvisionResponse"
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     }
-    }
-   }
-  },
-  "/v1/invites": {
-   "post": {
-    "operationId": "createInvite",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.",
-    "requestBody": {
-     "required": true,
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/InviteRequest"
-       }
-      }
-     }
-    },
-    "responses": {
-     "200": {
-      "description": "Invite result",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/InviteResponse"
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "missing email"
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     }
-    }
-   }
-  },
-  "/v1/members/{id}": {
-   "delete": {
-    "operationId": "removeMember",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.",
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
-      },
-      "description": "Kratos identity id of the member"
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Member removed",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object",
-         "properties": {
-          "removed": {
-           "type": "boolean"
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "Agent"
+        ],
+        "security": [],
+        "summary": "Liveness. No secrets.",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "examples": [
+                    "ok\n"
+                  ]
+                }
+              }
+            }
           }
-         }
         }
-       }
       }
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     },
-     "403": {
-      "description": "caller is a member, not an owner"
-     },
-     "404": {
-      "description": "not a member of this org"
-     }
-    }
-   }
-  },
-  "/v1/members/{id}/owner": {
-   "post": {
-    "operationId": "promoteOwner",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Grant an existing member the owners tuple. Owner-only. Not MCP.",
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "tags": [
+          "Agent"
+        ],
+        "security": [],
+        "summary": "This contract.",
+        "responses": {
+          "200": {
+            "description": "OpenAPI document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/items": {
+      "get": {
+        "operationId": "listItems",
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Items this principal may see. Agent: granted. Human owner: the org. Human member: granted. Names and URIs. Never secrets.",
+        "responses": {
+          "200": {
+            "description": "Items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          }
+        }
       },
-      "description": "Kratos identity id of the member"
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Member promoted",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object",
-         "properties": {
+      "post": {
+        "operationId": "createItem",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Create an item. Secret is in the request over TLS. Never in the response. Not MCP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item metadata. No secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "agent cannot create items"
+          }
+        }
+      }
+    },
+    "/v1/import": {
+      "post": {
+        "operationId": "importItems",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "export.1pux or chrome.csv. Sniffed from bytes when empty."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created item names. No secrets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "agent cannot import"
+          }
+        }
+      }
+    },
+    "/v1/items/{name}": {
+      "patch": {
+        "operationId": "updateItem",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Replace URIs, tags, and fill username. No secret.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "agent cannot update items"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteItem",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Remove the item and its grants. Not MCP.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "deleted"
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "agent cannot delete items"
+          }
+        }
+      }
+    },
+    "/v1/items/{name}/archive": {
+      "post": {
+        "operationId": "archiveItem",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Hide from Use and list. History stays.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "archived"
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "agent cannot archive items"
+          }
+        }
+      }
+    },
+    "/v1/grants": {
+      "get": {
+        "operationId": "listGrants",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Grants in this org. No secrets. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Grants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGrant",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGrantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Grant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Agents in this org. Ids only. Never secrets. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Agents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgent",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Register an agent principal. Not a Hydra secret. Not MCP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent principal. No secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/agents/{name}/revoke": {
+      "post": {
+        "operationId": "revokeAgent",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked agent. No token or secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Active sandbox sessions. Metadata only. Never the token. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSession",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session plus token once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/use": {
+      "post": {
+        "operationId": "useItem",
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Call a URL as this agent. The broker injects the credential. The vault secret is never in the response.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decision plus upstream result, scrubbed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          }
+        }
+      }
+    },
+    "/v1/requests": {
+      "get": {
+        "operationId": "listRequests",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Approval requests filed by level-1 agents. status=open lists only unexpired asks. Not MCP.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "approved",
+                "denied",
+                "expired",
+                "cancelled"
+              ],
+              "default": "open"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad status"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/requests/stream": {
+      "get": {
+        "operationId": "streamRequests",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "text/event-stream; stays open until the client disconnects",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/requests/{id}/approve": {
+      "post": {
+        "operationId": "approveRequest",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Approve an open request — unlocks its level-1 grant for ttl. First write wins.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The approved request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          },
+          "404": {
+            "description": "no such request in this org"
+          },
+          "409": {
+            "description": "already resolved or expired"
+          }
+        }
+      }
+    },
+    "/v1/requests/{id}/deny": {
+      "post": {
+        "operationId": "denyRequest",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Deny an open request. First write wins; the agent's next use files a fresh ask.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The denied request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          },
+          "404": {
+            "description": "no such request in this org"
+          },
+          "409": {
+            "description": "already resolved or expired"
+          }
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "operationId": "listEvents",
+        "tags": [
+          "Agent"
+        ],
+        "summary": "This agent's grant events. Decision, item, action. Never secrets. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Recent events for the Bearer agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          }
+        }
+      }
+    },
+    "/v1/provision": {
+      "post": {
+        "operationId": "provision",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Provisioned principal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvisionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          }
+        }
+      }
+    },
+    "/v1/invites": {
+      "post": {
+        "operationId": "createInvite",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Invite result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "missing email"
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          }
+        }
+      }
+    },
+    "/v1/members/{id}": {
+      "delete": {
+        "operationId": "removeMember",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Kratos identity id of the member"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Member removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "removed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          },
+          "403": {
+            "description": "caller is a member, not an owner"
+          },
+          "404": {
+            "description": "not a member of this org"
+          }
+        }
+      }
+    },
+    "/v1/members/{id}/owner": {
+      "post": {
+        "operationId": "promoteOwner",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Grant an existing member the owners tuple. Owner-only. Not MCP.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Kratos identity id of the member"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Member promoted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "owner": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          },
+          "403": {
+            "description": "caller is a member, not an owner"
+          },
+          "404": {
+            "description": "not a member of this org"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "demoteOwner",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Kratos identity id of the owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner demoted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "owner": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "last-owner demotion refused"
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          },
+          "403": {
+            "description": "caller is a member, not an owner"
+          },
+          "404": {
+            "description": "not an owner of this org"
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "delete": {
+        "operationId": "deleteMe",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Account removed from org",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "sole-owner leave refused"
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          },
+          "403": {
+            "description": "not a provisioned human"
+          }
+        }
+      }
+    },
+    "/v1/org": {
+      "delete": {
+        "operationId": "deleteOrg",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Org purged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "grants": {
+                      "type": "integer"
+                    },
+                    "sessions": {
+                      "type": "integer"
+                    },
+                    "agents": {
+                      "type": "integer"
+                    },
+                    "humans": {
+                      "type": "integer"
+                    },
+                    "keys": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid human token"
+          },
+          "403": {
+            "description": "caller is a member, not an owner"
+          }
+        }
+      }
+    },
+    "/v1/billing/webhook": {
+      "post": {
+        "operationId": "billingWebhook",
+        "tags": [
+          "Billing"
+        ],
+        "security": [],
+        "summary": "Vortex billing webhook receiver. Auth is the Vortex-Signature header (HMAC-SHA256 over the raw body) — no org principal. Subscription and entitlement lifecycle events flip the org's plan state; unknown event types are durable no-ops. Not MCP.",
+        "parameters": [
+          {
+            "name": "Vortex-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "t=<ms>,v1=<hex-hmac>"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "accepted (or durable no-op)"
+          },
+          "400": {
+            "description": "malformed event body"
+          },
+          "401": {
+            "description": "missing or invalid signature"
+          },
+          "404": {
+            "description": "billing webhook not configured"
+          },
+          "413": {
+            "description": "body too large"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Hydra JWT. Identity is the bound agent or a Keto member human. The host is not identity."
+      }
+    },
+    "schemas": {
+      "Item": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "oauth",
+              "ssh",
+              "file",
+              "passkey",
+              "card",
+              "identity"
+            ]
+          },
           "owner": {
-           "type": "boolean"
+            "$ref": "#/components/schemas/Owner"
+          },
+          "uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "has_totp": {
+            "type": "boolean"
+          },
+          "has_file": {
+            "type": "boolean"
+          },
+          "login": {
+            "type": "string",
+            "description": "Fill username. Metadata. Not a secret. Empty if unset."
           }
-         }
-        }
-       }
-      }
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     },
-     "403": {
-      "description": "caller is a member, not an owner"
-     },
-     "404": {
-      "description": "not a member of this org"
-     }
-    }
-   },
-   "delete": {
-    "operationId": "demoteOwner",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.",
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string"
+        },
+        "required": [
+          "id",
+          "org_id",
+          "name",
+          "kind",
+          "owner",
+          "uris"
+        ]
       },
-      "description": "Kratos identity id of the owner"
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Owner demoted",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object",
-         "properties": {
-          "owner": {
-           "type": "boolean"
+      "Owner": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
           }
-         }
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "last-owner demotion refused"
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     },
-     "403": {
-      "description": "caller is a member, not an owner"
-     },
-     "404": {
-      "description": "not an owner of this org"
-     }
-    }
-   }
-  },
-  "/v1/me": {
-   "delete": {
-    "operationId": "deleteMe",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Account removed from org",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object",
-         "properties": {
-          "deleted": {
-           "type": "boolean"
-          }
-         }
-        }
-       }
-      }
-     },
-     "400": {
-      "description": "sole-owner leave refused"
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     },
-     "403": {
-      "description": "not a provisioned human"
-     }
-    }
-   }
-  },
-  "/v1/org": {
-   "delete": {
-    "operationId": "deleteOrg",
-    "tags": [
-     "Human"
-    ],
-    "summary": "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.",
-    "responses": {
-     "200": {
-      "description": "Org purged",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "object",
-         "properties": {
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "ItemsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
           "items": {
-           "type": "integer"
-          },
-          "grants": {
-           "type": "integer"
-          },
-          "sessions": {
-           "type": "integer"
-          },
-          "agents": {
-           "type": "integer"
-          },
-          "humans": {
-           "type": "integer"
-          },
-          "keys": {
-           "type": "integer"
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
           }
-         }
         }
-       }
+      },
+      "UseRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item",
+          "url"
+        ],
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "Granted item name"
+          },
+          "url": {
+            "type": "string",
+            "description": "Absolute URL. Host must match the item."
+          },
+          "method": {
+            "type": "string",
+            "default": "GET"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Extra request headers. Never the vault secret."
+          },
+          "body": {
+            "type": "string",
+            "description": "Request body. Never the vault secret. Use --body-file on the CLI."
+          },
+          "body_b64": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64 request body for binary payloads. Takes precedence over body. Never the vault secret."
+          }
+        }
+      },
+      "UseResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny",
+              "need_approval"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "approval_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}."
+          },
+          "request_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the filed ask dies unanswered. Agents may keep retrying until then."
+          },
+          "status": {
+            "type": "integer"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Upstream response headers, including Content-Type and Content-Encoding."
+          },
+          "body": {
+            "type": "string",
+            "description": "Upstream body with vault secrets scrubbed. Present when the body is valid UTF-8."
+          },
+          "body_b64": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64 upstream body with vault secrets scrubbed. Present when the body is not valid UTF-8 (gzip, images, protobuf)."
+          }
+        }
+      },
+      "AuditEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "time",
+          "org_id",
+          "agent_id",
+          "item_id",
+          "action",
+          "decision"
+        ],
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny",
+              "need_approval"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "approval_id": {
+            "type": "string"
+          }
+        }
+      },
+      "EventsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          }
+        }
+      },
+      "CreateItemRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "oauth",
+              "ssh",
+              "file",
+              "passkey",
+              "card",
+              "identity"
+            ]
+          },
+          "secret": {
+            "type": "string",
+            "description": "Vault material. Request only. Never returned."
+          },
+          "totp_seed": {
+            "type": "string",
+            "description": "TOTP seed. Request only. Never returned."
+          },
+          "login": {
+            "type": "string",
+            "description": "Fill username. Metadata on the item. Also sealed in the envelope. Not a secret."
+          },
+          "card": {
+            "$ref": "#/components/schemas/CardFields"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/IdentityFields"
+          }
+        }
+      },
+      "UpdateItemRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "uri": {
+            "type": "string",
+            "description": "Add this autofill host. Does not drop existing hosts."
+          },
+          "uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Replace autofill hosts with this list."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "login": {
+            "type": "string",
+            "description": "Fill username. Metadata on the item. Also sealed in the envelope. Does not rotate the secret."
+          }
+        }
+      },
+      "CreateGrantRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item",
+          "level"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "description": "Agent id. XOR human."
+          },
+          "human": {
+            "type": "string",
+            "description": "Kratos identity id. Same Grant.agent_id. Not email. XOR agent."
+          },
+          "item": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "level1",
+              "level2"
+            ]
+          },
+          "expires": {
+            "type": "string",
+            "description": "Go duration. Empty is forever."
+          }
+        }
+      },
+      "Grant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "org_id",
+          "agent_id",
+          "item_id",
+          "level"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "GrantsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "grants"
+        ],
+        "properties": {
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Grant"
+            }
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "id",
+          "org_id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Owner"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Set when the agent is revoked. Record stays for audit."
+          }
+        }
+      },
+      "AgentsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agents"
+        ],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            }
+          }
+        }
+      },
+      "CreateAgentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "org_id",
+          "agent_id",
+          "expires_at",
+          "created_at",
+          "ttl",
+          "max_ttl",
+          "max_uses",
+          "uses"
+        ],
+        "description": "Sandbox Use lease metadata. Never the token.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "renewed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ttl": {
+            "type": "integer",
+            "description": "Initial lease duration in seconds."
+          },
+          "max_ttl": {
+            "type": "integer",
+            "description": "Maximum cumulative lifetime in seconds."
+          },
+          "max_uses": {
+            "type": "integer",
+            "description": "Maximum successful Use calls. 0 = unlimited."
+          },
+          "uses": {
+            "type": "integer",
+            "description": "Use calls that passed authorization and reached upstream consumption."
+          }
+        }
+      },
+      "SessionsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          }
+        }
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Go duration. Default 15m. Max 1h."
+          },
+          "max_uses": {
+            "type": "integer",
+            "description": "Maximum successful Use calls. 0 = unlimited."
+          }
+        }
+      },
+      "CreateSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "org_id",
+          "agent_id",
+          "expires_at",
+          "created_at",
+          "ttl",
+          "max_ttl",
+          "max_uses",
+          "uses",
+          "token"
+        ],
+        "description": "Token is create-only. Never list. Never MCP.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "renewed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ttl": {
+            "type": "integer"
+          },
+          "max_ttl": {
+            "type": "integer"
+          },
+          "max_uses": {
+            "type": "integer"
+          },
+          "uses": {
+            "type": "integer",
+            "description": "Use calls that passed authorization and reached upstream consumption."
+          },
+          "token": {
+            "type": "string"
+          }
+        }
+      },
+      "CardFields": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Request only. Never returned. Never MCP.",
+        "properties": {
+          "number": {
+            "type": "string"
+          },
+          "exp_month": {
+            "type": "string"
+          },
+          "exp_year": {
+            "type": "string"
+          },
+          "cvv": {
+            "type": "string"
+          },
+          "holder": {
+            "type": "string"
+          }
+        }
+      },
+      "IdentityFields": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Request only. Never returned. Never MCP.",
+        "properties": {
+          "given_name": {
+            "type": "string"
+          },
+          "family_name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "postal": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      },
+      "ImportResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "names",
+          "count"
+        ],
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "ProvisionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject",
+          "org_id"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          }
+        }
+      },
+      "InviteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "InviteResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity_id",
+          "emailed"
+        ],
+        "properties": {
+          "identity_id": {
+            "type": "string"
+          },
+          "emailed": {
+            "type": "boolean"
+          },
+          "recovery_url": {
+            "type": "string",
+            "description": "Only present when mail delivery is not configured (local dev)."
+          }
+        }
+      },
+      "ApprovalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "agent_id",
+          "item_id",
+          "grant_id",
+          "action",
+          "status",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "grant_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "approved",
+              "denied",
+              "expired",
+              "cancelled"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved_by": {
+            "type": "string",
+            "description": "The Kratos identity of the owner who answered — first write wins."
+          },
+          "approval_id": {
+            "type": "string",
+            "description": "The grant approval created by an approve resolution."
+          }
+        }
+      },
+      "RequestsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRequest"
+            }
+          }
+        }
+      },
+      "ApproveRequestBody": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ttl": {
+            "type": "string",
+            "description": "Go duration for the grant approval lifetime (default 15m)."
+          }
+        }
       }
-     },
-     "401": {
-      "description": "missing or invalid human token"
-     },
-     "403": {
-      "description": "caller is a member, not an owner"
-     }
     }
-   }
   }
- },
- "components": {
-  "securitySchemes": {
-   "bearerAuth": {
-    "type": "http",
-    "scheme": "bearer",
-    "bearerFormat": "JWT",
-    "description": "Hydra JWT. Identity is the bound agent or a Keto member human. The host is not identity."
-   }
-  },
-  "schemas": {
-   "Item": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-     "id": {
-      "type": "string"
-     },
-     "org_id": {
-      "type": "string"
-     },
-     "name": {
-      "type": "string"
-     },
-     "kind": {
-      "type": "string",
-      "enum": [
-       "api_key",
-       "oauth",
-       "ssh",
-       "file",
-       "passkey",
-       "card",
-       "identity"
-      ]
-     },
-     "owner": {
-      "$ref": "#/components/schemas/Owner"
-     },
-     "uris": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "tags": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "archived": {
-      "type": "boolean"
-     },
-     "has_totp": {
-      "type": "boolean"
-     },
-     "has_file": {
-      "type": "boolean"
-     },
-     "login": {
-      "type": "string",
-      "description": "Fill username. Metadata. Not a secret. Empty if unset."
-     }
-    },
-    "required": [
-     "id",
-     "org_id",
-     "name",
-     "kind",
-     "owner",
-     "uris"
-    ]
-   },
-   "Owner": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-     "kind": {
-      "type": "string"
-     },
-     "id": {
-      "type": "string"
-     }
-    },
-    "required": [
-     "kind",
-     "id"
-    ]
-   },
-   "ItemsResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "items"
-    ],
-    "properties": {
-     "items": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/Item"
-      }
-     }
-    }
-   },
-   "UseRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "item",
-     "url"
-    ],
-    "properties": {
-     "item": {
-      "type": "string",
-      "description": "Granted item name"
-     },
-     "url": {
-      "type": "string",
-      "description": "Absolute URL. Host must match the item."
-     },
-     "method": {
-      "type": "string",
-      "default": "GET"
-     },
-     "headers": {
-      "type": "object",
-      "additionalProperties": {
-       "type": "string"
-      },
-      "description": "Extra request headers. Never the vault secret."
-     },
-     "body": {
-      "type": "string",
-      "description": "Request body. Never the vault secret. Use --body-file on the CLI."
-     },
-     "body_b64": {
-      "type": "string",
-      "format": "byte",
-      "description": "Base64 request body for binary payloads. Takes precedence over body. Never the vault secret."
-     }
-    }
-   },
-   "UseResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "decision"
-    ],
-    "properties": {
-     "decision": {
-      "type": "string",
-      "enum": [
-       "allow",
-       "deny",
-       "need_approval"
-      ]
-     },
-     "reason": {
-      "type": "string"
-     },
-     "approval_id": {
-      "type": "string"
-     },
-     "request_id": {
-      "type": "string",
-      "description": "The filed approval request when decision is need_approval. Owners resolve it via /v1/requests/{id}."
-     },
-     "request_expires_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the filed ask dies unanswered. Agents may keep retrying until then."
-     },
-     "status": {
-      "type": "integer"
-     },
-     "headers": {
-      "type": "object",
-      "additionalProperties": {
-       "type": "array",
-       "items": {
-        "type": "string"
-       }
-      },
-      "description": "Upstream response headers, including Content-Type and Content-Encoding."
-     },
-     "body": {
-      "type": "string",
-      "description": "Upstream body with vault secrets scrubbed. Present when the body is valid UTF-8."
-     },
-     "body_b64": {
-      "type": "string",
-      "format": "byte",
-      "description": "Base64 upstream body with vault secrets scrubbed. Present when the body is not valid UTF-8 (gzip, images, protobuf)."
-     }
-    }
-   },
-   "AuditEvent": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "time",
-     "org_id",
-     "agent_id",
-     "item_id",
-     "action",
-     "decision"
-    ],
-    "properties": {
-     "time": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "org_id": {
-      "type": "string"
-     },
-     "agent_id": {
-      "type": "string"
-     },
-     "item_id": {
-      "type": "string"
-     },
-     "action": {
-      "type": "string"
-     },
-     "decision": {
-      "type": "string",
-      "enum": [
-       "allow",
-       "deny",
-       "need_approval"
-      ]
-     },
-     "reason": {
-      "type": "string"
-     },
-     "approval_id": {
-      "type": "string"
-     }
-    }
-   },
-   "EventsResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "events"
-    ],
-    "properties": {
-     "events": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/AuditEvent"
-      }
-     }
-    }
-   },
-   "CreateItemRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "name"
-    ],
-    "properties": {
-     "name": {
-      "type": "string"
-     },
-     "uri": {
-      "type": "string"
-     },
-     "uris": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "tags": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "kind": {
-      "type": "string",
-      "enum": [
-       "api_key",
-       "oauth",
-       "ssh",
-       "file",
-       "passkey",
-       "card",
-       "identity"
-      ]
-     },
-     "secret": {
-      "type": "string",
-      "description": "Vault material. Request only. Never returned."
-     },
-     "totp_seed": {
-      "type": "string",
-      "description": "TOTP seed. Request only. Never returned."
-     },
-     "login": {
-      "type": "string",
-      "description": "Fill username. Metadata on the item. Also sealed in the envelope. Not a secret."
-     },
-     "card": {
-      "$ref": "#/components/schemas/CardFields"
-     },
-     "identity": {
-      "$ref": "#/components/schemas/IdentityFields"
-     }
-    }
-   },
-   "UpdateItemRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-     "uri": {
-      "type": "string",
-      "description": "Add this autofill host. Does not drop existing hosts."
-     },
-     "uris": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      },
-      "description": "Replace autofill hosts with this list."
-     },
-     "tags": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "login": {
-      "type": "string",
-      "description": "Fill username. Metadata on the item. Also sealed in the envelope. Does not rotate the secret."
-     }
-    }
-   },
-   "CreateGrantRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "item",
-     "level"
-    ],
-    "properties": {
-     "agent": {
-      "type": "string",
-      "description": "Agent id. XOR human."
-     },
-     "human": {
-      "type": "string",
-      "description": "Kratos identity id. Same Grant.agent_id. Not email. XOR agent."
-     },
-     "item": {
-      "type": "string"
-     },
-     "level": {
-      "type": "string",
-      "enum": [
-       "level1",
-       "level2"
-      ]
-     },
-     "expires": {
-      "type": "string",
-      "description": "Go duration. Empty is forever."
-     }
-    }
-   },
-   "Grant": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "id",
-     "org_id",
-     "agent_id",
-     "item_id",
-     "level"
-    ],
-    "properties": {
-     "id": {
-      "type": "string"
-     },
-     "org_id": {
-      "type": "string"
-     },
-     "agent_id": {
-      "type": "string"
-     },
-     "item_id": {
-      "type": "string"
-     },
-     "level": {
-      "type": "string"
-     },
-     "expires_at": {
-      "type": "string",
-      "format": "date-time"
-     }
-    }
-   },
-   "GrantsResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "grants"
-    ],
-    "properties": {
-     "grants": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/Grant"
-      }
-     }
-    }
-   },
-   "Agent": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "kind",
-     "id",
-     "org_id"
-    ],
-    "properties": {
-     "kind": {
-      "type": "string"
-     },
-     "id": {
-      "type": "string"
-     },
-     "org_id": {
-      "type": "string"
-     },
-     "owner": {
-      "$ref": "#/components/schemas/Owner"
-     },
-     "revoked_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Set when the agent is revoked. Record stays for audit."
-     }
-    }
-   },
-   "AgentsResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "agents"
-    ],
-    "properties": {
-     "agents": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/Agent"
-      }
-     }
-    }
-   },
-   "CreateAgentRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "name"
-    ],
-    "properties": {
-     "name": {
-      "type": "string"
-     }
-    }
-   },
-   "Session": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "id",
-     "org_id",
-     "agent_id",
-     "expires_at",
-     "created_at",
-     "ttl",
-     "max_ttl",
-     "max_uses",
-     "uses"
-    ],
-    "description": "Sandbox Use lease metadata. Never the token.",
-    "properties": {
-     "id": {
-      "type": "string"
-     },
-     "org_id": {
-      "type": "string"
-     },
-     "agent_id": {
-      "type": "string"
-     },
-     "expires_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "created_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "revoked_at": {
-      "type": "string",
-      "format": "date-time",
-      "nullable": true
-     },
-     "renewed_at": {
-      "type": "string",
-      "format": "date-time",
-      "nullable": true
-     },
-     "ttl": {
-      "type": "integer",
-      "description": "Initial lease duration in seconds."
-     },
-     "max_ttl": {
-      "type": "integer",
-      "description": "Maximum cumulative lifetime in seconds."
-     },
-     "max_uses": {
-      "type": "integer",
-      "description": "Maximum successful Use calls. 0 = unlimited."
-     },
-     "uses": {
-      "type": "integer",
-      "description": "Use calls that passed authorization and reached upstream consumption."
-     }
-    }
-   },
-   "SessionsResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "sessions"
-    ],
-    "properties": {
-     "sessions": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/Session"
-      }
-     }
-    }
-   },
-   "CreateSessionRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "agent"
-    ],
-    "properties": {
-     "agent": {
-      "type": "string"
-     },
-     "ttl": {
-      "type": "string",
-      "description": "Go duration. Default 15m. Max 1h."
-     },
-     "max_uses": {
-      "type": "integer",
-      "description": "Maximum successful Use calls. 0 = unlimited."
-     }
-    }
-   },
-   "CreateSessionResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "id",
-     "org_id",
-     "agent_id",
-     "expires_at",
-     "created_at",
-     "ttl",
-     "max_ttl",
-     "max_uses",
-     "uses",
-     "token"
-    ],
-    "description": "Token is create-only. Never list. Never MCP.",
-    "properties": {
-     "id": {
-      "type": "string"
-     },
-     "org_id": {
-      "type": "string"
-     },
-     "agent_id": {
-      "type": "string"
-     },
-     "expires_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "created_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "revoked_at": {
-      "type": "string",
-      "format": "date-time",
-      "nullable": true
-     },
-     "renewed_at": {
-      "type": "string",
-      "format": "date-time",
-      "nullable": true
-     },
-     "ttl": {
-      "type": "integer"
-     },
-     "max_ttl": {
-      "type": "integer"
-     },
-     "max_uses": {
-      "type": "integer"
-     },
-     "uses": {
-      "type": "integer",
-      "description": "Use calls that passed authorization and reached upstream consumption."
-     },
-     "token": {
-      "type": "string"
-     }
-    }
-   },
-   "CardFields": {
-    "type": "object",
-    "additionalProperties": false,
-    "description": "Request only. Never returned. Never MCP.",
-    "properties": {
-     "number": {
-      "type": "string"
-     },
-     "exp_month": {
-      "type": "string"
-     },
-     "exp_year": {
-      "type": "string"
-     },
-     "cvv": {
-      "type": "string"
-     },
-     "holder": {
-      "type": "string"
-     }
-    }
-   },
-   "IdentityFields": {
-    "type": "object",
-    "additionalProperties": false,
-    "description": "Request only. Never returned. Never MCP.",
-    "properties": {
-     "given_name": {
-      "type": "string"
-     },
-     "family_name": {
-      "type": "string"
-     },
-     "address": {
-      "type": "string"
-     },
-     "city": {
-      "type": "string"
-     },
-     "region": {
-      "type": "string"
-     },
-     "postal": {
-      "type": "string"
-     },
-     "country": {
-      "type": "string"
-     },
-     "phone": {
-      "type": "string"
-     },
-     "email": {
-      "type": "string"
-     }
-    }
-   },
-   "ImportResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "names",
-     "count"
-    ],
-    "properties": {
-     "names": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "count": {
-      "type": "integer"
-     }
-    }
-   },
-   "ProvisionResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "subject",
-     "org_id"
-    ],
-    "properties": {
-     "subject": {
-      "type": "string"
-     },
-     "org_id": {
-      "type": "string"
-     }
-    }
-   },
-   "InviteRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "email"
-    ],
-    "properties": {
-     "email": {
-      "type": "string",
-      "format": "email"
-     }
-    }
-   },
-   "InviteResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "identity_id",
-     "emailed"
-    ],
-    "properties": {
-     "identity_id": {
-      "type": "string"
-     },
-     "emailed": {
-      "type": "boolean"
-     },
-     "recovery_url": {
-      "type": "string",
-      "description": "Only present when mail delivery is not configured (local dev)."
-     }
-    }
-   },
-   "ApprovalRequest": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "id",
-     "agent_id",
-     "item_id",
-     "grant_id",
-     "action",
-     "status",
-     "created_at",
-     "expires_at"
-    ],
-    "properties": {
-     "id": {
-      "type": "string"
-     },
-     "agent_id": {
-      "type": "string"
-     },
-     "item_id": {
-      "type": "string"
-     },
-     "grant_id": {
-      "type": "string"
-     },
-     "action": {
-      "type": "string"
-     },
-     "status": {
-      "type": "string",
-      "enum": [
-       "open",
-       "approved",
-       "denied",
-       "expired",
-       "cancelled"
-      ]
-     },
-     "created_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "expires_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "resolved_at": {
-      "type": "string",
-      "format": "date-time"
-     },
-     "resolved_by": {
-      "type": "string",
-      "description": "The Kratos identity of the owner who answered — first write wins."
-     },
-     "approval_id": {
-      "type": "string",
-      "description": "The grant approval created by an approve resolution."
-     }
-    }
-   },
-   "RequestsResponse": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "requests"
-    ],
-    "properties": {
-     "requests": {
-      "type": "array",
-      "items": {
-       "$ref": "#/components/schemas/ApprovalRequest"
-      }
-     }
-    }
-   },
-   "ApproveRequestBody": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-     "ttl": {
-      "type": "string",
-      "description": "Go duration for the grant approval lifetime (default 15m)."
-     }
-    }
-   }
-  }
- }
 }

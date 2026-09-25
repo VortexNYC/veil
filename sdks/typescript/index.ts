@@ -3,6 +3,7 @@
 export {
   approveRequest,
   archiveItem,
+  billingWebhook,
   createAgent,
   createGrant,
   createInvite,
@@ -44,6 +45,10 @@ export type {
   ArchiveItemErrors,
   ArchiveItemResponses,
   AuditEvent,
+  BillingWebhookData,
+  BillingWebhookErrors,
+  BillingWebhookResponse,
+  BillingWebhookResponses,
   CardFields,
   ClientOptions,
   CreateAgentData,

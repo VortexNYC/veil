@@ -1039,3 +1039,42 @@ export type DeleteOrgResponses = {
     };
 };
 export type DeleteOrgResponse = DeleteOrgResponses[keyof DeleteOrgResponses];
+export type BillingWebhookData = {
+    body: {
+        [key: string]: unknown;
+    };
+    headers: {
+        /**
+         * t=<ms>,v1=<hex-hmac>
+         */
+        'Vortex-Signature': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/billing/webhook';
+};
+export type BillingWebhookErrors = {
+    /**
+     * malformed event body
+     */
+    400: unknown;
+    /**
+     * missing or invalid signature
+     */
+    401: unknown;
+    /**
+     * billing webhook not configured
+     */
+    404: unknown;
+    /**
+     * body too large
+     */
+    413: unknown;
+};
+export type BillingWebhookResponses = {
+    /**
+     * accepted (or durable no-op)
+     */
+    204: void;
+};
+export type BillingWebhookResponse = BillingWebhookResponses[keyof BillingWebhookResponses];

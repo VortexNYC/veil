@@ -15,11 +15,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/VortexNYC/veil/internal/app"
+	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/oneimport"
@@ -241,10 +243,13 @@ type FillSyncResponse struct {
 type Server struct {
 	App      *app.App
 	Identity func(ctx context.Context, token string) (protocol.Principal, error)
+	// BillingSecret verifies Vortex-Signature on the billing webhook.
+	// Empty disables the endpoint (404).
+	BillingSecret string
 }
 
 func Mount(mux *http.ServeMux, a *app.App) {
-	(&Server{App: a}).Mount(mux)
+	(&Server{App: a, BillingSecret: os.Getenv("VEIL_BILLING_WEBHOOK_SECRET")}).Mount(mux)
 }
 
 func (s *Server) Mount(mux *http.ServeMux) {
@@ -275,6 +280,8 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
 	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
+	// Inbound billing plane — Vortex-Signature is the auth, no principal.
+	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
 	mux.HandleFunc("POST /v1/fill/totp", s.fillTOTP)
 	mux.HandleFunc("POST /v1/fill/totp/enroll", s.fillTOTPEnroll)
@@ -968,6 +975,36 @@ func (s *Server) denyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	// request_denied is written by the store inside the resolve transaction.
 	writeJSON(w, requestView(resolved))
+}
+
+// billingWebhook is the inbound edge of the billing plane. Vortex-Signature
+// (HMAC over the raw body) is the auth — no org principal. Unknown event
+// types are durable no-ops so newer Vortex versions can't break the endpoint.
+func (s *Server) billingWebhook(w http.ResponseWriter, r *http.Request) {
+	if s.BillingSecret == "" {
+		http.NotFound(w, r)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if err := billing.VerifySignature(s.BillingSecret, r.Header.Get("Vortex-Signature"), body, time.Now()); err != nil {
+		http.Error(w, "bad signature", http.StatusUnauthorized)
+		return
+	}
+	var ev billing.Event
+	if err := json.Unmarshal(body, &ev); err != nil {
+		http.Error(w, "bad event", http.StatusBadRequest)
+		return
+	}
+	if err := billing.Apply(s.App.Store, ev); err != nil {
+		slog.Warn("billing webhook apply failed", "event", ev.ID, "type", ev.Type, "err", err)
+		http.Error(w, "apply failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {

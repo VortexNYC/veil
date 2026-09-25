@@ -694,6 +694,42 @@ paths:
         \ Audit rows are kept — teardown must not erase the forensic record. Not MCP."
       tags:
       - Human
+  /v1/billing/webhook:
+    post:
+      operationId: billingWebhook
+      parameters:
+      - description: "t=<ms>,v1=<hex-hmac>"
+        explode: false
+        in: header
+        name: Vortex-Signature
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: {}
+        required: true
+      responses:
+        "204":
+          description: accepted (or durable no-op)
+        "400":
+          description: malformed event body
+        "401":
+          description: missing or invalid signature
+        "404":
+          description: billing webhook not configured
+        "413":
+          description: body too large
+      security: []
+      summary: Vortex billing webhook receiver. Auth is the Vortex-Signature header
+        (HMAC-SHA256 over the raw body) — no org principal. Subscription and entitlement
+        lifecycle events flip the org's plan state; unknown event types are durable
+        no-ops. Not MCP.
+      tags:
+      - Billing
 components:
   schemas:
     Item:
