@@ -10,6 +10,7 @@
     "format": "vp fmt",
     "format:check": "vp fmt --check",
     "typecheck": "pnpm --filter identity-login typecheck && pnpm --filter veil-vault typecheck",
+    "scan:secrets": "secretlint . --no-gitignore --secretlintignore .secretlintignore",
     "sdk:generate": "pnpm exec tsx scripts/generate-sdks.ts",
     "docs:dev": "pnpm --filter @vortex-api/veil-docs dev",
     "docs:build": "pnpm --filter @vortex-api/veil-docs build",
@@ -19,8 +20,10 @@
     "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.98.2",
     "@openapitools/openapi-generator-cli": "^2.35.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.6",
     "esbuild": "^0.28.2",
     "railway": "^3.11.0",
+    "secretlint": "^13.0.6",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite-plus": "0.2.4"

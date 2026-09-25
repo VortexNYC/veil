@@ -78,6 +78,7 @@ prove-hydra:
 	  oryd/hydra:v26.2.0 serve all --dev
 	@for i in $$(seq 1 50); do curl -sf http://127.0.0.1:5555/health/ready >/dev/null && break || sleep 0.2; done
 	@for i in $$(seq 1 50); do docker exec veil-pg-test pg_isready -U postgres >/dev/null 2>&1 && break || sleep 0.2; done
+	# secretlint-disable-next-line -- throwaway local test container creds, not a real secret
 	PG_TEST_DSN="postgres://postgres:test@127.0.0.1:55432/veiltest?sslmode=disable" \
 	  HYDRA_TEST_PUBLIC=http://127.0.0.1:5555 HYDRA_TEST_ADMIN=http://127.0.0.1:5556 \
 	  go test -tags live -p 1 ./internal/human ./internal/app -run HydraLive -count=1 -v
