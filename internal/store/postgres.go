@@ -104,11 +104,11 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 	}
 	listenCtx, listenStop := context.WithCancel(context.Background())
 	p := &Postgres{
-		pool:       pool,
-		auditPool:  auditPool,
-		kek:        append([]byte(nil), kek...),
-		sqlc:       sqlc.New(pool),
-		auditStop:  make(chan struct{}),
+		pool:        pool,
+		auditPool:   auditPool,
+		kek:         append([]byte(nil), kek...),
+		sqlc:        sqlc.New(pool),
+		auditStop:   make(chan struct{}),
 		reqBus:      newRequestBus(),
 		listenCfg:   config.ConnConfig.Copy(),
 		listenCtx:   listenCtx,

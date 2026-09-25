@@ -1607,6 +1607,13 @@ func (s *SQLite) SetBilling(ob OrgBilling) error {
 	return err
 }
 
+func (s *SQLite) SetBillingLink(orgID, customerID, billingAccountID string) error {
+	_, err := s.db.Exec(`INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_at) VALUES(?, 'free', ?, ?, ?)
+		ON CONFLICT(org_id) DO UPDATE SET customer_id = excluded.customer_id, billing_account_id = excluded.billing_account_id`,
+		orgID, customerID, billingAccountID, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+
 func (s *SQLite) OrgByBillingCustomer(customerID string) (string, error) {
 	var orgID string
 	err := s.db.QueryRow(`SELECT org_id FROM org_billing WHERE customer_id = ?`, customerID).Scan(&orgID)

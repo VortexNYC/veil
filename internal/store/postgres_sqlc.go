@@ -1481,6 +1481,14 @@ func (p *Postgres) SetBilling(ob OrgBilling) error {
 	})
 }
 
+func (p *Postgres) SetBillingLink(orgID, customerID, billingAccountID string) error {
+	return p.sqlc.UpsertOrgBillingLink(context.Background(), sqlc.UpsertOrgBillingLinkParams{
+		OrgID:            orgID,
+		CustomerID:       customerID,
+		BillingAccountID: billingAccountID,
+	})
+}
+
 func (p *Postgres) OrgByBillingCustomer(customerID string) (string, error) {
 	orgID, err := p.sqlc.GetOrgIDByBillingCustomer(context.Background(), customerID)
 	if errors.Is(err, pgx.ErrNoRows) {

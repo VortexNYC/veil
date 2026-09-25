@@ -20,6 +20,7 @@ type billingStore interface {
 	Usage(orgID string, window time.Time) (int64, error)
 	UsageReportPending(limit int) ([]UsageReportRow, error)
 	MarkUsageReported(orgID string, window time.Time, amount int64) error
+	SetBillingLink(orgID, customerID, billingAccountID string) error
 }
 
 func billingStores(t *testing.T) map[string]billingStore {
@@ -360,6 +361,40 @@ func TestMarkUsageReportedClampsToUsed(t *testing.T) {
 			}
 			if len(rows) != 1 || rows[0].Used != 4 || rows[0].Reported != 3 {
 				t.Fatalf("post-clamp delta = %+v, want used=4 reported=3", rows)
+			}
+		})
+	}
+}
+
+// SetBillingLink is the provisioning seam: it writes only the billing link
+// fields and never touches plan — a link upsert racing a webhook plan write
+// can't clobber the plan (or vice versa).
+func TestSetBillingLinkPreservesPlan(t *testing.T) {
+	for name, s := range billingStores(t) {
+		t.Run(name, func(t *testing.T) {
+			if err := s.SetBilling(OrgBilling{OrgID: "org-1", Plan: "active", CustomerID: "cus_1", BillingAccountID: "bacc_1", UpdatedAt: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.SetBillingLink("org-1", "cus_1", "bacc_2"); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Billing("org-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Plan != "active" || got.BillingAccountID != "bacc_2" {
+				t.Fatalf("link write clobbered plan: %+v", got)
+			}
+			// Link-only insert creates a free row.
+			if err := s.SetBillingLink("org-2", "cus_2", "bacc_3"); err != nil {
+				t.Fatal(err)
+			}
+			got, err = s.Billing("org-2")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Plan != "free" || got.CustomerID != "cus_2" || got.BillingAccountID != "bacc_3" {
+				t.Fatalf("link insert = %+v", got)
 			}
 		})
 	}

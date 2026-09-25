@@ -235,6 +235,10 @@ type Store interface {
 	// SetBilling upserts the org's billing state — the billing webhook
 	// receiver is the writer.
 	SetBilling(OrgBilling) error
+	// SetBillingLink upserts only the billing link (customer + billing
+	// account). Plan and UpdatedAt belong to the webhook receiver — link
+	// writes must not disturb the staleness anchor.
+	SetBillingLink(orgID, customerID, billingAccountID string) error
 	// OrgByBillingCustomer resolves the org that owns a billing customer id
 	// (Vortex cus_…), ErrNotFound when unlinked.
 	OrgByBillingCustomer(customerID string) (string, error)

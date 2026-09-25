@@ -495,3 +495,11 @@ LIMIT @lim::bigint;
 UPDATE usage_counters
 SET reported = LEAST(reported + @amount::bigint, used)
 WHERE org_id = @org_id::text AND window_start = @window_start::timestamptz;
+
+-- name: UpsertOrgBillingLink :exec
+-- The provisioning seam writes only the link — plan and updated_at belong
+-- to the webhook receiver (updated_at is its staleness anchor).
+INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_at)
+VALUES(@org_id::text, 'free', @customer_id::text, @billing_account_id::text, now())
+ON CONFLICT(org_id) DO UPDATE SET
+  customer_id = EXCLUDED.customer_id, billing_account_id = EXCLUDED.billing_account_id;

@@ -417,18 +417,32 @@ func TestProvisionHumanConcurrentPostgres(t *testing.T) {
 }
 
 // VEIL-61 — every new org becomes a Vortex billing customer
-// (externalCustomerRef = orgID). The link is best-effort: billing down must
-// never block signup, but the failure is audited so a reconcile can find it.
+// (externalCustomerRef = orgID) carrying a billing account for usage
+// reporting (VEIL-65). The link is best-effort: billing down must never
+// block signup, but the failure is audited so a reconcile can find it.
 func TestProvisionCreatesBillingCustomer(t *testing.T) {
 	var calls []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		var body map[string]any
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &body)
-		calls = append(calls, fmt.Sprint(body["externalCustomerRef"]))
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"data":{"customerId":"cus_9","externalCustomerRef":"` + fmt.Sprint(body["externalCustomerRef"]) + `"},"requestId":"r"}`))
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/customers":
+			_, _ = w.Write([]byte(`{"data":{"items":[]}}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/billing-accounts"):
+			_, _ = w.Write([]byte(`{"data":{"items":[]}}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/billing-accounts"):
+			calls = append(calls, "bacc:"+r.URL.Path)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"data":{"billingAccountId":"bacc_9"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/customers":
+			calls = append(calls, fmt.Sprint(body["externalCustomerRef"]))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"data":{"customerId":"cus_9","externalCustomerRef":"` + fmt.Sprint(body["externalCustomerRef"]) + `"},"requestId":"r"}`))
+		default:
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+		}
 	}))
 	t.Cleanup(srv.Close)
 
@@ -445,20 +459,20 @@ func TestProvisionCreatesBillingCustomer(t *testing.T) {
 	}
 
 	p := provisioned(t, a, a.Provision.(*fakeProvision), "sub-bill")
-	if len(calls) != 1 || calls[0] != p.OrgID {
-		t.Fatalf("customer calls %v for org %q", calls, p.OrgID)
+	if len(calls) != 2 || calls[0] != p.OrgID || calls[1] != "bacc:/v1/customers/cus_9/billing-accounts" {
+		t.Fatalf("link calls %v for org %q", calls, p.OrgID)
 	}
 	ob, err := a.Store.Billing(p.OrgID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ob.CustomerID != "cus_9" {
-		t.Fatalf("org billing link %q", ob.CustomerID)
+	if ob.CustomerID != "cus_9" || ob.BillingAccountID != "bacc_9" {
+		t.Fatalf("org billing link %+v", ob)
 	}
 	// Reprovision does not re-post — the link exists.
 	_ = provisioned(t, a, a.Provision.(*fakeProvision), "sub-bill")
-	if len(calls) != 1 {
-		t.Fatalf("reprovision re-posted customer: %d calls", len(calls))
+	if len(calls) != 2 {
+		t.Fatalf("reprovision re-posted: %d calls", len(calls))
 	}
 }
 

@@ -28,7 +28,7 @@ type Memory struct {
 	versions  []protocol.ItemVersion
 	verSecret map[int64]Secret
 	nextVer   int64
-	billing   map[string]OrgBilling // key: org_id
+	billing   map[string]OrgBilling   // key: org_id
 	usage     map[string]usageCounter // key: org_id+"\x00"+window unix
 }
 
@@ -731,6 +731,21 @@ func (m *Memory) SetBilling(ob OrgBilling) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.billing[ob.OrgID] = ob
+	return nil
+}
+
+func (m *Memory) SetBillingLink(orgID, customerID, billingAccountID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ob := m.billing[orgID]
+	if ob.OrgID == "" {
+		ob.OrgID = orgID
+		ob.Plan = "free"
+		ob.UpdatedAt = time.Now().UTC()
+	}
+	ob.CustomerID = customerID
+	ob.BillingAccountID = billingAccountID
+	m.billing[orgID] = ob
 	return nil
 }
 

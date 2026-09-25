@@ -115,7 +115,8 @@ type App struct {
 	// VEIL_VORTEX_* envs are unset (billing off; dev and tests unaffected).
 	BillingCustomers *billing.Client
 
-	inviteLim inviteLimiter
+	inviteLim            inviteLimiter
+	usageStop, usageDone chan struct{}
 }
 
 func Init(dir string) (*App, error) {
@@ -301,8 +302,18 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 	// config is off, not half-on.
 	if base, key, merchant, env := os.Getenv("VEIL_VORTEX_API_URL"), os.Getenv("VEIL_VORTEX_API_KEY"), os.Getenv("VEIL_VORTEX_MERCHANT_ID"), os.Getenv("VEIL_VORTEX_ENV"); base != "" && key != "" && merchant != "" && env != "" {
 		a.BillingCustomers = &billing.Client{
-			BaseURL: base, Key: key, MerchantID: merchant, Environment: env,
+			BaseURL:    base,
+			Key:        key,
+			MerchantID: merchant,
+			// VEIL-65: meter enables the usage dual-write flusher.
+			MeterID:     os.Getenv("VEIL_VORTEX_METER_ID"),
+			UsageEvent:  firstEnv("VEIL_VORTEX_USAGE_EVENT"),
+			Environment: env,
 		}
+		if a.BillingCustomers.UsageEvent == "" {
+			a.BillingCustomers.UsageEvent = "credential_use"
+		}
+		a.startUsageReporter()
 	}
 	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {
 		n := a.Notify
@@ -353,6 +364,7 @@ func firstEnv(keys ...string) string {
 
 func (a *App) Close() error {
 	var errs []error
+	a.stopUsageReporter()
 	if a.Auditor != nil {
 		if err := a.Auditor.Close(); err != nil {
 			errs = append(errs, err)
@@ -890,23 +902,23 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
 }
 
-// ensureBillingCustomer links the org to a Vortex billing customer
-// (externalCustomerRef = orgID). Best-effort by doctrine: billing must never
-// block auth, so failure audits billing_provision_failed — orgs carrying
-// that audit action are the reconcile set — and signup proceeds. Skips when
-// the link already exists.
+// ensureBillingCustomer links the org to Vortex billing (customer + billing
+// account). Best-effort by doctrine: billing must never block auth, so
+// failure audits billing_provision_failed — orgs carrying that audit action
+// are the reconcile set — and signup proceeds. Skips when fully linked; a
+// half-linked org (customer but no account) is healed here.
 func (a *App) ensureBillingCustomer(ctx context.Context, orgID string) {
 	if a.BillingCustomers == nil {
 		return
 	}
-	if ob, err := a.Store.Billing(orgID); err == nil && ob.CustomerID != "" {
+	if ob, err := a.Store.Billing(orgID); err == nil && ob.CustomerID != "" && ob.BillingAccountID != "" {
 		return
 	}
-	bctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	customerID, err := a.BillingCustomers.EnsureCustomer(bctx, orgID)
+	bctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	_, err := a.ensureBillingLink(bctx, orgID)
 	cancel()
 	if err != nil {
-		slog.Warn("billing customer provision failed", "org", orgID, "err", err)
+		slog.Warn("billing link provision failed", "org", orgID, "err", err)
 		_ = a.Store.AppendAudit(protocol.AuditEvent{
 			Time:     time.Now().UTC(),
 			OrgID:    orgID,
@@ -915,18 +927,40 @@ func (a *App) ensureBillingCustomer(ctx context.Context, orgID string) {
 			Decision: protocol.DecisionDeny,
 			Reason:   err.Error(),
 		})
-		return
 	}
+}
+
+// ensureBillingLink resolves (and persists) the org's customer + billing
+// account, each step writing through SetBillingLink so partial progress
+// survives a later failure. Link writes never touch plan — that column
+// belongs to the webhook receiver.
+func (a *App) ensureBillingLink(ctx context.Context, orgID string) (store.OrgBilling, error) {
 	ob, _ := a.Store.Billing(orgID)
 	ob.OrgID = orgID
-	ob.CustomerID = customerID
+	if ob.CustomerID == "" {
+		customerID, err := a.BillingCustomers.EnsureCustomer(ctx, orgID)
+		if err != nil {
+			return ob, fmt.Errorf("ensure customer: %w", err)
+		}
+		ob.CustomerID = customerID
+		if err := a.Store.SetBillingLink(orgID, ob.CustomerID, ob.BillingAccountID); err != nil {
+			return ob, fmt.Errorf("persist customer link: %w", err)
+		}
+	}
+	if ob.BillingAccountID == "" {
+		accountID, err := a.BillingCustomers.EnsureBillingAccount(ctx, orgID, ob.CustomerID)
+		if err != nil {
+			return ob, fmt.Errorf("ensure billing account: %w", err)
+		}
+		ob.BillingAccountID = accountID
+		if err := a.Store.SetBillingLink(orgID, ob.CustomerID, ob.BillingAccountID); err != nil {
+			return ob, fmt.Errorf("persist account link: %w", err)
+		}
+	}
 	if ob.Plan == "" {
 		ob.Plan = "free"
 	}
-	ob.UpdatedAt = time.Now().UTC()
-	if err := a.Store.SetBilling(ob); err != nil {
-		slog.Warn("billing link persist failed", "org", orgID, "err", err)
-	}
+	return ob, nil
 }
 
 // InviteHuman is the private-alpha gate: a verified, provisioned human invites

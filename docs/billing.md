@@ -9,10 +9,22 @@ the event stream that flips org plan state.
 
 ```
 signup ──▶ POST /v1/customers (externalCustomerRef = orgID)  ──▶ org_billing.customer_id
+       ──▶ POST /v1/customers/:id/billing-accounts            ──▶ org_billing.billing_account_id
 Use    ──▶ local usage_counters claim (VEIL_FREE_USE_CAP)    ──▶ payment_required over cap
+tick   ──▶ POST /v1/usage-events (delta = used − reported)   ──▶ usage_counters.reported
 Vortex ──▶ POST /v1/billing/webhook (Vortex-Signature HMAC)  ──▶ org_billing.plan flips
 owner  ──▶ GET /v1/billing                                   ──▶ vault cap banner + upgrade_url
 ```
+
+**Usage dual-write (VEIL-65).** `usage_counters.reported` is the watermark of
+units already sent to Vortex; a once-a-minute flusher posts each pending
+delta as one `usage-events` row and advances the mark only on success. The
+idempotency key is deterministic per delta (`veil-usage-<org>-<window>-
+<target watermark>`) so a send that lands but fails to mark re-sends as an
+upstream no-op — at-least-once without double counting. Orgs missing the
+billing link get it provisioned lazily on flush (covers pre-billing orgs and
+provision-time outages). Unset `VEIL_VORTEX_METER_ID` = reporting off; the
+webhook receiver and provisioning don't depend on it.
 
 Environment semantics: `VEIL_VORTEX_ENV` is `sandbox` or `production`, matching
 the Vortex environment the merchant account lives in.
@@ -49,6 +61,8 @@ first-party merchants)
 | `VEIL_VORTEX_ENV` | `sandbox` \| `production` |
 | `VEIL_BILLING_WEBHOOK_SECRET` | `whsec_` from step 4 — unset = webhook endpoint 404s |
 | `VEIL_FREE_USE_CAP` | free-tier monthly use allowance; 0/unset = metering off |
+| `VEIL_VORTEX_METER_ID` | meter usage deltas report against (`mtr_…`); unset = dual-write off |
+| `VEIL_VORTEX_USAGE_EVENT` | event name on usage rows; default `credential_use` |
 | `VEIL_BILLING_UPGRADE_URL` | interim upgrade link until checkout sessions land (VOR-577) |
 
 ## Failure posture
@@ -59,3 +73,5 @@ first-party merchants)
   cap enforcement are fully local and unaffected.
 - Over-cap attempts still increment `usage_counters` — blocked demand is
   signal.
+- Usage flusher outage → deltas stay pending on `reported`; nothing is lost,
+  the next tick resumes where the watermark stopped.

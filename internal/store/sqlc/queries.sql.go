@@ -2116,6 +2116,26 @@ func (q *Queries) UpsertOrgBilling(ctx context.Context, arg UpsertOrgBillingPara
 	return err
 }
 
+const upsertOrgBillingLink = `-- name: UpsertOrgBillingLink :exec
+INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_at)
+VALUES($1::text, 'free', $2::text, $3::text, now())
+ON CONFLICT(org_id) DO UPDATE SET
+  customer_id = EXCLUDED.customer_id, billing_account_id = EXCLUDED.billing_account_id
+`
+
+type UpsertOrgBillingLinkParams struct {
+	OrgID            string
+	CustomerID       string
+	BillingAccountID string
+}
+
+// The provisioning seam writes only the link — plan and updated_at belong
+// to the webhook receiver (updated_at is its staleness anchor).
+func (q *Queries) UpsertOrgBillingLink(ctx context.Context, arg UpsertOrgBillingLinkParams) error {
+	_, err := q.db.Exec(ctx, upsertOrgBillingLink, arg.OrgID, arg.CustomerID, arg.BillingAccountID)
+	return err
+}
+
 const useAuth = `-- name: UseAuth :one
 SELECT
     a.id AS agent_id,
