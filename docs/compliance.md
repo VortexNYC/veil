@@ -1,5 +1,9 @@
 # Compliance self-assessment (pre-alpha)
 
+> **System of record:** the living register now tracks in CompAI
+> (`~/Projects/CompAI`). This file is the point-in-time self-assessment
+> it was seeded from — update CompAI, not this doc, when a gap moves.
+
 Scope: Veil private alpha. Audience: the operator, then any auditor or
 compliance platform (CompAI, Vanta, Drata) we adopt later. This is a
 self-assessment, not an audit — its job is to make every gap a named,
@@ -157,7 +161,7 @@ annually; collect SOC 2 / security docs where offered.
 | Ory | Kratos/Hydra/Keto images | identity data lives in OUR Postgres — Ory is software, not a processor | none (self-hosted images) | n/a — pin + govulncheck covers it |
 | GitHub | source hosting | none (secrets never committed — enforce) | full repo | SOC 2 |
 | 1Password | KEK escrow + agent creds | KEK (the crown jewel) | escrow only | SOC 2 |
-| PostHog | OTEL traces | spans — verify no secrets/PII in attributes | read | SOC 2 |
+| PostHog | OTEL traces | spans only — secrets/PII verified out: `veil.host` is scheme://host (no path/query), `url.path` overwritten with the route pattern, `client.address` blanked (360622a) | read | SOC 2 |
 | Resend | NOT USED — mail worker is ours | — | — | — |
 | Docker Hub / GHCR | base images | none | supply chain | pin digests on prod images |
 
