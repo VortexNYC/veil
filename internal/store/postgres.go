@@ -37,6 +37,14 @@ type Postgres struct {
 	auditStop chan struct{}
 	auditDone chan struct{}
 	closeOnce sync.Once
+
+	reqBus      *requestBus
+	listenCfg   *pgx.ConnConfig
+	listenCtx   context.Context
+	listenStop  context.CancelFunc
+	listenOnce  sync.Once
+	listenReady chan struct{}
+	readyOnce   sync.Once
 }
 
 // OpenPostgres opens a Postgres-backed store. The supplied key is the
@@ -94,12 +102,18 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 		pool.Close()
 		return nil, err
 	}
+	listenCtx, listenStop := context.WithCancel(context.Background())
 	p := &Postgres{
-		pool:      pool,
-		auditPool: auditPool,
-		kek:       append([]byte(nil), kek...),
-		sqlc:      sqlc.New(pool),
-		auditStop: make(chan struct{}),
+		pool:       pool,
+		auditPool:  auditPool,
+		kek:        append([]byte(nil), kek...),
+		sqlc:       sqlc.New(pool),
+		auditStop:  make(chan struct{}),
+		reqBus:      newRequestBus(),
+		listenCfg:   config.ConnConfig.Copy(),
+		listenCtx:   listenCtx,
+		listenStop:  listenStop,
+		listenReady: make(chan struct{}),
 	}
 	p.km = newKeyManager(p.resolveOrgKey)
 	if err := p.migrate(); err != nil {
@@ -839,6 +853,20 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			PRIMARY KEY (org_id, owner_kind, owner_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_workloads_issuer ON workloads(issuer)`,
+		// Request-change fan-out for the live approvals feed: any committed
+		// INSERT or status change on approval_requests NOTIFYs the org. The
+		// origin LISTENs on one dedicated connection per replica and wakes
+		// local SSE watchers; a missed tick is harmless because clients
+		// refetch the authoritative rows on reconnect.
+		`CREATE OR REPLACE FUNCTION approval_requests_notify() RETURNS trigger
+			LANGUAGE plpgsql AS $fn$
+			BEGIN
+				PERFORM pg_notify('approval_requests', COALESCE(NEW.org_id, OLD.org_id));
+				RETURN NULL;
+			END $fn$`,
+		`DROP TRIGGER IF EXISTS approval_requests_notify ON approval_requests`,
+		`CREATE TRIGGER approval_requests_notify AFTER INSERT OR UPDATE OF status
+			ON approval_requests FOR EACH ROW EXECUTE FUNCTION approval_requests_notify()`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err
@@ -1026,6 +1054,7 @@ func (p *Postgres) Ping(ctx context.Context) error {
 
 func (p *Postgres) Close() error {
 	p.closeOnce.Do(func() {
+		p.listenStop()
 		if p.auditDone != nil {
 			close(p.auditStop)
 			<-p.auditDone

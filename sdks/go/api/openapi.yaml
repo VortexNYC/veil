@@ -420,6 +420,25 @@ paths:
         asks. Not MCP.
       tags:
       - Owner
+  /v1/requests/stream:
+    get:
+      operationId: streamRequests
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: text/event-stream; stays open until the client disconnects
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Server-sent events feed of approval-request changes for the owner org.
+        Each event is an empty tick — refetch GET /v1/requests for the authoritative
+        rows. Not MCP.
+      tags:
+      - Owner
   /v1/requests/{id}/approve:
     post:
       operationId: approveRequest

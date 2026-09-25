@@ -271,6 +271,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/org", s.deleteOrg)
 	mux.HandleFunc("POST /v1/use", s.useItem)
 	mux.HandleFunc("GET /v1/requests", s.listRequests)
+	mux.HandleFunc("GET /v1/requests/stream", s.streamRequests)
 	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
 	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
@@ -842,6 +843,54 @@ func (s *Server) listRequests(w http.ResponseWriter, r *http.Request) {
 		out = append(out, requestView(req))
 	}
 	writeJSON(w, RequestsResponse{Requests: out})
+}
+
+// streamRequests is the live feed behind the approvals card: one SSE event
+// per committed request change in the owner's org. Events carry no data —
+// the client refetches GET /v1/requests, so a dropped frame never fabricates
+// or loses state. Postgres LISTEN/NOTIFY wakes this replica for writes made
+// on any replica; heartbeat comments keep proxies and browsers from
+// declaring the idle stream dead.
+func (s *Server) streamRequests(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Connection", "keep-alive")
+	h.Set("X-Accel-Buffering", "no") // proxies that buffer SSE by default
+	ticks := s.App.Store.WatchRequests(r.Context(), owner.OrgID)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(": connected\n\n"))
+	flusher.Flush()
+	ping := time.NewTicker(25 * time.Second)
+	defer ping.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case _, open := <-ticks:
+			if !open {
+				return
+			}
+			if _, err := w.Write([]byte("data: {}\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		case <-ping.C:
+			if _, err := w.Write([]byte(": ping\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 // ownerRequest loads the ask and scopes it to the caller's org — an

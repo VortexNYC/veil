@@ -27,6 +27,7 @@ export {
   provision,
   removeMember,
   revokeAgent,
+  streamRequests,
   updateItem,
   useItem,
 } from "./sdk.gen";
@@ -153,6 +154,10 @@ export type {
   RevokeAgentResponses,
   Session,
   SessionsResponse,
+  StreamRequestsData,
+  StreamRequestsErrors,
+  StreamRequestsResponse,
+  StreamRequestsResponses,
   UpdateItemData,
   UpdateItemErrors,
   UpdateItemRequest,

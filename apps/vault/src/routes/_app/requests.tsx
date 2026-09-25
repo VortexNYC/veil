@@ -7,7 +7,7 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { PageChrome } from "../../page-chrome";
-import { approveReq, denyReq, requests } from "../../origin";
+import { approveReq, denyReq, requests, watchRequests } from "../../origin";
 import type { ApprovalRequest } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/requests")({
@@ -53,10 +53,16 @@ function Requests() {
     if (status !== "open") {
       return;
     }
-    // Open asks are the live surface — poll so a fresh agent ask appears
-    // without a manual refresh.
-    const t = setInterval(() => void reload("open"), 5_000);
-    return () => clearInterval(t);
+    // Open asks are the live surface — the server streams a tick on every
+    // committed change (SSE; Postgres NOTIFY fans out across replicas), so a
+    // fresh agent ask lands instantly. A slow poll stays as the safety net
+    // for a dropped stream between reconnects.
+    const stop = watchRequests(() => void reload("open"));
+    const t = setInterval(() => void reload("open"), 30_000);
+    return () => {
+      stop();
+      clearInterval(t);
+    };
   }, [status, reload]);
 
   function resolve(id: string, act: "approve" | "deny") {

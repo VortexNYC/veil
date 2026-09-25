@@ -189,6 +189,10 @@ type Store interface {
 	// ExpireStaleRequests marks open requests past expiry as expired and
 	// returns the rows it marked — the sweep audits request_expired per row.
 	ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error)
+	// WatchRequests returns a channel that ticks when approval requests for
+	// orgID change — filed, resolved, expired, or cancelled. Ticks carry no
+	// data: refetch the list. The channel closes when ctx ends.
+	WatchRequests(ctx context.Context, orgID string) <-chan struct{}
 
 	PutWorkload(protocol.Workload) error
 	Workload(issuer, subject string) (*protocol.Workload, error)

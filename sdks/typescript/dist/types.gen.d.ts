@@ -724,6 +724,29 @@ export type ListRequestsResponses = {
     200: RequestsResponse;
 };
 export type ListRequestsResponse = ListRequestsResponses[keyof ListRequestsResponses];
+export type StreamRequestsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/requests/stream';
+};
+export type StreamRequestsErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+export type StreamRequestsResponses = {
+    /**
+     * text/event-stream; stays open until the client disconnects
+     */
+    200: string;
+};
+export type StreamRequestsResponse = StreamRequestsResponses[keyof StreamRequestsResponses];
 export type ApproveRequestData = {
     body?: ApproveRequestBody;
     path: {

@@ -92,14 +92,22 @@ notification, not the request: the row is durable and surfaces in
   `request_id` and `request_expires_at`. Agents keep calling `Use`.
 - **Origin API** (owner JWT, Keto owner check):
   - `GET /v1/requests?status=open`
+  - `GET /v1/requests/stream` — SSE feed, one empty `data: {}` tick per
+    committed request change in the owner's org. Postgres `LISTEN/NOTIFY`
+    (`approval_requests` trigger on INSERT / status UPDATE) wakes whichever
+    replica holds the stream, so ticks arrive for writes made on any
+    replica. Ticks carry no data — the client refetches `GET /v1/requests`;
+    a missed tick only delays a refresh, never fabricates or loses state.
   - `POST /v1/requests/{id}/approve` `{ttl}` → PutApproval + resolve
   - `POST /v1/requests/{id}/deny` → resolve denied
 - **CLI**: `veil request list [--status]` lists asks;
   `veil request approve REQ_ID [--ttl]` and `veil request deny REQ_ID`
   resolve them (grant-level `veil approve GRANT_ID` stays — pre-approval
   for a known window is a valid pattern).
-- **SPA**: approvals card on the vault home — pending asks, approve /
-  deny, expiry countdown. v2 surface; the loop is complete without it.
+- **SPA**: `app.veil.nyc/requests` — pending asks, approve / deny, expiry
+  countdown, status filter. The open view subscribes to the SSE stream
+  (new asks and resolutions appear instantly) with a slow poll as the
+  reconnect safety net.
 
 ## Edges
 

@@ -13,6 +13,7 @@ import (
 
 type Memory struct {
 	mu        sync.Mutex
+	reqBus    *requestBus
 	agents    map[string]protocol.Principal
 	humans    map[string]protocol.Principal
 	items     map[string]protocol.Item
@@ -30,6 +31,7 @@ type Memory struct {
 
 func NewMemory() *Memory {
 	return &Memory{
+		reqBus:    newRequestBus(),
 		agents:    map[string]protocol.Principal{},
 		humans:    map[string]protocol.Principal{},
 		items:     map[string]protocol.Item{},
@@ -482,6 +484,7 @@ func (m *Memory) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) 
 	req.Status = protocol.RequestOpen
 	m.requests[req.ID] = req
 	m.audit = append(m.audit, auditEventFor(protocol.ActionRequestFiled, req, req.CreatedAt, ""))
+	m.reqBus.notify(req.OrgID)
 	return FileOutcome{Request: req, Created: true, ExpiredID: expiredID}, nil
 }
 
@@ -544,6 +547,7 @@ func (m *Memory) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	r.ResolvedAt = &at
 	m.requests[id] = r
 	m.audit = append(m.audit, auditEventFor(requestActionForStatus(status), r, at, approvalID))
+	m.reqBus.notify(r.OrgID)
 	return r, true, nil
 }
 
@@ -588,6 +592,7 @@ func (m *Memory) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	for _, rr := range resolved {
 		m.audit = append(m.audit, auditEventFor(protocol.ActionRequestApproved, rr, at, appr.ID))
 	}
+	m.reqBus.notify(r.OrgID)
 	return resolved, true, nil
 }
 
@@ -627,34 +632,43 @@ func (m *Memory) ApproveGrant(grantID string, appr protocol.Approval, at time.Ti
 	for _, rr := range resolved {
 		m.audit = append(m.audit, auditEventFor(protocol.ActionRequestApproved, rr, at, appr.ID))
 	}
+	if len(resolved) > 0 {
+		m.reqBus.notify(resolved[0].OrgID)
+	}
 	return resolved, nil
 }
 
 func (m *Memory) CancelRequestsForItem(itemID string, at time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	orgs := map[string]struct{}{}
 	for id, r := range m.requests {
 		if r.ItemID == itemID && r.Status == protocol.RequestOpen {
 			r.Status = protocol.RequestCancelled
 			r.ResolvedAt = &at
 			m.requests[id] = r
 			m.audit = append(m.audit, auditEventFor(protocol.ActionRequestCancelled, r, at, ""))
+			orgs[r.OrgID] = struct{}{}
 		}
 	}
+	m.reqBus.notifyOrgs(orgs)
 	return nil
 }
 
 func (m *Memory) CancelRequestsForAgent(agentID string, at time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	orgs := map[string]struct{}{}
 	for id, r := range m.requests {
 		if r.AgentID == agentID && r.Status == protocol.RequestOpen {
 			r.Status = protocol.RequestCancelled
 			r.ResolvedAt = &at
 			m.requests[id] = r
 			m.audit = append(m.audit, auditEventFor(protocol.ActionRequestCancelled, r, at, ""))
+			orgs[r.OrgID] = struct{}{}
 		}
 	}
+	m.reqBus.notifyOrgs(orgs)
 	return nil
 }
 
@@ -670,7 +684,19 @@ func (m *Memory) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest,
 			out = append(out, r)
 		}
 	}
+	if len(out) > 0 {
+		orgs := map[string]struct{}{}
+		for _, r := range out {
+			orgs[r.OrgID] = struct{}{}
+		}
+		m.reqBus.notifyOrgs(orgs)
+	}
 	return out, nil
+}
+
+// WatchRequests ticks on approval-request changes for orgID — see Store.
+func (m *Memory) WatchRequests(ctx context.Context, orgID string) <-chan struct{} {
+	return m.reqBus.watch(ctx, orgID)
 }
 
 func (m *Memory) AppendAudit(e protocol.AuditEvent) error {
@@ -851,6 +877,7 @@ func (m *Memory) Sweep(olderThan time.Time) (SweepReport, error) {
 		}
 	}
 	now := time.Now().UTC()
+	orgs := map[string]struct{}{}
 	for k, r := range m.requests {
 		if r.Status == protocol.RequestOpen && !now.Before(r.ExpiresAt) {
 			r.Status = protocol.RequestExpired
@@ -861,7 +888,9 @@ func (m *Memory) Sweep(olderThan time.Time) (SweepReport, error) {
 				Time: now, OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
 				Action: protocol.ActionRequestExpired, Decision: protocol.DecisionNeedApproval, Reason: r.ID,
 			})
+			orgs[r.OrgID] = struct{}{}
 		}
 	}
+	m.reqBus.notifyOrgs(orgs)
 	return rep, nil
 }

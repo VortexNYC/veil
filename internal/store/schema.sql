@@ -63,6 +63,19 @@ CREATE TABLE approval_requests (
 CREATE UNIQUE INDEX approval_requests_one_open
     ON approval_requests(grant_id, action) WHERE status = 'open';
 
+-- Live-feed fan-out: committed request writes NOTIFY the org so origin
+-- replicas can wake SSE watchers. Ticks carry no data — clients refetch.
+CREATE OR REPLACE FUNCTION approval_requests_notify() RETURNS trigger
+    LANGUAGE plpgsql AS $fn$
+    BEGIN
+        PERFORM pg_notify('approval_requests', COALESCE(NEW.org_id, OLD.org_id));
+        RETURN NULL;
+    END $fn$;
+
+DROP TRIGGER IF EXISTS approval_requests_notify ON approval_requests;
+CREATE TRIGGER approval_requests_notify AFTER INSERT OR UPDATE OF status
+    ON approval_requests FOR EACH ROW EXECUTE FUNCTION approval_requests_notify();
+
 CREATE SEQUENCE audit_id_seq;
 CREATE TABLE audit (
     id BIGINT NOT NULL DEFAULT nextval('audit_id_seq'),

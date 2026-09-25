@@ -21,7 +21,7 @@
   },
   {
    "name": "Human",
-   "description": "Bearer is a verified human ID token. Pre-membership \u2014 provision creates the membership."
+   "description": "Bearer is a verified human ID token. Pre-membership — provision creates the membership."
   }
  ],
  "security": [
@@ -629,6 +629,33 @@
     }
    }
   },
+  "/v1/requests/stream": {
+   "get": {
+    "operationId": "streamRequests",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.",
+    "responses": {
+     "200": {
+      "description": "text/event-stream; stays open until the client disconnects",
+      "content": {
+       "text/event-stream": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "missing or invalid Bearer"
+     },
+     "403": {
+      "description": "not owner"
+     }
+    }
+   }
+  },
   "/v1/requests/{id}/approve": {
    "post": {
     "operationId": "approveRequest",
@@ -754,7 +781,7 @@
     "tags": [
      "Human"
     ],
-    "summary": "Signup provisioning. Subject-authenticated \u2014 the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
+    "summary": "Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
     "responses": {
      "200": {
       "description": "Provisioned principal",
@@ -778,7 +805,7 @@
     "tags": [
      "Human"
     ],
-    "summary": "Private-alpha invite. Owner-authenticated \u2014 the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.",
+    "summary": "Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.",
     "requestBody": {
      "required": true,
      "content": {
@@ -815,7 +842,7 @@
     "tags": [
      "Human"
     ],
-    "summary": "Offboard a member. Owner-only \u2014 drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.",
+    "summary": "Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.",
     "parameters": [
      {
       "name": "id",
@@ -905,7 +932,7 @@
     "tags": [
      "Human"
     ],
-    "summary": "Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted \u2014 the org would have no administrator. Not MCP.",
+    "summary": "Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.",
     "parameters": [
      {
       "name": "id",
@@ -954,7 +981,7 @@
     "tags": [
      "Human"
     ],
-    "summary": "Leave the org: drops the member (and owner, when present) tuples plus the humans row \u2014 the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.",
+    "summary": "Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.",
     "responses": {
      "200": {
       "description": "Account removed from org",
@@ -989,7 +1016,7 @@
     "tags": [
      "Human"
     ],
-    "summary": "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept \u2014 teardown must not erase the forensic record. Not MCP.",
+    "summary": "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.",
     "responses": {
      "200": {
       "description": "Org purged",

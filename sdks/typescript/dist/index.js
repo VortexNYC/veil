@@ -884,6 +884,11 @@ var listRequests = (options) => (options?.client ?? client).get({
   url: "/v1/requests",
   ...options
 });
+var streamRequests = (options) => (options?.client ?? client).sse.get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/requests/stream",
+  ...options
+});
 var approveRequest = (options) => (options.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/requests/{id}/approve",
@@ -969,6 +974,7 @@ export {
   provision,
   removeMember,
   revokeAgent,
+  streamRequests,
   updateItem,
   useItem
 };

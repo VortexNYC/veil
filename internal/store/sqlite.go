@@ -19,6 +19,7 @@ type SQLite struct {
 	db     *sql.DB
 	master []byte
 	km     *keyManager
+	reqBus *requestBus
 }
 
 func OpenSQLite(path string, key []byte) (*SQLite, error) {
@@ -46,7 +47,7 @@ func OpenSQLite(path string, key []byte) (*SQLite, error) {
 	// A local vault is one tenant: the vault key is the org master for every
 	// org_id it will ever see. The resolver keeps sqlite symmetric with the
 	// Postgres KEK→org_keys path without pretending at per-org custody.
-	s := &SQLite{db: db, master: append([]byte(nil), key...)}
+	s := &SQLite{db: db, master: append([]byte(nil), key...), reqBus: newRequestBus()}
 	s.km = newKeyManager(func(context.Context, string) ([]byte, error) { return key, nil })
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
@@ -1226,6 +1227,9 @@ func (s *SQLite) FileRequest(req protocol.ApprovalRequest) (FileOutcome, error) 
 	if err := tx.Commit(); err != nil {
 		return FileOutcome{}, err
 	}
+	if n > 0 || expiredID != "" {
+		s.reqBus.notify(req.OrgID)
+	}
 	return FileOutcome{Request: out, Created: n > 0, ExpiredID: expiredID}, nil
 }
 
@@ -1331,6 +1335,9 @@ func (s *SQLite) ResolveRequest(id string, status protocol.RequestStatus, humanI
 	if err := tx.Commit(); err != nil {
 		return protocol.ApprovalRequest{}, false, err
 	}
+	if n > 0 {
+		s.reqBus.notify(cur.OrgID)
+	}
 	return cur, n > 0, nil
 }
 
@@ -1417,6 +1424,7 @@ func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
+	s.reqBus.notify(target.OrgID)
 	return resolved, true, nil
 }
 
@@ -1462,7 +1470,13 @@ func (s *SQLite) ApproveGrant(grantID string, appr protocol.Approval, at time.Ti
 			return nil, err
 		}
 	}
-	return out, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	if len(out) > 0 {
+		s.reqBus.notify(out[0].OrgID)
+	}
+	return out, nil
 }
 
 // cancelRequestsTx resolves every open ask on the dead edge as cancelled and
@@ -1488,7 +1502,15 @@ func (s *SQLite) cancelRequests(where string, id string, at time.Time) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	orgs := map[string]struct{}{}
+	for _, r := range rows {
+		orgs[r.OrgID] = struct{}{}
+	}
+	s.reqBus.notifyOrgs(orgs)
+	return nil
 }
 
 func (s *SQLite) CancelRequestsForItem(itemID string, at time.Time) error {
@@ -1506,7 +1528,15 @@ func (s *SQLite) ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest,
 	if err != nil {
 		return nil, err
 	}
-	return scanRequestRows(rows)
+	out, err := scanRequestRows(rows)
+	if err == nil && len(out) > 0 {
+		orgs := map[string]struct{}{}
+		for _, r := range out {
+			orgs[r.OrgID] = struct{}{}
+		}
+		s.reqBus.notifyOrgs(orgs)
+	}
+	return out, err
 }
 
 func (s *SQLite) AppendAudit(e protocol.AuditEvent) error {
@@ -2088,5 +2118,33 @@ func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 }
 
 func (s *SQLite) Sweep(olderThan time.Time) (SweepReport, error) {
-	return SweepSQLite(s.db, olderThan)
+	orgs := s.requestOrgs(`status='open' AND expires_at <= ?`, time.Now().Unix())
+	rep, err := SweepSQLite(s.db, olderThan)
+	if err == nil && rep.Requests > 0 {
+		s.reqBus.notifyOrgs(orgs)
+	}
+	return rep, err
+}
+
+// WatchRequests ticks on approval-request changes for orgID — see Store.
+func (s *SQLite) WatchRequests(ctx context.Context, orgID string) <-chan struct{} {
+	return s.reqBus.watch(ctx, orgID)
+}
+
+// requestOrgs lists orgs holding requests matching where — the sweep uses it
+// to fan out watch ticks after bulk expiry.
+func (s *SQLite) requestOrgs(where string, args ...any) map[string]struct{} {
+	orgs := map[string]struct{}{}
+	rows, err := s.db.Query(`SELECT DISTINCT org_id FROM approval_requests WHERE `+where, args...)
+	if err != nil {
+		return orgs
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var o string
+		if rows.Scan(&o) == nil {
+			orgs[o] = struct{}{}
+		}
+	}
+	return orgs
 }

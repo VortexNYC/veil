@@ -22,6 +22,7 @@ type requestStore interface {
 	ApproveGrant(grantID string, appr protocol.Approval, at time.Time) ([]protocol.ApprovalRequest, error)
 	CancelRequestsForAgent(agentID string, at time.Time) error
 	ExpireStaleRequests(now time.Time) ([]protocol.ApprovalRequest, error)
+	WatchRequests(ctx context.Context, orgID string) <-chan struct{}
 	Sweep(olderThan time.Time) (SweepReport, error)
 	Audit() ([]protocol.AuditEvent, error)
 }

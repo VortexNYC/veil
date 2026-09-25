@@ -108,3 +108,53 @@ export function approveReq(id: string, ttl?: string) {
 export function denyReq(id: string) {
   return denyRequest({ client: client(), path: { id } })
 }
+
+// watchRequests opens the request-change stream (GET /v1/requests/stream)
+// and calls onTick for each server event. EventSource cannot send Bearer
+// headers, so this parses SSE frames off a fetch body. Reconnects on drop
+// with a short delay; returns an unsubscribe that stops the stream.
+export function watchRequests(onTick: () => void): () => void {
+  const ctrl = new AbortController()
+  void (async () => {
+    while (!ctrl.signal.aborted) {
+      try {
+        const t = token()
+        if (!t) {
+          return
+        }
+        const res = await fetch(`${originAPI}/v1/requests/stream`, {
+          headers: { Authorization: `Bearer ${t}` },
+          signal: ctrl.signal,
+        })
+        if (!res.ok || !res.body) {
+          throw new Error(`stream ${res.status}`)
+        }
+        const reader = res.body.getReader()
+        const dec = new TextDecoder()
+        let buf = ""
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) {
+            throw new Error("eof")
+          }
+          buf += dec.decode(value, { stream: true })
+          let i = buf.indexOf("\n\n")
+          while (i >= 0) {
+            const frame = buf.slice(0, i)
+            buf = buf.slice(i + 2)
+            if (frame.startsWith("data:")) {
+              onTick()
+            }
+            i = buf.indexOf("\n\n")
+          }
+        }
+      } catch {
+        if (ctrl.signal.aborted) {
+          return
+        }
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+    }
+  })()
+  return () => ctrl.abort()
+}
