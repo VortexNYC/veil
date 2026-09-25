@@ -21,8 +21,10 @@ owner  ──▶ POST /v1/billing/checkout                         ──▶ {ch
 lazily provisions the billing link — same `ensureBillingLink` path the
 flusher uses — then composes a hosted Vortex subscription checkout against
 `VEIL_VORTEX_PRICE_ID` and returns `checkout_url`. Each click mints a fresh
-session: Vortex replays an already-seen idempotency key with
-`checkoutUrl: null`, so keys are per-call, never per-org. Payment lands as
+session — and must: Vortex stores checkout tokens hash-only, so GET/replay
+can never reconstruct `checkoutUrl` (VOR-613, resolved by design). Fresh
+keys per call are the correct pattern, not a workaround — sessions are
+cheap; a merchant needing a durable link persists the URL or mints anew. Payment lands as
 `subscription.created`/`entitlement.granted` webhooks → plan flips → the
 cap lifts. `VEIL_VORTEX_PRICE_ID` unset → endpoint 404s (checkout off, the
 rest of the billing plane unaffected).
