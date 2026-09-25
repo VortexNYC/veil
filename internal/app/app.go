@@ -281,13 +281,22 @@ func loadKeyEnv(name string, required bool) ([]byte, error) {
 }
 
 func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App, error) {
+	// finish() is the only place the serving broker is built: callers that
+	// reconstructed it after this point silently dropped env-configured fields
+	// (the free-tier meter and the notify hook) wherever they ran.
+	inFlight := 100
+	if v := os.Getenv("VEIL_MAX_IN_FLIGHT_USE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			inFlight = n
+		}
+	}
 	a := &App{
 		Dir:      dir,
 		OrgID:    cfg.OrgID,
 		HumanID:  cfg.HumanID,
 		Store:    s,
 		Auditor:  auditor,
-		Broker:   broker.New(s),
+		Broker:   broker.NewWithInFlight(s, inFlight),
 		Workload: workload.New(s),
 	}
 	a.Broker.Auditor = auditor

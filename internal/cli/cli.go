@@ -18,7 +18,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,7 +30,6 @@ import (
 	fillext "github.com/VortexNYC/veil/apps/fill"
 	"github.com/VortexNYC/veil/identity/glue"
 	"github.com/VortexNYC/veil/internal/app"
-	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/confirm"
 	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/fill"
@@ -1957,16 +1955,6 @@ func mcpCmd(home *string) *cobra.Command {
 				return err
 			}
 			defer a.Close()
-			maxInFlight := 100
-			if raw := envOr("VEIL_MAX_IN_FLIGHT_USE", "100"); raw != "" {
-				if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-					maxInFlight = n
-				} else if err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: invalid VEIL_MAX_IN_FLIGHT_USE %q, using default %d\n", raw, maxInFlight)
-				}
-			}
-			a.Broker = broker.NewWithInFlight(a.Store, maxInFlight)
-			a.Broker.Auditor = a.Auditor
 			listen = mcpserver.ListenAddr(listen, cmd.Flags().Changed("listen"))
 			publicURL = mcpPublicURL(publicURL, listen)
 			issuer := envOr("VEIL_HYDRA_ISSUER", "http://127.0.0.1:4444")

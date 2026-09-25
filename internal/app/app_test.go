@@ -298,6 +298,29 @@ func TestLevel2SkipsApproval(t *testing.T) {
 	}
 }
 
+// The origin entrypoints used to reconstruct the broker after finish() and
+// silently drop the env-configured fields — metering and the notify hook were
+// dead wherever that ran. finish() is now the only construction site.
+func TestFinishAppliesBrokerEnv(t *testing.T) {
+	t.Setenv("VEIL_FREE_USE_CAP", "7")
+	t.Setenv("VEIL_MAX_IN_FLIGHT_USE", "9")
+	dir := t.TempDir()
+	a, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Broker.FreeUseCap != 7 {
+		t.Fatalf("FreeUseCap = %d, want 7", a.Broker.FreeUseCap)
+	}
+	if a.Broker.Auditor == nil {
+		t.Fatal("Auditor not set")
+	}
+	if a.Broker.OnRequestFiled == nil {
+		t.Fatal("OnRequestFiled not set")
+	}
+}
+
 func TestApproveOIDCRequiresIssuer(t *testing.T) {
 	dir := t.TempDir()
 	a, err := Init(dir)
