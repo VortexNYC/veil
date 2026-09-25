@@ -54,7 +54,10 @@ type Broker struct {
 	// OnRequestFiled fires once per newly filed approval request — the app
 	// wires owner notification here. Deduped asks do not re-fire.
 	OnRequestFiled func(context.Context, protocol.ApprovalRequest)
-	useLimit       *semaphore.Weighted
+	// FreeUseCap is the per-org per-window use allowance on the free plan —
+	// the Paper-style gate (VEIL-60). 0 disables metering entirely.
+	FreeUseCap int64
+	useLimit   *semaphore.Weighted
 }
 
 func New(s store.Store) *Broker {
@@ -253,6 +256,19 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	}
 	if req.Action != protocol.ActionFetch || req.Fetch == nil {
 		dec = protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "unsupported_action"}
+		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
+	}
+
+	// Free-tier gate (VEIL-60): an authorized use claims a unit on the org's
+	// window counter before the secret is released. Over cap → deny
+	// payment_required, audited like every other decision. Denials and
+	// need_approval asks never consume.
+	ok, err := b.claimUse(agent.OrgID, now)
+	if err != nil {
+		return protocol.UseResult{}, err
+	}
+	if !ok {
+		dec = protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "payment_required"}
 		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
 	}
 
@@ -532,6 +548,36 @@ func LogEvent(e protocol.AuditEvent, item, host string, status int) {
 		attrs = append(attrs, "status", status)
 	}
 	slog.Info("use", attrs...)
+}
+
+// monthWindow is the UTC calendar month containing t — the billing window a
+// use claims against.
+func monthWindow(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+// claimUse meters one authorized use for the org. Free plans are capped at
+// FreeUseCap per window; paid plans accrue usage uncapped. Metering is off
+// when FreeUseCap <= 0. Store errors fail closed like every other store
+// error on the Use path.
+func (b *Broker) claimUse(orgID string, now time.Time) (bool, error) {
+	if b.FreeUseCap <= 0 {
+		return true, nil
+	}
+	ob, err := b.Store.Billing(orgID)
+	if err != nil {
+		return false, fmt.Errorf("billing: %w", err)
+	}
+	var cap int64
+	if ob.Plan == "" || ob.Plan == "free" {
+		cap = b.FreeUseCap
+	}
+	_, ok, err := b.Store.ConsumeUse(orgID, monthWindow(now), cap)
+	if err != nil {
+		return false, fmt.Errorf("meter: %w", err)
+	}
+	return ok, nil
 }
 
 // hostPath reduces an upstream URL to scheme://host for the veil.host span

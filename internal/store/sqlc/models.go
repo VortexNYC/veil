@@ -101,6 +101,13 @@ type ItemVersion struct {
 	Secret []byte
 }
 
+type OrgBilling struct {
+	OrgID      string
+	Plan       string
+	CustomerID string
+	UpdatedAt  time.Time
+}
+
 type OrgKey struct {
 	OrgID      string
 	Wrapped    []byte
@@ -140,6 +147,12 @@ type Session struct {
 	MaxTtl     int64
 	MaxUses    int32
 	Uses       int32
+}
+
+type UsageCounter struct {
+	OrgID       string
+	WindowStart time.Time
+	Used        int64
 }
 
 type Workload struct {

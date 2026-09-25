@@ -1453,3 +1453,52 @@ func sweepAuditAutocommit(db sqlc.DBTX) func(context.Context, sqlc.InsertAuditPa
 func (p *Postgres) Sweep(olderThan time.Time) (SweepReport, error) {
 	return SweepPostgres(context.Background(), p.pool, olderThan)
 }
+
+func (p *Postgres) Billing(orgID string) (OrgBilling, error) {
+	row, err := p.sqlc.GetOrgBilling(context.Background(), orgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OrgBilling{OrgID: orgID, Plan: "free"}, nil
+	}
+	if err != nil {
+		return OrgBilling{}, err
+	}
+	return OrgBilling{
+		OrgID:      row.OrgID,
+		Plan:       row.Plan,
+		CustomerID: row.CustomerID,
+		UpdatedAt:  row.UpdatedAt.UTC(),
+	}, nil
+}
+
+func (p *Postgres) SetBilling(ob OrgBilling) error {
+	return p.sqlc.UpsertOrgBilling(context.Background(), sqlc.UpsertOrgBillingParams{
+		OrgID:      ob.OrgID,
+		Plan:       ob.Plan,
+		CustomerID: ob.CustomerID,
+		UpdatedAt:  ob.UpdatedAt.UTC(),
+	})
+}
+
+func (p *Postgres) ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error) {
+	used, err := retryOnDeadConn(func() (int64, error) {
+		return p.sqlc.ConsumeUse(context.Background(), sqlc.ConsumeUseParams{
+			OrgID:       orgID,
+			WindowStart: window.UTC(),
+		})
+	})
+	if err != nil {
+		return 0, false, err
+	}
+	return used, cap <= 0 || used <= cap, nil
+}
+
+func (p *Postgres) Usage(orgID string, window time.Time) (int64, error) {
+	used, err := p.sqlc.GetUsage(context.Background(), sqlc.GetUsageParams{
+		OrgID:       orgID,
+		WindowStart: window.UTC(),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return used, err
+}

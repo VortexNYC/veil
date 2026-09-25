@@ -64,6 +64,16 @@ type SweepReport struct {
 	Requests  int64
 }
 
+// OrgBilling is the org's billing state as last reported by the billing
+// webhook receiver — plan is what the Use gate enforces. An absent row reads
+// as Plan "free".
+type OrgBilling struct {
+	OrgID      string
+	Plan       string
+	CustomerID string
+	UpdatedAt  time.Time
+}
+
 type Store interface {
 	PutAgent(protocol.Principal) error
 	Agent(id string) (protocol.Principal, error)
@@ -205,6 +215,19 @@ type Store interface {
 	AppendAudit(protocol.AuditEvent) error
 	AppendAudits([]protocol.AuditEvent) error
 	Audit() ([]protocol.AuditEvent, error)
+
+	// Billing returns the org's billing state; an absent row is Plan "free".
+	Billing(orgID string) (OrgBilling, error)
+	// SetBilling upserts the org's billing state — the billing webhook
+	// receiver is the writer.
+	SetBilling(OrgBilling) error
+	// ConsumeUse atomically increments the org's counter for window and
+	// reports whether the claim is within cap (cap <= 0 means unlimited —
+	// the counter still accrues). Over-cap claims count too: blocked demand
+	// is signal. Every claim lands exactly once, safe under concurrency.
+	ConsumeUse(orgID string, window time.Time, cap int64) (used int64, ok bool, err error)
+	// Usage reads the org's counter for window; absent rows read 0.
+	Usage(orgID string, window time.Time) (int64, error)
 	// FlushAuditOutbox relays queued audit events into the audit table.
 	// Postgres queues events that fail the direct write so a transient
 	// outage cannot lose them; stores without an outbox report 0.

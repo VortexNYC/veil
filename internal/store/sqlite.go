@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -191,6 +192,18 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			max_uses INTEGER NOT NULL,
 			uses INTEGER NOT NULL,
 			UNIQUE(secret_hash)
+		)`,
+		`CREATE TABLE IF NOT EXISTS org_billing (
+			org_id TEXT PRIMARY KEY,
+			plan TEXT NOT NULL DEFAULT 'free',
+			customer_id TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS usage_counters (
+			org_id TEXT NOT NULL,
+			window_start TEXT NOT NULL,
+			used INTEGER NOT NULL,
+			PRIMARY KEY (org_id, window_start)
 		)`,
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			name TEXT PRIMARY KEY,
@@ -1563,6 +1576,53 @@ func (s *SQLite) AppendAudits(events []protocol.AuditEvent) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *SQLite) Billing(orgID string) (OrgBilling, error) {
+	var ob OrgBilling
+	var updated string
+	err := s.db.QueryRow(`SELECT org_id, plan, customer_id, updated_at FROM org_billing WHERE org_id = ?`, orgID).
+		Scan(&ob.OrgID, &ob.Plan, &ob.CustomerID, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return OrgBilling{OrgID: orgID, Plan: "free"}, nil
+	}
+	if err != nil {
+		return OrgBilling{}, err
+	}
+	ob.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated)
+	if err != nil {
+		return OrgBilling{}, err
+	}
+	return ob, nil
+}
+
+func (s *SQLite) SetBilling(ob OrgBilling) error {
+	_, err := s.db.Exec(`INSERT INTO org_billing(org_id, plan, customer_id, updated_at) VALUES(?,?,?,?)
+		ON CONFLICT(org_id) DO UPDATE SET plan = excluded.plan, customer_id = excluded.customer_id, updated_at = excluded.updated_at`,
+		ob.OrgID, ob.Plan, ob.CustomerID, ob.UpdatedAt.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *SQLite) ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error) {
+	var used int64
+	err := s.db.QueryRow(`INSERT INTO usage_counters(org_id, window_start, used) VALUES(?,?,1)
+		ON CONFLICT(org_id, window_start) DO UPDATE SET used = usage_counters.used + 1
+		RETURNING used`,
+		orgID, window.UTC().Format(time.RFC3339Nano)).Scan(&used)
+	if err != nil {
+		return 0, false, err
+	}
+	return used, cap <= 0 || used <= cap, nil
+}
+
+func (s *SQLite) Usage(orgID string, window time.Time) (int64, error) {
+	var used int64
+	err := s.db.QueryRow(`SELECT used FROM usage_counters WHERE org_id = ? AND window_start = ?`,
+		orgID, window.UTC().Format(time.RFC3339Nano)).Scan(&used)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return used, err
 }
 
 // FlushAuditOutbox: sqlite writes audit rows directly — there is no outbox.

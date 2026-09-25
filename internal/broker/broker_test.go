@@ -1054,3 +1054,95 @@ func TestUseAuditFailureFailsClosed(t *testing.T) {
 		t.Fatalf("consume not rolled back: uses=%d", got.Uses)
 	}
 }
+
+// VEIL-59/60 — free-tier metering at the Use boundary. An authorized use on
+// a free org claims a unit; once the org's window counter exceeds the cap the
+// next use is denied payment_required (and the denial is audited). Paid plans
+// accrue usage but are never capped. Denied calls never consume.
+
+func useOnce(t *testing.T, b *Broker, agent protocol.Principal, url string) protocol.UseResult {
+	t.Helper()
+	got, err := b.Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: "item-1",
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: url},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func TestUseFreeOrgCappedAtLimit(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	b.FreeUseCap = 2
+
+	for i := 0; i < 2; i++ {
+		if got := useOnce(t, b, agent, upstream.URL); got.Decision != protocol.DecisionAllow {
+			t.Fatalf("use %d: decision=%s reason=%s", i+1, got.Decision, got.Reason)
+		}
+	}
+	got := useOnce(t, b, agent, upstream.URL)
+	if got.Decision != protocol.DecisionDeny || got.Reason != "payment_required" {
+		t.Fatalf("over-cap use: decision=%s reason=%s", got.Decision, got.Reason)
+	}
+	// The over-cap denial is audited — caps are authorization decisions.
+	events, err := b.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range events {
+		if e.Reason == "payment_required" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("payment_required denial not audited")
+	}
+}
+
+func TestUseActivePlanNotCapped(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	b.FreeUseCap = 1
+	if err := b.Store.SetBilling(store.OrgBilling{OrgID: agent.OrgID, Plan: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if got := useOnce(t, b, agent, upstream.URL); got.Decision != protocol.DecisionAllow {
+			t.Fatalf("paid use %d: decision=%s reason=%s", i+1, got.Decision, got.Reason)
+		}
+	}
+}
+
+func TestUseMeteringDisabled(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	// FreeUseCap zero: no metering at all — pre-billing behavior.
+	for i := 0; i < 3; i++ {
+		if got := useOnce(t, b, agent, upstream.URL); got.Decision != protocol.DecisionAllow {
+			t.Fatalf("unmetered use %d: decision=%s", i+1, got.Decision)
+		}
+	}
+	if got, _ := b.Store.Usage(agent.OrgID, monthWindow(b.Now())); got != 0 {
+		t.Fatalf("metering disabled but counter moved: %d", got)
+	}
+}
+
+func TestUseDeniedCallsDoNotConsume(t *testing.T) {
+	b, _, _, upstream, _ := setup(t, protocol.Level2)
+	b.FreeUseCap = 1
+	stranger := protocol.Principal{Kind: protocol.PrincipalAgent, ID: "agent-2", OrgID: "org-1"}
+	if err := b.Store.PutAgent(stranger); err != nil {
+		t.Fatal(err)
+	}
+	// No grant for agent-2: denied uses must not burn the org's allowance.
+	for i := 0; i < 3; i++ {
+		got := useOnce(t, b, stranger, upstream.URL)
+		if got.Decision != protocol.DecisionDeny || got.Reason == "payment_required" {
+			t.Fatalf("unauthorized use %d: decision=%s reason=%s", i+1, got.Decision, got.Reason)
+		}
+	}
+	if got, _ := b.Store.Usage("org-1", monthWindow(b.Now())); got != 0 {
+		t.Fatalf("denied uses consumed allowance: %d", got)
+	}
+}

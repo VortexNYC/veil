@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -284,6 +285,13 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 		Workload: workload.New(s),
 	}
 	a.Broker.Auditor = auditor
+	// Free-tier gate (VEIL-60): VEIL_FREE_USE_CAP sets the per-org per-month
+	// use allowance on the free plan. Unset/zero = metering off.
+	if v := os.Getenv("VEIL_FREE_USE_CAP"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			a.Broker.FreeUseCap = n
+		}
+	}
 	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {
 		n := a.Notify
 		if n == nil {

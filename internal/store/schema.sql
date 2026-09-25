@@ -167,6 +167,24 @@ CREATE TABLE sessions (
     uses INTEGER NOT NULL
 );
 
+-- Billing plane: Vortex is the billing system; these rows are the local
+-- projection the Use gate enforces. org_billing.plan flips on signed
+-- webhooks; usage_counters is the atomic claim ledger — one row per org per
+-- window, claimed under INSERT ... ON CONFLICT.
+CREATE TABLE org_billing (
+    org_id TEXT PRIMARY KEY,
+    plan TEXT NOT NULL DEFAULT 'free',
+    customer_id TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE usage_counters (
+    org_id TEXT NOT NULL,
+    window_start TIMESTAMPTZ NOT NULL,
+    used BIGINT NOT NULL,
+    PRIMARY KEY (org_id, window_start)
+);
+
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA pg_catalog;
 CREATE INDEX idx_items_name_trgm ON items USING GIN (name gin_trgm_ops);
 CREATE INDEX idx_items_uris_trgm ON items USING GIN (uris gin_trgm_ops);

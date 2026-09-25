@@ -379,6 +379,29 @@ func (q *Queries) ConsumeSession(ctx context.Context, arg ConsumeSessionParams) 
 	return i, err
 }
 
+const consumeUse = `-- name: ConsumeUse :one
+INSERT INTO usage_counters(org_id, window_start, used)
+VALUES($1::text, $2::timestamptz, 1)
+ON CONFLICT(org_id, window_start) DO UPDATE SET
+  used = usage_counters.used + 1
+RETURNING used
+`
+
+type ConsumeUseParams struct {
+	OrgID       string
+	WindowStart time.Time
+}
+
+// The claim and the read are one atomic statement: concurrent callers each
+// get a distinct used value; over-cap claims still land so blocked demand is
+// visible in the counter.
+func (q *Queries) ConsumeUse(ctx context.Context, arg ConsumeUseParams) (int64, error) {
+	row := q.db.QueryRow(ctx, consumeUse, arg.OrgID, arg.WindowStart)
+	var used int64
+	err := row.Scan(&used)
+	return used, err
+}
+
 const deleteItem = `-- name: DeleteItem :execrows
 DELETE FROM items WHERE id = $1::text
 `
@@ -478,6 +501,40 @@ func (q *Queries) ExpireStaleRequests(ctx context.Context, at time.Time) ([]Appr
 		return nil, err
 	}
 	return items, nil
+}
+
+const getOrgBilling = `-- name: GetOrgBilling :one
+SELECT org_id, plan, customer_id, updated_at FROM org_billing
+WHERE org_id = $1::text
+`
+
+func (q *Queries) GetOrgBilling(ctx context.Context, orgID string) (OrgBilling, error) {
+	row := q.db.QueryRow(ctx, getOrgBilling, orgID)
+	var i OrgBilling
+	err := row.Scan(
+		&i.OrgID,
+		&i.Plan,
+		&i.CustomerID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUsage = `-- name: GetUsage :one
+SELECT used FROM usage_counters
+WHERE org_id = $1::text AND window_start = $2::timestamptz
+`
+
+type GetUsageParams struct {
+	OrgID       string
+	WindowStart time.Time
+}
+
+func (q *Queries) GetUsage(ctx context.Context, arg GetUsageParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getUsage, arg.OrgID, arg.WindowStart)
+	var used int64
+	err := row.Scan(&used)
+	return used, err
 }
 
 const grantByID = `-- name: GrantByID :one
@@ -1949,6 +2006,31 @@ func (q *Queries) SweepExpiredSessions(ctx context.Context, before time.Time) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertOrgBilling = `-- name: UpsertOrgBilling :exec
+INSERT INTO org_billing(org_id, plan, customer_id, updated_at)
+VALUES($1::text, $2::text, $3::text, $4::timestamptz)
+ON CONFLICT(org_id) DO UPDATE SET
+  plan = EXCLUDED.plan, customer_id = EXCLUDED.customer_id,
+  updated_at = EXCLUDED.updated_at
+`
+
+type UpsertOrgBillingParams struct {
+	OrgID      string
+	Plan       string
+	CustomerID string
+	UpdatedAt  time.Time
+}
+
+func (q *Queries) UpsertOrgBilling(ctx context.Context, arg UpsertOrgBillingParams) error {
+	_, err := q.db.Exec(ctx, upsertOrgBilling,
+		arg.OrgID,
+		arg.Plan,
+		arg.CustomerID,
+		arg.UpdatedAt,
+	)
+	return err
 }
 
 const useAuth = `-- name: UseAuth :one

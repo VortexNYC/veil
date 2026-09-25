@@ -867,6 +867,20 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`DROP TRIGGER IF EXISTS approval_requests_notify ON approval_requests`,
 		`CREATE TRIGGER approval_requests_notify AFTER INSERT OR UPDATE OF status
 			ON approval_requests FOR EACH ROW EXECUTE FUNCTION approval_requests_notify()`,
+		// Billing plane — Vortex webhook writes org_billing; ConsumeUse claims
+		// usage_counters atomically under ON CONFLICT.
+		`CREATE TABLE IF NOT EXISTS org_billing (
+			org_id TEXT PRIMARY KEY,
+			plan TEXT NOT NULL DEFAULT 'free',
+			customer_id TEXT NOT NULL DEFAULT '',
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS usage_counters (
+			org_id TEXT NOT NULL,
+			window_start TIMESTAMPTZ NOT NULL,
+			used BIGINT NOT NULL,
+			PRIMARY KEY (org_id, window_start)
+		)`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err

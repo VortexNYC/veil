@@ -447,3 +447,28 @@ DELETE FROM grants WHERE expires_at IS NOT NULL AND expires_at < @before::timest
 
 -- name: SweepExpiredApprovals :execrows
 DELETE FROM approvals WHERE expires_at < @before::timestamptz;
+
+-- name: GetOrgBilling :one
+SELECT org_id, plan, customer_id, updated_at FROM org_billing
+WHERE org_id = @org_id::text;
+
+-- name: UpsertOrgBilling :exec
+INSERT INTO org_billing(org_id, plan, customer_id, updated_at)
+VALUES(@org_id::text, @plan::text, @customer_id::text, @updated_at::timestamptz)
+ON CONFLICT(org_id) DO UPDATE SET
+  plan = EXCLUDED.plan, customer_id = EXCLUDED.customer_id,
+  updated_at = EXCLUDED.updated_at;
+
+-- name: ConsumeUse :one
+-- The claim and the read are one atomic statement: concurrent callers each
+-- get a distinct used value; over-cap claims still land so blocked demand is
+-- visible in the counter.
+INSERT INTO usage_counters(org_id, window_start, used)
+VALUES(@org_id::text, @window_start::timestamptz, 1)
+ON CONFLICT(org_id, window_start) DO UPDATE SET
+  used = usage_counters.used + 1
+RETURNING used;
+
+-- name: GetUsage :one
+SELECT used FROM usage_counters
+WHERE org_id = @org_id::text AND window_start = @window_start::timestamptz;

@@ -27,6 +27,8 @@ type Memory struct {
 	versions  []protocol.ItemVersion
 	verSecret map[int64]Secret
 	nextVer   int64
+	billing   map[string]OrgBilling // key: org_id
+	usage     map[string]int64      // key: org_id+"\x00"+window unix
 }
 
 func NewMemory() *Memory {
@@ -42,6 +44,8 @@ func NewMemory() *Memory {
 		workloads: map[string]protocol.Workload{},
 		sessions:  map[string]protocol.Session{},
 		verSecret: map[int64]Secret{},
+		billing:   map[string]OrgBilling{},
+		usage:     map[string]int64{},
 	}
 }
 
@@ -711,6 +715,41 @@ func (m *Memory) AppendAudits(events []protocol.AuditEvent) error {
 	defer m.mu.Unlock()
 	m.audit = append(m.audit, events...)
 	return nil
+}
+
+func (m *Memory) Billing(orgID string) (OrgBilling, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ob, ok := m.billing[orgID]; ok {
+		return ob, nil
+	}
+	return OrgBilling{OrgID: orgID, Plan: "free"}, nil
+}
+
+func (m *Memory) SetBilling(ob OrgBilling) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.billing[ob.OrgID] = ob
+	return nil
+}
+
+func usageKey(orgID string, window time.Time) string {
+	return orgID + "\x00" + window.UTC().Format(time.RFC3339Nano)
+}
+
+func (m *Memory) ConsumeUse(orgID string, window time.Time, cap int64) (int64, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k := usageKey(orgID, window)
+	m.usage[k]++
+	used := m.usage[k]
+	return used, cap <= 0 || used <= cap, nil
+}
+
+func (m *Memory) Usage(orgID string, window time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.usage[usageKey(orgID, window)], nil
 }
 
 // FlushAuditOutbox: memory has no outbox.
