@@ -22,6 +22,11 @@ two replicas racing a `max_uses` session cannot both succeed. Everything
 authorization-critical is a single-statement read or a single tx; there is
 no cross-replica in-memory coordination to break.
 
+**Metering (VEIL-57/59/60)** adds two more ops per `Use` when
+`VEIL_FREE_USE_CAP > 0`: an `org_billing` plan read and an unconditional
+`usage_counters(org, window)` upsert. The upsert serializes on the
+org+window row — see Lock contention below and `PERF.md` §14.
+
 Measured baseline (3 replicas, 150 VUs, direct origin, local Docker pg):
 **8,724 req/s**, avg 7.69 ms, p95 22.64 ms, 0% errors. pprof shows the CPU
 is dominated by network/runtime wait states, not query execution — the
@@ -125,6 +130,10 @@ alone* — the limiters in order are:
    watch queue depth, not rows/s.
 4. **Lock contention** — `sessions` row updates serialize on the session
    row (per-agent, fine); `org_keys`/`owner_keys` only write on rotation.
+   `usage_counters` serializes per `(org, window)`: every metered `Use`
+   commits under that one row lock, capping a single org near ~480 req/s
+   (PERF §14 — measured; deferred escape hatches there). Fleet throughput
+   is unaffected — the hot row is per-org, not global.
 
 Users and agents multiply *rows*, not per-request cost: a million items
 does not change the 4-RT geometry because every hot-path read is

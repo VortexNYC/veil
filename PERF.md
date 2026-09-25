@@ -778,6 +778,46 @@ Interpretation:
   `VEIL_MAX_IN_FLIGHT_USE` to **100** (cli.go), not unlimited — the harness
   must set it explicitly or 150 VUs shed at 3×100 capacity.
 
+### 14. Metered-path re-baseline — cost of `ConsumeUse` (2026-09-25)
+
+First load runs **after** VEIL-57/59/60 metering: `claimUse` adds a plan read
+(`Store.Billing`) plus an unconditional `usage_counters` upsert to every
+authorized `Use` when `VEIL_FREE_USE_CAP > 0`. Same Mac, same harness,
+`goroutine` mode (§13 used `process` — absolute numbers are not comparable
+across that boundary), 1 replica, 50 VUs, single seed org, fresh `loadtest`
+DB, docker Postgres.
+
+| Run | Requests | Throughput | avg | med | p95 | errors |
+|---|---|---|---|---|---|---|
+| metering off (`VEIL_FREE_USE_CAP` unset) | 181,184 | 1,503 req/s | 14.79 ms | 8.35 ms | 30.75 ms | 0% |
+| metering on, cap=10⁹ (two statements: `Billing` + `ConsumeUse`) | 57,713 | 480 req/s | 46.77 ms | 17.66 ms | 134.4 ms | 0% |
+| metering on, plan folded into upsert `RETURNING` (measured, reverted) | 31,600 + 38,134 | 263–317 req/s | 71–86 ms | ~22.5 ms | ~270–285 ms | 1 transient |
+
+**Consistency proof**: `usage_counters.used` = 57,713 exactly — every metered
+request landed one claim under 50-VU contention on a single org row.
+
+Interpretation:
+
+- **Metering costs ~3× throughput and ~2× median latency on a single org.**
+  The mechanism is not round trips — it is the `usage_counters(org_id,
+  window_start)` row lock: every claim for an org serializes on that one row,
+  and each serialized section includes UPDATE *plus* COMMIT (fsync).
+  ~480 req/s ≈ ~2 ms per serialized claim — consistent with the
+  docker-on-Mac fsync penalty noted in §13.
+- **Folding the plan read into the upsert was measured and rejected.** Moving
+  the `org_billing` subquery inside `RETURNING` puts it *under* the hot row
+  lock and lengthens the critical section (~262–317 vs 480 req/s). The
+  two-statement version keeps the cheap plan read on a separate connection,
+  outside the lock. Code unchanged after measurement.
+- **This is the worst case by construction.** Contention is per
+  `(org, window)` — N orgs produce N independent hot rows, so fleet-wide
+  throughput still scales with org count. The ~480 req/s ceiling binds only a
+  *single* org's claim rate, which is orders of magnitude above real
+  credential-fetch traffic in the alpha.
+- **Cap enforcement stays exact**: the counter increments atomically and
+  `used <= cap` admits precisely `cap` claims per window — no overshoot, no
+  lost claims, verified at 57k concurrent claims.
+
 ## Scalability model — thousands of users and agents
 
 Measured basis (this doc): a `Use` costs ~0.14–0.23ms DB time (auth read +
@@ -820,4 +860,15 @@ Deliberately not done. Each has a trigger; act when the trigger fires, not befor
 3. **Audit drop-oldest vs block-and-shed.** **Resolved by §11** — the async
    queue is gone from the origin path, so there is no drop policy left to
    pick. Sync INSERT failure logs an error and returns the decision.
+4. **Metered-claim batching or counter sharding.** §14: per-org claim rate
+   tops out ~480 req/s because every `Use` serializes on the
+   `usage_counters(org, window)` row through UPDATE+COMMIT. Two escapes, both
+   trading exact-cap for throughput: (a) write-behind — broker accumulates
+   claims in-process, flushes `used += delta` per N claims or T ms; cap
+   checks against db+pending, overshoot bounded by pending × replicas,
+   crash loses ≤N claims of billing signal; (b) sharded counter rows
+   (org, window, slot) — claims land on random slots with no shared row,
+   cap check reads `SUM(used)` (approximate under concurrency). Trigger:
+   the usage-lag monitor or logs show any org sustaining >100 use/s, or
+   metering shows up in p95 complaints — not before.
 
