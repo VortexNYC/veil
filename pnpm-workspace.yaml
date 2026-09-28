@@ -3,6 +3,7 @@ packages:
   - "apps/backup-ingest"
   - "apps/docs"
   - "apps/mail"
+  - "apps/phone"
   - "apps/site"
   - "apps/vault"
   - "sdks/typescript"

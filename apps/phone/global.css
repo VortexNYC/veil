@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "uniwind";
+
+/* Veil is dark-first: paper ink on near-black, same mark as the docs logo. */
+@theme {
+  --color-background: #141210;
+  --color-foreground: #f0ede8;
+  --color-card: #1e1b18;
+  --color-card-foreground: #f0ede8;
+  --color-muted: #8a8378;
+  --color-border: #2e2924;
+  --color-accent: #f0ede8;
+  --color-accent-foreground: #141210;
+  --color-danger: #e5645c;
+}

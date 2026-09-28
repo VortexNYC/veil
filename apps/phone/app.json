@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Veil",
+    "slug": "veil-phone",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "veil",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#141210"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "nyc.veil.phone",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Veil uses Face ID before a password leaves the vault."
+      }
+    },
+    "android": {
+      "package": "nyc.veil.phone",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#141210"
+      },
+      "permissions": ["android.permission.USE_BIOMETRIC"]
+    },
+    "plugins": ["expo-router", "expo-secure-store", "expo-local-authentication", "expo-web-browser"]
+  }
+}

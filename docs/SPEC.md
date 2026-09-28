@@ -206,13 +206,14 @@ The next slices, in this order, and nothing else until each is proven:
                          Choose mode via the OS bar. Same jobs as
                          docs/fill.md. not Chrome. not the Safari
                          Web Extension (that is 37).
-33 iOS app                not written. later, no pressure. proper app.
-                         add + fill only. OS AutoFill is choose;
-                         picking a row writes the field. Face ID
-                         in that process. not grants/agents/audit.
-34 Android app            not written. later, no pressure. proper app.
-                         add + fill only. AutofillService /
-                         Credential Manager. not grants/agents/audit.
+33 iOS app                written. apps/phone (Expo + Uniwind). add +
+                         reveal only: PKCE sign-in via system browser at
+                         id.veil.nyc, Face ID before the fill/logins
+                         answer renders. OS AutoFill is choose — not
+                         yet wired. not grants/agents/audit.
+34 Android app            written. same apps/phone tree (scheme veil,
+                         USE_BIOMETRIC). AutofillService / Credential
+                         Manager not yet wired. not grants/agents/audit.
 35 Windows helper         not written. tray. Chrome still the Veil
                          extension (37, both fill modes).
                          Revisit then: WebAuthn plugin (passkeys, Win11),
