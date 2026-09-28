@@ -997,3 +997,23 @@ func ExtensionManifestFirefox(chromeManifest []byte) ([]byte, error) {
 	}
 	return append(raw, '\n'), nil
 }
+
+// ExtensionManifestSafari rewrites the Chrome MV3 manifest for Safari web
+// extensions: the pinned key is Chrome-only, and the service worker becomes
+// an event-page scripts array (tab.js first — same as Firefox). The id comes
+// from the containing app's bundle, so there is no browser_specific_settings
+// here; native messaging reaches the app handler, which forwards frames to
+// the same Go host.
+func ExtensionManifestSafari(chromeManifest []byte) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(chromeManifest, &m); err != nil {
+		return nil, fmt.Errorf("extension manifest: %w", err)
+	}
+	delete(m, "key")
+	m["background"] = map[string]any{"scripts": []string{"tab.js", "background.js"}}
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(raw, '\n'), nil
+}

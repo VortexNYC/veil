@@ -89,6 +89,13 @@ prove-live:
 prove-fill:
 	./scripts/prove-fill.sh
 
+# fill-safari regenerates the containing app's extension payload from
+# apps/fill (single source) and builds Veil.app. Run `veil fill install`
+# first — the extension's Swift handler execs ~/.veil/native-host.
+fill-safari:
+	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
+	cd apps/fill-safari && xcodebuild -project Veil.xcodeproj -scheme Veil -configuration Debug build
+
 login:
 	pnpm --filter identity-login dev
 

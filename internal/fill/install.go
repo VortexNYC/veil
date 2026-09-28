@@ -48,17 +48,32 @@ func InstallOrigin(env InstallEnv) error {
 // human "load unpacked"s in chrome://extensions. The manifest key pins the
 // extension id the native host manifest allowlists; flat files only.
 func InstallExtension(dist fs.FS, dir string) error {
-	return installExtension(dist, dir, false)
+	return installExtension(dist, dir, chrome)
 }
 
 // InstallExtensionFirefox lays down the same payload with the transformed
 // Firefox manifest (background scripts array, gecko id) — load it as a
 // temporary add-on via about:debugging or package with `web-ext build`.
 func InstallExtensionFirefox(dist fs.FS, dir string) error {
-	return installExtension(dist, dir, true)
+	return installExtension(dist, dir, firefox)
 }
 
-func installExtension(dist fs.FS, dir string, firefox bool) error {
+// InstallExtensionSafari lays down the payload the Safari web-extension
+// converter consumes — the same files with the Safari manifest. The
+// containing .app is apps/fill-safari; this directory is its Resources input.
+func InstallExtensionSafari(dist fs.FS, dir string) error {
+	return installExtension(dist, dir, safari)
+}
+
+type extKind int
+
+const (
+	chrome extKind = iota
+	firefox
+	safari
+)
+
+func installExtension(dist fs.FS, dir string, kind extKind) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -70,8 +85,12 @@ func installExtension(dist fs.FS, dir string, firefox bool) error {
 		if err != nil {
 			return err
 		}
-		if firefox && filepath.Base(path) == "manifest.json" {
-			raw, err = ExtensionManifestFirefox(raw)
+		if kind != chrome && filepath.Base(path) == "manifest.json" {
+			if kind == firefox {
+				raw, err = ExtensionManifestFirefox(raw)
+			} else {
+				raw, err = ExtensionManifestSafari(raw)
+			}
 			if err != nil {
 				return err
 			}

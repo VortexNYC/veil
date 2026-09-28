@@ -48,6 +48,37 @@ func TestExtensionManifestFirefox(t *testing.T) {
 	}
 }
 
+func TestExtensionManifestSafari(t *testing.T) {
+	chrome := []byte(`{
+		"manifest_version": 3,
+		"name": "Veil",
+		"key": "MIIBIjAN",
+		"background": {"service_worker": "background.js"}
+	}`)
+	raw, err := ExtensionManifestSafari(chrome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m["key"]; ok {
+		t.Fatal("key is Chrome-only — must not be in the Safari manifest")
+	}
+	bg, _ := m["background"].(map[string]any)
+	scripts, _ := bg["scripts"].([]any)
+	if len(scripts) != 2 || scripts[0] != "tab.js" || scripts[1] != "background.js" {
+		t.Fatalf("safari background scripts = %v", bg)
+	}
+	if _, sw := bg["service_worker"]; sw {
+		t.Fatal("service_worker survives into the Safari manifest")
+	}
+	if _, ok := m["browser_specific_settings"]; ok {
+		t.Fatal("Safari takes the id from the containing app — no gecko settings")
+	}
+}
+
 func TestInstallExtensionFirefox(t *testing.T) {
 	dir := t.TempDir()
 	dist := fstest.MapFS{

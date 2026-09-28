@@ -1927,6 +1927,7 @@ func fillCmd(home *string) *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), fill.JSONHostName)
 			fmt.Fprintf(cmd.OutOrStdout(), "extension: %s — load unpacked at chrome://extensions (Developer mode)\n", extDir)
 			fmt.Fprintf(cmd.OutOrStdout(), "extension-firefox: %s — load at about:debugging → This Firefox → Load Temporary Add-on (manifest.json)\n", ffDir)
+			fmt.Fprintln(cmd.OutOrStdout(), "safari: make fill-safari builds Veil.app — enable the extension in Safari → Settings → Extensions")
 			return nil
 		},
 	})

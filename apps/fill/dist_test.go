@@ -23,7 +23,7 @@ func TestFilesMatchDirectory(t *testing.T) {
 			strings.HasSuffix(name, ".test.cjs") || strings.Contains(name, "fixture") {
 			continue
 		}
-		if strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".html") || name == "manifest.json" {
+		if strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".png") || name == "manifest.json" {
 			want[name] = true
 		}
 	}
