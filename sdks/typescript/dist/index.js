@@ -965,12 +965,18 @@ var auditFeed = (options) => (options?.client ?? client).get({
   url: "/v1/audit/events",
   ...options
 });
+var createBillingCheckout = (options) => (options?.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/billing/checkout",
+  ...options
+});
 export {
   approveRequest,
   archiveItem,
   auditFeed,
   billingWebhook,
   createAgent,
+  createBillingCheckout,
   createClient,
   createGrant,
   createInvite,

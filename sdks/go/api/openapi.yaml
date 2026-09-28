@@ -792,6 +792,30 @@ paths:
         \ Events queued in the outbox join the feed on relay. Owner-only. Not MCP."
       tags:
       - Audit
+  /v1/billing/checkout:
+    post:
+      operationId: createBillingCheckout
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingCheckout"
+          description: Checkout session
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+        "404":
+          description: billing not configured
+        "502":
+          description: checkout failed
+      summary: "Owner-only upgrade click: mints a fresh hosted Vortex checkout URL\
+        \ bound to this org. Checkout tokens are single-use and hash-pinned — never\
+        \ cache the URL; mint one per click. The vault's cap-banner Subscribe action.\
+        \ Not MCP."
+      tags:
+      - Billing
 components:
   schemas:
     Item:
@@ -1822,6 +1846,16 @@ components:
       required:
       - events
       - next_after
+    BillingCheckout:
+      example:
+        checkout_url: checkout_url
+      properties:
+        checkout_url:
+          description: "Fresh hosted Vortex checkout URL for this org — navigate immediately,\
+            \ single-use"
+          type: string
+      required:
+      - checkout_url
     removeMember_200_response:
       example:
         removed: true

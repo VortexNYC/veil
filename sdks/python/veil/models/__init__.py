@@ -20,6 +20,7 @@ from veil.models.approve_request_body import ApproveRequestBody
 from veil.models.audit_event import AuditEvent
 from veil.models.audit_feed_event import AuditFeedEvent
 from veil.models.audit_feed_response import AuditFeedResponse
+from veil.models.billing_checkout import BillingCheckout
 from veil.models.billing_view import BillingView
 from veil.models.card_fields import CardFields
 from veil.models.create_agent_request import CreateAgentRequest

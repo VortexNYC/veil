@@ -39,6 +39,7 @@ __all__ = [
     "AuditEvent",
     "AuditFeedEvent",
     "AuditFeedResponse",
+    "BillingCheckout",
     "BillingView",
     "CardFields",
     "CreateAgentRequest",
@@ -95,6 +96,7 @@ from veil.models.approve_request_body import ApproveRequestBody as ApproveReques
 from veil.models.audit_event import AuditEvent as AuditEvent
 from veil.models.audit_feed_event import AuditFeedEvent as AuditFeedEvent
 from veil.models.audit_feed_response import AuditFeedResponse as AuditFeedResponse
+from veil.models.billing_checkout import BillingCheckout as BillingCheckout
 from veil.models.billing_view import BillingView as BillingView
 from veil.models.card_fields import CardFields as CardFields
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest

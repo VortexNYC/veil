@@ -1187,6 +1187,39 @@
           }
         }
       }
+    },
+    "/v1/billing/checkout": {
+      "post": {
+        "operationId": "createBillingCheckout",
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Owner-only upgrade click: mints a fresh hosted Vortex checkout URL bound to this org. Checkout tokens are single-use and hash-pinned \u2014 never cache the URL; mint one per click. The vault's cap-banner Subscribe action. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Checkout session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingCheckout"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          },
+          "404": {
+            "description": "billing not configured"
+          },
+          "502": {
+            "description": "checkout failed"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2143,6 +2176,18 @@
             "type": "integer",
             "format": "int64",
             "description": "Cursor for the next page \u2014 pass as ?after=. Equals the last event id, or the requested cursor when the page is empty."
+          }
+        }
+      },
+      "BillingCheckout": {
+        "type": "object",
+        "required": [
+          "checkout_url"
+        ],
+        "properties": {
+          "checkout_url": {
+            "type": "string",
+            "description": "Fresh hosted Vortex checkout URL for this org \u2014 navigate immediately, single-use"
           }
         }
       }

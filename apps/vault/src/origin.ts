@@ -1,6 +1,7 @@
 import {
   approveRequest,
   createAgent,
+  createBillingCheckout,
   createClient,
   createGrant,
   createItem,
@@ -102,6 +103,12 @@ export function events() {
 // Members get 403 — callers render nothing on error.
 export function billing() {
   return getBilling({ client: client() })
+}
+
+// billingCheckout mints a fresh hosted checkout URL per click — checkout
+// tokens are single-use, so the banner never caches one.
+export function billingCheckout() {
+  return createBillingCheckout({ client: client() })
 }
 
 export function requests(status: "open" | "approved" | "denied" | "expired" | "cancelled") {

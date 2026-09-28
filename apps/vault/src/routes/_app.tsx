@@ -15,7 +15,7 @@ import {
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { beginLogin, signedIn, signOut, token, amrOf } from "../auth";
-import { billing } from "../origin";
+import { billing, billingCheckout } from "../origin";
 import type { BillingView } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app")({
@@ -70,11 +70,23 @@ function BillingBanner() {
   if (!capped && !near) {
     return null;
   }
-  const action = view.upgrade_url ? (
-    <Banner.Action onClick={() => window.location.assign(view.upgrade_url!)}>
+  // Subscribe mints a fresh org-bound checkout per click — checkout URLs
+  // are single-use hash tokens, so caching one would dead-end on the pay
+  // page. upgrade_url stays as a static fallback when billing is unwired.
+  const action = (
+    <Banner.Action
+      onClick={() => {
+        void billingCheckout().then((res) => {
+          const url = res.data?.checkout_url || view.upgrade_url;
+          if (url) {
+            window.location.assign(url);
+          }
+        });
+      }}
+    >
       Subscribe
     </Banner.Action>
-  ) : undefined;
+  );
   return (
     <Banner
       variant={capped ? "error" : "alert"}

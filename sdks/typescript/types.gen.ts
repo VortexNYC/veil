@@ -377,6 +377,13 @@ export type AuditFeedResponse = {
     next_after: number;
 };
 
+export type BillingCheckout = {
+    /**
+     * Fresh hosted Vortex checkout URL for this org — navigate immediately, single-use
+     */
+    checkout_url: string;
+};
+
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1331,3 +1338,38 @@ export type AuditFeedResponses = {
 };
 
 export type AuditFeedResponse2 = AuditFeedResponses[keyof AuditFeedResponses];
+
+export type CreateBillingCheckoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/billing/checkout';
+};
+
+export type CreateBillingCheckoutErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+    /**
+     * billing not configured
+     */
+    404: unknown;
+    /**
+     * checkout failed
+     */
+    502: unknown;
+};
+
+export type CreateBillingCheckoutResponses = {
+    /**
+     * Checkout session
+     */
+    200: BillingCheckout;
+};
+
+export type CreateBillingCheckoutResponse = CreateBillingCheckoutResponses[keyof CreateBillingCheckoutResponses];
