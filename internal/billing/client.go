@@ -319,7 +319,7 @@ func (c *Client) CheckoutSession(ctx context.Context, in CheckoutIntent) (string
 		return "", err
 	}
 	idem := fmt.Sprintf("veil-checkout-%s-%d", in.OrgID, time.Now().UnixNano())
-	status, raw, err := c.do(ctx, http.MethodPost, "/v1/checkout-sessions", body, idem)
+	status, raw, err := c.do(ctx, http.MethodPost, "/v1/checkout/sessions", body, idem)
 	if err != nil {
 		return "", err
 	}

@@ -264,7 +264,7 @@ func TestRecordUsageFailure(t *testing.T) {
 	}
 }
 
-// VEIL-67 — upgrade checkout. POST /v1/checkout-sessions composes a hosted
+// VEIL-67 — upgrade checkout. POST /v1/checkout/sessions composes a hosted
 // subscription link: mode=subscription + customerId + billingAccountId +
 // items[priceId]. Response is {data: {checkoutSession: {checkoutUrl, ...}}}.
 // Vortex drops checkoutUrl on replayed responses, so each call sends a fresh
@@ -273,7 +273,7 @@ func TestCheckoutSession(t *testing.T) {
 	var got map[string]any
 	var keys []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/checkout-sessions" || r.Method != http.MethodPost {
+		if r.URL.Path != "/v1/checkout/sessions" || r.Method != http.MethodPost {
 			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
 			return
 		}
