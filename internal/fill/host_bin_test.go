@@ -55,10 +55,12 @@ func envClean() []string {
 }
 
 // envBin is compiled-host isolation for make test. It leaves Confirm
-// unattached so those tests fail closed without a Touch ID prompt.
-// Headed CFT must use envProve. Forcing VEIL_FILL_TOUCHID=0 on Chrome is a fake.
+// unattached so those tests fail closed without a Touch ID prompt, and pins
+// the replica key to memory so the host never waits on a Keychain
+// user-presence prompt. Headed CFT must use envProve. Forcing
+// VEIL_FILL_TOUCHID=0 on Chrome is a fake.
 func envBin() []string {
-	return append(envClean(), "VEIL_FILL_TOUCHID=0")
+	return append(envClean(), "VEIL_FILL_TOUCHID=0", "VEIL_REPLICA_KEYSTORE=mem")
 }
 
 func envProve() []string {
@@ -308,7 +310,6 @@ func TestCompiledBinaryAgainstOriginHTTP(t *testing.T) {
 }
 
 func TestCompiledBinaryJSONPingMatchFill(t *testing.T) {
-	t.Setenv("VEIL_REPLICA_KEYSTORE", "mem")
 	const login = "stripe@example.com"
 	a, err := app.Init(t.TempDir())
 	if err != nil {
