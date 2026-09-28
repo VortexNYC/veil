@@ -971,3 +971,29 @@ func ManifestJSONFirefox(hostPath string) []byte {
 	}, "", "  ")
 	return append(raw, '\n')
 }
+
+// ExtensionManifestFirefox rewrites the Chrome MV3 manifest for Firefox: the
+// pinned key is Chrome-only, the service worker becomes a scripts array
+// (Firefox MV3 event pages — tab.js loads first, the importScripts call in
+// background.js is guarded), and browser_specific_settings carries the id the
+// native host manifest allowlists. strict_min_version 128 is the first
+// Firefox with MAIN-world manifest content scripts (the passkeys bridge).
+func ExtensionManifestFirefox(chromeManifest []byte) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(chromeManifest, &m); err != nil {
+		return nil, fmt.Errorf("extension manifest: %w", err)
+	}
+	delete(m, "key")
+	m["background"] = map[string]any{"scripts": []string{"tab.js", "background.js"}}
+	m["browser_specific_settings"] = map[string]any{
+		"gecko": map[string]any{
+			"id":                 JSONFirefoxID(),
+			"strict_min_version": "128.0",
+		},
+	}
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(raw, '\n'), nil
+}

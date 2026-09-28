@@ -48,6 +48,17 @@ func InstallOrigin(env InstallEnv) error {
 // human "load unpacked"s in chrome://extensions. The manifest key pins the
 // extension id the native host manifest allowlists; flat files only.
 func InstallExtension(dist fs.FS, dir string) error {
+	return installExtension(dist, dir, false)
+}
+
+// InstallExtensionFirefox lays down the same payload with the transformed
+// Firefox manifest (background scripts array, gecko id) — load it as a
+// temporary add-on via about:debugging or package with `web-ext build`.
+func InstallExtensionFirefox(dist fs.FS, dir string) error {
+	return installExtension(dist, dir, true)
+}
+
+func installExtension(dist fs.FS, dir string, firefox bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -58,6 +69,12 @@ func InstallExtension(dist fs.FS, dir string) error {
 		raw, err := fs.ReadFile(dist, path)
 		if err != nil {
 			return err
+		}
+		if firefox && filepath.Base(path) == "manifest.json" {
+			raw, err = ExtensionManifestFirefox(raw)
+			if err != nil {
+				return err
+			}
 		}
 		return os.WriteFile(filepath.Join(dir, filepath.Base(path)), raw, 0o644)
 	})

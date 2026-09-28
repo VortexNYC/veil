@@ -1920,8 +1920,13 @@ func fillCmd(home *string) *cobra.Command {
 			if err := fill.InstallExtension(fillext.Files, extDir); err != nil {
 				return err
 			}
+			ffDir := filepath.Join(dir, "extension-firefox")
+			if err := fill.InstallExtensionFirefox(fillext.Files, ffDir); err != nil {
+				return err
+			}
 			fmt.Fprintln(cmd.OutOrStdout(), fill.JSONHostName)
 			fmt.Fprintf(cmd.OutOrStdout(), "extension: %s — load unpacked at chrome://extensions (Developer mode)\n", extDir)
+			fmt.Fprintf(cmd.OutOrStdout(), "extension-firefox: %s — load at about:debugging → This Firefox → Load Temporary Add-on (manifest.json)\n", ffDir)
 			return nil
 		},
 	})

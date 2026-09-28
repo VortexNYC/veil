@@ -1,4 +1,7 @@
-importScripts("tab.js");
+// tab.js is imported by the service worker on Chromium; Firefox's event-page
+// background loads it via the manifest scripts array instead — no
+// importScripts there, so guard the call.
+if (typeof importScripts === "function") importScripts("tab.js");
 
 const HOST = "nyc.veil.fill";
 const LOGIN = "https://login.veil.nyc";
