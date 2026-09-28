@@ -24,15 +24,20 @@ const rawOrigins = __ENV.VEIL_ORIGINS || __ENV.VEIL_ORIGIN || 'http://127.0.0.1:
 const origins = rawOrigins.split(',').map((s) => s.trim()).filter(Boolean);
 const rawTokens = __ENV.VEIL_TOKENS || __ENV.VEIL_AGENT_TOKEN;
 const tokens = rawTokens ? rawTokens.split(',').map((s) => s.trim()).filter(Boolean) : [];
-const item = __ENV.VEIL_ITEM_ID;
+// Multi-org runs pass VEIL_ITEM_IDS parallel to VEIL_TOKENS — the session's
+// org owns its item. Single-org runs keep the single VEIL_ITEM_ID.
+const rawItems = __ENV.VEIL_ITEM_IDS || __ENV.VEIL_ITEM_ID;
+const items = rawItems ? rawItems.split(',').map((s) => s.trim()).filter(Boolean) : [];
 const upstream = __ENV.VEIL_UPSTREAM_URL || 'https://httpbin.org/get';
 
 export default function () {
-  if (tokens.length === 0 || !item) {
-    fail('VEIL_TOKENS (or VEIL_AGENT_TOKEN) and VEIL_ITEM_ID are required');
+  if (tokens.length === 0 || items.length === 0) {
+    fail('VEIL_TOKENS (or VEIL_AGENT_TOKEN) and VEIL_ITEM_ID(S) are required');
   }
 
-  const token = tokens[(Number(__VU) - 1) % tokens.length];
+  const tokenIdx = (Number(__VU) - 1) % tokens.length;
+  const token = tokens[tokenIdx];
+  const item = items[Math.min(tokenIdx, items.length - 1)];
 
   const idx = (Number(__VU) + Number(__ITER)) % origins.length;
   const origin = origins[idx];

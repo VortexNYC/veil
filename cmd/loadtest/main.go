@@ -28,6 +28,7 @@ import (
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/publicapi"
 )
@@ -149,15 +150,16 @@ func run() error {
 	var item protocol.Item
 	var sessions []protocol.Session
 	var tokens []string
+	var itemIDs []string
 	if mode == "goroutine" {
-		agent, item, sessions, tokens, err = seed(origins[0].app, upstreamURL, vus)
+		agent, item, sessions, tokens, itemIDs, err = seed(origins[0].app, upstreamURL, vus)
 	} else {
 		var seedApp *app.App
 		seedApp, err = app.OpenPostgres(dsn)
 		if err != nil {
 			return fmt.Errorf("open seed app: %w", err)
 		}
-		agent, item, sessions, tokens, err = seed(seedApp, upstreamURL, vus)
+		agent, item, sessions, tokens, itemIDs, err = seed(seedApp, upstreamURL, vus)
 		_ = seedApp.Close()
 	}
 	if err != nil {
@@ -225,6 +227,7 @@ func run() error {
 		"VEIL_ORIGIN="+proxyURL,
 		"VEIL_TOKENS="+strings.Join(tokens, ","),
 		"VEIL_ITEM_ID="+item.ID,
+		"VEIL_ITEM_IDS="+strings.Join(itemIDs, ","),
 		"VEIL_UPSTREAM_URL="+upstreamURL,
 	)
 	k6Cmd.Stdout = os.Stdout
@@ -485,50 +488,102 @@ func closeOrigins(origins []*origin) {
 	wg.Wait()
 }
 
-func seed(a *app.App, upstreamURL string, n int) (protocol.Principal, protocol.Item, []protocol.Session, []string, error) {
+func seed(a *app.App, upstreamURL string, n int) (protocol.Principal, protocol.Item, []protocol.Session, []string, []string, error) {
 	agentName := envOr("LOADTEST_AGENT", "loadtest-agent")
 	itemName := envOr("LOADTEST_ITEM", "loadtest-item")
 	secret := []byte(envOr("LOADTEST_SECRET", "sk_live_loadtest_secret"))
 	numAgents := envOrInt("LOADTEST_AGENTS", 1)
+	numOrgs := envOrInt("LOADTEST_ORGS", 1)
 	if numAgents < 1 {
 		numAgents = 1
 	}
+	if numOrgs < 1 {
+		numOrgs = 1
+	}
 
-	agents := make([]protocol.Principal, 0, numAgents)
-	for i := 0; i < numAgents; i++ {
-		name := agentName
-		if numAgents > 1 {
-			name = fmt.Sprintf("%s-%d", agentName, i)
-		}
-		agent, err := a.AddAgent(name)
-		if err != nil {
-			return protocol.Principal{}, protocol.Item{}, nil, nil, fmt.Errorf("add agent %d: %w", i, err)
-		}
-		agents = append(agents, agent)
-	}
-	item, err := a.AddItem(itemName, upstreamURL, secret)
-	if err != nil {
-		return protocol.Principal{}, protocol.Item{}, nil, nil, fmt.Errorf("add item: %w", err)
-	}
-	for _, agent := range agents {
-		if _, err := a.AddGrant(agent.ID, item.ID, protocol.Level2); err != nil {
-			return protocol.Principal{}, protocol.Item{}, nil, nil, fmt.Errorf("add grant: %w", err)
-		}
-	}
-	human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+	// Multi-org mode fans sessions across N orgs so the metering hot path
+	// (usage_counters row per org) gets the contention profile it will see
+	// in production — per-org serialization, cross-org parallelism.
+	var firstAgent protocol.Principal
+	var firstItem protocol.Item
 	sessions := make([]protocol.Session, 0, n)
 	tokens := make([]string, 0, n)
-	for i := 0; i < n; i++ {
-		agent := agents[i%len(agents)]
-		session, token, err := a.CreateSession(human, agent.ID, time.Hour, 0)
-		if err != nil {
-			return protocol.Principal{}, protocol.Item{}, nil, nil, fmt.Errorf("create session %d: %w", i, err)
+	itemIDs := make([]string, 0, n)
+	perOrg := (n + numOrgs - 1) / numOrgs
+	for o := 0; o < numOrgs; o++ {
+		orgID := a.OrgID
+		if o > 0 {
+			fresh, err := id.NewOrg()
+			if err != nil {
+				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, err
+			}
+			orgID = fresh
+			master, err := crypto.NewKey()
+			if err != nil {
+				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, err
+			}
+			if err := a.Store.EnsureOrgKey(context.Background(), orgID, master); err != nil {
+				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, fmt.Errorf("org key %d: %w", o, err)
+			}
 		}
-		sessions = append(sessions, session)
-		tokens = append(tokens, token)
+		// The seed human reuses the app's default human id in each org —
+		// ownsVault shortcuts on p.ID == a.HumanID, and sessions stamp
+		// actor.OrgID, so no extra humans rows are needed.
+		human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: orgID}
+		suffix := ""
+		if numOrgs > 1 {
+			suffix = fmt.Sprintf("-o%d", o)
+		}
+		agents := make([]protocol.Principal, 0, numAgents)
+		for i := 0; i < numAgents; i++ {
+			name := agentName + suffix
+			if numAgents > 1 {
+				name = fmt.Sprintf("%s-%d", name, i)
+			}
+			var agent protocol.Principal
+			var err error
+			if o == 0 {
+				agent, err = a.AddAgent(name)
+			} else {
+				agent, err = a.AddAgentFor(human, name)
+			}
+			if err != nil {
+				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, fmt.Errorf("add agent %s: %w", name, err)
+			}
+			agents = append(agents, agent)
+		}
+		var item protocol.Item
+		var err error
+		if o == 0 {
+			item, err = a.AddItem(itemName+suffix, upstreamURL, secret)
+		} else {
+			item, err = a.PutItemFor(human, app.ItemOpts{Name: itemName + suffix, URI: upstreamURL, Token: secret})
+		}
+		if err != nil {
+			return protocol.Principal{}, protocol.Item{}, nil, nil, nil, fmt.Errorf("add item: %w", err)
+		}
+		for _, agent := range agents {
+			if _, err := a.GrantUntil(human, agent.ID, item.ID, protocol.Level2, nil); err != nil {
+				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, fmt.Errorf("add grant: %w", err)
+			}
+		}
+		for i := 0; i < perOrg && len(sessions) < n; i++ {
+			agent := agents[(o*perOrg+i)%len(agents)]
+			session, token, err := a.CreateSession(human, agent.ID, time.Hour, 0)
+			if err != nil {
+				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, fmt.Errorf("create session %d: %w", i, err)
+			}
+			sessions = append(sessions, session)
+			tokens = append(tokens, token)
+			itemIDs = append(itemIDs, item.ID)
+		}
+		if o == 0 {
+			firstAgent = agents[0]
+			firstItem = item
+		}
 	}
-	slog.Warn("seeded", "agents", len(agents), "item", item.ID, "sessions", len(sessions))
-	return agents[0], item, sessions, tokens, nil
+	slog.Warn("seeded", "orgs", numOrgs, "item", firstItem.ID, "sessions", len(sessions))
+	return firstAgent, firstItem, sessions, tokens, itemIDs, nil
 }
 
 func startProxy(origins []*origin) (string, error) {

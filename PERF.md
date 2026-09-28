@@ -818,6 +818,40 @@ Interpretation:
   `used <= cap` admits precisely `cap` claims per window — no overshoot, no
   lost claims, verified at 57k concurrent claims.
 
+### 15. Multi-org concurrency — does org-count scale the metered path (2026-09-28)
+
+§14's claim — "N orgs produce N independent hot rows, so fleet-wide
+throughput scales with org count" — measured. `LOADTEST_ORGS` seeds N orgs
+(each with own agent/item/grant and a share of the session pool; k6 spreads
+VUs across tokens), metering on (`VEIL_FREE_USE_CAP=10⁹`), same Mac, docker
+Postgres, goroutine mode, 1 replica, 50 VUs.
+
+| Run | Requests | Throughput | avg | med | p95 | errors |
+|---|---|---|---|---|---|---|
+| 1 org, 50 VUs | 68,717 | 572 req/s | 39.16 ms | 20.14 ms | 103.0 ms | 0% |
+| 8 orgs, 50 VUs | 147,010 | 1,225 req/s | 18.23 ms | 12.21 ms | 37.9 ms | 0% |
+
+**Consistency proof**: `SUM(usage_counters.used)` = 147,010 = `count(audit)`
+— every metered claim landed exactly once across all eight org rows, and the
+1:1 claim:audit invariant held at 2.1× the single-org rate.
+
+Interpretation:
+
+- **2.14× throughput from org-spreading alone.** Same 50 VUs, same host —
+  the only change is claims landing on 8 `usage_counters` rows instead of 1.
+  Cross-org headroom is real, not just theoretical.
+- **The per-org ceiling is per-org.** With ~6 VUs per org row, each org saw
+  ~153 req/s of claim throughput on average — consistent with §14's ~480
+  ceiling degrading gracefully rather than collapsing under light
+  contention. A single hot org still can't exceed its ~480 req/s claim rate;
+  that is the right ceiling to watch (see Deferred #4's trigger).
+- **Distribution was not uniform** (41k down to 142 claims across orgs —
+  k6's VU scheduling, not a store artifact). 2.14× is therefore a floor;
+  balanced orgs would spread further.
+- Multi-org seeding is now harness-native: `LOADTEST_ORGS=N` mints N orgs
+  with sealed org_keys and fans sessions across them; `VEIL_ITEM_IDS` keeps
+  each session's item inside its org.
+
 ## Scalability model — thousands of users and agents
 
 Measured basis (this doc): a `Use` costs ~0.14–0.23ms DB time (auth read +
