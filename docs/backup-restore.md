@@ -144,6 +144,14 @@ the binary.
     tuples, 6 hydra clients), `Secret()` decrypt verified under the
     escrowed KEK, wrong-KEK read fails closed
     (`crypto: authentication failed`). Driven by `cmd/drillrestore`.
+  - 2026-09-28 — all four offsite R2 artifacts pulled through the ingest
+    worker (`*-2026-09-28-0521.dump`), restored into a scratch Postgres 18
+    on the ops host (262 items, 32 grants, 1564 audit rows, 5 agents, 1
+    human, 2 kratos identities, 5 keto tuples, 6 hydra clients). `github`
+    item decrypts under the escrowed KEK; wrong-KEK read fails closed
+    (`crypto: authentication failed`). Audit archive independently
+    re-read: `audit-20260928-195601-1571-1575.jsonl` fetched from R2,
+    5 rows matching the export cursor (last_id 1575).
 
 ## The drill tool
 
