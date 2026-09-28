@@ -199,7 +199,13 @@ func (c *Client) EnsureBillingAccount(ctx context.Context, orgID, customerID str
 		"invoiceDeliveryMode":   "api_only",
 		"collectionMode":        "manual",
 		"autoCollectionEnabled": false,
-		"metadata":              map[string]string{"source": "veil", "orgId": orgID},
+		// The payments-domain customer profile carries the Vortex customerId
+		// (hosted setup creates it lazily with that id). customerProfileId is
+		// create-only on billing accounts, so the link must land here — a
+		// collect on an account without it fails "missing payments customer
+		// profile id" and there is no update route.
+		"customerProfileId": customerID,
+		"metadata":          map[string]string{"source": "veil", "orgId": orgID},
 	})
 	if err != nil {
 		return "", err

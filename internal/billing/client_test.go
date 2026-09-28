@@ -181,6 +181,12 @@ func TestEnsureBillingAccount(t *testing.T) {
 	if got["environment"] != "sandbox" || got["merchantAccountId"] != "ma_7" || got["customerId"] != "cus_1" {
 		t.Fatalf("body %v", got)
 	}
+	// The payments customer profile id is create-only on billing accounts —
+	// hosted setup materializes the profile under the customer id, so the
+	// link must be sent eagerly here or the first collect 409s.
+	if got["customerProfileId"] != "cus_1" {
+		t.Fatalf("customerProfileId %v", got["customerProfileId"])
+	}
 }
 
 // An existing billing account is reused, never re-created.
