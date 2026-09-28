@@ -354,6 +354,29 @@ export type BillingView = {
     upgrade_url?: string;
 };
 
+export type AuditFeedEvent = {
+    /**
+     * Committed row id — monotonically increasing per append; the feed cursor.
+     */
+    id: number;
+    time: string;
+    org_id: string;
+    agent_id: string;
+    item_id: string;
+    action: string;
+    decision: 'allow' | 'deny' | 'need_approval';
+    reason?: string;
+    approval_id?: string;
+};
+
+export type AuditFeedResponse = {
+    events: Array<AuditFeedEvent>;
+    /**
+     * Cursor for the next page — pass as ?after=. Equals the last event id, or the requested cursor when the page is empty.
+     */
+    next_after: number;
+};
+
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1268,3 +1291,43 @@ export type BillingWebhookResponses = {
 };
 
 export type BillingWebhookResponse = BillingWebhookResponses[keyof BillingWebhookResponses];
+
+export type AuditFeedData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Resume cursor — return committed events with id > after.
+         */
+        after?: number;
+        /**
+         * Page size.
+         */
+        limit?: number;
+    };
+    url: '/v1/audit/events';
+};
+
+export type AuditFeedErrors = {
+    /**
+     * bad after/limit
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not the org owner
+     */
+    403: unknown;
+};
+
+export type AuditFeedResponses = {
+    /**
+     * One page of committed org audit events
+     */
+    200: AuditFeedResponse;
+};
+
+export type AuditFeedResponse2 = AuditFeedResponses[keyof AuditFeedResponses];

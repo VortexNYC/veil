@@ -960,9 +960,15 @@ var billingWebhook = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var auditFeed = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/audit/events",
+  ...options
+});
 export {
   approveRequest,
   archiveItem,
+  auditFeed,
   billingWebhook,
   createAgent,
   createClient,

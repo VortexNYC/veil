@@ -1708,6 +1708,31 @@ func (s *SQLite) Audit() ([]protocol.AuditEvent, error) {
 	return out, nil
 }
 
+// AuditFeed keys the sqlite audit table on rowid — the sqlite schema has no
+// id column, and rowid is the same monotonic append order Postgres uses.
+func (s *SQLite) AuditFeed(orgID string, afterID int64, limit int) ([]protocol.AuditFeedEvent, error) {
+	if limit <= 0 || limit > maxListResults {
+		limit = maxListResults
+	}
+	rows, err := s.db.Query(`SELECT rowid, at, org_id, agent_id, item_id, action, decision, reason, approval_id
+		FROM audit WHERE org_id = ? AND rowid > ? ORDER BY rowid LIMIT ?`, orgID, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.AuditFeedEvent
+	for rows.Next() {
+		var e protocol.AuditFeedEvent
+		var at string
+		if err := rows.Scan(&e.ID, &at, &e.OrgID, &e.AgentID, &e.ItemID, &e.Action, &e.Decision, &e.Reason, &e.ApprovalID); err != nil {
+			return nil, err
+		}
+		e.Time, _ = time.Parse(time.RFC3339Nano, at)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLite) PutWorkload(w protocol.Workload) error {
 	_, err := s.db.Exec(`INSERT INTO workloads(issuer, subject, agent_id, audience)
 		VALUES(?,?,?,?)

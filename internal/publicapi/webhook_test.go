@@ -165,7 +165,7 @@ func TestBillingCheckout(t *testing.T) {
 				return
 			}
 			fmt.Fprintf(w, `{"data":{"items":[{"customerId":"cus_1","externalCustomerRef":%q}]}}`, a.OrgID)
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout-sessions":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/checkout/sessions":
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &posted)
 			w.WriteHeader(http.StatusCreated)

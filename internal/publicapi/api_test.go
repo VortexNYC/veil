@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1697,5 +1698,71 @@ func TestInviteRateLimit(t *testing.T) {
 	}
 	if fi.n != 20 {
 		t.Fatalf("inviter called %d times, want 20", fi.n)
+	}
+}
+
+// The SIEM feed is owner-only, org-scoped, and keyset-paginated on the
+// committed audit row id — a customer's SIEM polls after=<cursor> and
+// checkpoints on next_after. Members, agents, and strangers get nothing.
+func TestAuditFeedEndpoint(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+
+	if err := a.Store.AppendAudits([]protocol.AuditEvent{
+		{Time: time.Now(), OrgID: protocol.LocalOrgID, AgentID: "a1", ItemID: "github", Action: protocol.ActionFetch, Decision: protocol.DecisionAllow},
+		{Time: time.Now(), OrgID: "org-other", AgentID: "x", ItemID: "aws", Action: protocol.ActionFetch, Decision: protocol.DecisionAllow},
+		{Time: time.Now(), OrgID: protocol.LocalOrgID, AgentID: "a2", ItemID: "stripe", Action: protocol.ActionEnv, Decision: protocol.DecisionDeny, Reason: "no grant"},
+		{Time: time.Now(), OrgID: protocol.LocalOrgID, AgentID: "a1", ItemID: "github", Action: protocol.ActionFetch, Decision: protocol.DecisionAllow},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	code, raw := doJSON(t, srv, http.MethodGet, "/v1/audit/events?limit=2", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("owner feed %d %s", code, raw)
+	}
+	var page AuditFeedResponse
+	if err := json.Unmarshal(raw, &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Events) != 2 {
+		t.Fatalf("page 1: %+v", page)
+	}
+	for _, e := range page.Events {
+		if e.OrgID != protocol.LocalOrgID {
+			t.Fatalf("cross-org event leaked: %+v", e)
+		}
+	}
+	if page.Events[1].Reason != "no grant" {
+		t.Fatalf("page 1 deny missing reason: %+v", page.Events[1])
+	}
+	if page.NextAfter != page.Events[1].ID {
+		t.Fatalf("next_after %d, want %d", page.NextAfter, page.Events[1].ID)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/audit/events?after="+strconv.FormatInt(page.NextAfter, 10), "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("feed page 2 %d %s", code, raw)
+	}
+	var rest AuditFeedResponse
+	if err := json.Unmarshal(raw, &rest); err != nil {
+		t.Fatal(err)
+	}
+	if len(rest.Events) != 1 || rest.Events[0].ID <= page.NextAfter {
+		t.Fatalf("page 2: %+v", rest)
+	}
+
+	for _, tok := range []string{"member", "agent", "otherorg"} {
+		if code, _ = doJSON(t, srv, http.MethodGet, "/v1/audit/events", tok, nil); code != http.StatusForbidden {
+			t.Fatalf("%s feed: %d", tok, code)
+		}
+	}
+	if code, _ = doJSON(t, srv, http.MethodGet, "/v1/audit/events", "bad-token", nil); code != http.StatusUnauthorized {
+		t.Fatalf("anon feed: %d", code)
+	}
+	for _, q := range []string{"after=x", "after=-1", "limit=0", "limit=1001", "limit=x"} {
+		if code, _ = doJSON(t, srv, http.MethodGet, "/v1/audit/events?"+q, "human", nil); code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", q, code)
+		}
 	}
 }

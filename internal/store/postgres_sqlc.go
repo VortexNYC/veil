@@ -1309,6 +1309,26 @@ func (p *Postgres) Audit() ([]protocol.AuditEvent, error) {
 	return out, nil
 }
 
+func (p *Postgres) AuditFeed(orgID string, afterID int64, limit int) ([]protocol.AuditFeedEvent, error) {
+	if limit <= 0 || limit > maxListResults {
+		limit = maxListResults
+	}
+	rows, err := p.sqlc.ListAuditFeed(context.Background(), sqlc.ListAuditFeedParams{
+		OrgID: orgID, AfterID: afterID, MaxResults: int64(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.AuditFeedEvent, len(rows))
+	for i, r := range rows {
+		out[i] = protocol.AuditFeedEvent{
+			ID: r.ID, Time: r.At.UTC(), OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
+			Action: protocol.ActionKind(r.Action), Decision: protocol.Decision(r.Decision), Reason: r.Reason, ApprovalID: r.ApprovalID,
+		}
+	}
+	return out, nil
+}
+
 // SweepPostgres deletes terminally-expired rows older than before: sessions
 // past expiry or revoked, and grants/approvals past expiry. Open asks past
 // their own TTL mark expired and each expiry writes a request_expired audit

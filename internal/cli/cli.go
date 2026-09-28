@@ -1735,6 +1735,19 @@ func auditCmd(home *string) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&tokenFile, "oidc-token-file", "", "agent token file for VEIL_ORIGIN. Never argv.")
+
+	var after int64
+	var limit int
+	feed := &cobra.Command{
+		Use:   "feed",
+		Short: "Org-wide committed audit feed for a SIEM pull. Owner only. Origin only.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return originAuditFeed(cmd, after, limit)
+		},
+	}
+	feed.Flags().Int64Var(&after, "after", 0, "resume cursor — events with id > after")
+	feed.Flags().IntVar(&limit, "limit", 200, "page size, 1-1000")
+	c.AddCommand(feed)
 	return c
 }
 
@@ -2046,15 +2059,15 @@ func mcpPublicURL(flag, listen string) string {
 }
 
 type useDTO struct {
-	Decision          protocol.Decision `json:"decision"`
-	Reason            string            `json:"reason,omitempty"`
-	ApprovalID        string            `json:"approval_id,omitempty"`
-	RequestID         string            `json:"request_id,omitempty"`
-	RequestExpiresAt  *time.Time        `json:"request_expires_at,omitempty"`
-	Status            int               `json:"status,omitempty"`
-	Headers           http.Header       `json:"headers,omitempty"`
-	Body              string            `json:"body,omitempty"`
-	BodyB64           string            `json:"body_b64,omitempty"`
+	Decision         protocol.Decision `json:"decision"`
+	Reason           string            `json:"reason,omitempty"`
+	ApprovalID       string            `json:"approval_id,omitempty"`
+	RequestID        string            `json:"request_id,omitempty"`
+	RequestExpiresAt *time.Time        `json:"request_expires_at,omitempty"`
+	Status           int               `json:"status,omitempty"`
+	Headers          http.Header       `json:"headers,omitempty"`
+	Body             string            `json:"body,omitempty"`
+	BodyB64          string            `json:"body_b64,omitempty"`
 }
 
 func useView(got protocol.UseResult) useDTO {

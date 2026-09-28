@@ -1014,6 +1014,52 @@ func (q *Queries) ListAudit(ctx context.Context, maxResults int64) ([]Audit, err
 	return items, nil
 }
 
+const listAuditFeed = `-- name: ListAuditFeed :many
+SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id
+FROM audit
+WHERE org_id = $1 AND id > $2::bigint
+ORDER BY id LIMIT $3::bigint
+`
+
+type ListAuditFeedParams struct {
+	OrgID      string
+	AfterID    int64
+	MaxResults int64
+}
+
+// Per-org committed-event feed for the customer SIEM pull (VEIL-55). Committed
+// `audit` rows only — outbox rows renumber on relay, so including them would
+// break the id keyset. id order is append order on the shared sequence.
+func (q *Queries) ListAuditFeed(ctx context.Context, arg ListAuditFeedParams) ([]Audit, error) {
+	rows, err := q.db.Query(ctx, listAuditFeed, arg.OrgID, arg.AfterID, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Audit
+	for rows.Next() {
+		var i Audit
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.OrgID,
+			&i.AgentID,
+			&i.ItemID,
+			&i.Action,
+			&i.Decision,
+			&i.Reason,
+			&i.ApprovalID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGrants = `-- name: ListGrants :many
 SELECT id, org_id, agent_id, item_id, level, actions, expires_at
 FROM grants ORDER BY id LIMIT $1::bigint

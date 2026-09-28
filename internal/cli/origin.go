@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -279,6 +280,39 @@ func originEvents(cmd *cobra.Command, tokenFile string) error {
 		out.Events = []protocol.AuditEvent{}
 	}
 	return encode(cmd, out.Events)
+}
+
+// originAuditFeed pages the owner-gated org audit feed — the SIEM pull
+// endpoint. Prints the raw page (events + next_after) so callers can loop
+// on the cursor.
+func originAuditFeed(cmd *cobra.Command, after int64, limit int) error {
+	tok, err := originOwnerToken(cmd.Context())
+	if err != nil {
+		return err
+	}
+	q := url.Values{}
+	if after > 0 {
+		q.Set("after", strconv.FormatInt(after, 10))
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/audit/events"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, path, tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.AuditFeedResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	if out.Events == nil {
+		out.Events = []protocol.AuditFeedEvent{}
+	}
+	return encode(cmd, out)
 }
 
 func originItemList(cmd *cobra.Command) error {

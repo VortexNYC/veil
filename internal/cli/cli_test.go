@@ -2351,3 +2351,39 @@ func TestCLIAgentHydraUsesEnvForMatchingAgent(t *testing.T) {
 		t.Fatalf("verified env-path secret still rotated: puts=%d", puts)
 	}
 }
+
+// `audit feed` hits the owner-gated SIEM pull with the cursor params and
+// prints the page verbatim so callers can loop on next_after.
+func TestCLIOriginAuditFeed(t *testing.T) {
+	var sawFeed bool
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/audit/events" {
+			sawFeed = true
+			if r.URL.Query().Get("after") != "5" || r.URL.Query().Get("limit") != "100" {
+				t.Fatalf("cursor params lost: %s", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"events":[{"id":6,"time":"2026-09-10T00:00:00Z","org_id":"org","agent_id":"cursor","item_id":"github","action":"fetch","decision":"deny"}],"next_after":6}`)
+			return
+		}
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	t.Cleanup(origin.Close)
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_OIDC_TOKEN", "jwt-not-a-secret")
+	home := t.TempDir()
+	out, err := run(t, home, "", "audit", "feed", "--after", "5", "--limit", "100")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if !sawFeed {
+		t.Fatal("did not hit origin /v1/audit/events")
+	}
+	if !strings.Contains(out, `"next_after": 6`) {
+		t.Fatalf("feed %s", out)
+	}
+}

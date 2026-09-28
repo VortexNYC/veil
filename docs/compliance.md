@@ -148,6 +148,7 @@ Ordered by what hurts a real customer first. Every gap has an owner action.
 | "Show me change management" | Git history + CI (`make ci`, govulncheck) + CC8.1 note |
 | "Show me security monitoring" | `veil-monitor` + OTEL→PostHog + `/ready` errors_5m |
 | "Show me data deletion" | Lifecycle verbs + `PurgeOrg` tx + audit-survival decision |
+| "Give my SIEM your audit trail" | `GET /v1/audit/events?after=&limit=` — owner-only, org-scoped, keyset-paginated committed events; poll with `next_after` until a short page lands (`veil audit feed`). Offsite copy: hourly append-only JSONL archive in R2 via `audit-export` cron. |
 
 ## Vendor register
 

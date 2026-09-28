@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -74,6 +75,13 @@ type RequestsResponse struct {
 
 type EventsResponse struct {
 	Events []protocol.AuditEvent `json:"events"`
+}
+
+// AuditFeedResponse is one page of the org's committed audit feed —
+// `next_after` is the id cursor for the following page.
+type AuditFeedResponse struct {
+	Events    []protocol.AuditFeedEvent `json:"events"`
+	NextAfter int64                     `json:"next_after"`
 }
 
 type CreateItemRequest struct {
@@ -287,6 +295,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
 	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
+	mux.HandleFunc("GET /v1/audit/events", s.auditFeed)
 	mux.HandleFunc("GET /v1/billing", s.getBilling)
 	mux.HandleFunc("POST /v1/billing/checkout", s.postBillingCheckout)
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
@@ -990,12 +999,12 @@ func (s *Server) denyRequest(w http.ResponseWriter, r *http.Request) {
 // gate plus this window's consumption against the free allowance. included is
 // null when metering is off (cap unset) or the plan is paid.
 type BillingView struct {
-	Plan        string     `json:"plan"`
-	Used        int64      `json:"used"`
-	Included    *int64     `json:"included"`
-	WindowStart time.Time  `json:"window_start"`
-	WindowEnd   time.Time  `json:"window_end"`
-	UpgradeURL  string     `json:"upgrade_url,omitempty"`
+	Plan        string    `json:"plan"`
+	Used        int64     `json:"used"`
+	Included    *int64    `json:"included"`
+	WindowStart time.Time `json:"window_start"`
+	WindowEnd   time.Time `json:"window_end"`
+	UpgradeURL  string    `json:"upgrade_url,omitempty"`
 }
 
 // GET /v1/billing — the vault's cap-banner data source. Owner-only: plan and
@@ -1110,6 +1119,46 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 		mine = mine[n-100:]
 	}
 	writeJSON(w, EventsResponse{Events: mine})
+}
+
+// auditFeed is the customer-facing SIEM export (VEIL-55): owner-only,
+// org-scoped, keyset-paginated on the committed audit row id. A SIEM polls
+// `GET /v1/audit/events?after=<id>&limit=<n>` and checkpoints on
+// `next_after`; events queued in the outbox join the feed on relay.
+func (s *Server) auditFeed(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var after int64
+	var err error
+	if raw := r.URL.Query().Get("after"); raw != "" {
+		after, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || after < 0 {
+			http.Error(w, "bad after", http.StatusBadRequest)
+			return
+		}
+	}
+	limit := 200
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if limit, err = strconv.Atoi(raw); err != nil || limit < 1 || limit > 1000 {
+			http.Error(w, "bad limit", http.StatusBadRequest)
+			return
+		}
+	}
+	events, err := s.App.Store.AuditFeed(p.OrgID, after, limit)
+	if err != nil {
+		http.Error(w, "audit feed failed", http.StatusBadRequest)
+		return
+	}
+	if events == nil {
+		events = []protocol.AuditFeedEvent{}
+	}
+	next := after
+	if n := len(events); n > 0 {
+		next = events[n-1].ID
+	}
+	writeJSON(w, AuditFeedResponse{Events: events, NextAfter: next})
 }
 
 func (s *Server) fillLogins(w http.ResponseWriter, r *http.Request) {

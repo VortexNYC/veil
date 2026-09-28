@@ -19,6 +19,7 @@ __version__ = "0.1.1"
 # Define package exports
 __all__ = [
     "AgentApi",
+    "AuditApi",
     "BillingApi",
     "HumanApi",
     "OwnerApi",
@@ -36,6 +37,8 @@ __all__ = [
     "ApprovalRequest",
     "ApproveRequestBody",
     "AuditEvent",
+    "AuditFeedEvent",
+    "AuditFeedResponse",
     "BillingView",
     "CardFields",
     "CreateAgentRequest",
@@ -68,6 +71,7 @@ __all__ = [
 
 # import apis into sdk package
 from veil.api.agent_api import AgentApi as AgentApi
+from veil.api.audit_api import AuditApi as AuditApi
 from veil.api.billing_api import BillingApi as BillingApi
 from veil.api.human_api import HumanApi as HumanApi
 from veil.api.owner_api import OwnerApi as OwnerApi
@@ -89,6 +93,8 @@ from veil.models.agents_response import AgentsResponse as AgentsResponse
 from veil.models.approval_request import ApprovalRequest as ApprovalRequest
 from veil.models.approve_request_body import ApproveRequestBody as ApproveRequestBody
 from veil.models.audit_event import AuditEvent as AuditEvent
+from veil.models.audit_feed_event import AuditFeedEvent as AuditFeedEvent
+from veil.models.audit_feed_response import AuditFeedResponse as AuditFeedResponse
 from veil.models.billing_view import BillingView as BillingView
 from veil.models.card_fields import CardFields as CardFields
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest

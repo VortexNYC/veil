@@ -428,6 +428,15 @@ FROM (
     SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id FROM audit_outbox
 ) ev ORDER BY at DESC, id DESC LIMIT @max_results::bigint;
 
+-- name: ListAuditFeed :many
+-- Per-org committed-event feed for the customer SIEM pull (VEIL-55). Committed
+-- `audit` rows only — outbox rows renumber on relay, so including them would
+-- break the id keyset. id order is append order on the shared sequence.
+SELECT id, at, org_id, agent_id, item_id, action, decision, reason, approval_id
+FROM audit
+WHERE org_id = @org_id AND id > @after_id::bigint
+ORDER BY id LIMIT @max_results::bigint;
+
 -- name: InsertAuditOutbox :exec
 INSERT INTO audit_outbox(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
 VALUES(@at::timestamptz, @org_id::text, @agent_id::text, @item_id::text, @action::text, @decision::text, @reason::text, @approval_id::text);

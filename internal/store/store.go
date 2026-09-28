@@ -229,6 +229,12 @@ type Store interface {
 	AppendAudit(protocol.AuditEvent) error
 	AppendAudits([]protocol.AuditEvent) error
 	Audit() ([]protocol.AuditEvent, error)
+	// AuditFeed returns an org's committed audit events with row id >
+	// afterID in id order — the per-org SIEM export cursor. Committed rows
+	// only: events still queued in the outbox join the feed on relay with a
+	// fresh id, so a consumer that checkpoints on the last returned id never
+	// misses and never double-reads.
+	AuditFeed(orgID string, afterID int64, limit int) ([]protocol.AuditFeedEvent, error)
 
 	// Billing returns the org's billing state; an absent row is Plan "free".
 	Billing(orgID string) (OrgBilling, error)

@@ -239,6 +239,21 @@ type AuditEvent struct {
 	ApprovalID string     `json:"approval_id,omitempty"`
 }
 
+// AuditFeedEvent is one committed audit row on the per-org SIEM feed —
+// the event plus its monotonically increasing row id, which doubles as the
+// feed's resume cursor (`?after=`).
+type AuditFeedEvent struct {
+	ID         int64      `json:"id"`
+	Time       time.Time  `json:"time"`
+	OrgID      string     `json:"org_id"`
+	AgentID    string     `json:"agent_id"`
+	ItemID     string     `json:"item_id"`
+	Action     ActionKind `json:"action"`
+	Decision   Decision   `json:"decision"`
+	Reason     string     `json:"reason,omitempty"`
+	ApprovalID string     `json:"approval_id,omitempty"`
+}
+
 // Session is a short-lived Use lease onto an existing agent. The token
 // is never on this type. Owner mint only. Not MCP. Not list.
 type Session struct {

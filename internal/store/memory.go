@@ -862,6 +862,30 @@ func (m *Memory) Audit() ([]protocol.AuditEvent, error) {
 	return out, nil
 }
 
+// AuditFeed ids are 1-based append positions — the memory store's append
+// order is the same monotonic sequence Postgres assigns from its id column.
+func (m *Memory) AuditFeed(orgID string, afterID int64, limit int) ([]protocol.AuditFeedEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if limit <= 0 || limit > maxListResults {
+		limit = maxListResults
+	}
+	out := make([]protocol.AuditFeedEvent, 0, limit)
+	for i, e := range m.audit {
+		if int64(i+1) <= afterID || e.OrgID != orgID {
+			continue
+		}
+		out = append(out, protocol.AuditFeedEvent{
+			ID: int64(i + 1), Time: e.Time, OrgID: e.OrgID, AgentID: e.AgentID, ItemID: e.ItemID,
+			Action: e.Action, Decision: e.Decision, Reason: e.Reason, ApprovalID: e.ApprovalID,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 func workloadKey(issuer, subject string) string { return issuer + "\x00" + subject }
 
 func (m *Memory) PutWorkload(w protocol.Workload) error {

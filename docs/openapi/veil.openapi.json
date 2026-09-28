@@ -21,7 +21,7 @@
     },
     {
       "name": "Human",
-      "description": "Bearer is a verified human ID token. Pre-membership — provision creates the membership."
+      "description": "Bearer is a verified human ID token. Pre-membership \u2014 provision creates the membership."
     }
   ],
   "security": [
@@ -635,7 +635,7 @@
         "tags": [
           "Owner"
         ],
-        "summary": "Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.",
+        "summary": "Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick \u2014 refetch GET /v1/requests for the authoritative rows. Not MCP.",
         "responses": {
           "200": {
             "description": "text/event-stream; stays open until the client disconnects",
@@ -662,7 +662,7 @@
         "tags": [
           "Owner"
         ],
-        "summary": "Approve an open request — unlocks its level-1 grant for ttl. First write wins.",
+        "summary": "Approve an open request \u2014 unlocks its level-1 grant for ttl. First write wins.",
         "parameters": [
           {
             "name": "id",
@@ -781,7 +781,7 @@
         "tags": [
           "Human"
         ],
-        "summary": "Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
+        "summary": "Signup provisioning. Subject-authenticated \u2014 the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.",
         "responses": {
           "200": {
             "description": "Provisioned principal",
@@ -805,7 +805,7 @@
         "tags": [
           "Human"
         ],
-        "summary": "Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.",
+        "summary": "Private-alpha invite. Owner-authenticated \u2014 the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.",
         "requestBody": {
           "required": true,
           "content": {
@@ -842,7 +842,7 @@
         "tags": [
           "Human"
         ],
-        "summary": "Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.",
+        "summary": "Offboard a member. Owner-only \u2014 drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.",
         "parameters": [
           {
             "name": "id",
@@ -932,7 +932,7 @@
         "tags": [
           "Human"
         ],
-        "summary": "Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.",
+        "summary": "Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted \u2014 the org would have no administrator. Not MCP.",
         "parameters": [
           {
             "name": "id",
@@ -981,7 +981,7 @@
         "tags": [
           "Human"
         ],
-        "summary": "Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.",
+        "summary": "Leave the org: drops the member (and owner, when present) tuples plus the humans row \u2014 the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.",
         "responses": {
           "200": {
             "description": "Account removed from org",
@@ -1016,7 +1016,7 @@
         "tags": [
           "Human"
         ],
-        "summary": "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.",
+        "summary": "Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept \u2014 teardown must not erase the forensic record. Not MCP.",
         "responses": {
           "200": {
             "description": "Org purged",
@@ -1091,7 +1091,7 @@
           "Billing"
         ],
         "security": [],
-        "summary": "Vortex billing webhook receiver. Auth is the Vortex-Signature header (HMAC-SHA256 over the raw body) — no org principal. Subscription and entitlement lifecycle events flip the org's plan state; unknown event types are durable no-ops. Not MCP.",
+        "summary": "Vortex billing webhook receiver. Auth is the Vortex-Signature header (HMAC-SHA256 over the raw body) \u2014 no org principal. Subscription and entitlement lifecycle events flip the org's plan state; unknown event types are durable no-ops. Not MCP.",
         "parameters": [
           {
             "name": "Vortex-Signature",
@@ -1129,6 +1129,61 @@
           },
           "413": {
             "description": "body too large"
+          }
+        }
+      }
+    },
+    "/v1/audit/events": {
+      "get": {
+        "operationId": "auditFeed",
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Committed audit feed for this owner\u2019s org \u2014 the customer SIEM pull. Keyset-paginated: poll with ?after=<next_after> until a short page lands. Events queued in the outbox join the feed on relay. Owner-only. Not MCP.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 0
+            },
+            "description": "Resume cursor \u2014 return committed events with id > after."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 200,
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "description": "Page size."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of committed org audit events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditFeedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad after/limit"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not the org owner"
           }
         }
       }
@@ -1942,7 +1997,7 @@
           },
           "resolved_by": {
             "type": "string",
-            "description": "The Kratos identity of the owner who answered — first write wins."
+            "description": "The Kratos identity of the owner who answered \u2014 first write wins."
           },
           "approval_id": {
             "type": "string",
@@ -2017,6 +2072,77 @@
           "upgrade_url": {
             "type": "string",
             "description": "Vortex checkout/portal link for capped owners"
+          }
+        }
+      },
+      "AuditFeedEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "time",
+          "org_id",
+          "agent_id",
+          "item_id",
+          "action",
+          "decision"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Committed row id \u2014 monotonically increasing per append; the feed cursor."
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny",
+              "need_approval"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "approval_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AuditFeedResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "events",
+          "next_after"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditFeedEvent"
+            }
+          },
+          "next_after": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cursor for the next page \u2014 pass as ?after=. Equals the last event id, or the requested cursor when the page is empty."
           }
         }
       }
