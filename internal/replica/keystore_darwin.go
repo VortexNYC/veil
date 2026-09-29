@@ -3,8 +3,10 @@
 package replica
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"time"
 	"unsafe"
 
 	"github.com/VortexNYC/veil/internal/crypto"
@@ -29,6 +31,10 @@ static int veil_replica_get(void *out, int cap) {
 	CFMutableDictionaryRef q = veil_replica_query();
 	CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
 	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
+	// The item's ACL is user-presence. On a locked screen securityd would
+	// queue an auth prompt that cannot render and block this read forever —
+	// wedging every native-host child. Skip UI; fail fast, fall to origin.
+	CFDictionarySetValue(q, kSecUseAuthenticationUI, kSecUseAuthenticationUISkip);
 	CFTypeRef result = NULL;
 	OSStatus st = SecItemCopyMatching(q, &result);
 	CFRelease(q);
@@ -86,16 +92,39 @@ func Platform() KeyStore {
 	return keychain{}
 }
 
+var errKeychainLocked = errors.New("replica: keychain unavailable")
+
+// keychainReadTimeout bounds the SecItemCopyMatching call. While the screen
+// is locked, securityd holds the item's presence-gated decrypt open instead
+// of answering — the read would block forever and wedge the host. A bounded
+// read fails to the origin path; the stranded call drains when the Mac wakes.
+const keychainReadTimeout = 2 * time.Second
+
 func (keychain) Get() ([]byte, error) {
-	buf := make([]byte, crypto.KeySize)
-	n := C.veil_replica_get(unsafe.Pointer(&buf[0]), C.int(len(buf)))
-	if n == 0 {
-		return nil, ErrNotFound
+	type result struct {
+		key []byte
+		err error
 	}
-	if int(n) != crypto.KeySize {
-		return nil, fmt.Errorf("replica: keychain")
+	done := make(chan result, 1)
+	go func() {
+		buf := make([]byte, crypto.KeySize)
+		n := C.veil_replica_get(unsafe.Pointer(&buf[0]), C.int(len(buf)))
+		if n == 0 {
+			done <- result{nil, ErrNotFound}
+			return
+		}
+		if int(n) != crypto.KeySize {
+			done <- result{nil, fmt.Errorf("replica: keychain")}
+			return
+		}
+		done <- result{buf, nil}
+	}()
+	select {
+	case r := <-done:
+		return r.key, r.err
+	case <-time.After(keychainReadTimeout):
+		return nil, errKeychainLocked
 	}
-	return buf, nil
 }
 
 func (keychain) Put(key []byte) error {
