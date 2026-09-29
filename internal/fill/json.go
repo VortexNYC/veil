@@ -4,6 +4,7 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -92,7 +93,7 @@ func (h *Host) handleJSON(raw []byte) []byte {
 		}
 		return jsonFillReply(entries, err)
 	case "generate":
-		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules)
+		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules, in.UUID)
 	case "save":
 		return h.jsonSave(in.URL, in.Login, in.Password)
 	case "enrollTotp":
@@ -355,9 +356,10 @@ func matchEntry(item protocol.Item) jsonMatchEntry {
 	}
 }
 
-func (h *Host) jsonGenerate(rawURL, login, rules string) []byte {
+func (h *Host) jsonGenerate(rawURL, login, rules, uuid string) []byte {
 	rawURL = strings.TrimSpace(rawURL)
 	login = strings.TrimSpace(login)
+	uuid = strings.TrimSpace(uuid)
 	if rawURL == "" {
 		return jsonGenerateErr("failed")
 	}
@@ -368,6 +370,9 @@ func (h *Host) jsonGenerate(rawURL, login, rules string) []byte {
 	matches := h.jsonMatch(rawURL)
 	if h.loginNeeded() {
 		return jsonGenerateErr("need_login")
+	}
+	if uuid != "" {
+		return h.jsonRotate(rawURL, uuid, login, rules, matches)
 	}
 	for _, e := range matches {
 		if e.Kind == "login" {
@@ -397,6 +402,63 @@ func (h *Host) jsonGenerate(rawURL, login, rules string) []byte {
 		Login    string `json:"login,omitempty"`
 		Password string `json:"password"`
 	}{UUID: item.ID, Name: item.Name, Login: login, Password: string(secret)})
+}
+
+// jsonRotate is change-password: the chooser sent an existing login's uuid.
+// Mint a new secret and PATCH that item — never a second item on the host.
+func (h *Host) jsonRotate(rawURL, uuid, login, rules string, matches []jsonMatchEntry) []byte {
+	var hit *jsonMatchEntry
+	for i := range matches {
+		if matches[i].UUID == uuid && matches[i].Kind == "login" && !matches[i].Affiliated {
+			hit = &matches[i]
+			break
+		}
+	}
+	if hit == nil {
+		return jsonGenerateErr("choose")
+	}
+	if err := h.confirm("Veil wants to update a saved password", grant.Registrable(rawURL), true); err != nil {
+		return jsonGenerateErr("canceled")
+	}
+	secret, err := passgen.FromRules(rules)
+	if err != nil {
+		return jsonGenerateErr("failed")
+	}
+	if err := h.rotateLogin(uuid, login, string(secret)); err != nil {
+		if h.loginNeeded() {
+			return jsonGenerateErr("need_login")
+		}
+		return jsonGenerateErr("failed")
+	}
+	h.invalidateIndex()
+	if login == "" {
+		login = hit.Login
+	}
+	return jsonBytes(struct {
+		UUID     string `json:"uuid"`
+		Name     string `json:"name"`
+		Login    string `json:"login,omitempty"`
+		Password string `json:"password"`
+	}{UUID: hit.UUID, Name: hit.Name, Login: login, Password: string(secret)})
+}
+
+func (h *Host) rotateLogin(uuid, login, secret string) error {
+	if h.Origin != "" {
+		payload, err := json.Marshal(struct {
+			Secret string `json:"secret"`
+			Login  string `json:"login,omitempty"`
+		}{Secret: secret, Login: login})
+		if err != nil {
+			return err
+		}
+		_, err = h.originCall(http.MethodPatch, "/v1/items/"+url.PathEscape(uuid), payload)
+		return err
+	}
+	if h.App == nil {
+		return errGenerateCreate
+	}
+	_, err := h.App.UpdateItem(uuid, nil, nil, nil, login, []byte(secret))
+	return err
 }
 
 func loginMatch(entries []jsonMatchEntry) bool {

@@ -172,15 +172,23 @@
     nativeSet(el, value);
   }
 
+  // A generated password goes to every new-password field (signup or change
+  // confirm). A picked login goes to current-password — on a change form the
+  // old password belongs there, not in the new fields it would be replacing.
   function writeLogin(doc, entry) {
     const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea")));
     writeField(fields.username, entry.login);
-    if (fields.newPassword && fields.newPassword.length) {
-      fields.newPassword.forEach(function (el) {
+    const news = fields.newPassword && fields.newPassword.length ? fields.newPassword : null;
+    if (entry.generated && news) {
+      news.forEach(function (el) {
         writeField(el, entry.password);
       });
-    } else {
+    } else if (fields.password) {
       writeField(fields.password, entry.password);
+    } else if (news) {
+      news.forEach(function (el) {
+        writeField(el, entry.password);
+      });
     }
     writeField(fields.totp, entry.totp);
   }

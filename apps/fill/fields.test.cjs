@@ -212,6 +212,76 @@ test("findOTPAuth from totp link", () => {
   assert.equal(findOTPAuth(root), href);
 });
 
+function writable(partial) {
+  if (typeof HTMLInputElement === "undefined") {
+    global.HTMLInputElement = function HTMLInputElement() {};
+    HTMLInputElement.prototype = {};
+  }
+  if (typeof HTMLTextAreaElement === "undefined") {
+    global.HTMLTextAreaElement = function HTMLTextAreaElement() {};
+    HTMLTextAreaElement.prototype = {};
+  }
+  const node = el(partial);
+  node.value = "";
+  node.dispatchEvent = function () {};
+  return node;
+}
+
+function docOf(inputs) {
+  return {
+    querySelectorAll: function () {
+      return inputs;
+    },
+    querySelector: function () {
+      return null;
+    },
+  };
+}
+
+test("picked login fills current-password, never new-password", () => {
+  const { writeLogin } = require("./fields.js");
+  const current = writable({ autocomplete: "current-password", type: "password", name: "cur" });
+  const fresh = writable({ autocomplete: "new-password", type: "password", name: "np1" });
+  const confirm = writable({ autocomplete: "new-password", type: "password", name: "np2" });
+  writeLogin(docOf([writable({ autocomplete: "username", name: "u" }), current, fresh, confirm]), {
+    kind: "login",
+    login: "ada",
+    password: "old_pw",
+  });
+  assert.equal(current.value, "old_pw");
+  assert.equal(fresh.value, "");
+  assert.equal(confirm.value, "");
+});
+
+test("generated entry fills every new-password field", () => {
+  const { writeLogin } = require("./fields.js");
+  const current = writable({ autocomplete: "current-password", type: "password", name: "cur" });
+  const fresh = writable({ autocomplete: "new-password", type: "password", name: "np1" });
+  const confirm = writable({ autocomplete: "new-password", type: "password", name: "np2" });
+  writeLogin(docOf([writable({ autocomplete: "username", name: "u" }), current, fresh, confirm]), {
+    kind: "login",
+    login: "ada",
+    password: "minted_pw",
+    generated: true,
+  });
+  assert.equal(current.value, "");
+  assert.equal(fresh.value, "minted_pw");
+  assert.equal(confirm.value, "minted_pw");
+});
+
+test("picked login on a signup form still lands in new-password", () => {
+  const { writeLogin } = require("./fields.js");
+  const fresh = writable({ autocomplete: "new-password", type: "password", name: "np1" });
+  const confirm = writable({ autocomplete: "new-password", type: "password", name: "np2" });
+  writeLogin(docOf([writable({ autocomplete: "username", name: "u" }), fresh, confirm]), {
+    kind: "login",
+    login: "ada",
+    password: "old_pw",
+  });
+  assert.equal(fresh.value, "old_pw");
+  assert.equal(confirm.value, "old_pw");
+});
+
 test("findOTPAuth empty in iframe", () => {
   const prev = global.window;
   global.window = { top: {} };

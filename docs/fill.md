@@ -476,7 +476,7 @@ Fill + generate is the 1Password-shaped core. A few more things belong in the re
 
 - **Keyboard shortcut.** 1Password’s `Cmd-\` / `Ctrl-\`. Chrome `commands`. Fills this tab: execute if unambiguous, else choose. No new protocol.
 - **Host locked / JWT dead.** Remint already exists. If we can fill (replica warm), fill and remint in the background. `need_login` opens `login.veil.nyc` only when fill still needs origin and remint failed. Do not store a password in the extension.
-- **Change password updates the item.** Chooser “suggest new” on an existing uuid **replaces** that item’s password (we already have item update). It does not create a second GitHub. Generate with no uuid is signup.
+- **Change password updates the item.** Written: chooser “suggest new” on an existing uuid sends `generate` with that uuid; the host **PATCHes** `secret` on `/v1/items/{id}` — replaces that item’s password, keeps TOTP + login. No second item. Generate with no uuid is signup; the picker never rotates without the uuid in the row.
 - **Fill audit.** Origin records choose / execute / generate with uuid + url + kind. No password, no totp, no seed. Same audit plane as Use.
 
 ### In — after 37 is proven on this Mac, before inventing a phone

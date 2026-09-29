@@ -28,7 +28,12 @@
       });
     }
     if (generate) {
-      return { action: "menu", entries: list, generate: true };
+      // Change-password: each matched login is a "suggest new" rotate target —
+      // generate on an existing uuid replaces that password, never a create.
+      const rotates = list.filter(function (e) {
+        return e && e.kind === "login" && !e.affiliated;
+      });
+      return { action: "menu", entries: list, generate: true, rotates: rotates };
     }
     if (list.length) {
       return { action: "menu", entries: list };

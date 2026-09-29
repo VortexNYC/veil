@@ -619,6 +619,120 @@ func TestJSONGenerateSignupSavesThenReturnsPassword(t *testing.T) {
 	}
 }
 
+func TestJSONGenerateWithUUIDRotatesInsteadOfCreates(t *testing.T) {
+	const seed = "JBSWY3DPEHPK3PXP"
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "stripe", URI: "https://dashboard.stripe.com", Secret: secret, Login: "ada@example.com", TOTPSeed: seed,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	code, raw = originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "other", URI: "https://other.example.com", Secret: secret,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("other %d %s", code, raw)
+	}
+	var creates, patches atomic.Int32
+	var patchBody atomic.Value
+	inner := srv.Config.Handler
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/items" {
+			creates.Add(1)
+		}
+		if r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/v1/items/") {
+			patches.Add(1)
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+			}
+			patchBody.Store(string(body))
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			if r.URL.Path != "/v1/items/stripe" {
+				t.Errorf("rotate must hit the item id, got %s", r.URL.Path)
+			}
+		}
+		inner.ServeHTTP(w, r)
+	})
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	nConfirm := 0
+	h.Confirm = func(string) error { nConfirm++; return nil }
+
+	bogus := jsonHandle(t, h, map[string]string{"action": "generate", "url": "https://dashboard.stripe.com/settings/security", "uuid": "ghost"})
+	var fail struct {
+		Error    string `json:"error"`
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(bogus, &fail); err != nil || fail.Error != "choose" || fail.Password != "" {
+		t.Fatalf("unknown uuid %s", bogus)
+	}
+	offSite := jsonHandle(t, h, map[string]string{"action": "generate", "url": "https://dashboard.stripe.com/settings/security", "uuid": "other"})
+	if err := json.Unmarshal(offSite, &fail); err != nil || fail.Error != "choose" || fail.Password != "" {
+		t.Fatalf("cross-site uuid %s", offSite)
+	}
+	if creates.Load() != 0 || patches.Load() != 0 || nConfirm != 0 {
+		t.Fatalf("bad uuid hit origin/confirm creates=%d patches=%d confirm=%d", creates.Load(), patches.Load(), nConfirm)
+	}
+
+	h.Confirm = func(string) error { return errors.New("no") }
+	denied := jsonHandle(t, h, map[string]string{"action": "generate", "url": "https://dashboard.stripe.com/settings/security", "uuid": "stripe"})
+	if err := json.Unmarshal(denied, &fail); err != nil || fail.Error != "canceled" || fail.Password != "" {
+		t.Fatalf("denied %s", denied)
+	}
+	if patches.Load() != 0 {
+		t.Fatal("denied still patched")
+	}
+
+	h.Confirm = func(string) error { nConfirm++; return nil }
+	got := jsonHandle(t, h, map[string]any{
+		"action":        "generate",
+		"url":           "https://dashboard.stripe.com/settings/security",
+		"uuid":          "stripe",
+		"login":         "ada@example.com",
+		"passwordRules": "minlength: 20;",
+	})
+	var out struct {
+		Error    string `json:"error"`
+		UUID     string `json:"uuid"`
+		Name     string `json:"name"`
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Error != "" || out.UUID != "stripe" || len(out.Password) != 20 {
+		t.Fatalf("rotate %s", got)
+	}
+	if creates.Load() != 0 || patches.Load() != 1 {
+		t.Fatalf("rotate created=%d patched=%d", creates.Load(), patches.Load())
+	}
+	var patched publicapi.UpdateItemRequest
+	if err := json.Unmarshal([]byte(patchBody.Load().(string)), &patched); err != nil {
+		t.Fatal(err)
+	}
+	if patched.Secret != out.Password || patched.Login != "ada@example.com" {
+		t.Fatalf("patch body %+v", patched)
+	}
+
+	fills, err := a.FillLogins(protocol.Principal{Kind: protocol.PrincipalHuman, ID: app.DefaultHuman, OrgID: a.OrgID}, "https://dashboard.stripe.com/login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fills) != 1 || fills[0].Password != out.Password || fills[0].Login != "ada@example.com" {
+		t.Fatalf("rotate did not land: %+v", fills)
+	}
+	if !strings.Contains(patchBody.Load().(string), "secret") {
+		t.Fatal("rotate never sent the secret")
+	}
+}
+
 func TestJSONGenerateNeedLoginDoesNotMintOnDeadJWT(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

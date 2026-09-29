@@ -45,6 +45,31 @@ test("focusPlan is quiet with no data and menus generate fields", () => {
   assert.equal(g.generate, true);
 });
 
+test("focusPlan generate rotates per matched login", () => {
+  // change-password: existing logins are rotate targets, not a create. The
+  // chooser offers "suggest new" per login so it never mints a second item.
+  const entries = [
+    { kind: "login", uuid: "l1", name: "stripe", login: "ada" },
+    { kind: "card", uuid: "c1", name: "amex" },
+    { kind: "login", uuid: "l2", name: "stripe", login: "work" },
+  ];
+  const p = focusPlan(entries, true);
+  assert.equal(p.action, "menu");
+  assert.equal(p.generate, true);
+  assert.deepEqual(
+    p.rotates.map(function (e) {
+      return e.uuid;
+    }),
+    ["l1", "l2"],
+  );
+  // signup: nothing matched → generate creates, no rotate rows
+  const signup = focusPlan([{ kind: "card", uuid: "c1" }], true);
+  assert.equal(signup.generate, true);
+  assert.deepEqual(signup.rotates, []);
+  // a no-match focus stays quiet only when generate is off
+  assert.equal(focusPlan([], false).action, "quiet");
+});
+
 test("focusPlan filters entries to the focused form context", () => {
   const entries = [
     { kind: "card", uuid: "c1" },

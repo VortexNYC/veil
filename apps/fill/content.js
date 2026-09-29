@@ -92,17 +92,26 @@
       );
     });
     if (ctx && ctx.generate) {
-      rows.push(
-        menuRow({ name: "Suggest a password", sub: "generate and save", kind: "generate", slim: true }, function () {
+      const rotates = ctx.rotates || [];
+      const genRow = function (uuid, name, sub) {
+        return menuRow({ name: name, sub: sub, kind: "generate", slim: true }, function () {
           hideMenu();
           chrome.runtime.sendMessage({
             type: "suggest-generate",
             url: location.href,
             login: ctx.login || "",
             passwordRules: ctx.passwordRules || "",
+            uuid: uuid || "",
           });
-        }),
-      );
+        });
+      };
+      if (rotates.length) {
+        rotates.forEach(function (e) {
+          rows.push(genRow(e.uuid, "New password", "replaces " + (e.login || e.name || "this login")));
+        });
+      } else {
+        rows.push(genRow("", "Suggest a password", "generate and save"));
+      }
     }
     if (!rows.length) {
       return;
@@ -284,7 +293,7 @@
       if (el && document.contains(el) && document.activeElement === el && !(msg.entries || []).length && !msg.generate) {
         hideMenu();
       } else if (el && document.contains(el) && document.activeElement === el) {
-        showMenu(el, msg.entries, { generate: !!msg.generate, login: msg.login, passwordRules: msg.passwordRules });
+        showMenu(el, msg.entries, { generate: !!msg.generate, rotates: msg.rotates || [], login: msg.login, passwordRules: msg.passwordRules });
       }
       sendResponse({ ok: true });
       return true;

@@ -276,13 +276,16 @@ async function fillTab(tabId, url, uuid) {
   return { ok: wrote };
 }
 
-async function generateTab(tabId, url, login, passwordRules) {
+async function generateTab(tabId, url, login, passwordRules, uuid) {
   const body = { action: "generate", url: url };
   if (login) {
     body.login = login;
   }
   if (passwordRules) {
     body.passwordRules = passwordRules;
+  }
+  if (uuid) {
+    body.uuid = uuid;
   }
   const msg = await hostSend(body, 90000);
   if (needLogin(msg)) {
@@ -295,7 +298,7 @@ async function generateTab(tabId, url, login, passwordRules) {
   if (!msg || !msg.password) {
     return { ok: false, error: (msg && msg.error) || "empty" };
   }
-  await writeTab(tabId, { kind: "login", login: msg.login || login || "", password: msg.password, totp: "" });
+  await writeTab(tabId, { kind: "login", login: msg.login || login || "", password: msg.password, totp: "", generated: true });
   await matchTab(tabId, url);
   return { ok: true };
 }
@@ -496,6 +499,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
               type: "suggest",
               entries: plan.entries,
               generate: !!plan.generate,
+              rotates: plan.rotates || [],
               login: msg.login || "",
               passwordRules: msg.passwordRules || "",
             })
@@ -522,7 +526,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!tab || !usable(url)) {
       return;
     }
-    generateTab(tab.id, url, msg.login || "", msg.passwordRules || "").catch(function () {});
+    generateTab(tab.id, url, msg.login || "", msg.passwordRules || "", msg.uuid || "").catch(function () {});
     return;
   }
   if (msg.type === "offer-save") {
