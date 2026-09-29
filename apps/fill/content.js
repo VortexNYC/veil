@@ -6,7 +6,9 @@
   // Inline suggestion list under the focused field. Page DOM, not the toolbar
   // popover — the popover steals keyboard focus and the field never gets it
   // back. The menu never takes focus: picks happen on mousedown+preventDefault,
-  // keys stay on the field (arrows/Enter/Escape handled in capture).
+  // keys stay on the field (arrows/Enter/Escape handled in capture). The visual
+  // tree lives in an open shadow root so page CSS can neither restyle it nor
+  // be restyled by it.
   function hideMenu() {
     if (menu && menu.el && menu.el.parentNode) {
       menu.el.parentNode.removeChild(menu.el);
@@ -32,7 +34,8 @@
     } else {
       menu.el.style.top = top + "px";
     }
-    menu.el.style.minWidth = Math.max(220, r.width) + "px";
+    menu.el.style.minWidth = Math.max(240, r.width) + "px";
+    menu.el.style.maxWidth = "360px";
   }
 
   function pickEntry(e) {
@@ -40,21 +43,8 @@
     chrome.runtime.sendMessage({ type: "suggest-pick", uuid: e.uuid, url: location.href });
   }
 
-  function menuRow(label, sub, onPick) {
-    const row = document.createElement("div");
-    row.style.cssText =
-      "padding:8px 12px;cursor:pointer;border-radius:8px;" +
-      "font:13px/-1.3 -apple-system,system-ui,sans-serif;";
-    const name = document.createElement("div");
-    name.style.cssText = "color:#f0ede8;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-    name.textContent = label;
-    row.appendChild(name);
-    if (sub) {
-      const s = document.createElement("div");
-      s.style.cssText = "color:#a09a90;font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-      s.textContent = sub;
-      row.appendChild(s);
-    }
+  function menuRow(opts, onPick) {
+    const row = veilUI.entryRow(opts);
     row.addEventListener("mousedown", function (ev) {
       ev.preventDefault();
       ev.stopPropagation();
@@ -73,27 +63,36 @@
       return;
     }
     menu.active = i;
-    menu.rows.forEach(function (row, j) {
-      row.style.background = j === i ? "#35312a" : "transparent";
-    });
+    veilUI.setActive(menu.rows, i);
   }
 
   function showMenu(el, entries, ctx) {
     hideMenu();
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;z-index:2147483647;";
+    const shade = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = veilUI.css;
+    shade.appendChild(style);
     const box = document.createElement("div");
-    box.style.cssText =
-      "position:absolute;z-index:2147483647;background:#1c1a17;border:1px solid #35312a;" +
-      "border-radius:10px;padding:4px;box-shadow:0 8px 28px rgba(0,0,0,0.55);" +
-      "max-height:260px;overflow-y:auto;";
+    box.className = "v-menu";
+    box.style.cssText = "max-height:264px;overflow-y:auto;";
+    box.setAttribute("role", "listbox");
+    shade.appendChild(box);
     const rows = [];
     (entries || []).forEach(function (e) {
-      rows.push(menuRow(e.name || "item", e.login || (e.kind !== "login" ? e.kind : ""), function () {
-        pickEntry(e);
-      }));
+      rows.push(
+        menuRow(
+          { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind },
+          function () {
+            pickEntry(e);
+          },
+        ),
+      );
     });
     if (ctx && ctx.generate) {
       rows.push(
-        menuRow("Suggest a password", "generate and save", function () {
+        menuRow({ name: "Suggest a password", sub: "generate and save", kind: "generate" }, function () {
           hideMenu();
           chrome.runtime.sendMessage({
             type: "suggest-generate",
@@ -110,8 +109,8 @@
     rows.forEach(function (r) {
       box.appendChild(r);
     });
-    menu = { el: box, rows: rows, active: -1, forEl: el };
-    (document.body || document.documentElement).appendChild(box);
+    menu = { el: host, rows: rows, active: -1, forEl: el };
+    (document.body || document.documentElement).appendChild(host);
     placeMenu(el);
     // The focused field can report a pre-layout rect when focus is restored
     // during load — re-place once the frame settles instead of trusting it.

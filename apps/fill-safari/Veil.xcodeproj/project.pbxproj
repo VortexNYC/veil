@@ -28,6 +28,7 @@
 		E133AF5F306B28A7009E9FC3 /* passkeys-page.js in Resources */ = {isa = PBXBuildFile; fileRef = E133AF53306B28A7009E9FC3 /* passkeys-page.js */; };
 		E133AF60306B28A7009E9FC3 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E133AF54306B28A7009E9FC3 /* manifest.json */; };
 		E133AF61306B28A7009E9FC3 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = E133AF55306B28A7009E9FC3 /* content.js */; };
+		E133AF63306B28A7009E9FC3 /* ui.js in Resources */ = {isa = PBXBuildFile; fileRef = E133AF64306B28A7009E9FC3 /* ui.js */; };
 		E133AF62306B28A7009E9FC3 /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = E133AF56306B28A7009E9FC3 /* icon-128.png */; };
 /* End PBXBuildFile section */
 
@@ -80,6 +81,7 @@
 		E133AF53306B28A7009E9FC3 /* passkeys-page.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "passkeys-page.js"; path = "Resources/passkeys-page.js"; sourceTree = "<group>"; };
 		E133AF54306B28A7009E9FC3 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = Resources/manifest.json; sourceTree = "<group>"; };
 		E133AF55306B28A7009E9FC3 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
+		E133AF64306B28A7009E9FC3 /* ui.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = ui.js; path = Resources/ui.js; sourceTree = "<group>"; };
 		E133AF56306B28A7009E9FC3 /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "icon-128.png"; path = "Resources/icon-128.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -167,6 +169,7 @@
 				E133AF53306B28A7009E9FC3 /* passkeys-page.js */,
 				E133AF54306B28A7009E9FC3 /* manifest.json */,
 				E133AF55306B28A7009E9FC3 /* content.js */,
+				E133AF64306B28A7009E9FC3 /* ui.js */,
 				E133AF56306B28A7009E9FC3 /* icon-128.png */,
 			);
 			name = Resources;
@@ -274,6 +277,7 @@
 			files = (
 				E133AF5E306B28A7009E9FC3 /* tab.js in Resources */,
 				E133AF61306B28A7009E9FC3 /* content.js in Resources */,
+				E133AF63306B28A7009E9FC3 /* ui.js in Resources */,
 				E133AF5A306B28A7009E9FC3 /* background.js in Resources */,
 				E133AF60306B28A7009E9FC3 /* manifest.json in Resources */,
 				E133AF5B306B28A7009E9FC3 /* popup.html in Resources */,
@@ -459,6 +463,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VFWGNKKT4G;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				CODE_SIGN_ENTITLEMENTS = "Veil Extension/Veil Extension.entitlements";
@@ -494,6 +499,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VFWGNKKT4G;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				CODE_SIGN_ENTITLEMENTS = "Veil Extension/Veil Extension.entitlements";
@@ -531,6 +537,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VFWGNKKT4G;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -572,6 +579,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VFWGNKKT4G;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;

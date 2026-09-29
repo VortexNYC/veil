@@ -1,5 +1,13 @@
 const root = document.getElementById("root");
 
+// Inject the shared token/component stylesheet — same source as the in-page
+// chooser, so the popup and the inline menu read as one surface.
+(function () {
+  const s = document.createElement("style");
+  s.textContent = veilUI.css;
+  document.head.appendChild(s);
+})();
+
 function show(html) {
   root.innerHTML = html;
 }
@@ -13,11 +21,7 @@ function hostOf(url) {
 }
 
 function suggestButton(got) {
-  const b = document.createElement("button");
-  const name = document.createElement("div");
-  name.className = "name";
-  name.textContent = "Suggest a password";
-  b.appendChild(name);
+  const b = veilUI.entryRow({ name: "Suggest a password", sub: "generate and save", kind: "generate" }, "button");
   b.addEventListener("click", function () {
     chrome.runtime.sendMessage(
       {
@@ -32,7 +36,7 @@ function suggestButton(got) {
           window.close();
           return;
         }
-        show('<div class="err">Generate canceled or failed.</div>');
+        show('<div class="v-err">Generate canceled or failed.</div>');
       },
     );
   });
@@ -40,11 +44,7 @@ function suggestButton(got) {
 }
 
 function saveButton(got) {
-  const b = document.createElement("button");
-  const name = document.createElement("div");
-  name.className = "name";
-  name.textContent = "Save this sign-in";
-  b.appendChild(name);
+  const b = veilUI.entryRow({ name: "Save this sign-in", kind: "generate" }, "button");
   b.addEventListener("click", function () {
     chrome.runtime.sendMessage(
       {
@@ -57,7 +57,7 @@ function saveButton(got) {
           window.close();
           return;
         }
-        show('<div class="err">Save canceled or failed.</div>');
+        show('<div class="v-err">Save canceled or failed.</div>');
       },
     );
   });
@@ -66,7 +66,7 @@ function saveButton(got) {
 
 chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
   if (chrome.runtime.lastError) {
-    show('<div class="err">Host is not running. veil fill install</div>');
+    show('<div class="v-err">Host is not running. veil fill install</div>');
     return;
   }
   const entries = (got && got.entries) || [];
@@ -75,16 +75,23 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
   });
   root.textContent = "";
   const host = hostOf((got && got.url) || "");
+  const head = document.createElement("div");
+  head.className = "v-head";
+  const mark = document.createElement("div");
+  mark.className = "v-mark";
+  mark.innerHTML = veilUI.glyphs.veil + "<span>Veil</span>";
+  head.appendChild(mark);
   if (host) {
     const where = document.createElement("div");
-    where.className = "login";
+    where.className = "v-where";
     where.textContent = host;
-    root.appendChild(where);
+    head.appendChild(where);
   }
+  root.appendChild(head);
   const offerSave = !!(got && got.canSave && !logins.length);
   if (!entries.length && !(got && got.canGenerate) && !offerSave) {
     const empty = document.createElement("div");
-    empty.className = "empty";
+    empty.className = "v-empty";
     empty.textContent = "Nothing saved for this site.";
     root.appendChild(empty);
     return;
@@ -93,22 +100,10 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
     root.appendChild(saveButton(got));
   }
   entries.forEach(function (e) {
-    const b = document.createElement("button");
-    const name = document.createElement("div");
-    name.className = "name";
-    name.textContent = e.name || e.uuid || "item";
-    b.appendChild(name);
-    if (e.login) {
-      const login = document.createElement("div");
-      login.className = "login";
-      login.textContent = e.login;
-      b.appendChild(login);
-    } else if (e.kind && e.kind !== "login") {
-      const kind = document.createElement("div");
-      kind.className = "login";
-      kind.textContent = e.kind;
-      b.appendChild(kind);
-    }
+    const b = veilUI.entryRow(
+      { name: e.name || e.uuid || "item", sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""), kind: e.kind },
+      "button",
+    );
     b.addEventListener("click", function () {
       chrome.tabs.query({}, function (tabs) {
         const tab = globalThis.veilTab.tabByURL(tabs, got.url);
@@ -119,7 +114,7 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
               window.close();
               return;
             }
-            show('<div class="err">Fill canceled or failed.</div>');
+            show('<div class="v-err">Fill canceled or failed.</div>');
           },
         );
       });

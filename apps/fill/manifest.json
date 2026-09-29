@@ -48,7 +48,7 @@
     },
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["fields.js", "content.js"],
+      "js": ["ui.js", "fields.js", "content.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
