@@ -457,22 +457,28 @@ chrome.commands.onCommand.addListener(function (command) {
   if (command !== "fill") {
     return;
   }
+  // Cmd-\ routes through the page: content picks the field that owns the
+  // ask, focuses it, and the normal trusted-focus → suggest → menu flow
+  // runs — the chooser is inline, never the toolbar popover.
   activeTab().then(function (tab) {
     if (!tab || !usable(tab.url)) {
       return;
     }
     rememberTab(tab);
-    probeTab(tab.id).then(function (ctx) {
-      return executeTab(tab.id, tab.url, {
-        generate: !!(ctx && ctx.generate),
-        login: ctx && ctx.login,
-        passwordRules: ctx && ctx.passwordRules,
-      });
-    }).then(function (got) {
-      if (got && got.error === "choose") {
-        chrome.action.openPopup().catch(function () {});
+    chrome.tabs.sendMessage(tab.id, { type: "veil-fill" }).then(function (res) {
+      if (res && res.ok) {
+        return;
       }
-    });
+      // No content script or no fillable field — fall back to the
+      // field-detection write path for a lone match.
+      probeTab(tab.id).then(function (ctx) {
+        return executeTab(tab.id, tab.url, {
+          generate: !!(ctx && ctx.generate),
+          login: ctx && ctx.login,
+          passwordRules: ctx && ctx.passwordRules,
+        });
+      });
+    }).catch(function () {});
   });
 });
 

@@ -142,6 +142,23 @@ button.v-row {
 }
 .v-err { color: var(--v-text); }
 .v-sep { height: 1px; background: var(--v-line); margin: 4px 6px; }
+/* The in-field mark — quiet until hovered, the way back in after dismissal. */
+.v-field-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--v-subtle);
+  cursor: pointer;
+  font: inherit;
+}
+.v-field-icon:hover { color: var(--v-text); background: var(--v-fill-hover); }
+.v-field-icon svg { display: block; }
 `;
 
   // Stroke glyphs, 24 viewBox — inherit color via currentColor.

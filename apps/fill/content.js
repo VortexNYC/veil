@@ -2,6 +2,78 @@
   let lastOTPAuth = "";
   let focusEl = null;
   let menu = null;
+  let icon = null;
+
+  // The same ask focusin sends — extracted so the field icon can re-trigger
+  // a suggestion for an already-focused field (no second focus event fires).
+  function sendFocus(el) {
+    focusEl = el;
+    const ctx = probe(el);
+    chrome.runtime.sendMessage({
+      type: "trusted-focus",
+      generate: ctx.generate,
+      login: ctx.login,
+      passwordRules: ctx.passwordRules,
+      context: ctx.context,
+    });
+  }
+
+  // The in-field glyph: 1Password's affordance — once a field has something
+  // to offer, a quiet mark inside its right edge stays as the way back in.
+  // mousedown+preventDefault keeps focus on the field; a click toggles the
+  // menu. No offers, no icon — the silence rule stands.
+  function hideIcon() {
+    if (icon && icon.el && icon.el.parentNode) {
+      icon.el.parentNode.removeChild(icon.el);
+    }
+    icon = null;
+  }
+
+  function placeIcon() {
+    if (!icon) {
+      return;
+    }
+    const el = icon.forEl;
+    if (!document.contains(el)) {
+      hideIcon();
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    icon.el.style.top = r.top + (window.scrollY || 0) + Math.max(0, (r.height - 22) / 2) + "px";
+    icon.el.style.left = r.right + (window.scrollX || 0) - 27 + "px";
+  }
+
+  function showIconFor(el) {
+    hideIcon();
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;z-index:2147483646;";
+    const shade = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = veilUI.css;
+    shade.appendChild(style);
+    const btn = veilUI.el("button", "v-field-icon");
+    btn.type = "button";
+    btn.title = "Veil";
+    btn.innerHTML = veilUI.glyphs.veil;
+    btn.addEventListener("mousedown", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (menu && menu.forEl === el) {
+        hideMenu();
+        return;
+      }
+      if (document.activeElement === el) {
+        sendFocus(el);
+      } else {
+        // The trusted focusin carries the ask — do not send a second one.
+        el.focus();
+      }
+    });
+    shade.appendChild(btn);
+    (document.body || document.documentElement).appendChild(host);
+    icon = { el: host, forEl: el };
+    placeIcon();
+  }
 
   // Inline suggestion list under the focused field. Page DOM, not the toolbar
   // popover — the popover steals keyboard focus and the field never gets it
@@ -117,6 +189,7 @@
       return;
     }
     rows.forEach(function (r) {
+      r.dataset.q = r.textContent.toLowerCase();
       box.appendChild(r);
     });
     menu = { el: host, rows: rows, active: -1, forEl: el };
@@ -188,10 +261,14 @@
       if (menu && menu.forEl) {
         placeMenu(menu.forEl);
       }
+      placeIcon();
     },
     true,
   );
-  window.addEventListener("resize", hideMenu);
+  window.addEventListener("resize", function () {
+    hideMenu();
+    placeIcon();
+  });
 
   function probe(target) {
     const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
@@ -292,18 +369,49 @@
       // blur must not pop a menu over a page the human already left.
       if (el && document.contains(el) && document.activeElement === el && !(msg.entries || []).length && !msg.generate) {
         hideMenu();
+        if (icon && icon.forEl === el) {
+          hideIcon();
+        }
       } else if (el && document.contains(el) && document.activeElement === el) {
         showMenu(el, msg.entries, { generate: !!msg.generate, rotates: msg.rotates || [], login: msg.login, passwordRules: msg.passwordRules });
+        showIconFor(el);
       }
       sendResponse({ ok: true });
       return true;
     }
     if (msg.type === "suggest-hide") {
       hideMenu();
+      hideIcon();
       sendResponse({ ok: true });
       return true;
     }
+    if (msg.type === "veil-fill") {
+      // Cmd-\: aim the flow at the field that owns the ask — the one with
+      // focus, else the first field we can fill — and let focusin carry it.
+      const el = pickTarget();
+      if (el) {
+        if (document.activeElement === el) {
+          sendFocus(el);
+        } else {
+          el.focus();
+        }
+      }
+      sendResponse({ ok: !!el });
+      return true;
+    }
   });
+
+  function pickTarget() {
+    if (focusEl && document.contains(focusEl) && veilFields.isFillTarget(focusEl)) {
+      return focusEl;
+    }
+    const active = document.activeElement;
+    if (veilFields.isFillTarget(active)) {
+      return active;
+    }
+    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+    return fields.password || (fields.newPassword && fields.newPassword[0]) || fields.username || fields.number || null;
+  }
 
   document.addEventListener(
     "focusin",
@@ -311,15 +419,31 @@
       if (!ev.isTrusted || !veilFields.isFillTarget(ev.target)) {
         return;
       }
-      focusEl = ev.target;
-      const ctx = probe(ev.target);
-      chrome.runtime.sendMessage({
-        type: "trusted-focus",
-        generate: ctx.generate,
-        login: ctx.login,
-        passwordRules: ctx.passwordRules,
-        context: ctx.context,
+      sendFocus(ev.target);
+    },
+    true,
+  );
+
+  // Typing is an answer too: filter the rows live, and when nothing matches
+  // anymore the menu backs off — the human is typing, not choosing.
+  document.addEventListener(
+    "input",
+    function (ev) {
+      if (!menu || ev.target !== menu.forEl) {
+        return;
+      }
+      const q = String(menu.forEl.value || "").toLowerCase();
+      let visible = 0;
+      menu.rows.forEach(function (row) {
+        const show = !q || (row.dataset.q || "").indexOf(q) !== -1;
+        row.style.display = show ? "" : "none";
+        if (show) {
+          visible++;
+        }
       });
+      if (q && !visible) {
+        hideMenu();
+      }
     },
     true,
   );
