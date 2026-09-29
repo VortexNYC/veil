@@ -1057,3 +1057,43 @@ func TestJSONIdentityFillFromOriginWithoutReplica(t *testing.T) {
 		t.Fatalf("origin identity entry %+v", e)
 	}
 }
+
+func TestJSONMatchRanksExactHostFirst(t *testing.T) {
+	// A card with no URIs matches every page — the login saved for this exact
+	// host must still lead the suggestion list.
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	// the unbound item exists first — vault order cannot leak through
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "amex", Kind: "card", Secret: secret + "-card",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("card %d %s", code, raw)
+	}
+	code, raw = originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "stripe-dash", URI: "https://dashboard.stripe.com", Secret: secret + "-dash", Login: "dash@example.com",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("dash %d %s", code, raw)
+	}
+
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	h.Confirm = func(string) error { return nil }
+	matchRaw := jsonHandle(t, h, map[string]string{"action": "match", "url": "https://dashboard.stripe.com/login"})
+	var matched struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(matchRaw, &matched); err != nil {
+		t.Fatal(err)
+	}
+	if len(matched.Entries) != 2 {
+		t.Fatalf("match %+v", matched)
+	}
+	if matched.Entries[0].Name != "stripe-dash" || matched.Entries[1].Name != "amex" {
+		t.Fatalf("order %+v", matched.Entries)
+	}
+}

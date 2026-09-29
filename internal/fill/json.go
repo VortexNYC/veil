@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -126,6 +127,11 @@ func (h *Host) jsonMatch(rawURL string) []jsonMatchEntry {
 	h.mu.Lock()
 	items := append([]protocol.Item(nil), h.index...)
 	h.mu.Unlock()
+	pageHost := ""
+	if u, err := grant.ParseDest(rawURL); err == nil {
+		pageHost = grant.CanonicalHost(u)
+	}
+	matched := []protocol.Item{}
 	for _, item := range items {
 		if item.Archived || !item.Kind.Fillable() {
 			continue
@@ -134,6 +140,23 @@ func (h *Host) jsonMatch(rawURL string) []jsonMatchEntry {
 		if !unbound && !grant.HostAllowed(item, rawURL) {
 			continue
 		}
+		matched = append(matched, item)
+	}
+	// Host-bound items outrank unbound ones — a card or identity with no URI
+	// matches everywhere, so the login saved for this exact host leads.
+	// Stable: vault order breaks ties.
+	exact := func(it protocol.Item) bool {
+		for _, raw := range it.URIs {
+			if u, err := grant.ParseDest(raw); err == nil && grant.CanonicalHost(u) == pageHost {
+				return true
+			}
+		}
+		return false
+	}
+	sort.SliceStable(matched, func(i, j int) bool {
+		return exact(matched[i]) && !exact(matched[j])
+	})
+	for _, item := range matched {
 		out = append(out, matchEntry(item))
 	}
 	return out
