@@ -28,3 +28,4 @@ loadtest
 apps/fill-safari/Veil Extension/Resources/
 apps/fill-safari/xcuserdata/
 apps/fill-safari/**/xcuserdata/
+apps/fill-safari/build/
