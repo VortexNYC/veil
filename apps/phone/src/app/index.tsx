@@ -124,7 +124,12 @@ export default function Items() {
         }
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => router.push({ pathname: "/item/[id]", params: { id: item.id, name: item.name } })}
+            onPress={() =>
+              router.push({
+                pathname: "/item/[id]",
+                params: { id: item.id, name: item.name, totp: item.has_totp ? "1" : "" },
+              })
+            }
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",

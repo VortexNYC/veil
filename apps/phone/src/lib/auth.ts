@@ -95,12 +95,12 @@ export async function signIn(): Promise<void> {
     redirect_uri: redirectURI,
     code_verifier: verifier,
   });
-  const res = await fetch(new URL("/oauth2/token", issuer), {
+  const res = await fetch(new URL("/oauth2/token", issuer).toString(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
+    body: body.toString(),
   });
-  if (!res.ok) throw new Error("token exchange failed");
+  if (!res.ok) throw new Error(`token exchange ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const parsed: unknown = await res.json();
   const idToken =
     typeof parsed === "object" && parsed !== null && "id_token" in parsed ? parsed.id_token : null;

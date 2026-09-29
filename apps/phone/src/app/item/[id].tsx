@@ -22,7 +22,7 @@ function Row({ label, value, onCopy }: { label: string; value: string; onCopy?: 
 }
 
 export default function ItemDetail() {
-  const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
+  const { id, name, totp } = useLocalSearchParams<{ id: string; name: string; totp?: string }>();
   const [entry, setEntry] = useState<FillEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export default function ItemDetail() {
         cancelLabel: "Cancel",
       });
       if (!ok.success) return;
-      const got = await fillLogin(String(id));
+      const got = await fillLogin(String(id), totp === "1");
       if (!got) throw new Error("no entry");
       setEntry(got);
     } catch (e) {

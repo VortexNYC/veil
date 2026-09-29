@@ -55,10 +55,10 @@ export type FillEntry = {
 
 export const listItems = () => call<{ items: Item[] }>("/v1/items").then((r) => r.items);
 
-export const fillLogin = (uuid: string) =>
+export const fillLogin = (uuid: string, wantTotp: boolean) =>
   call<{ entries: FillEntry[] }>("/v1/fill/logins", {
     method: "POST",
-    body: JSON.stringify({ uuid, mintTotp: true }),
+    body: JSON.stringify(wantTotp ? { uuid, mintTotp: true } : { uuid }),
   }).then((r) => r.entries[0] ?? null);
 
 export const addLogin = (input: { name: string; uri?: string; login?: string; secret: string }) =>
