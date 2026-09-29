@@ -155,7 +155,7 @@ button.v-row {
     generate:
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v4M12 16v4M4 12h4M16 12h4M7.8 7.8l2 2M14.2 14.2l2 2M16.2 7.8l-2 2M9.8 14.2l-2 2"/></svg>',
     veil:
-      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 4.5 6v5.5c0 4.6 3.2 8 7.5 9.7 4.3-1.7 7.5-5.1 7.5-9.7V6L12 2.8Z"/><path d="M9 11.5l2.2 2.2L15.5 9.5"/></svg>',
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.64 12.24V7.2a3.36 4.32 0 0 1 6.72 0v5.04h-1.68V7.68a1.68 2.88 0 0 0-3.36 0v4.56zM7.68 11.76h8.64q2.4 0 2.52 1.92l0.36 5.04q0.12 2.16-2.04 2.4H6.84q-2.16-0.24-2.04-2.4l0.36-5.04q0.12-1.92 2.52-1.92zM9.4 15.6a1 1 0 0 1 2 0v0.8a1 1 0 0 1-2 0zM12.6 15.6a1 1 0 0 1 2 0v0.8a1 1 0 0 1-2 0z"/></svg>',
   };
 
   function el(tag, cls, text) {
