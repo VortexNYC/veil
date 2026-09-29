@@ -21,6 +21,19 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private let status = NSTextField(labelWithString: "Veil")
     private var scroll: NSScrollView!
 
+    /// Same deal as the app's IdentitySync vlog — appex NSLog is invisible;
+    /// trace invocations in the container instead.
+    private func vlog(_ msg: String) {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("veil-appex.log")
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg)\n"
+        if let h = try? FileHandle(forWritingTo: path) {
+            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+        } else {
+            try? line.write(to: path, atomically: true, encoding: .utf8)
+        }
+    }
+
     override func loadView() {
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 280))
         preferredContentSize = view.frame.size
@@ -59,6 +72,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         for serviceIdentifiers: [ASCredentialServiceIdentifier],
         requestParameters: ASPasskeyCredentialRequestParameters?,
     ) {
+        vlog("prepareCredentialList ids=\(serviceIdentifiers.map { $0.identifier })")
         if requestParameters != nil {
             cancel(with: .failed)
             return
@@ -66,10 +80,16 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         serviceURL = serviceIdentifiers.first.map(Self.url(for:)) ?? ""
         DispatchQueue.global().async {
             let got: [[String: Any]]
-            if self.serviceURL.isEmpty {
-                got = (try? FillBridge.shared.list()) ?? []
-            } else {
-                got = (try? FillBridge.shared.match(url: self.serviceURL)) ?? []
+            do {
+                if self.serviceURL.isEmpty {
+                    got = try FillBridge.shared.list()
+                } else {
+                    got = try FillBridge.shared.match(url: self.serviceURL)
+                }
+                self.vlog("bridge ok got=\(got.count)")
+            } catch {
+                self.vlog("bridge failed \(error.localizedDescription)")
+                got = []
             }
             DispatchQueue.main.async {
                 self.entries = got.filter { ($0["kind"] as? String) == "login" }
@@ -86,6 +106,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// The user tapped one of our inline suggestions — the identity store
     /// already knows which record; confirm at the host and complete.
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
+        vlog("prepareInterfaceToProvideCredential")
         guard let req = credentialRequest as? ASPasswordCredentialRequest,
               let identity = req.credentialIdentity as? ASPasswordCredentialIdentity,
               let uuid = identity.recordIdentifier, !uuid.isEmpty
@@ -110,6 +131,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// the system our UI is needed; it calls back into
     /// prepareInterfaceToProvideCredential(for:).
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
+        vlog("provideCredentialWithoutUserInteraction -> userInteractionRequired")
         cancel(with: .userInteractionRequired)
     }
 
