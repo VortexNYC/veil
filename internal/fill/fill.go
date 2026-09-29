@@ -553,12 +553,14 @@ func (h *Host) originPasskeys(path, origin string, publicKey json.RawMessage, ex
 	}
 	raw, err := h.originPOST(path, payload)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "veil-fill: passkeys %s err=%v\n", path, err)
 		return h.passkeyErr(31)
 	}
 	var out struct {
 		Response json.RawMessage `json:"response"`
 	}
 	if json.Unmarshal(raw, &out) != nil || len(out.Response) == 0 {
+		fmt.Fprintf(os.Stderr, "veil-fill: passkeys %s bad reply\n", path)
 		return h.passkeyErr(31)
 	}
 	return h.passkeyOK(out.Response)

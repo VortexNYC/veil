@@ -4,8 +4,10 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -826,12 +828,14 @@ func (h *Host) jsonPasskeyGet(origin string, publicKey json.RawMessage) []byte {
 func jsonPasskeyFromHost(raw []byte) []byte {
 	var r passkeyReply
 	if json.Unmarshal(raw, &r) != nil || r.Success != "true" || len(r.Response) == 0 {
+		fmt.Fprintf(os.Stderr, "veil-fill: passkey reply malformed\n")
 		return jsonPasskeyErr("failed")
 	}
 	var inner struct {
 		ErrorCode int `json:"errorCode"`
 	}
 	if json.Unmarshal(r.Response, &inner) == nil && inner.ErrorCode != 0 {
+		fmt.Fprintf(os.Stderr, "veil-fill: passkey reply errorCode=%d\n", inner.ErrorCode)
 		return jsonPasskeyErr("failed")
 	}
 	return jsonBytes(struct {

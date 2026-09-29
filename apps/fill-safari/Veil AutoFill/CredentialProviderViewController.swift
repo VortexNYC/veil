@@ -199,14 +199,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             "excludeCredentials": excluded,
         ]
         status.stringValue = "Veil — confirming passkey for \(identity.userName)"
+        vlog("reg uh=\(identity.userHandle.count)B cdh=\(req.clientDataHash.count)B excl=\(excluded.count)")
         DispatchQueue.global().async {
-            guard let resp = try? FillBridge.shared.passkeyRegister(origin: origin, publicKey: publicKey),
-                  let attB64 = (resp["response"] as? [String: Any])?["attestationObject"] as? String,
+            guard let resp = try? FillBridge.shared.passkeyRegister(origin: origin, publicKey: publicKey) else {
+                self.vlog("passkeyRegister bridge fail")
+                DispatchQueue.main.async { self.cancel(with: .userCanceled) }
+                return
+            }
+            guard let inner = resp["response"] as? [String: Any],
+                  let attB64 = inner["attestationObject"] as? String,
                   let att = Self.data(b64url: attB64),
                   let rawID = resp["rawId"] as? String ?? resp["id"] as? String,
                   let credID = Self.data(b64url: rawID)
             else {
-                self.vlog("passkeyRegister failed")
+                self.vlog("passkeyRegister decode fail keys=\(resp.keys.sorted())")
                 DispatchQueue.main.async { self.cancel(with: .userCanceled) }
                 return
             }
@@ -242,16 +248,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             "allowCredentials": [["type": "public-key", "id": Self.b64url(credID)]],
         ]
         status.stringValue = "Veil — confirming passkey"
-        vlog("passkeyGet rp=\(rpID)")
+        vlog("passkeyGet rp=\(rpID) uh=\(userHandle.count)B cdh=\(clientDataHash.count)B")
         DispatchQueue.global().async {
-            guard let resp = try? FillBridge.shared.passkeyGet(origin: origin, publicKey: publicKey),
-                  let inner = resp["response"] as? [String: Any],
+            guard let resp = try? FillBridge.shared.passkeyGet(origin: origin, publicKey: publicKey) else {
+                self.vlog("passkeyGet bridge fail")
+                DispatchQueue.main.async { self.cancel(with: .userCanceled) }
+                return
+            }
+            guard let inner = resp["response"] as? [String: Any],
                   let authB64 = inner["authenticatorData"] as? String,
                   let sigB64 = inner["signature"] as? String,
                   let auth = Self.data(b64url: authB64),
                   let sig = Self.data(b64url: sigB64)
             else {
-                self.vlog("passkeyGet failed")
+                self.vlog("passkeyGet decode fail keys=\(resp.keys.sorted())")
                 DispatchQueue.main.async { self.cancel(with: .userCanceled) }
                 return
             }
