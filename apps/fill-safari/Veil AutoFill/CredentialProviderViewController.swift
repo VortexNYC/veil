@@ -68,6 +68,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         self.view = view
     }
 
+    /// Field-menu picks arrive through the legacy password-only entry point —
+    /// the two-arg overload only runs when a passkey request is in flight.
+    /// Both funnel into the same list logic; nil parameters means passwords.
+    override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        prepareCredentialList(for: serviceIdentifiers, requestParameters: nil)
+    }
+
     /// User picked Veil from the field's AutoFill menu — list every login we
     /// can offer for this service (or all of them when the system sends no
     /// identifier). Passkey requests are out of scope for this slice.
