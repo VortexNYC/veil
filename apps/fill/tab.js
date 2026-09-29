@@ -15,7 +15,29 @@
     }
     return null;
   }
-  root.veilTab = { usable: usable, tabByURL: tabByURL };
+  // Trusted field focus: exactly one unaffiliated login fills in place,
+  // anything else with data opens the in-page menu, nothing → silence.
+  // context scopes offers to what the focused form can take — a sign-in
+  // page gets logins, never a card pile.
+  function focusPlan(entries, generate, context) {
+    let list = entries || [];
+    if (context === "login" || context === "card" || context === "identity") {
+      list = list.filter(function (e) {
+        return e && e.kind === context;
+      });
+    }
+    if (generate) {
+      return { action: "menu", entries: list, generate: true };
+    }
+    if (list.length === 1 && list[0].kind === "login" && !list[0].affiliated) {
+      return { action: "fill", uuid: list[0].uuid };
+    }
+    if (list.length) {
+      return { action: "menu", entries: list };
+    }
+    return { action: "quiet" };
+  }
+  root.veilTab = { usable: usable, tabByURL: tabByURL, focusPlan: focusPlan };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = root.veilTab;
   }

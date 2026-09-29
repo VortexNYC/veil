@@ -63,6 +63,10 @@ type Host struct {
 	Confirm func(reason string) error
 	// Replica is the sealed local cache. Key is Keychain, not a file.
 	Replica *replica.Vault
+	// Issuer, ClientID, Redirect configure the extension browser sign-in
+	// (action "login"). TokenPath is where the minted ID token is written —
+	// the same file TokenFn re-reads.
+	Issuer, ClientID, Redirect, TokenPath string
 
 	mu           sync.Mutex
 	sessions     map[string]*session
@@ -74,6 +78,7 @@ type Host struct {
 	needLogin    bool
 	lastScope    string
 	lastUUID     string
+	login        *loginFlow
 }
 
 type session struct {

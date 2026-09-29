@@ -78,6 +78,8 @@ func (h *Host) handleJSON(raw []byte) []byte {
 			out.Error = "need_login"
 		}
 		return jsonBytes(out)
+	case "login":
+		return h.jsonLogin()
 	case "match":
 		return jsonBytes(struct {
 			Entries []jsonMatchEntry `json:"entries"`

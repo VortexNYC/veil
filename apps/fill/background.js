@@ -65,6 +65,7 @@ function connect() {
   }
   port = chrome.runtime.connectNative(HOST);
   port.onMessage.addListener(function (msg) {
+    noteLive(msg || {});
     const w = waiters.shift();
     if (w) {
       w.resolve(msg || {});
@@ -125,12 +126,34 @@ function needLogin(msg) {
   return msg && msg.error === "need_login";
 }
 
+// Any healthy host answer means the token landed — allow the next
+// need_login to open the sign-in tab again. The {auth_url} reply doesn't
+// count: the human is still signing in and the flow is in-flight.
+function noteLive(msg) {
+  if (msg && !msg.auth_url && !needLogin(msg) && !(msg.error && msg.error !== "")) {
+    openedLogin = false;
+  }
+}
+
+// The host owns sign-in: {action:"login"} starts the PKCE flow and returns
+// the authorize URL — completing it in the tab hands the token straight back.
+// login.veil.nyc alone can't reach the host.
 function openLogin() {
   if (openedLogin) {
     return;
   }
   openedLogin = true;
-  chrome.tabs.create({ url: LOGIN });
+  hostSend({ action: "login" }, 15000)
+    .then(function (msg) {
+      if (msg && msg.auth_url) {
+        chrome.tabs.create({ url: msg.auth_url });
+        return;
+      }
+      chrome.tabs.create({ url: LOGIN });
+    })
+    .catch(function () {
+      chrome.tabs.create({ url: LOGIN });
+    });
 }
 
 async function ping() {
@@ -461,17 +484,49 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       return;
     }
     rememberTab(tab);
-    executeTab(tab.id, url, {
-      generate: !!msg.generate,
-      login: msg.login,
-      passwordRules: msg.passwordRules,
-    }).then(function (got) {
-      if (got && got.error === "choose") {
-        if (msg.generate || (got.entries && got.entries.length)) {
-          chrome.action.openPopup().catch(function () {});
+    // Field focus must never hand keyboard focus to the toolbar popover.
+    // Data there: one login fills; more → the in-page menu under the field.
+    // No data: silence — the field behaves like the extension isn't there.
+    matchTab(tab.id, url)
+      .then(function (entries) {
+        const plan = globalThis.veilTab.focusPlan(entries, !!msg.generate, msg.context || "");
+        if (plan.action === "fill") {
+          fillTab(tab.id, url, plan.uuid).catch(function () {});
+          return;
         }
-      }
-    }, function () {});
+        if (plan.action === "menu") {
+          chrome.tabs
+            .sendMessage(tab.id, {
+              type: "suggest",
+              entries: plan.entries,
+              generate: !!plan.generate,
+              login: msg.login || "",
+              passwordRules: msg.passwordRules || "",
+            })
+            .catch(function () {});
+          return;
+        }
+        chrome.tabs.sendMessage(tab.id, { type: "suggest-hide" }).catch(function () {});
+      })
+      .catch(function () {});
+    return;
+  }
+  if (msg.type === "suggest-pick") {
+    const tab = sender.tab;
+    const url = tab && (tab.url || tab.pendingUrl);
+    if (!tab || !usable(url) || !msg.uuid) {
+      return;
+    }
+    fillTab(tab.id, url, msg.uuid).catch(function () {});
+    return;
+  }
+  if (msg.type === "suggest-generate") {
+    const tab = sender.tab;
+    const url = tab && (tab.url || tab.pendingUrl);
+    if (!tab || !usable(url)) {
+      return;
+    }
+    generateTab(tab.id, url, msg.login || "", msg.passwordRules || "").catch(function () {});
     return;
   }
   if (msg.type === "offer-save") {

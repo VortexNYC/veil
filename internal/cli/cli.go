@@ -1865,6 +1865,10 @@ func fillCmd(home *string) *cobra.Command {
 					return err
 				}
 				h = fill.NewOrigin(dir, originBase(), "")
+				h.Issuer = envOr("VEIL_HYDRA_ISSUER", "https://id.veil.nyc")
+				h.ClientID = envOr("VEIL_HYDRA_CLIENT_ID", glue.DefaultClientID)
+				h.Redirect = envOr("VEIL_HYDRA_REDIRECT", human.DefaultRedirect)
+				h.TokenPath = strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE"))
 				h.TokenFn = func() (string, error) {
 					return originHumanTokenLive(cmd.Context())
 				}

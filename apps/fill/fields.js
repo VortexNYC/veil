@@ -267,6 +267,37 @@
     );
   }
 
+  // What the focused form can take: a login form only wants logins — offering
+  // cards/identities on a sign-in page is noise that blocks the field.
+  function fillContext(el, fields) {
+    const a = auto(el);
+    const idf = (ident(el) + " " + a).toLowerCase();
+    if (a.indexOf("cc-") === 0 || /card.?num|cc-num/.test(idf)) {
+      return "card";
+    }
+    if (
+      /^(street|address|postal|country|tel|given|family)/.test(a) ||
+      /address|postal|zip|country|phone/.test(idf)
+    ) {
+      return "identity";
+    }
+    if (typ(el) === "password" || a === "username" || a === "email" || typ(el) === "email") {
+      return "login";
+    }
+    if (fields) {
+      if (fields.number || fields.cvv || fields.exp || fields.expMonth || fields.expYear) {
+        return "card";
+      }
+      if (fields.password || fields.username) {
+        return "login";
+      }
+      if (fields.address || fields.postal || fields.city || fields.region || fields.country) {
+        return "identity";
+      }
+    }
+    return "generic";
+  }
+
   function isTopWindow() {
     try {
       return typeof window === "undefined" || window === window.top;
@@ -348,6 +379,7 @@
     writeIdentity: writeIdentity,
     writeEntry: writeEntry,
     isFillTarget: isFillTarget,
+    fillContext: fillContext,
     canSave: canSave,
     findOTPAuth: findOTPAuth,
   };
