@@ -19,21 +19,29 @@ import (
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 
+static void veil_confirm_log(NSString *msg) {
+	fprintf(stderr, "veil-confirm %s\n", msg.UTF8String);
+}
+
 static int veil_touchid_ctx(LAContext *ctx, const char *reason) {
 	__block int ok = 0;
 	dispatch_semaphore_t sema = dispatch_semaphore_create(0);
 	NSError *authError = nil;
 	if (![ctx canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:&authError]) {
+		veil_confirm_log([NSString stringWithFormat:@"canEvaluatePolicy=NO err=%@", authError]);
 		return 0;
 	}
 	NSString *why = [NSString stringWithUTF8String:reason];
+	veil_confirm_log(@"evaluatePolicy begin");
 	[ctx evaluatePolicy:LAPolicyDeviceOwnerAuthentication
 		localizedReason:why
 				  reply:^(BOOL success, NSError *error) {
+					veil_confirm_log([NSString stringWithFormat:@"evaluatePolicy reply ok=%d err=%@", success, error]);
 					ok = success ? 1 : 0;
 					dispatch_semaphore_signal(sema);
 				  }];
 	if (dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC)) != 0) {
+		veil_confirm_log(@"evaluatePolicy timeout 60s");
 		[ctx invalidate];
 		return 0;
 	}
@@ -245,7 +253,28 @@ static NSImage *veil_veil_mark(void) {
 	}
 	self.finished = 1;
 	self.result = res;
+	// stopModal only sets a flag — _doModalLoop checks it after dequeuing
+	// an event. The sheet may already be ordered out (scan owns the
+	// surface by then), so nothing is queued to wake it: the loop would
+	// park in mach_msg forever and veil_access would never return.
+	// Post a synthetic event to force one iteration.
+	[self.win orderOut:nil];
 	[NSApp stopModal];
+	NSEvent *wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+		location:NSZeroPoint
+		modifierFlags:0
+		timestamp:0
+		windowNumber:0
+		context:nil
+		subtype:0
+		data1:0
+		data2:0];
+	[NSApp postEvent:wake atStart:YES];
+	veil_confirm_log([NSString stringWithFormat:@"sheet finish=%d", res]);
+}
+- (void)finishEval:(NSNumber *)ok {
+	self.evaluating = 0;
+	[self finish:ok.intValue];
 }
 - (void)scan {
 	// The sensor IS the button — the sheet explains who is asking while
@@ -257,18 +286,22 @@ static NSImage *veil_veil_mark(void) {
 	// evaluatePolicy renders the system's own prompt — our sheet's job was
 	// to say who is asking, and it yields once the OS surface owns the
 	// scan. A short delay: the handoff reads as intentional, not a flash.
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
-		dispatch_get_main_queue(), ^{
-		[self.win orderOut:nil];
-	});
+	// NB: dispatch_async(main)/dispatch_after do NOT run inside
+	// runModalForWindow — the modal loop runs NSModalPanelRunLoopMode and
+	// the main dispatch queue is not drained there. Runloop-mode APIs are.
+	[self.win performSelector:@selector(orderOut:)
+		withObject:nil
+		afterDelay:0.5
+		inModes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
 	LAContext *ctx = self.lac;
 	NSString *why = self.why;
+	veil_confirm_log(@"scan: dispatching eval");
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
 		int ok = veil_touchid_ctx(ctx, why.UTF8String);
-		dispatch_async(dispatch_get_main_queue(), ^{
-			self.evaluating = 0;
-			[self finish:ok];
-		});
+		[self performSelectorOnMainThread:@selector(finishEval:)
+			withObject:@(ok)
+			waitUntilDone:NO
+			modes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
 	});
 }
 - (void)cancel:(id)sender {
@@ -299,6 +332,7 @@ static NSImageView *veil_icon_view(NSImage *img) {
 static int veil_access(const char *action, const char *account, const char *reason) {
 	__block int out = 0;
 	void (^run)(void) = ^{
+		veil_confirm_log(@"sheet run enter");
 		[NSApplication sharedApplication];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		// Without finishLaunching the plist-less host never completes app
@@ -407,12 +441,15 @@ static int veil_access(const char *action, const char *account, const char *reas
 		[win center];
 		[NSApp activateIgnoringOtherApps:YES];
 		[win makeKeyAndOrderFront:nil];
-		// Queued so the scan — and any instant reply — lands inside the modal
-		// session; a stopModal before runModalForWindow would never unwind it.
-		dispatch_async(dispatch_get_main_queue(), ^{
-			[ctrl scan];
-		});
+		// Scheduled as a runloop perform (modal mode included): inside the
+		// modal session the GCD main queue is not drained, so the scan must
+		// be invoked by the runloop, not dispatch_async.
+		[ctrl performSelector:@selector(scan)
+			withObject:nil
+			afterDelay:0
+			inModes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
 		[NSApp runModalForWindow:win];
+		veil_confirm_log(@"modal loop exited");
 		[win orderOut:nil];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 		out = ctrl.result;
