@@ -29,8 +29,8 @@ type HostConfig struct {
 }
 
 type InstallEnv struct {
-	Bin, VaultHome, UserHome, Origin   string
-	LoginEmail, PasswordFile, TOTPFile string
+	Bin, VaultHome, UserHome, Origin, TokenFile string
+	LoginEmail, PasswordFile, TOTPFile          string
 }
 
 // NativeHostArgs rewrites Chrome/Firefox's launch of the host binary into
@@ -52,7 +52,11 @@ func NativeHostArgs(args []string) []string {
 		_ = os.Unsetenv("VEIL_AGENT")
 		_ = os.Unsetenv("VEIL_OIDC_TOKEN")
 		_ = os.Unsetenv("VEIL_OIDC_TOKEN_FILE")
-		return []string{args[0], "fill"}
+		rest := args[1:]
+		if len(rest) > 0 && nativeMessagingOrigin(rest[0]) {
+			rest = rest[1:]
+		}
+		return append([]string{args[0], "fill"}, rest...)
 	}
 	return args
 }

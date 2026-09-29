@@ -1,9 +1,12 @@
 package fill
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 func Install(bin, vaultHome, userHome string) error {
@@ -20,7 +23,10 @@ func InstallOrigin(env InstallEnv) error {
 	}
 	cfg := HostConfig{Origin: env.Origin, Home: env.VaultHome}
 	if env.Origin != "" {
-		cfg.TokenFile = filepath.Join(env.UserHome, ".config/veil/human.jwt")
+		cfg.TokenFile = env.TokenFile
+		if cfg.TokenFile == "" {
+			cfg.TokenFile = filepath.Join(env.UserHome, ".config/veil/human.jwt")
+		}
 		cfg.LoginEmail = env.LoginEmail
 		cfg.PasswordFile = env.PasswordFile
 		cfg.TOTPFile = env.TOTPFile
@@ -41,7 +47,71 @@ func InstallOrigin(env InstallEnv) error {
 	if err := os.WriteFile(filepath.Join(chromeDir, JSONHostName+".json"), ManifestJSONChrome(host), 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(ffDir, JSONHostName+".json"), ManifestJSONFirefox(host), 0o644)
+	if err := os.WriteFile(filepath.Join(ffDir, JSONHostName+".json"), ManifestJSONFirefox(host), 0o644); err != nil {
+		return err
+	}
+	return InstallBridgeAgent(env)
+}
+
+// BridgeLabel is the launchd job Safari's sandboxed appex reaches over
+// <vault-home>/fill.sock. Appexes cannot spawn the host — the agent runs it.
+const BridgeLabel = "nyc.veil.fill.bridge"
+
+// InstallBridgeAgent registers the fill socket bridge as a per-user
+// LaunchAgent and (re)starts it. macOS-only — a no-op elsewhere.
+func InstallBridgeAgent(env InstallEnv) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	dir := filepath.Join(env.UserHome, "Library", "LaunchAgents")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>%s</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>%s</string>
+		<string>--bridge</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>VEIL_REPLICA_KEYSTORE</key>
+		<string>mem</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>%s</string>
+	<key>StandardErrorPath</key>
+	<string>%s</string>
+</dict>
+</plist>
+`, BridgeLabel, HostPath(env.VaultHome), filepath.Join(env.VaultHome, "fill-bridge.log"), filepath.Join(env.VaultHome, "fill-bridge.log"))
+	path := filepath.Join(dir, BridgeLabel+".plist")
+	return os.WriteFile(path, []byte(plist), 0o644)
+}
+
+// BootstrapBridgeAgent (re)starts the LaunchAgent written by
+// InstallBridgeAgent. Lives at the CLI boundary so tests that exercise
+// InstallOrigin never touch launchd.
+func BootstrapBridgeAgent(userHome string) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	path := filepath.Join(userHome, "Library", "LaunchAgents", BridgeLabel+".plist")
+	domain := fmt.Sprintf("gui/%d", os.Getuid())
+	// Already-bootstrapped is fine — kickstart -k restarts it.
+	if err := exec.Command("launchctl", "bootstrap", domain, path).Run(); err != nil {
+		return exec.Command("launchctl", "kickstart", "-k", domain+"/"+BridgeLabel).Run()
+	}
+	return exec.Command("launchctl", "kickstart", "-k", domain+"/"+BridgeLabel).Run()
 }
 
 // InstallExtension writes the embedded MV3 payload to dir — the stable path a

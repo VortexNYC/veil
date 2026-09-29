@@ -1839,6 +1839,7 @@ func serveCmd(home *string) *cobra.Command {
 }
 
 func fillCmd(home *string) *cobra.Command {
+	var bridge bool
 	c := &cobra.Command{
 		Use:   "fill",
 		Short: "Veil fill native host. Fill writes into the page. Agents never see the secret.",
@@ -1851,8 +1852,9 @@ func fillCmd(home *string) *cobra.Command {
 			if err := fill.ApplyHostConfig(dir); err != nil {
 				return err
 			}
+			var h *fill.Host
 			if originBase() != "" {
-				dir, err := resolveHome(*home)
+				dir, err = resolveHome(*home)
 				if err != nil {
 					return err
 				}
@@ -1862,7 +1864,7 @@ func fillCmd(home *string) *cobra.Command {
 				if _, err := originHumanTokenLive(cmd.Context()); err != nil {
 					return err
 				}
-				h := fill.NewOrigin(dir, originBase(), "")
+				h = fill.NewOrigin(dir, originBase(), "")
 				h.TokenFn = func() (string, error) {
 					return originHumanTokenLive(cmd.Context())
 				}
@@ -1872,18 +1874,26 @@ func fillCmd(home *string) *cobra.Command {
 				}
 				attachFillConfirm(h)
 				attachFillReplica(h, dir)
-				return h.Serve(os.Stdin, os.Stdout)
+			} else {
+				a, err := openApp(*home)
+				if err != nil {
+					return err
+				}
+				defer a.Close()
+				h = fill.New(a)
+				attachFillConfirm(h)
 			}
-			a, err := openApp(*home)
-			if err != nil {
-				return err
+			if bridge {
+				user, err := os.UserHomeDir()
+				if err != nil {
+					return err
+				}
+				return fill.ServeBridge(cmd.Context(), h, fill.BridgeSocketPaths(dir, user)...)
 			}
-			defer a.Close()
-			h := fill.New(a)
-			attachFillConfirm(h)
 			return h.Serve(os.Stdin, os.Stdout)
 		},
 	}
+	c.Flags().BoolVar(&bridge, "bridge", false, "serve fill frames on <home>/fill.sock instead of stdio (Safari appex)")
 	c.AddCommand(&cobra.Command{
 		Use:   "install",
 		Short: "Install the nyc.veil.fill native messaging host. Does not copy the extension.",
@@ -1909,11 +1919,15 @@ func fillCmd(home *string) *cobra.Command {
 				VaultHome:    dir,
 				UserHome:     user,
 				Origin:       origin,
+				TokenFile:    strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE")),
 				LoginEmail:   strings.TrimSpace(os.Getenv("VEIL_LOGIN_EMAIL")),
 				PasswordFile: strings.TrimSpace(os.Getenv("VEIL_KRATOS_PASSWORD_FILE")),
 				TOTPFile:     strings.TrimSpace(os.Getenv("VEIL_KRATOS_TOTP_FILE")),
 			}
 			if err := fill.InstallOrigin(env); err != nil {
+				return err
+			}
+			if err := fill.BootstrapBridgeAgent(user); err != nil {
 				return err
 			}
 			extDir := filepath.Join(dir, "extension")
