@@ -32,6 +32,10 @@
   color: var(--v-text);
   -webkit-font-smoothing: antialiased;
 }
+.v-menu.v-field {
+  padding: 3px;
+  border-radius: 8px;
+}
 .v-row {
   display: flex;
   align-items: center;
@@ -43,6 +47,35 @@
 }
 .v-row:hover { background: var(--v-fill-hover); }
 .v-row[data-active] { background: var(--v-fill); }
+/* Slim rows — the field-attached suggestion reads like the browser's own
+   autofill line: bare glyph, name and detail on one line, no card chrome. */
+.v-row.v-slim {
+  padding: 5px 8px;
+  gap: 8px;
+  border-radius: 6px;
+}
+.v-row.v-slim .v-tile {
+  width: 15px;
+  height: 15px;
+  border: 0;
+  background: none;
+  border-radius: 0;
+}
+.v-row.v-slim .v-txt {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.v-row.v-slim .v-name {
+  flex: none;
+  max-width: 60%;
+  font-size: 13px;
+}
+.v-row.v-slim .v-sub {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
 button.v-row {
   appearance: none;
   -webkit-appearance: none;
@@ -143,6 +176,9 @@ button.v-row {
     const row = el(tag || "div", "v-row");
     if (tag === "button") {
       row.type = "button";
+    }
+    if (opts.slim) {
+      row.classList.add("v-slim");
     }
     row.setAttribute("role", "option");
     if (opts.kind) {

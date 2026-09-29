@@ -23,10 +23,12 @@ test("tabByURL matches the chooser URL, not the popup or a search tab", () => {
   assert.equal(tabByURL(tabs, "chrome://extensions"), null);
 });
 
-test("focusPlan fills a single unaffiliated login in place", () => {
+test("focusPlan shows the suggestion line for a single login", () => {
+  // Even one unambiguous match is offered, not fired — the human sees which
+  // credential it is (like 1Password's inline line) and picks to fill.
   const p = focusPlan([{ kind: "login", uuid: "u1" }], false);
-  assert.equal(p.action, "fill");
-  assert.equal(p.uuid, "u1");
+  assert.equal(p.action, "menu");
+  assert.equal(p.entries[0].uuid, "u1");
 });
 
 test("focusPlan opens the menu for multiple or non-login entries", () => {
@@ -50,8 +52,8 @@ test("focusPlan filters entries to the focused form context", () => {
     { kind: "identity", uuid: "i1" },
   ];
   const login = focusPlan(entries, false, "login");
-  assert.equal(login.action, "fill");
-  assert.equal(login.uuid, "l1");
+  assert.equal(login.action, "menu");
+  assert.equal(login.entries[0].uuid, "l1");
   assert.equal(focusPlan(entries, false, "card").action, "menu");
   assert.equal(focusPlan(entries, false, "card").entries.length, 1);
   assert.equal(focusPlan(entries, false, "identity").entries[0].uuid, "i1");

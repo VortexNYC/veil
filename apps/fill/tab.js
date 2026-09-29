@@ -15,10 +15,11 @@
     }
     return null;
   }
-  // Trusted field focus: exactly one unaffiliated login fills in place,
-  // anything else with data opens the in-page menu, nothing → silence.
-  // context scopes offers to what the focused form can take — a sign-in
-  // page gets logins, never a card pile.
+  // Trusted field focus: any match shows the inline suggestion under the
+  // field — the human sees which credential is offered and picks it (click
+  // or Enter) like the native autofill line. No match → silence. context
+  // scopes offers to what the focused form can take — a sign-in page gets
+  // logins, never a card pile.
   function focusPlan(entries, generate, context) {
     let list = entries || [];
     if (context === "login" || context === "card" || context === "identity") {
@@ -28,9 +29,6 @@
     }
     if (generate) {
       return { action: "menu", entries: list, generate: true };
-    }
-    if (list.length === 1 && list[0].kind === "login" && !list[0].affiliated) {
-      return { action: "fill", uuid: list[0].uuid };
     }
     if (list.length) {
       return { action: "menu", entries: list };

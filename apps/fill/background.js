@@ -485,15 +485,11 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     }
     rememberTab(tab);
     // Field focus must never hand keyboard focus to the toolbar popover.
-    // Data there: one login fills; more → the in-page menu under the field.
-    // No data: silence — the field behaves like the extension isn't there.
+    // Data there: the in-page suggestion under the field, one row per
+    // match — pick fills. No data: silence, like the extension isn't there.
     matchTab(tab.id, url)
       .then(function (entries) {
         const plan = globalThis.veilTab.focusPlan(entries, !!msg.generate, msg.context || "");
-        if (plan.action === "fill") {
-          fillTab(tab.id, url, plan.uuid).catch(function () {});
-          return;
-        }
         if (plan.action === "menu") {
           chrome.tabs
             .sendMessage(tab.id, {

@@ -23,19 +23,20 @@
     const r = el.getBoundingClientRect();
     // absolute + scroll offsets — Safari resolves this identically to fixed on
     // an unscrolled page but keeps working when fixed glitches on early rects.
-    const top = r.bottom + (window.scrollY || 0) + 4;
+    // 2px off the field and its exact width, like the native autofill line.
+    const top = r.bottom + (window.scrollY || 0) + 2;
     const left = Math.max(8, r.left + (window.scrollX || 0));
     menu.el.style.left = left + "px";
     // Flip above the field when the menu would overflow the viewport bottom.
     const menuH = menu.el.offsetHeight || 0;
     const bottom = top - (window.scrollY || 0) + menuH;
     if (bottom > (window.innerHeight || 0) - 8 && r.top - menuH - 4 > 0) {
-      menu.el.style.top = r.top + (window.scrollY || 0) - menuH - 4 + "px";
+      menu.el.style.top = r.top + (window.scrollY || 0) - menuH - 2 + "px";
     } else {
       menu.el.style.top = top + "px";
     }
-    menu.el.style.minWidth = Math.max(240, r.width) + "px";
-    menu.el.style.maxWidth = "360px";
+    menu.el.style.width = Math.max(220, r.width) + "px";
+    menu.el.style.maxWidth = "400px";
   }
 
   function pickEntry(e) {
@@ -75,7 +76,7 @@
     style.textContent = veilUI.css;
     shade.appendChild(style);
     const box = document.createElement("div");
-    box.className = "v-menu";
+    box.className = "v-menu v-field";
     box.style.cssText = "max-height:264px;overflow-y:auto;";
     box.setAttribute("role", "listbox");
     shade.appendChild(box);
@@ -83,7 +84,7 @@
     (entries || []).forEach(function (e) {
       rows.push(
         menuRow(
-          { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind },
+          { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind, slim: true },
           function () {
             pickEntry(e);
           },
@@ -92,7 +93,7 @@
     });
     if (ctx && ctx.generate) {
       rows.push(
-        menuRow({ name: "Suggest a password", sub: "generate and save", kind: "generate" }, function () {
+        menuRow({ name: "Suggest a password", sub: "generate and save", kind: "generate", slim: true }, function () {
           hideMenu();
           chrome.runtime.sendMessage({
             type: "suggest-generate",
