@@ -100,6 +100,24 @@ button.v-row {
   color: var(--v-subtle);
 }
 .v-row[data-kind="generate"] .v-tile { color: var(--v-brand); }
+.v-badges {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+  flex: none;
+  color: var(--v-subtle);
+}
+.v-badges svg { display: block; opacity: 0.75; }
+/* Section label between exact matches and affiliated (related-site) rows —
+   the "Suggestions / Related" split a single flat list cannot express. */
+.v-sec {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--v-subtle);
+  padding: 5px 8px 2px;
+}
 .v-txt { min-width: 0; flex: 1; }
 .v-name {
   font-weight: 500;
@@ -177,6 +195,10 @@ button.v-row {
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5A8 8 0 1 0 20.8 14"/><path d="M20 4.5v7h-7"/></svg>',
     dismiss:
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+    passkey:
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0v4c0 3-1 5-2 7"/><path d="M9.5 8.5a2.5 2.5 0 0 1 5 0V13c0 2-.5 4-1.5 5.5"/><path d="M12 5a8 8 0 0 0-8 8v2c0 1.5.3 3 1 4.5"/></svg>',
+    totp:
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
     veil:
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.64 12.24V7.2a3.36 4.32 0 0 1 6.72 0v5.04h-1.68V7.68a1.68 2.88 0 0 0-3.36 0v4.56zM7.68 11.76h8.64q2.4 0 2.52 1.92l0.36 5.04q0.12 2.16-2.04 2.4H6.84q-2.16-0.24-2.04-2.4l0.36-5.04q0.12-1.92 2.52-1.92zM9.4 15.6a1 1 0 0 1 2 0v0.8a1 1 0 0 1-2 0zM12.6 15.6a1 1 0 0 1 2 0v0.8a1 1 0 0 1-2 0z"/></svg>',
   };
@@ -216,6 +238,15 @@ button.v-row {
       txt.appendChild(el("div", "v-sub", opts.sub));
     }
     row.appendChild(txt);
+    if (opts.badges && opts.badges.length) {
+      const bx = el("div", "v-badges");
+      opts.badges.forEach(function (k) {
+        const s = el("span", "v-badge");
+        s.innerHTML = glyphs[k] || "";
+        bx.appendChild(s);
+      });
+      row.appendChild(bx);
+    }
     return row;
   }
 

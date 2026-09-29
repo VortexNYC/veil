@@ -180,16 +180,45 @@
     box.setAttribute("role", "listbox");
     shade.appendChild(box);
     const rows = [];
-    (entries || []).forEach(function (e) {
-      rows.push(
-        menuRow(
-          { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind, slim: true },
-          function () {
-            pickEntry(e);
-          },
-        ),
-      );
+    const primary = (entries || []).filter(function (e) {
+      return !e.affiliated;
     });
+    const related = (entries || []).filter(function (e) {
+      return !!e.affiliated;
+    });
+    const addEntry = function (e, sec) {
+      const badges = [];
+      if (e.hasTotp) {
+        badges.push("totp");
+      }
+      if (e.hasPasskey) {
+        badges.push("passkey");
+      }
+      const row = menuRow(
+        { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind, slim: true, badges: badges },
+        function () {
+          pickEntry(e);
+        },
+      );
+      if (sec) {
+        row.dataset.sec = sec;
+      }
+      rows.push(row);
+      box.appendChild(row);
+    };
+    primary.forEach(function (e) {
+      addEntry(e, "");
+    });
+    if (related.length) {
+      if (primary.length) {
+        const sec = veilUI.el("div", "v-sec", "Related sites");
+        sec.dataset.sec = "related";
+        box.appendChild(sec);
+      }
+      related.forEach(function (e) {
+        addEntry(e, "related");
+      });
+    }
     if (ctx && ctx.generate) {
       const rotates = ctx.rotates || [];
       const genRow = function (uuid, name, sub) {
@@ -206,10 +235,14 @@
       };
       if (rotates.length) {
         rotates.forEach(function (e) {
-          rows.push(genRow(e.uuid, "New password", "replaces " + (e.login || e.name || "this login")));
+          const r = genRow(e.uuid, "New password", "replaces " + (e.login || e.name || "this login"));
+          rows.push(r);
+          box.appendChild(r);
         });
       } else {
-        rows.push(genRow("", "Suggest a password", "generate and save"));
+        const r = genRow("", "Suggest a password", "generate and save");
+        rows.push(r);
+        box.appendChild(r);
       }
     }
     if (!rows.length) {
@@ -217,7 +250,6 @@
     }
     rows.forEach(function (r) {
       r.dataset.q = r.textContent.toLowerCase();
-      box.appendChild(r);
     });
     menu = { el: host, rows: rows, active: -1, forEl: el };
     (document.body || document.documentElement).appendChild(host);
@@ -300,10 +332,19 @@
         ev.preventDefault();
         ev.stopPropagation();
         const n = menu.rows.length;
-        highlight(((menu.active + (ev.key === "ArrowDown" ? 1 : -1)) % n + n) % n);
+        // Skip rows the type-filter hid — a filtered-out credential must
+        // never be the Enter pick.
+        let next = menu.active;
+        for (let i = 0; i < n; i++) {
+          next = (((next + (ev.key === "ArrowDown" ? 1 : -1)) % n) + n) % n;
+          if (menu.rows[next].style.display !== "none") {
+            break;
+          }
+        }
+        highlight(next);
         return;
       }
-      if (ev.key === "Enter" && menu.active >= 0) {
+      if (ev.key === "Enter" && menu.active >= 0 && menu.rows[menu.active].style.display !== "none") {
         ev.preventDefault();
         ev.stopPropagation();
         menu.rows[menu.active].dispatchEvent(new MouseEvent("mousedown", { bubbles: false }));
@@ -519,6 +560,14 @@
         if (show) {
           visible++;
         }
+      });
+      // A section header with no visible rows under it goes with them.
+      const secs = menu.el.querySelectorAll(".v-sec");
+      secs.forEach(function (sec) {
+        const anyVisible = menu.rows.some(function (row) {
+          return row.dataset.sec === sec.dataset.sec && row.style.display !== "none";
+        });
+        sec.style.display = anyVisible ? "" : "none";
       });
       if (q && !visible) {
         hideMenu();
