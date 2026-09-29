@@ -21,15 +21,30 @@ func InstallOrigin(env InstallEnv) error {
 	if err := copyExecutable(env.Bin, host); err != nil {
 		return err
 	}
-	cfg := HostConfig{Origin: env.Origin, Home: env.VaultHome}
+	// fill.json outlives reinstalls: an existing config is the human's, env
+	// values override per-field, and the token path default only fills a gap.
+	// Wiping login_email/touch_id on every `fill install` strands the host.
+	cfg, _ := ReadHostConfig(env.VaultHome)
 	if env.Origin != "" {
-		cfg.TokenFile = env.TokenFile
+		cfg.Origin = env.Origin
+	}
+	cfg.Home = env.VaultHome
+	if env.Origin != "" {
+		if env.TokenFile != "" {
+			cfg.TokenFile = env.TokenFile
+		}
 		if cfg.TokenFile == "" {
 			cfg.TokenFile = filepath.Join(env.UserHome, ".config/veil/human.jwt")
 		}
-		cfg.LoginEmail = env.LoginEmail
-		cfg.PasswordFile = env.PasswordFile
-		cfg.TOTPFile = env.TOTPFile
+		if env.LoginEmail != "" {
+			cfg.LoginEmail = env.LoginEmail
+		}
+		if env.PasswordFile != "" {
+			cfg.PasswordFile = env.PasswordFile
+		}
+		if env.TOTPFile != "" {
+			cfg.TOTPFile = env.TOTPFile
+		}
 	}
 	if err := WriteHostConfig(env.VaultHome, cfg); err != nil {
 		return err

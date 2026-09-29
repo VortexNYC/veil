@@ -455,6 +455,51 @@ func TestInstallOriginBakesOriginNotToken(t *testing.T) {
 	}
 }
 
+func TestInstallOriginKeepsExistingConfig(t *testing.T) {
+	user := t.TempDir()
+	vaultDir := t.TempDir()
+	bin := filepath.Join(t.TempDir(), "veil")
+	if err := os.WriteFile(bin, []byte("veil-host-binary\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	if err := WriteHostConfig(vaultDir, HostConfig{
+		Origin:       "https://veil.nyc",
+		Home:         vaultDir,
+		TokenFile:    "/real/human.jwt",
+		LoginEmail:   "human@example.com",
+		PasswordFile: "/real/pw",
+		TOTPFile:     "/real/totp",
+		TouchID:      &off,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Reinstall with no env overrides — the human's config must survive.
+	if err := InstallOrigin(InstallEnv{Bin: bin, VaultHome: vaultDir, UserHome: user, Origin: "https://veil.nyc"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ReadHostConfig(vaultDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TokenFile != "/real/human.jwt" || cfg.LoginEmail != "human@example.com" ||
+		cfg.PasswordFile != "/real/pw" || cfg.TOTPFile != "/real/totp" ||
+		cfg.TouchID == nil || *cfg.TouchID {
+		t.Fatalf("install clobbered fill.json: %+v", cfg)
+	}
+	// An explicit env override still wins.
+	if err := InstallOrigin(InstallEnv{Bin: bin, VaultHome: vaultDir, UserHome: user, Origin: "https://veil.nyc", TokenFile: "/new/human.jwt"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = ReadHostConfig(vaultDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TokenFile != "/new/human.jwt" {
+		t.Fatalf("env override lost: %+v", cfg)
+	}
+}
+
 func TestGetLoginsFromOrigin(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer human" {
