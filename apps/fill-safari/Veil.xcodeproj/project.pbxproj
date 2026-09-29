@@ -8,12 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		E133AF22306B28A6009E9FC3 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF21306B28A6009E9FC3 /* AppDelegate.swift */; };
-		E133AF26306B28A6009E9FC3 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = E133AF24306B28A6009E9FC3 /* Main.html */; };
-		E133AF28306B28A6009E9FC3 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = E133AF27306B28A6009E9FC3 /* Icon.png */; };
-		E133AF2A306B28A6009E9FC3 /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = E133AF29306B28A6009E9FC3 /* Style.css */; };
-		E133AF2C306B28A6009E9FC3 /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = E133AF2B306B28A6009E9FC3 /* Script.js */; };
-		E133AF2E306B28A6009E9FC3 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF2D306B28A6009E9FC3 /* ViewController.swift */; };
-		E133AF31306B28A6009E9FC3 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E133AF2F306B28A6009E9FC3 /* Main.storyboard */; };
 		E133AF33306B28A6009E9FC3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E133AF32306B28A6009E9FC3 /* Assets.xcassets */; };
 		E133AF3A306B28A7009E9FC3 /* Veil Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E133AF39306B28A7009E9FC3 /* Veil Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E133AF3F306B28A7009E9FC3 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF3E306B28A7009E9FC3 /* SafariWebExtensionHandler.swift */; };
@@ -30,6 +24,8 @@
 		E133AF61306B28A7009E9FC3 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = E133AF55306B28A7009E9FC3 /* content.js */; };
 		E133AF63306B28A7009E9FC3 /* ui.js in Resources */ = {isa = PBXBuildFile; fileRef = E133AF64306B28A7009E9FC3 /* ui.js */; };
 		E133AF62306B28A7009E9FC3 /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = E133AF56306B28A7009E9FC3 /* icon-128.png */; };
+		E133AF66306B28A7009E9FC3 /* FillBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF65306B28A7009E9FC3 /* FillBridge.swift */; };
+		E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF67306B28A7009E9FC3 /* UniversalFill.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,12 +55,6 @@
 /* Begin PBXFileReference section */
 		E133AF1E306B28A6009E9FC3 /* Veil.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Veil.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E133AF21306B28A6009E9FC3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		E133AF25306B28A6009E9FC3 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
-		E133AF27306B28A6009E9FC3 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
-		E133AF29306B28A6009E9FC3 /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
-		E133AF2B306B28A6009E9FC3 /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
-		E133AF2D306B28A6009E9FC3 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
-		E133AF30306B28A6009E9FC3 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		E133AF32306B28A6009E9FC3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E133AF34306B28A6009E9FC3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E133AF39306B28A7009E9FC3 /* Veil Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Veil Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -83,6 +73,8 @@
 		E133AF55306B28A7009E9FC3 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
 		E133AF64306B28A7009E9FC3 /* ui.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = ui.js; path = Resources/ui.js; sourceTree = "<group>"; };
 		E133AF56306B28A7009E9FC3 /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "icon-128.png"; path = "Resources/icon-128.png"; sourceTree = "<group>"; };
+		E133AF65306B28A7009E9FC3 /* FillBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FillBridge.swift; sourceTree = "<group>"; };
+		E133AF67306B28A7009E9FC3 /* UniversalFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniversalFill.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,24 +117,12 @@
 			isa = PBXGroup;
 			children = (
 				E133AF21306B28A6009E9FC3 /* AppDelegate.swift */,
-				E133AF2D306B28A6009E9FC3 /* ViewController.swift */,
-				E133AF2F306B28A6009E9FC3 /* Main.storyboard */,
+				E133AF65306B28A7009E9FC3 /* FillBridge.swift */,
+				E133AF67306B28A7009E9FC3 /* UniversalFill.swift */,
 				E133AF32306B28A6009E9FC3 /* Assets.xcassets */,
 				E133AF34306B28A6009E9FC3 /* Info.plist */,
-				E133AF23306B28A6009E9FC3 /* Resources */,
 			);
 			path = Veil;
-			sourceTree = "<group>";
-		};
-		E133AF23306B28A6009E9FC3 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				E133AF24306B28A6009E9FC3 /* Main.html */,
-				E133AF27306B28A6009E9FC3 /* Icon.png */,
-				E133AF29306B28A6009E9FC3 /* Style.css */,
-				E133AF2B306B28A6009E9FC3 /* Script.js */,
-			);
-			path = Resources;
 			sourceTree = "<group>";
 		};
 		E133AF3D306B28A7009E9FC3 /* Veil Extension */ = {
@@ -262,12 +242,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E133AF28306B28A6009E9FC3 /* Icon.png in Resources */,
-				E133AF31306B28A6009E9FC3 /* Main.storyboard in Resources */,
-				E133AF2C306B28A6009E9FC3 /* Script.js in Resources */,
-				E133AF26306B28A6009E9FC3 /* Main.html in Resources */,
 				E133AF33306B28A6009E9FC3 /* Assets.xcassets in Resources */,
-				E133AF2A306B28A6009E9FC3 /* Style.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -298,8 +273,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E133AF2E306B28A6009E9FC3 /* ViewController.swift in Sources */,
 				E133AF22306B28A6009E9FC3 /* AppDelegate.swift in Sources */,
+				E133AF66306B28A7009E9FC3 /* FillBridge.swift in Sources */,
+				E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -322,22 +298,6 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
-		E133AF24306B28A6009E9FC3 /* Main.html */ = {
-			isa = PBXVariantGroup;
-			children = (
-				E133AF25306B28A6009E9FC3 /* Base */,
-			);
-			name = Main.html;
-			sourceTree = "<group>";
-		};
-		E133AF2F306B28A6009E9FC3 /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				E133AF30306B28A6009E9FC3 /* Base */,
-			);
-			name = Main.storyboard;
-			sourceTree = "<group>";
-		};
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
@@ -548,7 +508,6 @@
 				INFOPLIST_FILE = Veil/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Veil;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -590,7 +549,6 @@
 				INFOPLIST_FILE = Veil/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Veil;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -73,6 +73,7 @@ type Host struct {
 	assocKey     string
 	index        []protocol.Item
 	indexOK      bool
+	indexAt      time.Time
 	confirmUntil time.Time
 	confirmScope string
 	needLogin    bool

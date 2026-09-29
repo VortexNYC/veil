@@ -200,10 +200,12 @@ The next slices, in this order, and nothing else until each is proven:
                          is the wire until 37. TestPasskeysRegisterThenGet.
                          TestRegisterThenAssertAgainstRP: go-webauthn is
                          the RP; SignASN1 hashes then signs.
-32 Mac helper             not written. later. menu-bar accessory .app.
-                         no vault UI. Settings > Passwords.
-                         ASCredentialProvider: native Mac apps.
-                         Choose mode via the OS bar. Same jobs as
+32 Mac helper             menu-bar accessory written 2026-09-29:
+                         Veil.app is accessory, Cmd-\ event tap, AX
+                         focused field, match/fill over container socket,
+                         floating picker, Touch ID gate, CGEvent typing.
+                         ASCredentialProvider still later: native Mac
+                         apps. Choose mode via the OS bar. Same jobs as
                          docs/fill.md. not Chrome. not the Safari
                          Web Extension (that is 37).
 33 iOS app                proven 2026-09-28 (iPhone 16 Pro sim). apps/phone

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/id"
@@ -1095,5 +1096,100 @@ func TestJSONMatchRanksExactHostFirst(t *testing.T) {
 	}
 	if matched.Entries[0].Name != "stripe-dash" || matched.Entries[1].Name != "amex" {
 		t.Fatalf("order %+v", matched.Entries)
+	}
+}
+
+func TestJSONMatchIndexTTLRefreshes(t *testing.T) {
+	// The bridge keeps a long-lived host — an item created on origin after
+	// the index first loaded must appear once the TTL lapses, without a
+	// bridge restart.
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "before", URI: "https://a.example.com", Secret: secret,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("before %d %s", code, raw)
+	}
+
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	h.Confirm = func(string) error { return nil }
+	matchNames := func() []string {
+		var matched struct {
+			Entries []jsonMatchEntry `json:"entries"`
+		}
+		if err := json.Unmarshal(jsonHandle(t, h, map[string]string{
+			"action": "match", "url": "https://a.example.com",
+		}), &matched); err != nil {
+			t.Fatal(err)
+		}
+		names := []string{}
+		for _, e := range matched.Entries {
+			names = append(names, e.Name)
+		}
+		return names
+	}
+	if got := matchNames(); len(got) != 1 || got[0] != "before" {
+		t.Fatalf("first match %v", got)
+	}
+
+	code, raw = originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "after", URI: "https://a.example.com", Secret: secret,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("after %d %s", code, raw)
+	}
+	if got := matchNames(); len(got) != 1 {
+		t.Fatalf("inside TTL must still serve the cached index, got %v", got)
+	}
+
+	h.mu.Lock()
+	h.indexAt = time.Now().Add(-2 * indexTTL)
+	h.mu.Unlock()
+	if got := matchNames(); len(got) != 2 {
+		t.Fatalf("after TTL lapse %v", got)
+	}
+}
+
+func TestJSONMatchAppURI(t *testing.T) {
+	// Native fill binds items to `app://<bundleID>` — the same host rule as
+	// web URIs, canonicalized case-insensitively.
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "textedit-login", URI: "app://com.apple.TextEdit", Secret: secret, Login: "axuser",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("item %d %s", code, raw)
+	}
+
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	h.Confirm = func(string) error { return nil }
+	var matched struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(jsonHandle(t, h, map[string]string{
+		"action": "match", "url": "app://com.apple.TEXTEDIT",
+	}), &matched); err != nil {
+		t.Fatal(err)
+	}
+	if len(matched.Entries) != 1 || matched.Entries[0].Name != "textedit-login" {
+		t.Fatalf("app match %+v", matched.Entries)
+	}
+	if err := json.Unmarshal(jsonHandle(t, h, map[string]string{
+		"action": "match", "url": "app://com.apple.Safari",
+	}), &matched); err != nil {
+		t.Fatal(err)
+	}
+	if len(matched.Entries) != 0 {
+		t.Fatalf("other app must not match %+v", matched.Entries)
 	}
 }

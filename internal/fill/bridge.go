@@ -18,6 +18,10 @@ const SocketFile = "fill.sock"
 // exceptions needed, and the socket dies with the container.
 const SafariExtensionID = "nyc.veil.fill.Extension"
 
+// HelperAppID is the menu-bar app bundle id — the same sandbox rule applies,
+// so the bridge places a socket in its container too.
+const HelperAppID = "nyc.veil.fill"
+
 func SocketPath(vaultHome string) string {
 	return filepath.Join(vaultHome, SocketFile)
 }
@@ -28,10 +32,15 @@ func SafariSocketPath(userHome string) string {
 	return filepath.Join(userHome, "Library", "Containers", SafariExtensionID, "Data", SocketFile)
 }
 
+// HelperSocketPath is the socket inside the menu-bar app's sandbox container.
+func HelperSocketPath(userHome string) string {
+	return filepath.Join(userHome, "Library", "Containers", HelperAppID, "Data", SocketFile)
+}
+
 // BridgeSocketPaths is every path the bridge listens on: the vault socket for
-// CLI/debugging, and the appex container socket for Safari.
+// CLI/debugging, and one container socket per sandboxed client.
 func BridgeSocketPaths(vaultHome, userHome string) []string {
-	return []string{SocketPath(vaultHome), SafariSocketPath(userHome)}
+	return []string{SocketPath(vaultHome), SafariSocketPath(userHome), HelperSocketPath(userHome)}
 }
 
 // ServeBridge listens on each sockPath and runs the normal Serve loop per

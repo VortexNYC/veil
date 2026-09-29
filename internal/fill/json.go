@@ -9,12 +9,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/passgen"
 	"github.com/VortexNYC/veil/internal/protocol"
 )
+
+// indexTTL bounds how long a cached item index may serve match/fill before a
+// reload. Items created on origin from another surface (CLI, SPA) must appear
+// without a bridge restart.
+const indexTTL = time.Minute
 
 type jsonMatchEntry struct {
 	UUID       string `json:"uuid"`
@@ -301,7 +307,7 @@ func (h *Host) unlockJSONFill(uuid string, mintTotp bool) (app.FillEntry, bool) 
 
 func (h *Host) ensureIndex() {
 	h.mu.Lock()
-	ok := h.indexOK
+	ok := h.indexOK && time.Since(h.indexAt) < indexTTL
 	h.mu.Unlock()
 	if ok {
 		return
@@ -349,6 +355,7 @@ func (h *Host) reloadIndex() {
 	h.mu.Lock()
 	h.index = items
 	h.indexOK = true
+	h.indexAt = time.Now()
 	h.mu.Unlock()
 }
 
