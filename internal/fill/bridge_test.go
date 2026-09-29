@@ -57,3 +57,24 @@ func TestSocketPath(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestAutoFillSocketPath(t *testing.T) {
+	want := filepath.Join("/h", "Library", "Containers", AutoFillExtensionID, "Data", SocketFile)
+	if got := AutoFillSocketPath("/h"); got != want {
+		t.Fatal(got)
+	}
+}
+
+func TestBridgeSocketPaths(t *testing.T) {
+	got := BridgeSocketPaths("/v", "/h")
+	if len(got) != 4 {
+		t.Fatalf("vault+safari+helper+autofill = 4 sockets, got %v", got)
+	}
+	for i, want := range []string{
+		SocketPath("/v"), SafariSocketPath("/h"), HelperSocketPath("/h"), AutoFillSocketPath("/h"),
+	} {
+		if got[i] != want {
+			t.Fatalf("socket %d: %v", i, got)
+		}
+	}
+}

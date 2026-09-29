@@ -35,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         installStatusItem()
         UniversalFill.shared.install()
+        IdentitySync.shared.start()
         // Menu-bar helper should outlive the session — relaunch at login.
         try? SMAppService.mainApp.register()
     }
@@ -68,6 +69,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         setup.target = self
         menu.addItem(setup)
+
+        let autofill = NSMenuItem(
+            title: "Enable AutoFill…",
+            action: #selector(showAutoFillSetup),
+            keyEquivalent: "",
+        )
+        autofill.target = self
+        menu.addItem(autofill)
 
         let vault = NSMenuItem(
             title: "Open Veil…",
@@ -108,6 +117,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SFSafariApplication.showPreferencesForExtension(
             withIdentifier: "nyc.veil.fill.Extension",
         ) { _ in }
+    }
+
+    @objc private func showAutoFillSetup() {
+        // System Settings → Passwords hosts the provider toggle on macOS.
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Passwords-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     #if DEBUG

@@ -26,6 +26,10 @@
 		E133AF62306B28A7009E9FC3 /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = E133AF56306B28A7009E9FC3 /* icon-128.png */; };
 		E133AF66306B28A7009E9FC3 /* FillBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF65306B28A7009E9FC3 /* FillBridge.swift */; };
 		E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF67306B28A7009E9FC3 /* UniversalFill.swift */; };
+		E3AB00000000000000001B /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AB00000000000000001A /* CredentialProviderViewController.swift */; };
+		E3AB00000000000000001C /* FillBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF65306B28A7009E9FC3 /* FillBridge.swift */; };
+		E3AB00000000000000001E /* IdentitySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AB00000000000000001D /* IdentitySync.swift */; };
+		E3AB000000000000000029 /* Veil AutoFill.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E3AB000000000000000021 /* Veil AutoFill.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +39,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = E133AF38306B28A7009E9FC3;
 			remoteInfo = "Veil Extension";
+		};
+		E3AB000000000000000027 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E133AF16306B28A6009E9FC3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3AB000000000000000026;
+			remoteInfo = "Veil AutoFill";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -46,6 +57,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				E133AF3A306B28A7009E9FC3 /* Veil Extension.appex in Embed Foundation Extensions */,
+				E3AB000000000000000029 /* Veil AutoFill.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -75,6 +87,12 @@
 		E133AF56306B28A7009E9FC3 /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "icon-128.png"; path = "Resources/icon-128.png"; sourceTree = "<group>"; };
 		E133AF65306B28A7009E9FC3 /* FillBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FillBridge.swift; sourceTree = "<group>"; };
 		E133AF67306B28A7009E9FC3 /* UniversalFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniversalFill.swift; sourceTree = "<group>"; };
+		E3AB00000000000000001A /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
+		E3AB00000000000000001D /* IdentitySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentitySync.swift; sourceTree = "<group>"; };
+		E3AB00000000000000001F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E3AB000000000000000020 /* Veil AutoFill.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Veil AutoFill.entitlements"; sourceTree = "<group>"; };
+		E3AB000000000000000021 /* Veil AutoFill.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Veil AutoFill.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3AB00000000000000002D /* Veil.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Veil.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +110,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3AB000000000000000024 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -100,6 +125,7 @@
 			children = (
 				E133AF20306B28A6009E9FC3 /* Veil */,
 				E133AF3D306B28A7009E9FC3 /* Veil Extension */,
+				E3AB000000000000000022 /* Veil AutoFill */,
 				E133AF1F306B28A6009E9FC3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,6 +135,7 @@
 			children = (
 				E133AF1E306B28A6009E9FC3 /* Veil.app */,
 				E133AF39306B28A7009E9FC3 /* Veil Extension.appex */,
+				E3AB000000000000000021 /* Veil AutoFill.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -119,8 +146,10 @@
 				E133AF21306B28A6009E9FC3 /* AppDelegate.swift */,
 				E133AF65306B28A7009E9FC3 /* FillBridge.swift */,
 				E133AF67306B28A7009E9FC3 /* UniversalFill.swift */,
+				E3AB00000000000000001D /* IdentitySync.swift */,
 				E133AF32306B28A6009E9FC3 /* Assets.xcassets */,
 				E133AF34306B28A6009E9FC3 /* Info.plist */,
+				E3AB00000000000000002D /* Veil.entitlements */,
 			);
 			path = Veil;
 			sourceTree = "<group>";
@@ -133,6 +162,16 @@
 				E133AF40306B28A7009E9FC3 /* Info.plist */,
 			);
 			path = "Veil Extension";
+			sourceTree = "<group>";
+		};
+		E3AB000000000000000022 /* Veil AutoFill */ = {
+			isa = PBXGroup;
+			children = (
+				E3AB00000000000000001A /* CredentialProviderViewController.swift */,
+				E3AB00000000000000001F /* Info.plist */,
+				E3AB000000000000000020 /* Veil AutoFill.entitlements */,
+			);
+			path = "Veil AutoFill";
 			sourceTree = "<group>";
 		};
 		E133AF4A306B28A7009E9FC3 /* Resources */ = {
@@ -172,6 +211,7 @@
 			);
 			dependencies = (
 				E133AF3C306B28A7009E9FC3 /* PBXTargetDependency */,
+				E3AB000000000000000028 /* PBXTargetDependency */,
 			);
 			name = Veil;
 			packageProductDependencies = (
@@ -199,6 +239,25 @@
 			productReference = E133AF39306B28A7009E9FC3 /* Veil Extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		E3AB000000000000000026 /* Veil AutoFill */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3AB00000000000000002C /* Build configuration list for PBXNativeTarget "Veil AutoFill" */;
+			buildPhases = (
+				E3AB000000000000000023 /* Sources */,
+				E3AB000000000000000024 /* Frameworks */,
+				E3AB000000000000000025 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Veil AutoFill";
+			packageProductDependencies = (
+			);
+			productName = "Veil AutoFill";
+			productReference = E3AB000000000000000021 /* Veil AutoFill.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -213,6 +272,9 @@
 						CreatedOnToolsVersion = 26.5;
 					};
 					E133AF38306B28A7009E9FC3 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					E3AB000000000000000026 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -233,6 +295,7 @@
 			targets = (
 				E133AF1D306B28A6009E9FC3 /* Veil */,
 				E133AF38306B28A7009E9FC3 /* Veil Extension */,
+				E3AB000000000000000026 /* Veil AutoFill */,
 			);
 		};
 /* End PBXProject section */
@@ -266,6 +329,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3AB000000000000000025 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -276,6 +346,7 @@
 				E133AF22306B28A6009E9FC3 /* AppDelegate.swift in Sources */,
 				E133AF66306B28A7009E9FC3 /* FillBridge.swift in Sources */,
 				E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */,
+				E3AB00000000000000001E /* IdentitySync.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -287,6 +358,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3AB000000000000000023 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3AB00000000000000001B /* CredentialProviderViewController.swift in Sources */,
+				E3AB00000000000000001C /* FillBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -294,6 +374,11 @@
 			isa = PBXTargetDependency;
 			target = E133AF38306B28A7009E9FC3 /* Veil Extension */;
 			targetProxy = E133AF3B306B28A7009E9FC3 /* PBXContainerItemProxy */;
+		};
+		E3AB000000000000000028 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3AB000000000000000026 /* Veil AutoFill */;
+			targetProxy = E3AB000000000000000027 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -499,6 +584,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = VFWGNKKT4G;
 				COMBINE_HIDPI_IMAGES = YES;
+				CODE_SIGN_ENTITLEMENTS = Veil/Veil.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -540,6 +626,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = VFWGNKKT4G;
 				COMBINE_HIDPI_IMAGES = YES;
+				CODE_SIGN_ENTITLEMENTS = Veil/Veil.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -573,6 +660,74 @@
 			};
 			name = Release;
 		};
+		E3AB00000000000000002A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VFWGNKKT4G;
+				CODE_SIGN_ENTITLEMENTS = "Veil AutoFill/Veil AutoFill.entitlements";
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Veil AutoFill/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Veil AutoFill";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AuthenticationServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.veil.fill.AutoFill;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		E3AB00000000000000002B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VFWGNKKT4G;
+				CODE_SIGN_ENTITLEMENTS = "Veil AutoFill/Veil AutoFill.entitlements";
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Veil AutoFill/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Veil AutoFill";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.4;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AuthenticationServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = nyc.veil.fill.AutoFill;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -599,6 +754,15 @@
 			buildConfigurations = (
 				E133AF48306B28A7009E9FC3 /* Debug */,
 				E133AF49306B28A7009E9FC3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E3AB00000000000000002C /* Build configuration list for PBXNativeTarget "Veil AutoFill" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3AB00000000000000002A /* Debug */,
+				E3AB00000000000000002B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -133,9 +133,28 @@ final class FillBridge {
         return reply["entries"] as? [[String: Any]] ?? []
     }
 
+    /// Items matching a web URL — the AutoFill appex's service identifiers.
+    func match(url: String) throws -> [[String: Any]] {
+        let reply = try roundTrip(["action": "match", "url": url])
+        return reply["entries"] as? [[String: Any]] ?? []
+    }
+
+    /// Every fillable item's metadata + URIs — the identity-store sync feed.
+    func list() throws -> [[String: Any]] {
+        let reply = try roundTrip(["action": "list"])
+        return reply["entries"] as? [[String: Any]] ?? []
+    }
+
     /// Confirm-gated: the host runs its own Touch ID step before answering.
     func fill(app bundleID: String, uuid: String) throws -> (entries: [[String: Any]], error: String) {
         let reply = try roundTrip(["action": "fill", "url": "app://" + bundleID, "app": bundleID, "uuid": uuid])
+        let entries = reply["entries"] as? [[String: Any]] ?? []
+        return (entries, reply["error"] as? String ?? "")
+    }
+
+    /// Same fill for a web service — the appex path.
+    func fill(url: String, uuid: String) throws -> (entries: [[String: Any]], error: String) {
+        let reply = try roundTrip(["action": "fill", "url": url, "uuid": uuid])
         let entries = reply["entries"] as? [[String: Any]] ?? []
         return (entries, reply["error"] as? String ?? "")
     }

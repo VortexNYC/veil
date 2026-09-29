@@ -1193,3 +1193,84 @@ func TestJSONMatchAppURI(t *testing.T) {
 		t.Fatalf("other app must not match %+v", matched.Entries)
 	}
 }
+
+func TestJSONListMetadataAndURIsOnly(t *testing.T) {
+	// `list` feeds the AutoFill identity store: every fillable item with its
+	// URIs, metadata only — never a secret, never archived.
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "stripe", URI: "https://dashboard.stripe.com", Secret: secret, Login: "me@x.com",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("login %d %s", code, raw)
+	}
+	code, raw = originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "arch", URI: "https://old.example.com", Secret: secret + "-old",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("arch %d %s", code, raw)
+	}
+	code, raw = originJSON(t, srv, http.MethodPost, "/v1/items/arch/archive", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("archive %d %s", code, raw)
+	}
+
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	raw = jsonHandle(t, h, map[string]string{"action": "list"})
+	if scrub.Contains(raw, []byte(secret)) {
+		t.Fatalf("list leaked secret: %s", raw)
+	}
+	var listed struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(raw, &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Entries) != 1 || listed.Entries[0].Name != "stripe" {
+		t.Fatalf("list must return live fillable items only: %+v", listed.Entries)
+	}
+	if len(listed.Entries[0].URIs) != 1 || listed.Entries[0].URIs[0] != "https://dashboard.stripe.com" {
+		t.Fatalf("list must carry URIs for identity sync: %+v", listed.Entries[0])
+	}
+	if listed.Entries[0].UUID == "" || listed.Entries[0].Login != "me@x.com" {
+		t.Fatalf("identity needs uuid+user: %+v", listed.Entries[0])
+	}
+}
+
+func TestJSONMatchNeverCarriesURIs(t *testing.T) {
+	// `match` replies reach page-adjacent extension contexts — sibling URIs
+	// of a matched item would leak the vault's other bindings.
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "multi", URI: "https://a.example.com", Secret: secret,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("item %d %s", code, raw)
+	}
+	var item protocol.Item
+	if err := json.Unmarshal(raw, &item); err != nil {
+		t.Fatal(err)
+	}
+	code, raw = originJSON(t, srv, http.MethodPatch, "/v1/items/"+item.ID, "human", map[string]any{
+		"uris": []string{"https://a.example.com", "https://b.example.com"},
+	})
+	if code != http.StatusOK {
+		t.Fatalf("uris %d %s", code, raw)
+	}
+
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	raw = jsonHandle(t, h, map[string]string{"action": "match", "url": "https://a.example.com"})
+	if strings.Contains(string(raw), "b.example.com") || strings.Contains(string(raw), `"uris"`) {
+		t.Fatalf("match must not carry uris: %s", raw)
+	}
+}

@@ -23,14 +23,15 @@ import (
 const indexTTL = time.Minute
 
 type jsonMatchEntry struct {
-	UUID       string `json:"uuid"`
-	Name       string `json:"name"`
-	Login      string `json:"login,omitempty"`
-	Kind       string `json:"kind"`
-	HasTOTP    bool   `json:"hasTotp,omitempty"`
-	HasPasskey bool   `json:"hasPasskey,omitempty"`
-	SavedFor   string `json:"savedFor,omitempty"`
-	Affiliated bool   `json:"affiliated,omitempty"`
+	UUID       string   `json:"uuid"`
+	Name       string   `json:"name"`
+	Login      string   `json:"login,omitempty"`
+	Kind       string   `json:"kind"`
+	URIs       []string `json:"uris,omitempty"`
+	HasTOTP    bool     `json:"hasTotp,omitempty"`
+	HasPasskey bool     `json:"hasPasskey,omitempty"`
+	SavedFor   string   `json:"savedFor,omitempty"`
+	Affiliated bool     `json:"affiliated,omitempty"`
 }
 
 type jsonFillEntry struct {
@@ -92,6 +93,10 @@ func (h *Host) handleJSON(raw []byte) []byte {
 		return jsonBytes(struct {
 			Entries []jsonMatchEntry `json:"entries"`
 		}{Entries: h.jsonMatch(in.URL)})
+	case "list":
+		return jsonBytes(struct {
+			Entries []jsonMatchEntry `json:"entries"`
+		}{Entries: h.jsonList()})
 	case "fill":
 		entries := h.jsonFill(in.URL, in.UUID)
 		err := ""
@@ -384,6 +389,27 @@ func matchEntry(item protocol.Item) jsonMatchEntry {
 		HasPasskey: item.Kind == protocol.ItemPasskey,
 		SavedFor:   saved,
 	}
+}
+
+// jsonList is the AutoFill identity-store sync feed: every fillable item's
+// metadata plus its URIs. The AutoFill appex and helper app are trusted fill
+// clients on the same socket boundary; URIs stay off `match` replies because
+// those reach page-adjacent extension contexts.
+func (h *Host) jsonList() []jsonMatchEntry {
+	out := []jsonMatchEntry{}
+	h.ensureIndex()
+	h.mu.Lock()
+	items := append([]protocol.Item(nil), h.index...)
+	h.mu.Unlock()
+	for _, item := range items {
+		if item.Archived || !item.Kind.Fillable() {
+			continue
+		}
+		e := matchEntry(item)
+		e.URIs = item.URIs
+		out = append(out, e)
+	}
+	return out
 }
 
 func (h *Host) jsonGenerate(rawURL, login, rules, uuid string) []byte {

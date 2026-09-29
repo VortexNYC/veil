@@ -22,6 +22,9 @@ const SafariExtensionID = "nyc.veil.fill.Extension"
 // so the bridge places a socket in its container too.
 const HelperAppID = "nyc.veil.fill"
 
+// AutoFillExtensionID is the AutoFill credential-provider appex bundle id.
+const AutoFillExtensionID = "nyc.veil.fill.AutoFill"
+
 func SocketPath(vaultHome string) string {
 	return filepath.Join(vaultHome, SocketFile)
 }
@@ -37,10 +40,20 @@ func HelperSocketPath(userHome string) string {
 	return filepath.Join(userHome, "Library", "Containers", HelperAppID, "Data", SocketFile)
 }
 
+// AutoFillSocketPath is the socket inside the AutoFill appex's container.
+func AutoFillSocketPath(userHome string) string {
+	return filepath.Join(userHome, "Library", "Containers", AutoFillExtensionID, "Data", SocketFile)
+}
+
 // BridgeSocketPaths is every path the bridge listens on: the vault socket for
 // CLI/debugging, and one container socket per sandboxed client.
 func BridgeSocketPaths(vaultHome, userHome string) []string {
-	return []string{SocketPath(vaultHome), SafariSocketPath(userHome), HelperSocketPath(userHome)}
+	return []string{
+		SocketPath(vaultHome),
+		SafariSocketPath(userHome),
+		HelperSocketPath(userHome),
+		AutoFillSocketPath(userHome),
+	}
 }
 
 // ServeBridge listens on each sockPath and runs the normal Serve loop per
