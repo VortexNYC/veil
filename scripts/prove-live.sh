@@ -10,7 +10,7 @@ ISSUER="${VEIL_HYDRA_ISSUER:-https://id.veil.nyc}"
 SSH_HOST="${VEIL_LIVE_SSH:-mini}"
 MINI_HOME="${VEIL_LIVE_HOME:-/Users/shlomokabareti/.veil}"
 MINI_BIN="${VEIL_LIVE_BIN:-/Users/shlomokabareti/.local/bin/veil}"
-# mini's checkout stays at Projects/veil (PlasmaPOS/veil owns ~/Projects/veil there);
+# mini's checkout stays at Projects/veil (VortexNYC/veil owns ~/Projects/veil there);
 # agent hydra secrets live under ~/.config/vortex on both machines.
 MINI_SECRET="${VEIL_LIVE_SECRET:-/Users/shlomokabareti/.config/vortex/veil/cursor.hydra}"
 MINI_IDENTITY="${VEIL_LIVE_IDENTITY:-/Users/shlomokabareti/Projects/veil/identity}"
