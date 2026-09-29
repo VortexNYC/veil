@@ -1892,7 +1892,14 @@ func fillCmd(home *string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return fill.ServeBridge(cmd.Context(), h, fill.BridgeSocketPaths(dir, user)...)
+				paths := fill.BridgeSocketPaths(dir, user)
+				go func() {
+					_ = fill.ServeBridge(cmd.Context(), h, paths...)
+				}()
+				// Confirms arrive on socket workers — main owns the AppKit
+				// run loop the access sheet's modal is dispatched to.
+				confirm.PumpMain(cmd.Context())
+				return nil
 			}
 			return h.Serve(os.Stdin, os.Stdout)
 		},

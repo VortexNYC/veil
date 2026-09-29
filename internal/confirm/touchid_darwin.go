@@ -254,6 +254,13 @@ static NSImage *veil_veil_mark(void) {
 		return;
 	}
 	self.evaluating = 1;
+	// evaluatePolicy renders the system's own prompt — our sheet's job was
+	// to say who is asking, and it yields once the OS surface owns the
+	// scan. A short delay: the handoff reads as intentional, not a flash.
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
+		dispatch_get_main_queue(), ^{
+		[self.win orderOut:nil];
+	});
 	LAContext *ctx = self.lac;
 	NSString *why = self.why;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -268,10 +275,6 @@ static NSImage *veil_veil_mark(void) {
 	(void)sender;
 	[self.lac invalidate];
 	[self finish:0];
-}
-- (void)authorize:(id)sender {
-	(void)sender;
-	[self scan];
 }
 - (BOOL)windowShouldClose:(NSWindow *)sender {
 	(void)sender;
@@ -298,14 +301,21 @@ static int veil_access(const char *action, const char *account, const char *reas
 	void (^run)(void) = ^{
 		[NSApplication sharedApplication];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		// Without finishLaunching the plist-less host never completes app
+		// startup — the WindowServer flags it unresponsive and every hover
+		// over the sheet spins the beachball.
+		[NSApp finishLaunching];
 		PWMAccessSheet *ctrl = [[PWMAccessSheet alloc] init];
-		ctrl.why = [NSString stringWithUTF8String:reason];
 		ctrl.lac = [[LAContext alloc] init];
 		NSRunningApplication *client = veil_client_app();
 		NSString *appName = client.localizedName.length ? client.localizedName : @"this app";
 		NSImage *clientIcon = client.icon ?: [NSImage imageWithSystemSymbolName:@"terminal" accessibilityDescription:nil];
 		NSString *allow = [NSString stringWithFormat:@"Allow %@ to %s", appName, action];
 		NSString *who = [NSString stringWithUTF8String:account];
+		// One story on every surface: the LA system dialog's reason is the
+		// same ask the sheet shows — app, action, account — never a generic
+		// second prompt competing with it.
+		ctrl.why = who.length ? [NSString stringWithFormat:@"%@ — %@", allow, who] : allow;
 
 		NSRect frame = NSMakeRect(0, 0, 420, 288);
 		NSWindow *win = [[NSWindow alloc] initWithContentRect:frame
@@ -321,6 +331,7 @@ static int veil_access(const char *action, const char *account, const char *reas
 		NSView *content = win.contentView;
 		NSImageView *left = veil_icon_view(clientIcon);
 		NSImageView *check = [[NSImageView alloc] initWithFrame:NSZeroRect];
+		NSApp.applicationIconImage = veil_veil_mark();
 		check.image = [NSImage imageWithSystemSymbolName:@"checkmark.circle.fill" accessibilityDescription:nil];
 		check.contentTintColor = [NSColor systemGreenColor];
 		[check.widthAnchor constraintEqualToConstant:22].active = YES;
@@ -362,12 +373,16 @@ static int veil_access(const char *action, const char *account, const char *reas
 
 		NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:ctrl action:@selector(cancel:)];
 		cancel.keyEquivalent = @"\e";
-		NSButton *auth = [NSButton buttonWithTitle:@"Authorize with Touch ID" target:ctrl action:@selector(authorize:)];
-		auth.keyEquivalent = @"\r";
-		auth.image = [NSImage imageWithSystemSymbolName:@"touchid" accessibilityDescription:nil];
-		auth.imagePosition = NSImageRight;
-		auth.bezelStyle = NSBezelStyleRounded;
-		NSStackView *btns = [NSStackView stackViewWithViews:@[cancel, auth]];
+		// The sensor is the button — the scan is already running. The hint
+		// exists so nobody waits on a control that would stack a second ask.
+		NSImageView *finger = [[NSImageView alloc] init];
+		finger.image = [[NSImage imageWithSystemSymbolName:@"touchid" accessibilityDescription:@"Touch ID"] imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:18 weight:NSFontWeightRegular]];
+		NSTextField *hint = [NSTextField labelWithString:@"Touch the sensor"];
+		hint.textColor = NSColor.secondaryLabelColor;
+		NSStackView *hintRow = [NSStackView stackViewWithViews:@[finger, hint]];
+		hintRow.spacing = 8;
+		hintRow.alignment = NSLayoutAttributeCenterY;
+		NSStackView *btns = [NSStackView stackViewWithViews:@[hintRow, cancel]];
 		btns.orientation = NSUserInterfaceLayoutOrientationHorizontal;
 		btns.alignment = NSLayoutAttributeCenterY;
 		btns.distribution = NSStackViewDistributionEqualSpacing;
@@ -402,7 +417,19 @@ static int veil_access(const char *action, const char *account, const char *reas
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 		out = ctrl.result;
 	};
-	run();
+	// Callers off the main thread — bridge socket workers, CLI helpers —
+	// cannot run AppKit where they stand. Queue the modal onto the main
+	// queue and wait; the main thread owns a real run loop everywhere.
+	if ([NSThread isMainThread]) {
+		run();
+	} else {
+		dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			run();
+			dispatch_semaphore_signal(sema);
+		});
+		dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	}
 	return out;
 }
 

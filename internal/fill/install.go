@@ -21,6 +21,9 @@ func InstallOrigin(env InstallEnv) error {
 	if err := copyExecutable(env.Bin, host); err != nil {
 		return err
 	}
+	if err := codesignHost(host); err != nil {
+		return err
+	}
 	// fill.json outlives reinstalls: an existing config is the human's, env
 	// values override per-field, and the token path default only fills a gap.
 	// Wiping login_email/touch_id on every `fill install` strands the host.
