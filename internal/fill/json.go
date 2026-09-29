@@ -114,6 +114,11 @@ func (h *Host) handleJSON(raw []byte) []byte {
 		return h.jsonPasskeyCreate(in.Origin, in.PublicKey, in.RelatedOrigins)
 	case "passkeyGet":
 		return h.jsonPasskeyGet(in.Origin, in.PublicKey)
+	case "relock":
+		h.InvalidateConfirm()
+		return jsonBytes(struct {
+			OK bool `json:"ok"`
+		}{OK: true})
 	default:
 		return jsonFillReply(nil, "")
 	}

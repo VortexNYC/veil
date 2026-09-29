@@ -2242,19 +2242,41 @@ func trimNL(b []byte) []byte {
 }
 
 func attachFillConfirm(h *fill.Host) {
-	if dir, err := fill.DirBesideHost(); err == nil {
-		if cfg, err := fill.ReadHostConfig(dir); err == nil && cfg.TouchID != nil && !*cfg.TouchID {
+	var cfg fill.HostConfig
+	read := false
+	for _, dir := range fillConfigDirs() {
+		c, err := fill.ReadHostConfig(dir)
+		if err != nil {
+			continue
+		}
+		if c.TouchID != nil && !*c.TouchID {
 			return
+		}
+		if !read {
+			cfg, read = c, true
 		}
 	}
-	if dir := strings.TrimSpace(os.Getenv("VEIL_HOME")); dir != "" {
-		if cfg, err := fill.ReadHostConfig(dir); err == nil && cfg.TouchID != nil && !*cfg.TouchID {
-			return
-		}
+	switch cfg.Confirm {
+	case "", "origin", "strict", "session":
+		h.ConfirmMode = cfg.Confirm
+	}
+	if cfg.ConfirmTTL > 0 {
+		h.ConfirmTTL = time.Duration(cfg.ConfirmTTL) * time.Second
 	}
 	if confirm.Enabled() {
 		h.Confirm = confirm.TouchID
 	}
+}
+
+func fillConfigDirs() []string {
+	dirs := []string{}
+	if dir, err := fill.DirBesideHost(); err == nil {
+		dirs = append(dirs, dir)
+	}
+	if dir := strings.TrimSpace(os.Getenv("VEIL_HOME")); dir != "" {
+		dirs = append(dirs, dir)
+	}
+	return dirs
 }
 
 func attachFillReplica(h *fill.Host, dir string) {

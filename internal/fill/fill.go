@@ -61,6 +61,13 @@ type Host struct {
 	Refresh func() (string, error)
 	// Confirm is Touch ID (or a test fake) before a secret leaves the host.
 	Confirm func(reason string) error
+	// ConfirmMode tunes how much one Touch ID covers:
+	// "" or "origin" (default) reuses within the same site for ConfirmTTL,
+	// "strict" prompts on every release, "session" reuses across sites.
+	// Callsites with reuse=false (CVV) prompt regardless of mode.
+	ConfirmMode string
+	// ConfirmTTL overrides the 30s reuse window when positive.
+	ConfirmTTL time.Duration
 	// Replica is the sealed local cache. Key is Keychain, not a file.
 	Replica *replica.Vault
 	// Issuer, ClientID, Redirect configure the extension browser sign-in
@@ -692,22 +699,33 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 	h.mu.Lock()
 	until := h.confirmUntil
 	prev := h.confirmScope
+	mode := h.ConfirmMode
+	ttl := h.ConfirmTTL
 	h.mu.Unlock()
-	if reuse && scope != "" && scope == prev && now.Before(until) {
+	if ttl <= 0 {
+		ttl = confirmReuse
+	}
+	armed := reuse && scope != "" && now.Before(until)
+	switch mode {
+	case "strict":
+		armed = false
+	case "session":
+		// one unlock covers every origin until the window expires
+	default:
+		armed = armed && scope == prev
+	}
+	if armed {
 		fillDebug("confirm reuse")
 		return nil
 	}
 	if err := h.Confirm(reason); err != nil {
 		fillDebug("confirm denied")
-		h.mu.Lock()
-		h.confirmUntil = time.Time{}
-		h.confirmScope = ""
-		h.mu.Unlock()
+		h.InvalidateConfirm()
 		return err
 	}
 	h.mu.Lock()
 	if reuse && scope != "" {
-		h.confirmUntil = time.Now().Add(confirmReuse)
+		h.confirmUntil = now.Add(ttl)
 		h.confirmScope = scope
 	} else {
 		h.confirmUntil = time.Time{}
@@ -716,6 +734,16 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 	h.mu.Unlock()
 	fillDebug("confirm ok")
 	return nil
+}
+
+// InvalidateConfirm drops the reuse window — the bridge `relock` action
+// calls it when the OS reports screen lock so a session-mode grant cannot
+// outlive the lock.
+func (h *Host) InvalidateConfirm() {
+	h.mu.Lock()
+	h.confirmUntil = time.Time{}
+	h.confirmScope = ""
+	h.mu.Unlock()
 }
 
 func passkeyIsError(raw []byte) bool {

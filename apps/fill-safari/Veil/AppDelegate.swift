@@ -36,6 +36,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         installStatusItem()
         UniversalFill.shared.install()
         IdentitySync.shared.start()
+        // Screen lock drops the host's confirm reuse window — a
+        // session-mode grant must not outlive the lock.
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.screenIsLocked"),
+            object: nil, queue: .main,
+        ) { _ in
+            FillBridge.shared.relock()
+        }
         // Menu-bar helper should outlive the session — relaunch at login.
         try? SMAppService.mainApp.register()
     }

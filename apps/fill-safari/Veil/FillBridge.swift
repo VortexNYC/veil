@@ -158,4 +158,10 @@ final class FillBridge {
         let entries = reply["entries"] as? [[String: Any]] ?? []
         return (entries, reply["error"] as? String ?? "")
     }
+
+    /// Screen locked — drop any confirm reuse window in the host so a
+    /// session-mode grant cannot outlive the lock.
+    func relock() {
+        _ = try? roundTrip(["action": "relock"])
+    }
 }
