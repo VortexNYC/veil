@@ -1015,7 +1015,13 @@ func ExtensionManifestSafari(chromeManifest []byte) ([]byte, error) {
 		return nil, fmt.Errorf("extension manifest: %w", err)
 	}
 	delete(m, "key")
-	m["background"] = map[string]any{"scripts": []string{"tab.js", "background.js"}}
+	// Safari event pages suspend ~30s after load and can silently stop waking
+	// on content-script sendMessage — fills then look dead until the extension
+	// is toggled. A persistent background page stays resident on macOS.
+	m["background"] = map[string]any{
+		"scripts":    []string{"tab.js", "background.js"},
+		"persistent": true,
+	}
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return nil, err

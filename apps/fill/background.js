@@ -427,6 +427,16 @@ chrome.runtime.onStartup.addListener(function () {
   ping().catch(function () {});
 });
 
+// Safari's event page suspends ~30s after load and can ignore messages until
+// the extension is toggled. A long-lived port from any page holding a fill
+// session pins this context — the port itself is the signal, not its traffic.
+chrome.runtime.onConnect.addListener(function (p) {
+  if (!p || p.name !== "veil-field") {
+    return;
+  }
+  p.onDisconnect.addListener(function () {});
+});
+
 chrome.tabs.onUpdated.addListener(function (tabId, info, tab) {
   const url = tab && (tab.url || tab.pendingUrl);
   if (info.status !== "complete" || !usable(url)) {

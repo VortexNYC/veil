@@ -1,13 +1,40 @@
 (function () {
+  // Safari can inject a content script twice into one document — both
+  // instances would answer "suggest" and stack menus. The DOM is shared
+  // across worlds, so a marker on the root lets the second instance bail.
+  if (document.documentElement.dataset.veilContent) {
+    return;
+  }
+  document.documentElement.dataset.veilContent = "1";
+
   let lastOTPAuth = "";
   let focusEl = null;
   let menu = null;
   let icon = null;
+  let keepalive = null;
+
+  // Safari event pages suspend ~30s after load and can silently stop waking
+  // on sendMessage — the field then looks dead. An open port pins the
+  // background context resident while a fill session is possible on the page.
+  function holdBackground() {
+    if (keepalive) {
+      return;
+    }
+    try {
+      keepalive = chrome.runtime.connect({ name: "veil-field" });
+      keepalive.onDisconnect.addListener(function () {
+        keepalive = null;
+      });
+    } catch (e) {
+      keepalive = null;
+    }
+  }
 
   // The same ask focusin sends — extracted so the field icon can re-trigger
   // a suggestion for an already-focused field (no second focus event fires).
   function sendFocus(el) {
     focusEl = el;
+    holdBackground();
     const ctx = probe(el);
     chrome.runtime.sendMessage({
       type: "trusted-focus",
