@@ -44,7 +44,15 @@ function suggestButton(got) {
 }
 
 function saveButton(got) {
-  const b = veilUI.entryRow({ name: "Save this sign-in", kind: "generate" }, "button");
+  const isUpdate = !!(got && got.updateName);
+  const b = veilUI.entryRow(
+    {
+      name: isUpdate ? "Update saved password" : "Save this sign-in",
+      sub: isUpdate ? got.updateName : "",
+      kind: isUpdate ? "update" : "save",
+    },
+    "button",
+  );
   b.addEventListener("click", function () {
     chrome.runtime.sendMessage(
       {
@@ -88,7 +96,7 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
     head.appendChild(where);
   }
   root.appendChild(head);
-  const offerSave = !!(got && got.canSave && !logins.length);
+  const offerSave = !!(got && got.canSave && (!logins.length || got.updateName));
   if (!entries.length && !(got && got.canGenerate) && !offerSave) {
     const empty = document.createElement("div");
     empty.className = "v-empty";

@@ -303,11 +303,14 @@ async function generateTab(tabId, url, login, passwordRules, uuid) {
   return { ok: true };
 }
 
-async function saveTab(tabId, url, login, password) {
+async function saveTab(tabId, url, login, password, uuid) {
   if (!password) {
     return { ok: false, error: "empty" };
   }
   const body = { action: "save", url: url, login: login || "", password: password };
+  if (uuid) {
+    body.uuid = uuid;
+  }
   const msg = await hostSend(body, 90000);
   password = "";
   if (needLogin(msg)) {
@@ -553,7 +556,47 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     }
     wipePending();
     pendingSave = { tabId: tab.id, url: url, login: msg.login || "", password: msg.password };
-    chrome.action.openPopup().catch(function () {});
+    // Match first so a typed login that already exists becomes an "update
+    // password" offer instead of a doomed create (host answers "choose").
+    matchTab(tab.id, url).then(function (entries) {
+      if (!pendingSave || pendingSave.tabId !== tab.id) {
+        return;
+      }
+      const canPopup = !!(chrome.action && typeof chrome.action.openPopup === "function");
+      const plan = globalThis.veilTab.savePlan(canPopup, entries, pendingSave.login);
+      if (plan.update) {
+        pendingSave.updateUUID = plan.update.uuid;
+        pendingSave.updateName = plan.update.name;
+      }
+      const pop = canPopup
+        ? Promise.resolve(chrome.action.openPopup())
+        : Promise.reject(new Error("no openPopup"));
+      return pop.then(null, function () {
+        // Safari (and any runtime popup refusal): draw the offer in-page.
+        return chrome.tabs.sendMessage(tab.id, {
+          type: "save-prompt",
+          login: pendingSave ? pendingSave.login : "",
+          name: pendingSave ? pendingSave.updateName || "" : "",
+          update: !!(pendingSave && pendingSave.updateUUID),
+        }).catch(function () {});
+      });
+    });
+    return;
+  }
+  if (msg.type === "save-pick") {
+    const tab = sender.tab;
+    if (pendingSave && tab && tab.id === pendingSave.tabId) {
+      const p = pendingSave;
+      wipePending();
+      saveTab(p.tabId, p.url, p.login, p.password, p.updateUUID || "");
+    }
+    return;
+  }
+  if (msg.type === "save-dismiss") {
+    const tab = sender.tab;
+    if (pendingSave && tab && tab.id === pendingSave.tabId) {
+      wipePending();
+    }
     return;
   }
   if (msg.type === "found-otpauth") {
@@ -589,6 +632,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
             tabId: tab.id,
             canGenerate: !!(ctx && ctx.canGenerate),
             canSave: liveSave || pending,
+            updateName: pending ? pendingSave.updateName || "" : "",
             login: (ctx && ctx.login) || (pendingSave && pendingSave.login) || "",
             passwordRules: (ctx && ctx.passwordRules) || "",
           });
@@ -634,7 +678,8 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     creds.then(function (got) {
       const login = (got && got.login) || "";
       const password = (got && got.password) || "";
-      return saveTab(tabId, url, login, password).finally(function () {
+      const uuid = fromPending && pendingSave ? pendingSave.updateUUID || "" : "";
+      return saveTab(tabId, url, login, password, uuid).finally(function () {
         wipePending();
       });
     }).then(function (got) {

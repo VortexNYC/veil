@@ -113,7 +113,7 @@ func (h *Host) handleJSON(raw []byte) []byte {
 	case "generate":
 		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules, in.UUID)
 	case "save":
-		return h.jsonSave(in.URL, in.Login, in.Password)
+		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID)
 	case "enrollTotp":
 		return h.jsonEnrollTotp(in.URL, in.OTPAuth)
 	case "passkeyCreate":
@@ -534,6 +534,41 @@ func (h *Host) rotateLogin(uuid, login, secret string) error {
 	return err
 }
 
+// jsonTypedRotate is change-password for a typed (not generated) secret:
+// the save prompt matched the login to an existing item and sent its uuid.
+// Same rules as jsonRotate — a real match on this URL, confirm, then PATCH;
+// a uuid that does not match here is "choose", never an unrelated write.
+func (h *Host) jsonTypedRotate(rawURL, uuid, login, password string, matches []jsonMatchEntry) []byte {
+	var hit *jsonMatchEntry
+	for i := range matches {
+		if matches[i].UUID == uuid && matches[i].Kind == "login" && !matches[i].Affiliated {
+			hit = &matches[i]
+			break
+		}
+	}
+	if hit == nil {
+		return jsonGenerateErr("choose")
+	}
+	if err := h.confirm("Veil wants to update a saved password", grant.Registrable(rawURL), true); err != nil {
+		return jsonGenerateErr("canceled")
+	}
+	if err := h.rotateLogin(uuid, login, password); err != nil {
+		if h.loginNeeded() {
+			return jsonGenerateErr("need_login")
+		}
+		return jsonGenerateErr("failed")
+	}
+	h.invalidateIndex()
+	if login == "" {
+		login = hit.Login
+	}
+	return jsonBytes(struct {
+		UUID  string `json:"uuid"`
+		Name  string `json:"name"`
+		Login string `json:"login,omitempty"`
+	}{UUID: hit.UUID, Name: hit.Name, Login: login})
+}
+
 func loginMatch(entries []jsonMatchEntry) bool {
 	for _, e := range entries {
 		if e.Kind == "login" {
@@ -543,7 +578,7 @@ func loginMatch(entries []jsonMatchEntry) bool {
 	return false
 }
 
-func (h *Host) jsonSave(rawURL, login, password string) []byte {
+func (h *Host) jsonSave(rawURL, login, password, uuid string) []byte {
 	rawURL = strings.TrimSpace(rawURL)
 	login = strings.TrimSpace(login)
 	password = strings.TrimSpace(password)
@@ -557,6 +592,9 @@ func (h *Host) jsonSave(rawURL, login, password string) []byte {
 	matches := h.jsonMatch(rawURL)
 	if h.loginNeeded() {
 		return jsonGenerateErr("need_login")
+	}
+	if uuid != "" {
+		return h.jsonTypedRotate(rawURL, uuid, login, password, matches)
 	}
 	if loginMatch(matches) {
 		return jsonGenerateErr("choose")

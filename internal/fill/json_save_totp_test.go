@@ -207,6 +207,107 @@ func TestJSONSaveExistingLoginIsChoose(t *testing.T) {
 	}
 }
 
+func TestJSONSaveTypedPasswordRotatesExisting(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "github", URI: "https://github.com", Secret: secret, Login: "ada",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	var creates, patches atomic.Int32
+	inner := srv.Config.Handler
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/items" {
+			creates.Add(1)
+		}
+		if r.Method == http.MethodPatch {
+			patches.Add(1)
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var in struct {
+				Secret string `json:"secret"`
+				Login  string `json:"login"`
+			}
+			if json.Unmarshal(body, &in) != nil || in.Secret != "rotated-typed-pw" || in.Login != "ada" {
+				t.Errorf("patch %s", body)
+			}
+		}
+		inner.ServeHTTP(w, r)
+	})
+	h := allowConfirm(NewOrigin(t.TempDir(), srv.URL, "human"))
+
+	var item struct {
+		ID string `json:"id"`
+	}
+	matched := jsonHandle(t, h, map[string]string{"action": "match", "url": "https://github.com/login"})
+	var m struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(matched, &m); err != nil || len(m.Entries) != 1 {
+		t.Fatalf("match %s", matched)
+	}
+	item.ID = m.Entries[0].UUID
+
+	got := jsonHandle(t, h, map[string]string{
+		"action":   "save",
+		"url":      "https://github.com/login",
+		"login":    "ada",
+		"password": "rotated-typed-pw",
+		"uuid":     item.ID,
+	})
+	if scrub.Contains(got, []byte("rotated-typed-pw")) {
+		t.Fatalf("save echoed password %s", got)
+	}
+	var out struct {
+		Error string `json:"error"`
+		UUID  string `json:"uuid"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil || out.Error != "" || out.UUID != item.ID {
+		t.Fatalf("save %s", got)
+	}
+	if patches.Load() != 1 || creates.Load() != 0 {
+		t.Fatalf("patch=%d create=%d", patches.Load(), creates.Load())
+	}
+
+	filled := jsonHandle(t, h, map[string]string{
+		"action": "fill", "url": "https://github.com/login", "uuid": item.ID,
+	})
+	var fo struct {
+		Entries []jsonFillEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(filled, &fo); err != nil || len(fo.Entries) != 1 || fo.Entries[0].Password != "rotated-typed-pw" {
+		t.Fatalf("fill after rotate %s", filled)
+	}
+
+	// A uuid that is not a login match on this URL is still "choose" — the
+	// save prompt must never patch an unrelated item.
+	bogus := jsonHandle(t, h, map[string]string{
+		"action":   "save",
+		"url":      "https://github.com/login",
+		"login":    "ada",
+		"password": "rotated-typed-pw",
+		"uuid":     "it_bogusbogusbogusbogusbo",
+	})
+	var fail struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(bogus, &fail); err != nil || fail.Error != "choose" {
+		t.Fatalf("bogus uuid %s", bogus)
+	}
+	if patches.Load() != 1 {
+		t.Fatal("bogus uuid patched")
+	}
+}
+
 func TestJSONSaveNeedLoginDoesNotCreate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

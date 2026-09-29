@@ -171,6 +171,12 @@ button.v-row {
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><circle cx="8.5" cy="10.5" r="2"/><path d="M5.5 17c.6-1.8 1.7-2.6 3-2.6s2.4.8 3 2.6M14 9.5h5M14 13.5h5"/></svg>',
     generate:
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v4M12 16v4M4 12h4M16 12h4M7.8 7.8l2 2M14.2 14.2l2 2M16.2 7.8l-2 2M9.8 14.2l-2 2"/></svg>',
+    save:
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
+    update:
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5A8 8 0 1 0 20.8 14"/><path d="M20 4.5v7h-7"/></svg>',
+    dismiss:
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
     veil:
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.64 12.24V7.2a3.36 4.32 0 0 1 6.72 0v5.04h-1.68V7.68a1.68 2.88 0 0 0-3.36 0v4.56zM7.68 11.76h8.64q2.4 0 2.52 1.92l0.36 5.04q0.12 2.16-2.04 2.4H6.84q-2.16-0.24-2.04-2.4l0.36-5.04q0.12-1.92 2.52-1.92zM9.4 15.6a1 1 0 0 1 2 0v0.8a1 1 0 0 1-2 0zM12.6 15.6a1 1 0 0 1 2 0v0.8a1 1 0 0 1-2 0z"/></svg>',
   };

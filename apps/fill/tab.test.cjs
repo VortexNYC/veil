@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { usable, tabByURL, focusPlan } = require("./tab.js");
+const { usable, tabByURL, focusPlan, savePlan } = require("./tab.js");
 
 test("usable is http(s) only", () => {
   assert.equal(usable("http://127.0.0.1:8765/stripe-test-checkout.html"), true);
@@ -84,4 +84,25 @@ test("focusPlan filters entries to the focused form context", () => {
   assert.equal(focusPlan(entries, false, "identity").entries[0].uuid, "i1");
   // a login form with no matching logins stays quiet — no card spam
   assert.equal(focusPlan([{ kind: "card" }], false, "login").action, "quiet");
+});
+
+test("savePlan falls back to inline when the popup cannot open (Safari)", () => {
+  assert.equal(savePlan(true, [], "ada").surface, "popup");
+  assert.equal(savePlan(false, [], "ada").surface, "inline");
+});
+
+test("savePlan turns a typed login match into an update offer", () => {
+  const entries = [
+    { kind: "login", uuid: "l3", name: "affiliated", login: "ada", affiliated: true },
+    { kind: "login", uuid: "l1", name: "github", login: "ada" },
+    { kind: "login", uuid: "l2", name: "github work", login: "work" },
+    { kind: "card", uuid: "c1", login: "ada" },
+  ];
+  const p = savePlan(true, entries, "ada");
+  assert.equal(p.update && p.update.uuid, "l1");
+  // affiliated (PMR-adjacent) items are never write targets
+  assert.notEqual(p.update.uuid, "l3");
+  // a different login or no login is a create offer
+  assert.equal(savePlan(true, entries, "new@x.com").update, null);
+  assert.equal(savePlan(true, entries, "").update, null);
 });

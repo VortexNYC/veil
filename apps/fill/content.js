@@ -237,6 +237,53 @@
     highlight(0);
   }
 
+  // In-page save offer — action.openPopup does not exist on Safari (and can
+  // be refused at runtime on Chromium), so the offer draws under the
+  // password field in the same inline language as the fill menu. Not
+  // auto-highlighted: an Enter meant for the page must never save.
+  function showSavePrompt(msg) {
+    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+    const el = fields.password || (fields.newPassword && fields.newPassword[0]) || focusEl;
+    if (!el || !document.contains(el)) {
+      return;
+    }
+    hideMenu();
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;z-index:2147483647;";
+    const shade = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = veilUI.css;
+    shade.appendChild(style);
+    const box = document.createElement("div");
+    box.className = "v-menu v-field";
+    box.setAttribute("role", "listbox");
+    shade.appendChild(box);
+    const name = msg.update ? "Update password" : "Save to Veil";
+    const sub = (msg.name ? msg.name + " — " : "") + (msg.login || el.name || "this site");
+    const rows = [
+      menuRow({ name: name, sub: sub, kind: msg.update ? "update" : "save", slim: true }, function () {
+        hideMenu();
+        chrome.runtime.sendMessage({ type: "save-pick" });
+      }),
+      menuRow({ name: "Not now", sub: "", kind: "dismiss", slim: true }, function () {
+        hideMenu();
+        chrome.runtime.sendMessage({ type: "save-dismiss" });
+      }),
+    ];
+    rows.forEach(function (r) {
+      r.dataset.q = r.textContent.toLowerCase();
+      box.appendChild(r);
+    });
+    menu = { el: host, rows: rows, active: -1, forEl: el };
+    (document.body || document.documentElement).appendChild(host);
+    placeMenu(el);
+    requestAnimationFrame(function () {
+      if (menu && menu.forEl === el) {
+        placeMenu(el);
+      }
+    });
+  }
+
   document.addEventListener(
     "keydown",
     function (ev) {
@@ -409,6 +456,11 @@
     if (msg.type === "suggest-hide") {
       hideMenu();
       hideIcon();
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg.type === "save-prompt") {
+      showSavePrompt(msg);
       sendResponse({ ok: true });
       return true;
     }
