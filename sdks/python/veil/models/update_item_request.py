@@ -30,8 +30,9 @@ class UpdateItemRequest(BaseModel):
     uri: Optional[StrictStr] = Field(default=None, description="Add this autofill host. Does not drop existing hosts.")
     uris: Optional[List[StrictStr]] = Field(default=None, description="Replace autofill hosts with this list.")
     tags: Optional[List[StrictStr]] = None
-    login: Optional[StrictStr] = Field(default=None, description="Fill username. Metadata on the item. Also sealed in the envelope. Does not rotate the secret.")
-    __properties: ClassVar[List[str]] = ["uri", "uris", "tags", "login"]
+    login: Optional[StrictStr] = Field(default=None, description="Fill username. Metadata on the item. Also sealed in the envelope.")
+    secret: Optional[StrictStr] = Field(default=None, description="Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone.")
+    __properties: ClassVar[List[str]] = ["uri", "uris", "tags", "login", "secret"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -87,7 +88,8 @@ class UpdateItemRequest(BaseModel):
             "uri": obj.get("uri"),
             "uris": obj.get("uris"),
             "tags": obj.get("tags"),
-            "login": obj.get("login")
+            "login": obj.get("login"),
+            "secret": obj.get("secret")
         })
         return _obj
 

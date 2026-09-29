@@ -95,6 +95,20 @@ func WithLogin(raw []byte, login string) ([]byte, error) {
 	return pack(env)
 }
 
+// WithToken rotates the sealed secret — a changed password keeps its TOTP
+// seed, login, and passkey. A raw pre-envelope token upgrades to v1.
+// Blank tokens refuse: a rotate must never seal nothing.
+func WithToken(raw, token []byte) ([]byte, error) {
+	token = trim(token)
+	if len(token) == 0 {
+		return nil, fmt.Errorf("material: empty token")
+	}
+	env := Unpack(raw)
+	env.V = Version
+	env.Token = string(token)
+	return pack(env)
+}
+
 func PackOAuth(refresh, tokenURL, clientID, clientSecret []byte) ([]byte, error) {
 	return pack(Envelope{
 		V:         Version,

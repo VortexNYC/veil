@@ -588,7 +588,7 @@ func unionURIs(have, add []string) []string {
 	return out
 }
 
-func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login string) (protocol.Item, error) {
+func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
 	item, err := a.Store.Item(name)
 	if err != nil {
 		return protocol.Item{}, err
@@ -607,10 +607,16 @@ func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login
 		item.Tags = tags
 	}
 	raw := []byte(secret)
+	if len(token) > 0 {
+		raw, err = material.WithToken(raw, token)
+		if err != nil {
+			return protocol.Item{}, err
+		}
+	}
 	login = strings.TrimSpace(login)
 	if login != "" {
 		item.Login = login
-		raw, err = material.WithLogin([]byte(secret), login)
+		raw, err = material.WithLogin(raw, login)
 		if err != nil {
 			return protocol.Item{}, err
 		}

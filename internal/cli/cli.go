@@ -870,7 +870,7 @@ func itemCmd(home *string) *cobra.Command {
 				return err
 			}
 			defer a.Close()
-			item, err := a.UpdateItem(args[0], nil, updateURIs, tags, login)
+			item, err := a.UpdateItem(args[0], nil, updateURIs, tags, login, nil)
 			if err != nil {
 				return err
 			}

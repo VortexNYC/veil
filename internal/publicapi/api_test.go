@@ -633,6 +633,58 @@ func TestUpdateItemURIAddsWithoutDropping(t *testing.T) {
 	}
 }
 
+func TestUpdateItemSecretRotatesPassword(t *testing.T) {
+	const login = "ada@example.com"
+	const seed = "JBSWY3DPEHPK3PXP"
+	a := testApp(t)
+	srv := apiServer(t, a)
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+		Name:     "github",
+		URI:      "https://github.com",
+		Secret:   secret,
+		Login:    login,
+		TOTPSeed: seed,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	var item protocol.Item
+	if err := json.Unmarshal(raw, &item); err != nil {
+		t.Fatal(err)
+	}
+	code, raw = doJSON(t, srv, http.MethodPatch, "/v1/items/"+item.ID, "human", UpdateItemRequest{Secret: "rotated_pw"})
+	if code != http.StatusOK {
+		t.Fatalf("rotate %d %s", code, raw)
+	}
+	if scrub.Contains(raw, []byte("rotated_pw")) {
+		t.Fatal("patch response leaked secret")
+	}
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/fill/logins", "human", FillLoginsRequest{UUID: item.ID, MintTOTP: true})
+	if code != http.StatusOK {
+		t.Fatalf("fill %d %s", code, raw)
+	}
+	var filled struct {
+		Entries []struct {
+			Password string `json:"password"`
+			Login    string `json:"login"`
+			TOTP     string `json:"totp"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(raw, &filled); err != nil {
+		t.Fatal(err)
+	}
+	if len(filled.Entries) != 1 || filled.Entries[0].Password != "rotated_pw" || filled.Entries[0].Login != login {
+		t.Fatalf("rotate lost fields %+v", filled)
+	}
+	if len(filled.Entries[0].TOTP) != 6 {
+		t.Fatal("rotate dropped totp seed")
+	}
+	code, raw = doJSON(t, srv, http.MethodPatch, "/v1/items/"+item.ID, "human", UpdateItemRequest{Secret: "  "})
+	if code == http.StatusOK {
+		t.Fatalf("blank secret rotated silently %d %s", code, raw)
+	}
+}
+
 type fakeMembers struct {
 	owners  map[string]bool
 	members map[string]bool

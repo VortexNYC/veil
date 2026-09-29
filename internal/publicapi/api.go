@@ -123,10 +123,11 @@ type ImportResponse struct {
 }
 
 type UpdateItemRequest struct {
-	URI   string   `json:"uri,omitempty"`
-	URIs  []string `json:"uris,omitempty"`
-	Tags  []string `json:"tags,omitempty"`
-	Login string   `json:"login,omitempty"`
+	URI    string   `json:"uri,omitempty"`
+	URIs   []string `json:"uris,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
+	Login  string   `json:"login,omitempty"`
+	Secret string   `json:"secret,omitempty"`
 }
 
 type CreateGrantRequest struct {
@@ -413,7 +414,7 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	if in.URI != "" {
 		add = []string{in.URI}
 	}
-	item, err := s.App.UpdateItem(r.PathValue("name"), in.URIs, add, in.Tags, in.Login)
+	item, err := s.App.UpdateItem(r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret))
 	if err != nil {
 		http.Error(w, "update failed", http.StatusBadRequest)
 		return

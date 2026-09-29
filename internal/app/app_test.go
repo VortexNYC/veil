@@ -589,7 +589,7 @@ func TestFillLoginsUsesEnvelopeLoginNotName(t *testing.T) {
 	if len(got) != 1 || got[0].Login != login || got[0].Name != "stripe" || got[0].Password != secret {
 		t.Fatalf("%+v", got)
 	}
-	if _, err := a.UpdateItem("stripe", nil, nil, nil, "other@example.com"); err != nil {
+	if _, err := a.UpdateItem("stripe", nil, nil, nil, "other@example.com", nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err = a.FillLogins(human, "https://dashboard.stripe.com/login")
@@ -612,6 +612,51 @@ func TestFillLoginsUsesEnvelopeLoginNotName(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Login != "other@example.com" {
 		t.Fatalf("login should be on the item: %+v", items)
+	}
+}
+
+func TestUpdateItemSecretRotatesKeepsTOTP(t *testing.T) {
+	const login = "stripe@example.com"
+	const seed = "JBSWY3DPEHPK3PXP"
+	dir := t.TempDir()
+	a, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	item, err := a.PutItem(ItemOpts{
+		Name:     "stripe",
+		URI:      "https://dashboard.stripe.com",
+		Token:    []byte(secret),
+		Login:    login,
+		TOTPSeed: []byte(seed),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.UpdateItem(item.ID, nil, nil, nil, "", []byte("rotated_pw")); err != nil {
+		t.Fatal(err)
+	}
+	human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: DefaultHuman, OrgID: a.OrgID}
+	got, err := a.FillLogin(human, item.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "rotated_pw" || got.Login != login {
+		t.Fatalf("rotate lost fields: %+v", got)
+	}
+	if len(got.TOTP) != 6 {
+		t.Fatalf("rotate dropped totp seed: %+v", got)
+	}
+	if _, err := a.UpdateItem(item.ID, nil, nil, nil, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = a.FillLogin(human, item.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "rotated_pw" {
+		t.Fatalf("nil secret clobbered: %+v", got)
 	}
 }
 
@@ -798,21 +843,21 @@ func TestUpdateItemURIAddsWithoutDropping(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := a.UpdateItem("github", nil, []string{"https://github.com"}, nil, "")
+	got, err := a.UpdateItem("github", nil, []string{"https://github.com"}, nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got.URIs) != 2 || got.URIs[0] != "https://api.github.com" || got.URIs[1] != "https://github.com" {
 		t.Fatalf("add dropped a host: %+v", got.URIs)
 	}
-	again, err := a.UpdateItem("github", nil, []string{"https://github.com"}, nil, "")
+	again, err := a.UpdateItem("github", nil, []string{"https://github.com"}, nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(again.URIs) != 2 {
 		t.Fatalf("add duplicated: %+v", again.URIs)
 	}
-	replaced, err := a.UpdateItem("github", []string{"https://github.com"}, nil, nil, "")
+	replaced, err := a.UpdateItem("github", []string{"https://github.com"}, nil, nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

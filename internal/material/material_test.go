@@ -63,6 +63,42 @@ func TestPackRoundTrip(t *testing.T) {
 	}
 }
 
+func TestWithTokenRotatesKeepsRest(t *testing.T) {
+	raw, err := Pack([]byte("old_pass"), []byte(seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = WithLogin(raw, "user@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = WithToken(raw, []byte("new_pass"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := Unpack(raw)
+	if env.Token != "new_pass" || env.TOTP != seed || env.Login != "user@example.com" {
+		t.Fatalf("%+v", env)
+	}
+}
+
+func TestWithTokenUpgradesPlainToken(t *testing.T) {
+	raw, err := WithToken([]byte("sk_live_plain"), []byte("rotated"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := Unpack(raw)
+	if env.V != 1 || env.Token != "rotated" {
+		t.Fatalf("%+v", env)
+	}
+	if _, err := WithToken(raw, nil); err == nil {
+		t.Fatal("empty token rotated")
+	}
+	if _, err := WithToken(raw, []byte("  ")); err == nil {
+		t.Fatal("blank token rotated")
+	}
+}
+
 func TestMintMatchesPquerna(t *testing.T) {
 	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	got, err := Mint(seed, now)

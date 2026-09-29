@@ -122,9 +122,13 @@ export type UpdateItemRequest = {
     uris?: Array<string>;
     tags?: Array<string>;
     /**
-     * Fill username. Metadata on the item. Also sealed in the envelope. Does not rotate the secret.
+     * Fill username. Metadata on the item. Also sealed in the envelope.
      */
     login?: string;
+    /**
+     * Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone.
+     */
+    secret?: string;
 };
 export type CreateGrantRequest = {
     /**

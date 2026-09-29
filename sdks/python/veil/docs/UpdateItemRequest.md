@@ -8,7 +8,8 @@ Name | Type | Description | Notes
 **uri** | **str** | Add this autofill host. Does not drop existing hosts. | [optional] 
 **uris** | **List[str]** | Replace autofill hosts with this list. | [optional] 
 **tags** | **List[str]** |  | [optional] 
-**login** | **str** | Fill username. Metadata on the item. Also sealed in the envelope. Does not rotate the secret. | [optional] 
+**login** | **str** | Fill username. Metadata on the item. Also sealed in the envelope. | [optional] 
+**secret** | **str** | Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone. | [optional] 
 
 ## Example
 
