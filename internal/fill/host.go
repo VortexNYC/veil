@@ -147,7 +147,18 @@ func copyExecutable(src, dst string) error {
 	if sameFile(src, dst) {
 		return os.Chmod(dst, 0o755)
 	}
-	return os.WriteFile(dst, in, 0o755)
+	// Write-then-rename, never truncate in place: macOS caches a binary's
+	// code signature per inode, so rewriting the running host's file leaves
+	// a stale signature and the next exec is SIGKILLed at launch.
+	tmp := dst + ".new"
+	if err := os.WriteFile(tmp, in, 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func sameFile(a, b string) bool {

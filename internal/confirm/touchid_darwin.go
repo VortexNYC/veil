@@ -19,10 +19,9 @@ import (
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 
-static int veil_touchid(const char *reason) {
+static int veil_touchid_ctx(LAContext *ctx, const char *reason) {
 	__block int ok = 0;
 	dispatch_semaphore_t sema = dispatch_semaphore_create(0);
-	LAContext *ctx = [[LAContext alloc] init];
 	NSError *authError = nil;
 	if (![ctx canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:&authError]) {
 		return 0;
@@ -35,6 +34,7 @@ static int veil_touchid(const char *reason) {
 					dispatch_semaphore_signal(sema);
 				  }];
 	if (dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC)) != 0) {
+		[ctx invalidate];
 		return 0;
 	}
 	return ok;
@@ -102,25 +102,52 @@ static NSImage *veil_veil_mark(void) {
 
 @interface PWMAccessSheet : NSObject <NSWindowDelegate>
 @property(nonatomic) int result;
+@property(nonatomic) int finished;
+@property(nonatomic) int evaluating;
 @property(nonatomic, copy) NSString *why;
 @property(nonatomic, strong) NSWindow *win;
+@property(nonatomic, strong) LAContext *lac;
 @end
 
 @implementation PWMAccessSheet
+- (void)finish:(int)res {
+	if (self.finished) {
+		return;
+	}
+	self.finished = 1;
+	self.result = res;
+	[NSApp stopModal];
+}
+- (void)scan {
+	// The sensor IS the button — the sheet explains who is asking while
+	// evaluatePolicy runs. Cancel or a declined scan both finish 0.
+	if (self.finished || self.evaluating) {
+		return;
+	}
+	self.evaluating = 1;
+	LAContext *ctx = self.lac;
+	NSString *why = self.why;
+	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+		int ok = veil_touchid_ctx(ctx, why.UTF8String);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			self.evaluating = 0;
+			[self finish:ok];
+		});
+	});
+}
 - (void)cancel:(id)sender {
 	(void)sender;
-	self.result = 0;
-	[NSApp stopModal];
+	[self.lac invalidate];
+	[self finish:0];
 }
 - (void)authorize:(id)sender {
 	(void)sender;
-	self.result = veil_touchid(self.why.UTF8String) ? 1 : 0;
-	[NSApp stopModal];
+	[self scan];
 }
 - (BOOL)windowShouldClose:(NSWindow *)sender {
 	(void)sender;
-	self.result = 0;
-	[NSApp stopModal];
+	[self.lac invalidate];
+	[self finish:0];
 	return YES;
 }
 @end
@@ -144,6 +171,7 @@ static int veil_access(const char *action, const char *account, const char *reas
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		PWMAccessSheet *ctrl = [[PWMAccessSheet alloc] init];
 		ctrl.why = [NSString stringWithUTF8String:reason];
+		ctrl.lac = [[LAContext alloc] init];
 		NSRunningApplication *client = veil_client_app();
 		NSString *appName = client.localizedName.length ? client.localizedName : @"this app";
 		NSImage *clientIcon = client.icon ?: [NSImage imageWithSystemSymbolName:@"terminal" accessibilityDescription:nil];
@@ -235,6 +263,11 @@ static int veil_access(const char *action, const char *account, const char *reas
 		[win center];
 		[NSApp activateIgnoringOtherApps:YES];
 		[win makeKeyAndOrderFront:nil];
+		// Queued so the scan — and any instant reply — lands inside the modal
+		// session; a stopModal before runModalForWindow would never unwind it.
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[ctrl scan];
+		});
 		[NSApp runModalForWindow:win];
 		[win orderOut:nil];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
