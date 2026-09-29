@@ -13,6 +13,7 @@ import (
 
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/grant"
+	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/passgen"
 	"github.com/VortexNYC/veil/internal/protocol"
 )
@@ -32,6 +33,11 @@ type jsonMatchEntry struct {
 	HasPasskey bool     `json:"hasPasskey,omitempty"`
 	SavedFor   string   `json:"savedFor,omitempty"`
 	Affiliated bool     `json:"affiliated,omitempty"`
+	// Passkey identity fields — `list` only, for the AutoFill appex building
+	// ASPasskeyCredentialIdentity. Metadata, never the private key.
+	CredID     string `json:"credId,omitempty"`
+	RpID       string `json:"rpId,omitempty"`
+	UserHandle string `json:"userHandle,omitempty"`
 }
 
 type jsonFillEntry struct {
@@ -412,6 +418,12 @@ func (h *Host) jsonList() []jsonMatchEntry {
 		}
 		e := matchEntry(item)
 		e.URIs = item.URIs
+		if item.Kind == protocol.ItemPasskey && h.Replica != nil {
+			if raw := h.Replica.Material(item.ID); raw != "" {
+				env := material.Unpack([]byte(raw))
+				e.CredID, e.RpID, e.UserHandle = env.CredID, env.RpID, env.UserHandle
+			}
+		}
 		out = append(out, e)
 	}
 	return out

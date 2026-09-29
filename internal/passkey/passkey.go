@@ -50,7 +50,7 @@ type Credential struct {
 type CredentialResponse struct {
 	AttestationObject      string         `json:"attestationObject,omitempty"`
 	AuthenticatorData      string         `json:"authenticatorData"`
-	ClientDataJSON         string         `json:"clientDataJSON"`
+	ClientDataJSON         string         `json:"clientDataJSON,omitempty"`
 	PublicKey              string         `json:"publicKey,omitempty"`
 	PublicKeyAlgorithm     int            `json:"publicKeyAlgorithm,omitempty"`
 	Signature              string         `json:"signature,omitempty"`
@@ -77,6 +77,23 @@ type pubKeyJSON struct {
 	PubKeyCredParams   []algJSON  `json:"pubKeyCredParams"`
 	ExcludeCredentials []credJSON `json:"excludeCredentials"`
 	AllowCredentials   []credJSON `json:"allowCredentials"`
+	// ClientDataHash is the ASCredentialProvider transport: the OS owns
+	// clientDataJSON and hands the provider its SHA-256 to sign. When set,
+	// challenge is not required and no clientDataJSON is emitted.
+	ClientDataHash string `json:"clientDataHash,omitempty"`
+}
+
+// osClientHash decodes an AS-provided clientDataHash. Empty input means the
+// caller owns clientData (extension flow) — nil, no error.
+func osClientHash(pk pubKeyJSON) ([]byte, error) {
+	if pk.ClientDataHash == "" {
+		return nil, nil
+	}
+	h, err := DecodeB64(pk.ClientDataHash)
+	if err != nil || len(h) != sha256.Size {
+		return nil, fmt.Errorf("passkey: bad clientDataHash")
+	}
+	return h, nil
 }
 
 type rpJSON struct {
@@ -136,7 +153,11 @@ func Register(origin string, publicKey json.RawMessage, existing []Record, verif
 	if !allowsES256(pk.PubKeyCredParams) {
 		return Credential{}, Record{}, ErrNoSupportedAlgs
 	}
-	if pk.User.ID == "" || pk.Challenge == "" {
+	osHash, err := osClientHash(pk)
+	if err != nil {
+		return Credential{}, Record{}, ErrUnknown
+	}
+	if pk.User.ID == "" || (pk.Challenge == "" && osHash == nil) {
 		return Credential{}, Record{}, ErrUnknown
 	}
 	for _, ex := range pk.ExcludeCredentials {
@@ -174,19 +195,21 @@ func Register(origin string, publicKey json.RawMessage, existing []Record, verif
 		return Credential{}, Record{}, ErrUnknown
 	}
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-	client := clientData("webauthn.create", pk.Challenge, origin)
+	resp := CredentialResponse{
+		AttestationObject:  b64url(att),
+		AuthenticatorData:  b64url(short),
+		PublicKey:          b64url(spki),
+		PublicKeyAlgorithm: algES256,
+	}
+	if osHash == nil {
+		resp.ClientDataJSON = b64url(clientData("webauthn.create", pk.Challenge, origin))
+	}
 	cred := Credential{
 		AuthenticatorAttachment: "platform",
 		ID:                      credB64,
 		RawID:                   credB64,
 		Type:                    "public-key",
-		Response: CredentialResponse{
-			AttestationObject:  b64url(att),
-			AuthenticatorData:  b64url(short),
-			ClientDataJSON:     b64url(client),
-			PublicKey:          b64url(spki),
-			PublicKeyAlgorithm: algES256,
-		},
+		Response:                resp,
 	}
 	rec := Record{
 		PEM:        string(pemBytes),
@@ -217,7 +240,11 @@ func Assert(origin string, publicKey json.RawMessage, recs []Record, verified bo
 	if !rpIDOK(rpID, originHost) {
 		return Credential{}, ErrRPIDMismatch
 	}
-	if pk.Challenge == "" {
+	osHash, err := osClientHash(pk)
+	if err != nil {
+		return Credential{}, ErrUnknown
+	}
+	if pk.Challenge == "" && osHash == nil {
 		return Credential{}, ErrUnknown
 	}
 	var rec Record
@@ -241,27 +268,39 @@ func Assert(origin string, publicKey json.RawMessage, recs []Record, verified bo
 		return Credential{}, ErrUnknown
 	}
 	short := authData(rpID, flagUP|flagUV, nil, nil)
-	client := clientData("webauthn.get", pk.Challenge, origin)
-	clientHash := sha256.Sum256(client)
 	// ES256 is ECDSA-SHA256 over authenticatorData || SHA-256(clientDataJSON).
 	// SignASN1 takes a digest, not the raw concatenation — passing 69 bytes
 	// truncates to the first 32 of authenticatorData and an RP will reject it.
-	digest := sha256.Sum256(append(append([]byte{}, short...), clientHash[:]...))
+	// In the ASCredentialProvider flow the OS already hashed its clientData
+	// and hands us the digest — sign it as-is.
+	var clientHash []byte
+	var client []byte
+	if osHash != nil {
+		clientHash = osHash
+	} else {
+		client = clientData("webauthn.get", pk.Challenge, origin)
+		sum := sha256.Sum256(client)
+		clientHash = sum[:]
+	}
+	digest := sha256.Sum256(append(append([]byte{}, short...), clientHash...))
 	sig, err := ecdsa.SignASN1(rand.Reader, priv, digest[:])
 	if err != nil {
 		return Credential{}, ErrUnknown
+	}
+	resp := CredentialResponse{
+		AuthenticatorData: b64url(short),
+		Signature:         b64url(sig),
+		UserHandle:        rec.UserHandle,
+	}
+	if osHash == nil {
+		resp.ClientDataJSON = b64url(client)
 	}
 	return Credential{
 		AuthenticatorAttachment: "platform",
 		ID:                      rec.CredID,
 		RawID:                   rec.CredID,
 		Type:                    "public-key",
-		Response: CredentialResponse{
-			AuthenticatorData: b64url(short),
-			ClientDataJSON:    b64url(client),
-			Signature:         b64url(sig),
-			UserHandle:        rec.UserHandle,
-		},
+		Response:                resp,
 	}, 0
 }
 

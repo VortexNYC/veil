@@ -30,6 +30,16 @@ final class IdentitySync {
         }
     }
 
+    /// Host sends unpadded base64url for credId/userHandle.
+    private static func data(b64url: String) -> Data? {
+        var s = b64url
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let pad = (4 - s.count % 4) % 4
+        if pad > 0 { s += String(repeating: "=", count: pad) }
+        return Data(base64Encoded: s)
+    }
+
     /// Sync on launch and every few minutes — cheap `list` over the bridge.
     /// The store write is idempotent; replace-all keeps stale entries out.
     func start() {
@@ -58,24 +68,42 @@ final class IdentitySync {
                     return
                 }
                 var seen = Set<String>()
-                var identities: [ASPasswordCredentialIdentity] = []
-                for e in entries where (e["kind"] as? String) == "login" {
+                var identities: [any ASCredentialIdentity] = []
+                for e in entries {
+                    let kind = e["kind"] as? String
                     guard let uuid = e["uuid"] as? String, !uuid.isEmpty else { continue }
-                    let user = e["login"] as? String ?? ""
-                    let uris = e["uris"] as? [String] ?? []
-                    for raw in uris {
-                        // app:// entries are native-app bindings — the system
-                        // store only understands web service identifiers.
-                        guard let host = URL(string: raw)?.host?.lowercased(),
-                              let scheme = URL(string: raw)?.scheme,
-                              scheme == "http" || scheme == "https"
+                    if kind == "login" {
+                        let user = e["login"] as? String ?? ""
+                        let uris = e["uris"] as? [String] ?? []
+                        for raw in uris {
+                            // app:// entries are native-app bindings — the system
+                            // store only understands web service identifiers.
+                            guard let host = URL(string: raw)?.host?.lowercased(),
+                                  let scheme = URL(string: raw)?.scheme,
+                                  scheme == "http" || scheme == "https"
+                            else { continue }
+                            guard seen.insert(host + "|" + user + "|" + uuid).inserted else { continue }
+                            identities.append(ASPasswordCredentialIdentity(
+                                serviceIdentifier: ASCredentialServiceIdentifier(
+                                    identifier: host, type: .domain,
+                                ),
+                                user: user,
+                                recordIdentifier: uuid,
+                            ))
+                        }
+                    } else if kind == "passkey" {
+                        // rpId + credId + userHandle come from the replica's
+                        // sealed material — metadata only, never the key.
+                        guard let rpID = e["rpId"] as? String, !rpID.isEmpty,
+                              let credID = Self.data(b64url: e["credId"] as? String ?? ""),
+                              let handle = Self.data(b64url: e["userHandle"] as? String ?? "")
                         else { continue }
-                        guard seen.insert(host + "|" + user + "|" + uuid).inserted else { continue }
-                        identities.append(ASPasswordCredentialIdentity(
-                            serviceIdentifier: ASCredentialServiceIdentifier(
-                                identifier: host, type: .domain,
-                            ),
-                            user: user,
+                        guard seen.insert(rpID + "|" + uuid).inserted else { continue }
+                        identities.append(ASPasskeyCredentialIdentity(
+                            relyingPartyIdentifier: rpID,
+                            userName: e["login"] as? String ?? "",
+                            credentialID: credID,
+                            userHandle: handle,
                             recordIdentifier: uuid,
                         ))
                     }

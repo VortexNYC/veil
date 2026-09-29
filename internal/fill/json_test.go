@@ -1274,3 +1274,56 @@ func TestJSONMatchNeverCarriesURIs(t *testing.T) {
 		t.Fatalf("match must not carry uris: %s", raw)
 	}
 }
+
+// The AutoFill appex builds ASPasskeyCredentialIdentity from `list`: it needs
+// credId/rpId/userHandle metadata. The private key never leaves the replica.
+func TestJSONListPasskeyIdentityFields(t *testing.T) {
+	dir := t.TempDir()
+	key, err := replica.Unlock(replica.Mem())
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := replica.Open(replica.Path(dir), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const pem = "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----"
+	blob, err := material.PackPasskey(pem, "cred-abc", "github.com", "u-handle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := protocol.Item{ID: "pk1", Name: "github.com", Kind: protocol.ItemPasskey, URIs: []string{"https://github.com"}, Login: "ada"}
+	if err := box.Put(item, blob); err != nil {
+		t.Fatal(err)
+	}
+	if err := box.Put(protocol.Item{ID: "gh", Name: "gh", Kind: protocol.ItemAPIKey, URIs: []string{"https://github.com"}}, []byte(`{"v":1,"token":"x"}`)); err != nil {
+		t.Fatal(err)
+	}
+	h := NewOrigin(dir, "http://127.0.0.1:1", "human")
+	h.Replica = box
+
+	raw := jsonHandle(t, h, map[string]string{"action": "list"})
+	if bytes.Contains(raw, []byte("PRIVATE KEY")) || strings.Contains(string(raw), pem[:30]) {
+		t.Fatalf("list leaked passkey material: %s", raw)
+	}
+	var out struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	var pk *jsonMatchEntry
+	for i := range out.Entries {
+		if out.Entries[i].UUID == "pk1" {
+			pk = &out.Entries[i]
+		}
+	}
+	if pk == nil || pk.CredID != "cred-abc" || pk.RpID != "github.com" || pk.UserHandle != "u-handle" {
+		t.Fatalf("passkey identity fields %s", raw)
+	}
+	for _, e := range out.Entries {
+		if e.Kind != "passkey" && (e.CredID != "" || e.RpID != "") {
+			t.Fatalf("non-passkey entry carried passkey fields: %+v", e)
+		}
+	}
+}

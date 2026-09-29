@@ -109,3 +109,108 @@ func TestLocalhostHTTPAllowed(t *testing.T) {
 		t.Fatalf("localhost %d %+v", code, rec)
 	}
 }
+
+// ASCredentialProvider flow: the OS owns clientDataJSON and hands the
+// provider a clientDataHash. Assert signs authData || hash directly and
+// returns no clientDataJSON — the OS has the real one.
+func TestAssertClientDataHash(t *testing.T) {
+	origin := "https://github.com"
+	create := creationPK(t, "dGVzdGNoYWxsZW5nZQ", "github.com", "dXNlcg", []int{algES256})
+	_, rec, code := Register(origin, create, nil, true)
+	if code != 0 {
+		t.Fatalf("register %d", code)
+	}
+	hash := sha256.Sum256([]byte("os-client-data"))
+	pk := pubKeyJSON{
+		RpID:             "github.com",
+		AllowCredentials: []credJSON{{ID: rec.CredID, Type: "public-key"}},
+		ClientDataHash:   b64url(hash[:]),
+	}
+	raw, err := json.Marshal(pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, code := Assert(origin, raw, []Record{rec}, true)
+	if code != 0 {
+		t.Fatalf("assert %d", code)
+	}
+	if got.Response.ClientDataJSON != "" {
+		t.Fatal("hash mode must not emit clientDataJSON")
+	}
+	priv, err := parsePEM(rec.PEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := DecodeB64(got.Response.AuthenticatorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := DecodeB64(got.Response.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(append(append([]byte{}, auth...), hash[:]...))
+	if !ecdsa.VerifyASN1(&priv.PublicKey, digest[:], sig) {
+		t.Fatal("signature must cover authData || clientDataHash")
+	}
+}
+
+func TestAssertClientDataHashBadSize(t *testing.T) {
+	origin := "https://github.com"
+	create := creationPK(t, "dGVzdGNoYWxsZW5nZQ", "github.com", "dXNlcg", []int{algES256})
+	_, rec, code := Register(origin, create, nil, true)
+	if code != 0 {
+		t.Fatalf("register %d", code)
+	}
+	pk := pubKeyJSON{
+		RpID:           "github.com",
+		ClientDataHash: b64url([]byte("short")),
+	}
+	raw, err := json.Marshal(pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, code := Assert(origin, raw, []Record{rec}, true); code != ErrUnknown {
+		t.Fatalf("short hash %d", code)
+	}
+}
+
+func TestAssertHashModeNoChallengeOK(t *testing.T) {
+	origin := "https://github.com"
+	create := creationPK(t, "dGVzdGNoYWxsZW5nZQ", "github.com", "dXNlcg", []int{algES256})
+	_, rec, code := Register(origin, create, nil, true)
+	if code != 0 {
+		t.Fatalf("register %d", code)
+	}
+	// without clientDataHash a missing challenge still fails
+	if _, code := Assert(origin, requestPK(t, "", "github.com", rec.CredID), []Record{rec}, true); code == 0 {
+		t.Fatal("challenge required without clientDataHash")
+	}
+}
+
+func TestRegisterClientDataHash(t *testing.T) {
+	hash := sha256.Sum256([]byte("os-client-data"))
+	pk := pubKeyJSON{
+		RP:               rpJSON{ID: "github.com", Name: "github.com"},
+		User:             userJSON{ID: "dXNlcg", Name: "ada", DisplayName: "Ada"},
+		PubKeyCredParams: []algJSON{{Type: "public-key", Alg: algES256}},
+		ClientDataHash:   b64url(hash[:]),
+	}
+	raw, err := json.Marshal(pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred, rec, code := Register("https://github.com", raw, nil, true)
+	if code != 0 {
+		t.Fatalf("register %d", code)
+	}
+	if rec.CredID == "" || rec.RpID != "github.com" || rec.UserName != "ada" {
+		t.Fatalf("%+v", rec)
+	}
+	if cred.Response.ClientDataJSON != "" {
+		t.Fatal("hash mode must not emit clientDataJSON")
+	}
+	if cred.Response.AttestationObject == "" {
+		t.Fatal("attestation required")
+	}
+}

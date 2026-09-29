@@ -164,4 +164,20 @@ final class FillBridge {
     func relock() {
         _ = try? roundTrip(["action": "relock"])
     }
+
+    /// Passkey assertion — the host confirms (Touch ID) and returns the
+    /// WebAuthn credential JSON under "response". The appex signs an
+    /// OS-provided clientDataHash: publicKey carries `clientDataHash`
+    /// instead of `challenge`.
+    func passkeyGet(origin: String, publicKey: [String: Any]) throws -> [String: Any]? {
+        let reply = try roundTrip(["action": "passkeyGet", "origin": origin, "publicKey": publicKey])
+        return reply["response"] as? [String: Any]
+    }
+
+    /// Passkey registration — same confirm gate, response carries the
+    /// attestation object and new credential id.
+    func passkeyRegister(origin: String, publicKey: [String: Any]) throws -> [String: Any]? {
+        let reply = try roundTrip(["action": "passkeyCreate", "origin": origin, "publicKey": publicKey])
+        return reply["response"] as? [String: Any]
+    }
 }
