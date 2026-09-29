@@ -149,6 +149,79 @@ func TestUnlockRejectsNilStore(t *testing.T) {
 	}
 }
 
+func TestAttachMemIsVolatile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VEIL_REPLICA_KEYSTORE", "mem")
+	key, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := Open(Path(dir), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := box.Put(protocol.Item{ID: "old", Name: "old"}, []byte(`{"v":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := Attach(dir)
+	if v == nil {
+		t.Fatal("mem attach")
+	}
+	if v.Len() != 0 {
+		t.Fatalf("volatile vault read the disk box: %d", v.Len())
+	}
+	if err := v.Put(protocol.Item{ID: "x", Name: "x"}, []byte(`{"v":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("volatile vault rewrote replica.box")
+	}
+}
+
+func TestOpenOrRecoverStaleBox(t *testing.T) {
+	dir := t.TempDir()
+	keyA, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyB, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := Open(Path(dir), keyA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Put(protocol.Item{ID: "stale", Name: "stale"}, []byte(`{"v":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := openOrRecover(Path(dir), keyB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Len() != 0 {
+		t.Fatalf("recovered vault kept stale rows: %d", got.Len())
+	}
+	if err := got.Put(protocol.Item{ID: "fresh", Name: "fresh"}, []byte(`{"v":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(Path(dir), keyB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Material("fresh") == "" || reopened.Material("stale") != "" {
+		t.Fatal("reopened box")
+	}
+}
+
 func TestPath(t *testing.T) {
 	if filepath.Base(Path("/tmp/veil")) != FileName {
 		t.Fatal(Path("/tmp/veil"))

@@ -27,6 +27,9 @@ func (h *Host) PullReplica() error {
 		return errGenerateCreate
 	}
 	for _, row := range out.Items {
+		if row.Item.ID == "" || row.Material == "" {
+			continue
+		}
 		if err := h.Replica.Put(row.Item, []byte(row.Material)); err != nil {
 			return err
 		}

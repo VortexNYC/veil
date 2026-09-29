@@ -74,6 +74,42 @@ func Open(path string, key []byte) (*Vault, error) {
 	return v, nil
 }
 
+// Attach opens the replica vault for dir under the platform keystore. A
+// volatile keystore (VEIL_REPLICA_KEYSTORE=mem) gets an in-memory vault that
+// never reads or writes replica.box — its key dies with the process, so any
+// box it sealed would be unreadable next boot. On disk, a box that fails to
+// open (stale key, corrupt bytes) is removed and re-created; origin is truth
+// and the next pull repopulates.
+func Attach(dir string) *Vault {
+	ks := Platform()
+	if ks == nil {
+		return nil
+	}
+	if _, volatile := ks.(*mem); volatile {
+		return &Vault{rows: []Row{}}
+	}
+	key, err := Unlock(ks)
+	if err != nil {
+		return nil
+	}
+	v, err := openOrRecover(Path(dir), key)
+	if err != nil {
+		return nil
+	}
+	return v
+}
+
+func openOrRecover(path string, key []byte) (*Vault, error) {
+	v, err := Open(path, key)
+	if err == nil {
+		return v, nil
+	}
+	if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
+		return nil, err
+	}
+	return Open(path, key)
+}
+
 func (v *Vault) Close() {
 	if v == nil {
 		return
@@ -141,6 +177,9 @@ func (v *Vault) Put(item protocol.Item, material []byte) error {
 }
 
 func (v *Vault) flush() error {
+	if v.path == "" {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(v.path), 0o700); err != nil {
 		return err
 	}

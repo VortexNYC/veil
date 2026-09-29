@@ -2280,18 +2280,6 @@ func fillConfigDirs() []string {
 }
 
 func attachFillReplica(h *fill.Host, dir string) {
-	ks := replica.Platform()
-	if ks == nil {
-		return
-	}
-	key, err := replica.Unlock(ks)
-	if err != nil {
-		return
-	}
-	v, err := replica.Open(replica.Path(dir), key)
-	if err != nil {
-		return
-	}
-	h.Replica = v
+	h.Replica = replica.Attach(dir)
 	_ = h.PullReplica()
 }

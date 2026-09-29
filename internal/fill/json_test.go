@@ -287,6 +287,39 @@ func TestJSONReplicaFillDoesNotCallOriginAndHidesDisk(t *testing.T) {
 	}
 }
 
+func TestPullReplicaSkipsEmptyMaterial(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/fill/sync" {
+			http.Error(w, "nope", http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(publicapi.FillSyncResponse{Items: []publicapi.FillSyncItem{
+			{Item: protocol.Item{ID: "dead", Name: "dead", Kind: protocol.ItemAPIKey}, Material: ""},
+			{Item: protocol.Item{ID: "live", Name: "live", Kind: protocol.ItemAPIKey}, Material: `{"v":1,"token":"x"}`},
+		}})
+	}))
+	t.Cleanup(srv.Close)
+	key, err := replica.Unlock(replica.Mem())
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := replica.Open(replica.Path(t.TempDir()), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	h.Replica = box
+	if err := h.PullReplica(); err != nil {
+		t.Fatal(err)
+	}
+	if box.Material("live") == "" {
+		t.Fatal("valid row did not land")
+	}
+	if box.Material("dead") != "" || box.Len() != 1 {
+		t.Fatalf("empty material landed: %d", box.Len())
+	}
+}
+
 func TestJSONFillUnambiguousUUIDOmitted(t *testing.T) {
 	a, err := app.Init(t.TempDir())
 	if err != nil {
