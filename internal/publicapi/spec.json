@@ -775,6 +775,48 @@
         }
       }
     },
+    "/v1/report": {
+      "get": {
+        "operationId": "vaultReport",
+        "tags": [
+          "Human"
+        ],
+        "summary": "Vault health report \u2014 weak, reused, optionally breached passwords across items the human can see. Metadata only; never secrets. hibp=1 opts into k-anonymity breach lookup.",
+        "parameters": [
+          {
+            "name": "hibp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "true"
+              ]
+            },
+            "description": "Opt into HaveIBeenPwned k-anonymity breach counts (5-char SHA-1 prefix only)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health report for the Bearer human's visible items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not a human principal"
+          }
+        }
+      }
+    },
     "/v1/provision": {
       "post": {
         "operationId": "provision",
@@ -2194,6 +2236,80 @@
             "description": "Fresh hosted Vortex checkout URL for this org \u2014 navigate immediately, single-use"
           }
         }
+      },
+      "VaultReport": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "integer"
+          },
+          "weak": {
+            "type": "integer"
+          },
+          "reused": {
+            "type": "integer"
+          },
+          "pwned": {
+            "type": "integer"
+          },
+          "hibp": {
+            "type": "string",
+            "enum": [
+              "off",
+              "ok",
+              "error"
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VaultReportFinding"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "weak",
+          "reused",
+          "pwned",
+          "hibp",
+          "findings"
+        ]
+      },
+      "VaultReportFinding": {
+        "type": "object",
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "weak": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reused": {
+            "type": "integer"
+          },
+          "pwned": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "kind",
+          "pwned"
+        ]
       }
     }
   }

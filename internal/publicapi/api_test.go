@@ -1818,3 +1818,54 @@ func TestAuditFeedEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestVaultReportHumanMetadataOnly(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: "self", OrgID: protocol.LocalOrgID}
+	const tok = "password"
+	if _, err := a.PutItemFor(human, app.ItemOpts{Name: "bad-login", URI: "https://ex.com", Token: []byte(tok)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.PutItemFor(human, app.ItemOpts{Name: "good-login", Token: []byte("Xk9#mQ2$vLp8!zRw")}); err != nil {
+		t.Fatal(err)
+	}
+	code, raw := doJSON(t, srv, http.MethodGet, "/v1/report", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if bytes.Contains(raw, []byte(tok)) || bytes.Contains(raw, []byte("Xk9#mQ2")) {
+		t.Fatal("report leaked secret material")
+	}
+	var rep struct {
+		Items, Weak, Reused, Pwned int
+		HIBP                       string
+		Findings                   []struct {
+			ItemID, Name string
+			Weak         []string
+		}
+	}
+	if err := json.Unmarshal(raw, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Items != 2 || rep.Weak != 1 || rep.HIBP != "off" {
+		t.Fatalf("%s", raw)
+	}
+	if len(rep.Findings) != 1 || rep.Findings[0].Name != "bad-login" {
+		t.Fatalf("%s", raw)
+	}
+}
+
+func TestVaultReportAgentDenied(t *testing.T) {
+	a := testApp(t)
+	if _, err := a.AddAgent("claude"); err != nil {
+		t.Fatal(err)
+	}
+	srv := apiServer(t, a)
+	if code, _ := doJSON(t, srv, http.MethodGet, "/v1/report", "agent", nil); code != http.StatusForbidden {
+		t.Fatalf("agent: %d", code)
+	}
+	if code, _ := doJSON(t, srv, http.MethodGet, "/v1/report", "bad", nil); code != http.StatusUnauthorized {
+		t.Fatalf("anon: %d", code)
+	}
+}

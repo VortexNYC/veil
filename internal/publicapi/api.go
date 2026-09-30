@@ -24,6 +24,7 @@ import (
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
+	"github.com/VortexNYC/veil/internal/health"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/oneimport"
 	"github.com/VortexNYC/veil/internal/protocol"
@@ -296,6 +297,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
 	mux.HandleFunc("POST /v1/requests/{id}/deny", s.denyRequest)
 	mux.HandleFunc("GET /v1/events", s.listEvents)
+	mux.HandleFunc("GET /v1/report", s.vaultReport)
 	mux.HandleFunc("GET /v1/audit/events", s.auditFeed)
 	mux.HandleFunc("GET /v1/billing", s.getBilling)
 	mux.HandleFunc("POST /v1/billing/checkout", s.postBillingCheckout)
@@ -1120,6 +1122,29 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 		mine = mine[n-100:]
 	}
 	writeJSON(w, EventsResponse{Events: mine})
+}
+
+// vaultReport is the vault health report — weak, reused, and optionally
+// breached passwords across the items the human can see. The response is
+// metadata only (item ids, names, flags, counts); no secret material leaves.
+// ?hibp=1 opts into the k-anonymity breach lookup against HIBP — origin sends
+// the 5-char SHA-1 prefix only.
+func (s *Server) vaultReport(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var check health.Checker
+	switch r.URL.Query().Get("hibp") {
+	case "1", "true":
+		check = health.HIBP{}.Check
+	}
+	rep, err := s.App.SecurityReport(r.Context(), p, check)
+	if err != nil {
+		http.Error(w, "report failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, rep)
 }
 
 // auditFeed is the customer-facing SIEM export (VEIL-55): owner-only,

@@ -68,6 +68,8 @@ __all__ = [
     "UpdateItemRequest",
     "UseRequest",
     "UseResponse",
+    "VaultReport",
+    "VaultReportFinding",
 ]
 
 # import apis into sdk package
@@ -125,4 +127,6 @@ from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest
 from veil.models.use_request import UseRequest as UseRequest
 from veil.models.use_response import UseResponse as UseResponse
+from veil.models.vault_report import VaultReport as VaultReport
+from veil.models.vault_report_finding import VaultReportFinding as VaultReportFinding
 

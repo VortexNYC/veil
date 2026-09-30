@@ -20,6 +20,7 @@ import (
 
 	"github.com/VortexNYC/veil/identity/glue"
 	"github.com/VortexNYC/veil/internal/app"
+	"github.com/VortexNYC/veil/internal/health"
 	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/publicapi"
@@ -638,4 +639,26 @@ func originAgentRevoke(cmd *cobra.Command, id string) error {
 		return err
 	}
 	return encode(cmd, agent)
+}
+
+// originReport fetches the vault health report from origin. Human mint; the
+// response is metadata only.
+func originReport(cmd *cobra.Command, hibp bool) error {
+	tok, err := originOwnerToken(cmd.Context())
+	if err != nil {
+		return err
+	}
+	path := "/v1/report"
+	if hibp {
+		path += "?hibp=1"
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, path, tok, nil)
+	if err != nil {
+		return err
+	}
+	var rep health.Report
+	if err := json.Unmarshal(raw, &rep); err != nil {
+		return err
+	}
+	return encode(cmd, rep)
 }

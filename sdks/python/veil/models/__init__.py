@@ -49,4 +49,6 @@ from veil.models.sessions_response import SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest
 from veil.models.use_request import UseRequest
 from veil.models.use_response import UseResponse
+from veil.models.vault_report import VaultReport
+from veil.models.vault_report_finding import VaultReportFinding
 

@@ -353,6 +353,23 @@ export type BillingCheckout = {
      */
     checkout_url: string;
 };
+export type VaultReport = {
+    items: number;
+    weak: number;
+    reused: number;
+    pwned: number;
+    hibp: 'off' | 'ok' | 'error';
+    findings: Array<VaultReportFinding>;
+};
+export type VaultReportFinding = {
+    item_id: string;
+    name: string;
+    kind: string;
+    uri?: string;
+    weak?: Array<string>;
+    reused?: number;
+    pwned: number;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -883,6 +900,34 @@ export type ListEventsResponses = {
     200: EventsResponse;
 };
 export type ListEventsResponse = ListEventsResponses[keyof ListEventsResponses];
+export type VaultReportData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Opt into HaveIBeenPwned k-anonymity breach counts (5-char SHA-1 prefix only).
+         */
+        hibp?: '1' | 'true';
+    };
+    url: '/v1/report';
+};
+export type VaultReportErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not a human principal
+     */
+    403: unknown;
+};
+export type VaultReportResponses = {
+    /**
+     * Health report for the Bearer human's visible items
+     */
+    200: VaultReport;
+};
+export type VaultReportResponse = VaultReportResponses[keyof VaultReportResponses];
 export type ProvisionData = {
     body?: never;
     path?: never;

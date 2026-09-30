@@ -908,6 +908,11 @@ var listEvents = (options) => (options?.client ?? client).get({
   url: "/v1/events",
   ...options
 });
+var vaultReport = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/report",
+  ...options
+});
 var provision = (options) => (options?.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/provision",
@@ -1003,5 +1008,6 @@ export {
   revokeAgent,
   streamRequests,
   updateItem,
-  useItem
+  useItem,
+  vaultReport
 };

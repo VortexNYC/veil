@@ -34,6 +34,7 @@ export {
   streamRequests,
   updateItem,
   useItem,
+  vaultReport,
 } from "./sdk.gen";
 export type {
   Agent,
@@ -193,6 +194,12 @@ export type {
   UseItemResponses,
   UseRequest,
   UseResponse,
+  VaultReport,
+  VaultReportData,
+  VaultReportErrors,
+  VaultReportFinding,
+  VaultReportResponse,
+  VaultReportResponses,
 } from "./types.gen";
 export { createClient } from "./client";
 export type { Config } from "./client";

@@ -520,6 +520,38 @@ paths:
         \ Not MCP."
       tags:
       - Agent
+  /v1/report:
+    get:
+      operationId: vaultReport
+      parameters:
+      - description: Opt into HaveIBeenPwned k-anonymity breach counts (5-char SHA-1
+          prefix only).
+        explode: true
+        in: query
+        name: hibp
+        required: false
+        schema:
+          enum:
+          - "1"
+          - "true"
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultReport"
+          description: Health report for the Bearer human's visible items
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not a human principal
+      summary: "Vault health report — weak, reused, optionally breached passwords\
+        \ across items the human can see. Metadata only; never secrets. hibp=1 opts\
+        \ into k-anonymity breach lookup."
+      tags:
+      - Human
   /v1/provision:
     post:
       operationId: provision
@@ -1861,6 +1893,93 @@ components:
           type: string
       required:
       - checkout_url
+    VaultReport:
+      example:
+        items: 0
+        weak: 6
+        reused: 1
+        pwned: 5
+        hibp: "off"
+        findings:
+        - item_id: item_id
+          name: name
+          kind: kind
+          uri: uri
+          weak:
+          - weak
+          - weak
+          reused: 5
+          pwned: 2
+        - item_id: item_id
+          name: name
+          kind: kind
+          uri: uri
+          weak:
+          - weak
+          - weak
+          reused: 5
+          pwned: 2
+      properties:
+        items:
+          type: integer
+        weak:
+          type: integer
+        reused:
+          type: integer
+        pwned:
+          type: integer
+        hibp:
+          enum:
+          - "off"
+          - ok
+          - error
+          type: string
+        findings:
+          items:
+            $ref: "#/components/schemas/VaultReportFinding"
+          type: array
+          default: null
+      required:
+      - findings
+      - hibp
+      - items
+      - pwned
+      - reused
+      - weak
+    VaultReportFinding:
+      example:
+        item_id: item_id
+        name: name
+        kind: kind
+        uri: uri
+        weak:
+        - weak
+        - weak
+        reused: 5
+        pwned: 2
+      properties:
+        item_id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        uri:
+          type: string
+        weak:
+          items:
+            type: string
+          type: array
+          default: null
+        reused:
+          type: integer
+        pwned:
+          type: integer
+      required:
+      - item_id
+      - kind
+      - name
+      - pwned
     removeMember_200_response:
       example:
         removed: true

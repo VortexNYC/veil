@@ -33,6 +33,7 @@ import (
 	"github.com/VortexNYC/veil/internal/confirm"
 	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/fill"
+	"github.com/VortexNYC/veil/internal/health"
 	"github.com/VortexNYC/veil/internal/human"
 	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/material"
@@ -85,6 +86,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(sweepCmd(&home))
 	root.AddCommand(monitorCmd())
 	root.AddCommand(auditExportCmd())
+	root.AddCommand(reportCmd(&home))
 	root.AddCommand(keyCmd())
 	return root
 }
@@ -2282,4 +2284,39 @@ func fillConfigDirs() []string {
 func attachFillReplica(h *fill.Host, dir string) {
 	h.Replica = replica.Attach(dir)
 	_ = h.PullReplica()
+}
+
+// reportCmd is the vault health report — weak, reused, optionally breached.
+// Human surface only; prints metadata, never secrets.
+func reportCmd(home *string) *cobra.Command {
+	var hibp bool
+	c := &cobra.Command{
+		Use:   "report",
+		Short: "Vault health: weak, reused, breached passwords. Human only. Not MCP.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originReport(cmd, hibp)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			var check health.Checker
+			if hibp {
+				check = health.HIBP{}.Check
+			}
+			rep, err := a.SecurityReport(cmd.Context(), protocol.Principal{
+				Kind:  protocol.PrincipalHuman,
+				ID:    app.DefaultHuman,
+				OrgID: a.OrgID,
+			}, check)
+			if err != nil {
+				return err
+			}
+			return encode(cmd, rep)
+		},
+	}
+	c.Flags().BoolVar(&hibp, "hibp", false, "opt into HIBP k-anonymity breach counts (5-char SHA-1 prefix only)")
+	return c
 }

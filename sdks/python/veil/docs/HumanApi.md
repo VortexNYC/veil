@@ -11,6 +11,7 @@ Method | HTTP request | Description
 [**promote_owner**](HumanApi.md#promote_owner) | **POST** /v1/members/{id}/owner | Grant an existing member the owners tuple. Owner-only. Not MCP.
 [**provision**](HumanApi.md#provision) | **POST** /v1/provision | Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 [**remove_member**](HumanApi.md#remove_member) | **DELETE** /v1/members/{id} | Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member&#39;s token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.
+[**vault_report**](HumanApi.md#vault_report) | **GET** /v1/report | Vault health report — weak, reused, optionally breached passwords across items the human can see. Metadata only; never secrets. hibp&#x3D;1 opts into k-anonymity breach lookup.
 
 
 # **create_invite**
@@ -549,6 +550,84 @@ Name | Type | Description  | Notes
 **401** | missing or invalid human token |  -  |
 **403** | caller is a member, not an owner |  -  |
 **404** | not a member of this org |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **vault_report**
+> VaultReport vault_report(hibp=hibp)
+
+Vault health report — weak, reused, optionally breached passwords across items the human can see. Metadata only; never secrets. hibp=1 opts into k-anonymity breach lookup.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.vault_report import VaultReport
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.HumanApi(api_client)
+    hibp = 'hibp_example' # str | Opt into HaveIBeenPwned k-anonymity breach counts (5-char SHA-1 prefix only). (optional)
+
+    try:
+        # Vault health report — weak, reused, optionally breached passwords across items the human can see. Metadata only; never secrets. hibp=1 opts into k-anonymity breach lookup.
+        api_response = api_instance.vault_report(hibp=hibp)
+        print("The response of HumanApi->vault_report:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling HumanApi->vault_report: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **hibp** | **str**| Opt into HaveIBeenPwned k-anonymity breach counts (5-char SHA-1 prefix only). | [optional] 
+
+### Return type
+
+[**VaultReport**](VaultReport.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Health report for the Bearer human&#39;s visible items |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not a human principal |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
