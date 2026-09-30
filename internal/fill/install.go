@@ -104,6 +104,8 @@ func InstallBridgeAgent(env InstallEnv) error {
 	<dict>
 		<key>VEIL_REPLICA_KEYSTORE</key>
 		<string>mem</string>
+		<key>VEIL_FILL_DEBUG</key>
+		<string>1</string>
 	</dict>
 	<key>StandardOutPath</key>
 	<string>%s</string>

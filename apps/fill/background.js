@@ -127,6 +127,17 @@ function hostSend(msg, timeoutMs) {
     };
     const timer = setTimeout(function () {
       waiters.delete(id);
+      // A timed-out send with nothing else in flight means the native
+      // channel is probably dead — Safari doesn't always fire
+      // onDisconnect when the appex recycles, so every later postMessage
+      // would vanish the same way. Reset the port; the next send opens a
+      // fresh channel.
+      if (waiters.size === 0 && port) {
+        try {
+          port.disconnect();
+        } catch (e) {}
+        port = null;
+      }
       wait.reject(new Error("host timeout"));
     }, ms);
     waiters.set(id, wait);
