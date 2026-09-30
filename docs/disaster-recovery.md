@@ -107,20 +107,21 @@ Verified counts: 291 items · 33 grants · 1614 audit · 6 agents ·
    live prod vars, not just "a file exists."*
 2. **Escrow coverage gap** — kratos `SECRETS_CIPHER`/`SECRETS_COOKIE`,
    `COURIER_*`, `RESEND_API_KEY`, hydra `OIDC_*` salt, glue `BOOTSTRAP_*`,
-   and the `VEIL_VORTEX_*` billing vars are NOT escrowed anywhere. Drill
-   generated fresh values; in real DR sessions/cookies invalidate and
-   pairwise subs drift — recoverable via re-login, but must be
-   documented. Action: add all to escrow + the custody log.
+   and the `VEIL_VORTEX_*` billing vars were NOT escrowed anywhere.
+   FIXED: full per-service env snapshot (235 vars, 11 services) now lives
+   at `~/.config/vortex/veil-env-escrow.json` (mode 600) and 1Password
+   `Veil prod env (escrow)` in Agents. Re-snapshot when vars change —
+   stale escrow is the finding this section exists to prevent.
 3. **`config apply` is all-or-nothing on volume size** — fresh Postgres
    provisions a 5GB volume; IaC's `sizeMB: 500` is a forbidden shrink
    that failed the ENTIRE change-set (24 opaque "change" errors — the
-   real reason sits in `--json` diagnostics only). Fresh-project applies
-   need `sizeMB: 5000` for postgres-volume.
-4. **IaC doesn't carry repo sources** — the file relied on imported
+   real reason sits in `--json` diagnostics only). FIXED: IaC now
+   declares `sizeMB: 5000` (matches fresh provision, grew prod too).
+4. **IaC didn't carry repo sources** — the file relied on imported
    state; fresh services were created sourceless and failed silently.
-   Drill file needed `source: github("VortexNYC/veil")` on every
-   Dockerfile-built service. Decision: add `github()` sources to the
-   prod file so the IaC is self-bootstrapping (harmless on prod).
+   FIXED: `source: github("VortexNYC/veil", {branch:"main"})` now
+   declared on all 10 Dockerfile-built services — the file is
+   self-bootstrapping on an empty project.
 5. **Custom domains can't be IaC-registered** — expected; the runbook's
    DNS step (Cloudflare re-point) is the real path.
 6. **WAL namespace collision risk** — a second cluster streaming to the

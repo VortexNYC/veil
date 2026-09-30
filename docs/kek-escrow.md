@@ -66,3 +66,12 @@ documented interim custodian beats none.
 |---|---|---|---|---|
 | 2026-09-23 | full key | founder | local escrow file + 1P vault | unwrap drill pass |
 | 2026-09-30 | full key | founder | (same — verified live) | drillrestore PASS |
+| 2026-09-30 | env snapshot | founder | `~/.config/vortex/veil-env-escrow.json` + 1P `Veil prod env (escrow)` | VEIL-73 drill — SECRETS_SYSTEM truncated entry found & fixed |
+
+Note the escrow now covers more than the KEK: `veil-env-escrow.json` is a
+full per-service var snapshot (235 vars, 11 services) including kratos
+cipher/cookie secrets, hydra `SECRETS_SYSTEM` (the full rotation list —
+verified 2026-09-30 after the drill caught a 48/97-char truncation),
+hydra pairwise salt, courier/resend, glue bootstrap, billing vars.
+Re-snapshot whenever a prod var changes; treat it as equal-weight to the
+KEK — it contains the KEK too.
