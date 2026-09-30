@@ -96,6 +96,15 @@ fill-safari:
 	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
 	cd apps/fill-safari && xcodebuild -project Veil.xcodeproj -scheme Veil -configuration Debug build
 
+# Store payloads: zips the two installed extension dirs for CWS / AMO
+# upload. Run `veil fill install` first so ~/.veil/extension* is current.
+fill-pack:
+	@mkdir -p ~/.veil/store
+	@VER=$$(python3 -c "import json;print(json.load(open('$(HOME)/.veil/extension/manifest.json'))['version'])") && \
+	cd ~/.veil/extension && zip -qr ~/.veil/store/veil-chrome-$$VER.zip . && \
+	cd ~/.veil/extension-firefox && zip -qr ~/.veil/store/veil-firefox-$$VER.zip . && \
+	echo "~/.veil/store/veil-chrome-$$VER.zip + veil-firefox-$$VER.zip"
+
 login:
 	pnpm --filter identity-login dev
 

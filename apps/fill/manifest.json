@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "description": "Fill saved sign-ins. Secrets stay in the Veil host.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqYo//O3rx/fcN/xaanqLZwsRo2Ekl8PTgjTYgoOc0l1Z/c4ak5uAie3PSW6wuAF5TNb2+W4FHqwHr655RyiOl45hPadjTnvBJkLNY/xPaLNX9hO76hVr+VqnXdtrOfzp9ajLFD4oN8aDEP92xuJWlekG8XI0OxQdAs9V1DG5O/DoJKua5uHQ8Cf3ClycKyF3O9jPjUEz1p2SVOOy7Yqcz/UjsBTL7yGz+q3ovtajGH10mIKFD5fC9ju9q9xtIOhXJsxbXjj2TptZ/yVwSnoLfeLKjsnXCdmyYlEC2f2SrzqFTv+41C5rBnAhEq2N1iVx7KI+BhXFXC/uyQUQkr7EAwIDAQAB",
-  "permissions": ["nativeMessaging", "tabs", "scripting"],
+  "permissions": ["nativeMessaging", "tabs", "scripting", "storage"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js"
