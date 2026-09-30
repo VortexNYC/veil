@@ -44,7 +44,7 @@ function suggestButton(got) {
 }
 
 function saveButton(got) {
-  const isUpdate = !!(got && got.updateName);
+  const isUpdate = !!(got && got.updateUUID);
   const b = veilUI.entryRow(
     {
       name: isUpdate ? "Update saved password" : "Save this sign-in",
@@ -59,6 +59,7 @@ function saveButton(got) {
         type: "popup-save",
         tabId: got.tabId,
         url: got.url,
+        uuid: got.updateUUID || "",
       },
       function (res) {
         if (res && res.ok) {
@@ -78,9 +79,6 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
     return;
   }
   const entries = (got && got.entries) || [];
-  const logins = entries.filter(function (e) {
-    return e.kind === "login";
-  });
   root.textContent = "";
   const host = hostOf((got && got.url) || "");
   const head = document.createElement("div");
@@ -96,7 +94,10 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
     head.appendChild(where);
   }
   root.appendChild(head);
-  const offerSave = !!(got && got.canSave && (!logins.length || got.updateName));
+  // A typed credential is an offer whenever the form holds something
+  // savable — matching logins flip it to an update, but unrelated saved
+  // logins on the same site must not hide a new credential.
+  const offerSave = !!(got && got.canSave);
   if (!entries.length && !(got && got.canGenerate) && !offerSave) {
     const empty = document.createElement("div");
     empty.className = "v-empty";

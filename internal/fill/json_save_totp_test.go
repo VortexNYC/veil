@@ -109,6 +109,69 @@ func TestJSONSaveTypedPasswordCreatesLogin(t *testing.T) {
 	}
 }
 
+func TestJSONSaveTypedPasswordCreatesOnPopulatedSite(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "github", URI: "https://github.com", Secret: secret, Login: "ada",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("seed %d %s", code, raw)
+	}
+	var creates atomic.Int32
+	inner := srv.Config.Handler
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/items" {
+			creates.Add(1)
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var in publicapi.CreateItemRequest
+			if json.Unmarshal(body, &in) != nil || in.Secret != typedPassword || in.Login != "grace@example.com" {
+				t.Errorf("create %s", body)
+			}
+		}
+		inner.ServeHTTP(w, r)
+	})
+	h := allowConfirm(NewOrigin(t.TempDir(), srv.URL, "human"))
+	// A new credential on a site that already has a login is still a create —
+	// the chooser said so explicitly. Bare saves stay fail-closed "choose".
+	got := jsonHandle(t, h, map[string]any{
+		"action": "save", "url": "https://github.com/login",
+		"login": "grace@example.com", "password": typedPassword, "create": true,
+	})
+	if scrub.Contains(got, []byte(typedPassword)) {
+		t.Fatalf("save echoed password %s", got)
+	}
+	var out struct {
+		Error string `json:"error"`
+		UUID  string `json:"uuid"`
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Error != "" || out.UUID == "" || out.Login != "grace@example.com" {
+		t.Fatalf("save %s", got)
+	}
+	if creates.Load() != 1 {
+		t.Fatalf("create:%d", creates.Load())
+	}
+	listed := jsonHandle(t, h, map[string]string{"action": "match", "url": "https://github.com/login"})
+	var match struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(listed, &match); err != nil || len(match.Entries) != 2 {
+		t.Fatalf("match after create %s", listed)
+	}
+}
+
 func TestJSONSaveRequiresConfirm(t *testing.T) {
 	a, err := app.Init(t.TempDir())
 	if err != nil {

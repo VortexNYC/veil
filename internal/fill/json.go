@@ -72,6 +72,7 @@ type jsonRequest struct {
 	Login          string          `json:"login"`
 	Password       string          `json:"password"`
 	PasswordRules  string          `json:"passwordRules"`
+	Create         bool            `json:"create"`
 	OTPAuth        string          `json:"otpauth"`
 	Origin         string          `json:"origin"`
 	PublicKey      json.RawMessage `json:"publicKey"`
@@ -125,7 +126,7 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "generate":
 		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules, in.UUID)
 	case "save":
-		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID)
+		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID, in.Create)
 	case "enrollTotp":
 		return h.jsonEnrollTotp(in.URL, in.OTPAuth)
 	case "passkeyCreate":
@@ -593,7 +594,7 @@ func loginMatch(entries []jsonMatchEntry) bool {
 	return false
 }
 
-func (h *Host) jsonSave(rawURL, login, password, uuid string) []byte {
+func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool) []byte {
 	rawURL = strings.TrimSpace(rawURL)
 	login = strings.TrimSpace(login)
 	password = strings.TrimSpace(password)
@@ -611,7 +612,10 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string) []byte {
 	if uuid != "" {
 		return h.jsonTypedRotate(rawURL, uuid, login, password, matches)
 	}
-	if loginMatch(matches) {
+	// Existing logins make a bare save ambiguous — rotate or new item? The
+	// chooser must say so: uuid rotates, create:true mints a new login.
+	// Neither means the caller never chose, so stay fail-closed.
+	if loginMatch(matches) && !create {
 		return jsonGenerateErr("choose")
 	}
 	if err := h.confirm("Veil wants to save this sign-in", grant.Registrable(rawURL), false); err != nil {

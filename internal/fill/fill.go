@@ -1086,11 +1086,11 @@ func ExtensionManifestSafari(chromeManifest []byte) ([]byte, error) {
 	}
 	delete(m, "key")
 	// Safari event pages suspend ~30s after load and can silently stop waking
-	// on content-script sendMessage — fills then look dead until the extension
-	// is toggled. A persistent background page stays resident on macOS.
+	// on content-script sendMessage — the veil-field port pins the context
+	// instead. "persistent" is an MV2 key: Safari rejects the manifest entry
+	// and the background never loads at all.
 	m["background"] = map[string]any{
-		"scripts":    []string{"tab.js", "background.js"},
-		"persistent": true,
+		"scripts": []string{"tab.js", "background.js"},
 	}
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {

@@ -338,6 +338,10 @@ async function saveTab(tabId, url, login, password, uuid) {
   const body = { action: "save", url: url, login: login || "", password: password };
   if (uuid) {
     body.uuid = uuid;
+  } else {
+    // The offer resolved to a new sign-in — the host refuses a bare save when
+    // the site already has logins ("choose"), so say the choice out loud.
+    body.create = true;
   }
   const msg = await hostSend(body, 90000);
   password = "";
@@ -654,14 +658,32 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
         probeTab(tab.id).then(function (ctx) {
           const liveSave = !!(ctx && ctx.canSave);
           const pending = !!(pendingSave && pendingSave.tabId === tab.id);
+          const typedLogin = (ctx && ctx.login) || (pendingSave && pendingSave.login) || "";
+          // SavePlan's match runs at submit time; the same rule applies to a
+          // login typed after the submit (popup opened by hand): matching an
+          // existing login flips the offer to an update so the pick rotates
+          // that uuid instead of minting a duplicate.
+          let updateUUID = pending ? pendingSave.updateUUID || "" : "";
+          let updateName = pending ? pendingSave.updateName || "" : "";
+          if (!updateUUID && typedLogin) {
+            for (let i = 0; i < entries.length; i++) {
+              const e = entries[i];
+              if (e && e.kind === "login" && e.login === typedLogin && !e.affiliated) {
+                updateUUID = e.uuid || "";
+                updateName = e.name || "";
+                break;
+              }
+            }
+          }
           sendResponse({
             entries: entries,
             url: tab.url,
             tabId: tab.id,
             canGenerate: !!(ctx && ctx.canGenerate),
             canSave: liveSave || pending,
-            updateName: pending ? pendingSave.updateName || "" : "",
-            login: (ctx && ctx.login) || (pendingSave && pendingSave.login) || "",
+            updateName: updateName,
+            updateUUID: updateUUID,
+            login: typedLogin,
             passwordRules: (ctx && ctx.passwordRules) || "",
           });
         });
@@ -706,7 +728,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     creds.then(function (got) {
       const login = (got && got.login) || "";
       const password = (got && got.password) || "";
-      const uuid = fromPending && pendingSave ? pendingSave.updateUUID || "" : "";
+      const uuid = msg.uuid || (fromPending && pendingSave ? pendingSave.updateUUID || "" : "");
       return saveTab(tabId, url, login, password, uuid).finally(function () {
         wipePending();
       });
