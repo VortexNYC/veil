@@ -1,4 +1,4 @@
-import { defineRailway, image, postgres, preserve, project, service, volume } from "railway/iac";
+import { defineRailway, image, github, postgres, preserve, project, service, volume } from "railway/iac";
 
 // Full production plane: kratos, keto, glue, hydra, veil, Postgres.
 // Omitting a service here and applying deletes it. Secrets stay preserve().
@@ -7,8 +7,9 @@ import { defineRailway, image, postgres, preserve, project, service, volume } fr
 export default defineRailway(() => {
   const Postgres = postgres("Postgres", { region: "sfo" });
   Postgres.networking = { privateNetworkEndpoint: "postgres" };
-  const postgresVolume = volume("postgres-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "sfo", sizeMB: 500 });
+  const postgresVolume = volume("postgres-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "sfo", sizeMB: 5000 });
   const kratos = service("kratos", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "identity/kratos/Dockerfile" },
     start: "kratos serve -c /etc/config/kratos/kratos.yml --sqa-opt-out --watch-courier",
     healthcheck: "/health/ready",
@@ -18,6 +19,7 @@ export default defineRailway(() => {
     env: { COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_IN: preserve(), COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_NAME: preserve(), COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE: preserve(), COURIER_HTTP_REQUEST_CONFIG_AUTH_TYPE: preserve(), COURIER_SMTP_CONNECTION_URI: preserve(), DSN: preserve(), PORT: preserve(), RESEND_API_KEY: preserve(), RESEND_AUTHORIZATION: preserve(), SECRETS_CIPHER: preserve(), SECRETS_COOKIE: preserve(), SERVE_PUBLIC_PORT: preserve() },
   });
   const keto = service("keto", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "identity/keto/Dockerfile" },
     start: "keto serve -c /etc/config/keto/keto.yml",
     preDeploy: "keto -c /etc/config/keto/keto.yml migrate up -y",
@@ -48,6 +50,7 @@ export default defineRailway(() => {
   // and ops verbs. Raising replicas past that ceiling requires PgBouncer
   // first — do not bump this number without checking the pool math.
   const veil = service("veil", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     start: "/veil mcp",
     healthcheck: "/health",
     healthcheckTimeout: 300,
@@ -57,6 +60,7 @@ export default defineRailway(() => {
     env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_AUDIT_SPOOL_DIR: "/spool", VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/veil migrate",
     deploy: { restartPolicyType: "NEVER" },
@@ -73,6 +77,7 @@ export default defineRailway(() => {
   // standalone tables for archival — detach, never drop. Deletes only;
   // never decrypts, so no master key.
   const veilSweep = service("veil-sweep", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/veil sweep --keep 24h",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "0 * * * *" },
@@ -96,6 +101,7 @@ export default defineRailway(() => {
   // its KEK is a plaintext export, keep them apart.
   const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
   const veilBackup = service("veil-backup", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.backup" },
     start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if pg_basebackup -D /backups/base -Ft -z -X stream -d \"$PGDUMP_BASE/postgres?replication=database\"; then mv /backups/base/base.tar.gz /backups/base-$(date +%F-%H%M).tar.gz; rm -f /backups/base/pg_wal.tar.gz; else rc=1; fi; if [ -n \"$OFFSITE_TOKEN\" ]; then for f in /backups/*-$(date +%F)-*.dump /backups/base-$(date +%F)-*.tar.gz; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/$(basename \"$f\")\" || rc=1; done; fi; find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" \\) -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES('\"'\"'backup'\"'\"',now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
@@ -114,6 +120,7 @@ export default defineRailway(() => {
   // veil-backup this restores to any second — loss window is the push
   // interval, not the dump interval. Always-on, unlike the cron siblings.
   const veilWal = service("veil-wal", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.wal" },
     start: "sh /wal-archive.sh",
     replicas: { "sfo": 1 },
@@ -129,6 +136,7 @@ export default defineRailway(() => {
   // beat is stamped only on a fully-drained run; monitor pages when it goes
   // stale. Same bearer as the backup push — one worker, one token.
   const veilAuditExport = service("veil-audit-export", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/veil audit-export",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "42 * * * *" },
@@ -142,6 +150,7 @@ export default defineRailway(() => {
   // audit_outbox lag, and public /ready — email on findings. A cron that
   // dies silently is worse than no cron; this is the thing that notices.
   const veilMonitor = service("veil-monitor", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/veil monitor",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "*/15 * * * *" },
@@ -155,6 +164,7 @@ export default defineRailway(() => {
     },
   });
   const glue = service("glue", {
+    source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "/identity-glue",
     replicas: { "sfo": 1 },

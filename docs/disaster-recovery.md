@@ -79,3 +79,77 @@ identity plane, then the broker, then DNS.
 - Railway volume contents (pwm-volume sqlite shadow — superseded by
   Postgres; keep it mounted as rollback history only).
 - Anything only in the founder's head — that is why VEIL-72 exists.
+
+## Drill record — 2026-09-30 (VEIL-73)
+
+**RTO: 30 minutes** wall-clock from empty Railway project to the full
+stack serving on restored data (23:01 → 23:31 UTC). Vault decrypt proven
+at the ~18-minute mark. RPO this run: dumps only (17h stale — drill used
+the 05:18 dump at ~23:12; a real event would replay WAL to ~seconds).
+
+Executed end-to-end on project `veil-drill` (deleted after): fresh
+`railway init` → `config apply` → per-service secrets from escrow →
+dumps pulled from R2 via the LIST endpoint → `pg_restore` over
+`railway ssh` → all services green → binary `drillrestore` pushed over
+ssh → PASS + fail-closed PASS → drill hydra serves prod-identical JWKS.
+
+Verified counts: 291 items · 33 grants · 1614 audit · 6 agents ·
+4 kratos identities · 6 hydra clients · 9 keto tuples.
+
+### Findings the drill surfaced (all real, some fixed same-night)
+
+1. **Escrowed `SECRETS_SYSTEM` was truncated** — escrow held 48 chars,
+   prod stores a 97-char rotation list (new+old). Drill hydra could not
+   decrypt restored JWKS → `.well-known` 500 → no token minting.
+   FIXED: escrow file + 1Password item now hold the full list; drill
+   recovered and serves kids `f3324aac`/`e06a78ef` identical to prod.
+   *Lesson: escrow verification must be length/hash-compared against
+   live prod vars, not just "a file exists."*
+2. **Escrow coverage gap** — kratos `SECRETS_CIPHER`/`SECRETS_COOKIE`,
+   `COURIER_*`, `RESEND_API_KEY`, hydra `OIDC_*` salt, glue `BOOTSTRAP_*`,
+   and the `VEIL_VORTEX_*` billing vars are NOT escrowed anywhere. Drill
+   generated fresh values; in real DR sessions/cookies invalidate and
+   pairwise subs drift — recoverable via re-login, but must be
+   documented. Action: add all to escrow + the custody log.
+3. **`config apply` is all-or-nothing on volume size** — fresh Postgres
+   provisions a 5GB volume; IaC's `sizeMB: 500` is a forbidden shrink
+   that failed the ENTIRE change-set (24 opaque "change" errors — the
+   real reason sits in `--json` diagnostics only). Fresh-project applies
+   need `sizeMB: 5000` for postgres-volume.
+4. **IaC doesn't carry repo sources** — the file relied on imported
+   state; fresh services were created sourceless and failed silently.
+   Drill file needed `source: github("VortexNYC/veil")` on every
+   Dockerfile-built service. Decision: add `github()` sources to the
+   prod file so the IaC is self-bootstrapping (harmless on prod).
+5. **Custom domains can't be IaC-registered** — expected; the runbook's
+   DNS step (Cloudflare re-point) is the real path.
+6. **WAL namespace collision risk** — a second cluster streaming to the
+   same bucket writes `wal-` segments on the same timeline-1 naming,
+   colliding with prod's archive. Drill's veil-wal never connected
+   (pg_hba correctly denied), so nothing pushed — but VEIL-74's fencing
+   design must namespace per cluster or make objects immutable.
+7. **pg_hba fails closed correctly** — replication denied by default on
+   the fresh cluster; the documented `host replication` append +
+   `pg_reload_conf()` worked without restart.
+8. **Agent client secrets rotate** — local `*.hydra` files go stale vs
+   restored client hashes; mint a fresh client via hydra admin during DR
+   instead of trusting local files.
+9. **Kratos rejects `SECRETS_CIPHER` > 32 chars** and courier auth is
+   `api_key` type — the exact var shapes are now in the table below.
+10. **`railway ssh` needs a local ssh-agent or `SSH_AUTH_SOCK=""`** —
+    agent socket flakiness kills sessions mid-command; bypass works.
+
+### Required secret inventory (rebuild-from-escrow checklist)
+
+| Service | Vars that MUST come from escrow | Vars that can be regenerated |
+|---|---|---|
+| veil | `VEIL_KEK`, `VEIL_MASTER_KEY`, `VEIL_MAIL_TOKEN` | `VEIL_*` URLs, billing placeholders, pool sizes |
+| hydra | `SECRETS_SYSTEM` (FULL LIST — comma-separated) | `OIDC_*` salt, `URLS_*`, `SERVE_*` |
+| kratos | *(should escrow)* `SECRETS_CIPHER` ≤32ch, `SECRETS_COOKIE` ≤32ch | `COURIER_*`, `RESEND_*`, `PORT` |
+| keto | — | `DSN` only |
+| glue | — | `BOOTSTRAP_*`, service URLs |
+| veil-wal / veil-backup / audit-export | `OFFSITE_TOKEN` | `PGDUMP_BASE` (templated) |
+| veil-monitor | — | `VEIL_ALERT_TO`, `VEIL_READY_URL` |
+
+Without the Must column the restore is ciphertext-only; without the
+regen column things boot degraded — sessions die, mail is quiet.
