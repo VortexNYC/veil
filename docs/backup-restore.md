@@ -152,6 +152,14 @@ the binary.
     (`crypto: authentication failed`). Audit archive independently
     re-read: `audit-20260928-195601-1571-1575.jsonl` fetched from R2,
     5 rows matching the export cursor (last_id 1575).
+  - 2026-09-30 — all four offsite R2 artifacts pulled (`*-2026-09-30-0518.dump`),
+    restored into a scratch Postgres 18 container on the ops host (291 items,
+    33 grants, 1614 audit rows, 6 agents, 5 humans). `github` item decrypts
+    under the escrowed KEK; wrong-KEK read fails closed
+    (`crypto: authentication failed`). Audit archive re-read and verified
+    contiguous: objects covering ids 1576→1614 all present in R2, and
+    `audit-20260929-192042-1608-1614.jsonl` row-for-row identical to the
+    restored table.
 
 ## The drill tool
 
