@@ -15,6 +15,7 @@ const matches = new Map();
 let openedLogin = false;
 let lastPage = null;
 let pendingSave = null;
+let pendingTOTP = null;
 
 function wipePending() {
   if (pendingSave) {
@@ -22,6 +23,13 @@ function wipePending() {
     pendingSave.password = "";
   }
   pendingSave = null;
+}
+
+function wipeTOTP() {
+  if (pendingTOTP) {
+    pendingTOTP.otpauth = "";
+  }
+  pendingTOTP = null;
 }
 
 function rememberTab(tab) {
@@ -359,11 +367,15 @@ async function saveTab(tabId, url, login, password, uuid) {
   return { ok: true };
 }
 
-async function enrollTotp(tabId, url, otpauth) {
+async function enrollTotp(tabId, url, otpauth, uuid) {
   if (!otpauth) {
     return { ok: false, error: "empty" };
   }
-  const msg = await hostSend({ action: "enrollTotp", url: url, otpauth: otpauth }, 90000);
+  const body = { action: "enrollTotp", url: url, otpauth: otpauth };
+  if (uuid) {
+    body.uuid = uuid;
+  }
+  const msg = await hostSend(body, 90000);
   if (needLogin(msg)) {
     openLogin();
     return { ok: false, error: "need_login" };
@@ -473,6 +485,11 @@ chrome.runtime.onConnect.addListener(function (p) {
 });
 
 chrome.tabs.onUpdated.addListener(function (tabId, info, tab) {
+  // The in-page prompt dies with the page — a seed parked for a navigated
+  // tab can never be picked, so don't let it linger.
+  if (info.url && pendingTOTP && pendingTOTP.tabId === tabId && pendingTOTP.url !== info.url) {
+    wipeTOTP();
+  }
   const url = tab && (tab.url || tab.pendingUrl);
   if (info.status !== "complete" || !usable(url)) {
     return;
@@ -496,6 +513,9 @@ chrome.tabs.onActivated.addListener(function (info) {
 
 chrome.tabs.onRemoved.addListener(function (tabId) {
   matches.delete(tabId);
+  if (pendingTOTP && pendingTOTP.tabId === tabId) {
+    wipeTOTP();
+  }
 });
 
 chrome.commands.onCommand.addListener(function (command) {
@@ -637,8 +657,50 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!tab || !usable(url) || !msg.otpauth) {
       return;
     }
-    enrollTotp(tab.id, url, msg.otpauth).catch(function () {});
+    // A QR/link on screen is a lead, not an instruction — offer "Save this
+    // authenticator" inline and let the human pick the item. The seed waits
+    // in pendingTOTP; only the pick reaches the host.
+    if (pendingTOTP && pendingTOTP.otpauth === msg.otpauth) {
+      return;
+    }
+    wipeTOTP();
+    pendingTOTP = { tabId: tab.id, url: url, otpauth: msg.otpauth };
+    const tabId = tab.id;
+    matchTab(tabId, url).then(function (entries) {
+      const cands = [];
+      (entries || []).forEach(function (e) {
+        if (e && e.kind === "login" && !e.hasTotp && !e.affiliated) {
+          cands.push({ uuid: e.uuid || "", name: e.name || "", login: e.login || "" });
+        }
+      });
+      chrome.tabs.sendMessage(tabId, { type: "totp-prompt", entries: cands }).catch(function () {
+        wipeTOTP();
+      });
+    }).catch(function () {
+      wipeTOTP();
+    });
     return;
+  }
+  if (msg.type === "totp-pick") {
+    const tab = sender.tab;
+    const pending = pendingTOTP;
+    if (!pending || !tab || tab.id !== pending.tabId) {
+      sendResponse({ ok: false, error: "empty" });
+      return true;
+    }
+    enrollTotp(pending.tabId, pending.url, pending.otpauth, msg.uuid || "")
+      .then(function (got) {
+        sendResponse(got);
+      }, function () {
+        sendResponse({ ok: false, error: "host" });
+      })
+      .finally(wipeTOTP);
+    return true;
+  }
+  if (msg.type === "totp-dismiss") {
+    wipeTOTP();
+    sendResponse({ ok: true });
+    return true;
   }
   if (msg.type === "popup-list") {
     const listed =

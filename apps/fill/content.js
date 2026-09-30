@@ -316,6 +316,71 @@
     });
   }
 
+  // A detected otpauth QR/link is a lead, not an instruction. Same inline
+  // language as the save offer: pick the item to attach (or the bare "just
+  // saved" row when the site has no login yet), then Touch ID. Nothing
+  // enrolls on sight alone.
+  function showTOTPPrompt(msg) {
+    // Anchor at the QR's own element — an otpauth link or its carrier — and
+    // only then at a field, so the offer lands where the eye already is.
+    let el = document.querySelector('a[href^="otpauth://totp"]');
+    if (!el || !document.contains(el)) {
+      const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+      el = fields.password || (fields.newPassword && fields.newPassword[0]) || focusEl;
+    }
+    if (!el || !document.contains(el)) {
+      return;
+    }
+    hideMenu();
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;z-index:2147483647;";
+    const shade = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = veilUI.css;
+    shade.appendChild(style);
+    const box = document.createElement("div");
+    box.className = "v-menu v-field";
+    box.setAttribute("role", "listbox");
+    shade.appendChild(box);
+    const entries = (msg && msg.entries) || [];
+    const rows = [];
+    if (!entries.length) {
+      rows.push(
+        menuRow({ name: "Save authenticator", sub: "to this site's sign-in", kind: "totp", slim: true }, function () {
+          hideMenu();
+          chrome.runtime.sendMessage({ type: "totp-pick" });
+        }),
+      );
+    }
+    entries.forEach(function (e) {
+      const sub = "to " + (e.name || "this sign-in") + (e.login ? " — " + e.login : "");
+      rows.push(
+        menuRow({ name: "Save authenticator", sub: sub, kind: "totp", slim: true }, function () {
+          hideMenu();
+          chrome.runtime.sendMessage({ type: "totp-pick", uuid: e.uuid });
+        }),
+      );
+    });
+    rows.push(
+      menuRow({ name: "Not now", sub: "", kind: "dismiss", slim: true }, function () {
+        hideMenu();
+        chrome.runtime.sendMessage({ type: "totp-dismiss" });
+      }),
+    );
+    rows.forEach(function (r) {
+      r.dataset.q = r.textContent.toLowerCase();
+      box.appendChild(r);
+    });
+    menu = { el: host, rows: rows, active: -1, forEl: el };
+    (document.body || document.documentElement).appendChild(host);
+    placeMenu(el);
+    requestAnimationFrame(function () {
+      if (menu && menu.forEl === el) {
+        placeMenu(el);
+      }
+    });
+  }
+
   document.addEventListener(
     "keydown",
     function (ev) {
@@ -497,6 +562,11 @@
     if (msg.type === "suggest-hide") {
       hideMenu();
       hideIcon();
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg.type === "totp-prompt") {
+      showTOTPPrompt(msg);
       sendResponse({ ok: true });
       return true;
     }

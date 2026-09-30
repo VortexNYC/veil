@@ -168,6 +168,13 @@ final class FillBridge {
         return (entries, reply["error"] as? String ?? "")
     }
 
+    /// Attach a scanned/passed otpauth:// seed to an existing item — the
+    /// human picked the item (OS-open, in-page QR, paste), the host still
+    /// confirms before the seed lands.
+    func enrollTotp(url: String, otpauth: String, uuid: String) throws -> [String: Any] {
+        try roundTrip(["action": "enrollTotp", "url": url, "otpauth": otpauth, "uuid": uuid], timeout: 95)
+    }
+
     /// Screen locked — drop any confirm reuse window in the host so a
     /// session-mode grant cannot outlive the lock.
     func relock() {

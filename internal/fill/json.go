@@ -128,7 +128,7 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "save":
 		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID, in.Create)
 	case "enrollTotp":
-		return h.jsonEnrollTotp(in.URL, in.OTPAuth)
+		return h.jsonEnrollTotp(in.URL, in.OTPAuth, in.UUID)
 	case "passkeyCreate":
 		return h.jsonPasskeyCreate(in.Origin, in.PublicKey, in.RelatedOrigins)
 	case "passkeyGet":
@@ -638,7 +638,7 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool) []byt
 	}{UUID: item.ID, Name: item.Name, Login: login})
 }
 
-func (h *Host) jsonEnrollTotp(rawURL, otpauth string) []byte {
+func (h *Host) jsonEnrollTotp(rawURL, otpauth, uuid string) []byte {
 	seed := parseOTPAuth(otpauth)
 	if seed == "" {
 		return jsonGenerateErr("failed")
@@ -647,7 +647,11 @@ func (h *Host) jsonEnrollTotp(rawURL, otpauth string) []byte {
 	if rawURL == "" {
 		return jsonGenerateErr("failed")
 	}
-	uuid := h.createdFor(rawURL)
+	// The chooser sends a uuid when the human picked an existing item; a
+	// bare call attaches to the login just saved on this URL.
+	if uuid == "" {
+		uuid = h.createdFor(rawURL)
+	}
 	if uuid == "" {
 		return jsonGenerateErr("choose")
 	}

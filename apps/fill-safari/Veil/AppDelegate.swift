@@ -153,4 +153,110 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
+
+    // MARK: - otpauth:// handler
+
+    // Registered in Info.plist so `open otpauth://…` (QR readers, links in
+    // non-browser apps) lands here instead of erroring. Same contract as
+    // the extension: the human picks the item, the host confirms, nothing
+    // enrolls on sight alone.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            handleOTPAuth(url)
+        }
+    }
+
+    private struct TOTPCandidate {
+        let uuid: String
+        let name: String
+        let login: String
+        let uri: String
+    }
+
+    private func handleOTPAuth(_ url: URL) {
+        guard url.scheme?.lowercased() == "otpauth",
+              let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              comps.host?.lowercased() == "totp" else {
+            return
+        }
+        let label = comps.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let issuer = comps.queryItems?.first(where: { $0.name.lowercased() == "issuer" })?.value
+            ?? label.components(separatedBy: ":").first
+            ?? ""
+        DispatchQueue.global().async {
+            var cands: [TOTPCandidate] = []
+            if let entries = try? FillBridge.shared.list() {
+                let needle = issuer.lowercased()
+                for e in entries {
+                    guard e["kind"] as? String == "login",
+                          !(e["hasTotp"] as? Bool ?? false),
+                          let uuid = e["uuid"] as? String else {
+                        continue
+                    }
+                    let name = e["name"] as? String ?? ""
+                    let login = e["login"] as? String ?? ""
+                    // enrollTarget requires the scope URL to host-match one
+                    // of the item's URIs — a login with none can never take a
+                    // seed, so don't offer it.
+                    guard let uri = (e["uris"] as? [String])?.first(where: { !$0.isEmpty }), !uri.isEmpty else {
+                        continue
+                    }
+                    let hay = (name + " " + login + " " + uri).lowercased()
+                    if needle.isEmpty || hay.contains(needle) {
+                        cands.append(TOTPCandidate(uuid: uuid, name: name, login: login, uri: uri))
+                    }
+                }
+            }
+            DispatchQueue.main.async {
+                self.offerTOTP(issuer: issuer, otpauth: url.absoluteString, candidates: cands)
+            }
+        }
+    }
+
+    private func offerTOTP(issuer: String, otpauth: String, candidates: [TOTPCandidate]) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.icon = NSImage(systemSymbolName: "lock.shield", accessibilityDescription: "Veil")
+        if candidates.isEmpty {
+            alert.messageText = "No sign-in for \(issuer.isEmpty ? "this authenticator" : issuer)"
+            alert.informativeText = "Save the login first, then enroll the authenticator."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+        alert.messageText = "Save this authenticator to Veil?"
+        alert.informativeText = issuer.isEmpty ? "Pick the sign-in it belongs to." : "Issuer: \(issuer)"
+        let picks = Array(candidates.prefix(3))
+        for c in picks {
+            alert.addButton(withTitle: c.login.isEmpty ? c.name : "\(c.name) — \(c.login)")
+        }
+        alert.addButton(withTitle: "Cancel")
+        let res = alert.runModal()
+        let idx = res.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard idx >= 0 && idx < picks.count else {
+            return
+        }
+        let pick = picks[idx]
+        DispatchQueue.global().async {
+            var reply: [String: Any]
+            do {
+                reply = try FillBridge.shared.enrollTotp(url: pick.uri, otpauth: otpauth, uuid: pick.uuid)
+            } catch {
+                reply = ["error": error.localizedDescription]
+            }
+            // "canceled" is the human's own Touch ID dismiss — nothing to say.
+            if (reply["hasTotp"] as? Bool) != true, let why = reply["error"] as? String, why != "canceled" {
+                DispatchQueue.main.async { self.failTOTP(why) }
+            }
+        }
+    }
+
+    private func failTOTP(_ why: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Could not save the authenticator"
+        alert.informativeText = why == "need_login" ? "Sign in to Veil first." : "Veil said: \(why)"
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }

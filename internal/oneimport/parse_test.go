@@ -35,6 +35,42 @@ func TestParseCSV1PasswordTOTP(t *testing.T) {
 	}
 }
 
+func TestParseCSVBitwardenLogin(t *testing.T) {
+	raw := []byte("folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n" +
+		"work,false,login,GitHub,,,false,https://github.com,ada@example.com,s3cret,\n" +
+		",false,login,Steam,,,false,https://store.steampowered.com,gabe,hunter2,otpauth://totp/Steam?secret=jbswy3dp\n" +
+		",false,note,wifi passphrase,,,false,,,,\n")
+	rows, err := Parse("bitwarden.csv", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("%+v", rows)
+	}
+	if rows[0].Name != "GitHub" || rows[0].Login != "ada@example.com" || string(rows[0].Token) != "s3cret" || rows[0].URIs[0] != "https://github.com" {
+		t.Fatalf("%+v", rows[0])
+	}
+	if string(rows[1].TOTPSeed) != "JBSWY3DP" {
+		t.Fatalf("totp %+v", rows[1])
+	}
+}
+
+func TestParseCSVApplePasswords(t *testing.T) {
+	raw := []byte("Title,URL,Username,Password,Notes,OTPAuth\n" +
+		"GitHub,https://github.com,ada,s3cret,,otpauth://totp/GitHub?secret=JBSWY3DPEHPK3PXP\n" +
+		"Bank,https://bank.example,ada,pass2,a note,\n")
+	rows, err := Parse("Passwords.csv", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Name != "GitHub" || rows[0].Login != "ada" || string(rows[0].Token) != "s3cret" {
+		t.Fatalf("%+v", rows)
+	}
+	if string(rows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("totp %+v", rows[0])
+	}
+}
+
 func TestParseCSVSkipsEmptyPassword(t *testing.T) {
 	raw := []byte("name,url,username,password\nGitHub,https://github.com,ada,\n")
 	rows, err := Parse("chrome.csv", raw)

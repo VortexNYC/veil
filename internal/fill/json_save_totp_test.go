@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -573,6 +574,71 @@ func TestJSONEnrollTotpRequiresConfirm(t *testing.T) {
 	}
 	if scrub.Contains(got, []byte(enrollSeed)) {
 		t.Fatal("denied leaked seed")
+	}
+}
+
+func TestJSONEnrollTotpPickedItem(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "netflix", URI: "https://www.netflix.com", Secret: typedPassword, Login: "ada@example.com",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("seed %d %s", code, raw)
+	}
+	var enrolls atomic.Int32
+	inner := srv.Config.Handler
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/totp") || strings.Contains(r.URL.Path, "/otp") {
+			enrolls.Add(1)
+		}
+		inner.ServeHTTP(w, r)
+	})
+	h := allowConfirm(NewOrigin(t.TempDir(), srv.URL, "human"))
+	// The item exists from a previous session — createdFor is empty, so the
+	// chooser sends the uuid it matched for the QR's page URL.
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &created); err != nil || created.ID == "" {
+		t.Fatalf("seed reply %s", raw)
+	}
+	got := jsonHandle(t, h, map[string]string{
+		"action": "enrollTotp", "url": "https://www.netflix.com/2fa",
+		"otpauth": enrollOTPAuth, "uuid": created.ID,
+	})
+	if scrub.Contains(got, []byte(enrollSeed)) {
+		t.Fatalf("enroll leaked seed %s", got)
+	}
+	var out struct {
+		Error   string `json:"error"`
+		UUID    string `json:"uuid"`
+		HasTOTP bool   `json:"hasTotp"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Error != "" || out.UUID != created.ID || !out.HasTOTP {
+		t.Fatalf("enroll %s", got)
+	}
+	if enrolls.Load() != 1 {
+		t.Fatalf("enroll origin=%d", enrolls.Load())
+	}
+	filled := jsonHandle(t, h, map[string]string{
+		"action": "fill", "url": "https://www.netflix.com/login", "uuid": created.ID,
+	})
+	var fillOut struct {
+		Entries []jsonFillEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(filled, &fillOut); err != nil || len(fillOut.Entries) != 1 {
+		t.Fatalf("fill %s", filled)
+	}
+	if len(fillOut.Entries[0].TOTP) != 6 {
+		t.Fatalf("totp not attached %+v", fillOut.Entries[0])
 	}
 }
 
