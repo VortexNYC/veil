@@ -283,16 +283,10 @@ static NSImage *veil_veil_mark(void) {
 		return;
 	}
 	self.evaluating = 1;
-	// evaluatePolicy renders the system's own prompt — our sheet's job was
-	// to say who is asking, and it yields once the OS surface owns the
-	// scan. A short delay: the handoff reads as intentional, not a flash.
-	// NB: dispatch_async(main)/dispatch_after do NOT run inside
-	// runModalForWindow — the modal loop runs NSModalPanelRunLoopMode and
-	// the main dispatch queue is not drained there. Runloop-mode APIs are.
-	[self.win performSelector:@selector(orderOut:)
-		withObject:nil
-		afterDelay:0.5
-		inModes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
+	// The system Touch ID dialog can land on whichever Space the LA agent
+	// binds to — which is not necessarily the one the human is watching.
+	// Keep our sheet up for the whole eval so "Touch the sensor" is always
+	// on screen; finish() orders it out when the eval settles.
 	LAContext *ctx = self.lac;
 	NSString *why = self.why;
 	veil_confirm_log(@"scan: dispatching eval");
@@ -358,6 +352,13 @@ static int veil_access(const char *action, const char *account, const char *reas
 			defer:NO];
 		win.title = @"Veil Access Requested";
 		win.level = NSModalPanelWindowLevel;
+		// The requester (browser, terminal) may live on another Space than
+		// the one the human is looking at — the sheet must follow the
+		// human, not the requester, or the armed sensor reads as nothing
+		// happening.
+		win.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+			NSWindowCollectionBehaviorStationary |
+			NSWindowCollectionBehaviorFullScreenAuxiliary;
 		win.releasedWhenClosed = NO;
 		win.delegate = ctrl;
 		ctrl.win = win;

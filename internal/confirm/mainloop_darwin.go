@@ -12,6 +12,13 @@ import (
 #include <Foundation/Foundation.h>
 
 static void veil_mainloop(void) {
+	// The access sheet makes this plist-less process look like a regular
+	// app, which opts it into Automatic Termination — the OS kills the
+	// bridge when it decides the daemon is "idle", and the next fill hits
+	// a refused socket. disableAutomaticTermination is a counter AppKit
+	// itself unbalances as windows open and close, so it does not stick;
+	// automaticTerminationSupportEnabled=NO is the real opt-out.
+	[NSProcessInfo processInfo].automaticTerminationSupportEnabled = NO;
 	CFRunLoopRun();
 }
 
