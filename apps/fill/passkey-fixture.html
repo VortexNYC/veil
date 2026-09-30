@@ -4,7 +4,11 @@
 <button id="register" type="button">Register</button>
 <button id="login" type="button">Login</button>
 <pre id="status">idle</pre>
+<pre id="veil"></pre>
 <script>
+  document.getElementById("veil").textContent =
+    "veilPasskeys=" + typeof window.veilPasskeys +
+    " create=" + String(navigator.credentials.create).slice(0, 60);
   var credId = null;
   document.getElementById("register").addEventListener("click", function () {
     var status = document.getElementById("status");
@@ -22,7 +26,13 @@
       })
       .then(function (cred) {
         credId = cred && cred.rawId ? cred.rawId : null;
-        status.textContent = cred && cred.id ? "ok " + cred.id : "err empty";
+        var cd = "";
+        try {
+          cd = " type=" + JSON.parse(new TextDecoder().decode(cred.response.clientDataJSON)).type;
+        } catch (e) {
+          cd = " type=?";
+        }
+        status.textContent = cred && cred.id ? "ok " + cred.id + cd : "err empty";
       })
       .catch(function (err) {
         status.textContent = "err " + (err && err.name ? err.name : "fail");
@@ -46,7 +56,13 @@
         },
       })
       .then(function (cred) {
-        status.textContent = cred && cred.id ? "got " + cred.id : "err empty-get";
+        var cd = "";
+        try {
+          cd = " type=" + JSON.parse(new TextDecoder().decode(cred.response.clientDataJSON)).type;
+        } catch (e) {
+          cd = " type=?";
+        }
+        status.textContent = cred && cred.id ? "got " + cred.id + cd : "err empty-get";
       })
       .catch(function (err) {
         status.textContent = "err " + (err && err.name ? err.name : "fail");

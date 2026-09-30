@@ -1150,6 +1150,87 @@ func TestFillPasskeyHumanOnlyNoListLeak(t *testing.T) {
 	}
 }
 
+func TestPasskeyRegisterSameRPKeepsBothCredentials(t *testing.T) {
+	a, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: DefaultHuman, OrgID: a.OrgID}
+	// "localhost" is a valid item id — before the fix the second register
+	// upserted onto the first and destroyed its private key, so the first
+	// credential could never assert (ErrNoLogins behind NotAllowedError).
+	mk := func(user, handle string) json.RawMessage {
+		create, err := json.Marshal(map[string]any{
+			"challenge": "dGVzdGNoYWxsZW5nZQ",
+			"rp":        map[string]string{"id": "localhost", "name": "Veil fixture"},
+			"user":      map[string]string{"id": handle, "name": user, "displayName": user},
+			"pubKeyCredParams": []map[string]any{
+				{"type": "public-key", "alg": -7},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return create
+	}
+	var first struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(mustRegister(t, a, human, mk("ada", "AQIDBA")), &first); err != nil {
+		t.Fatal(err)
+	}
+	mustRegister(t, a, human, mk("grace", "BQYHCA"))
+	items, err := a.ItemsForPrincipal(human)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pks := 0
+	for _, it := range items {
+		if it.Kind == protocol.ItemPasskey {
+			pks++
+		}
+	}
+	if pks != 2 {
+		t.Fatalf("second register clobbered the first — passkey items: %d", pks)
+	}
+	get, err := json.Marshal(map[string]any{
+		"challenge": "b3RoZXJjaGFsbGVuZ2U",
+		"rpId":      "localhost",
+		"allowCredentials": []map[string]any{
+			{"type": "public-key", "id": first.ID},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertion, err := a.FillPasskeyGet(human, "http://localhost:8899", get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wrap struct {
+		ErrorCode int `json:"errorCode"`
+	}
+	if json.Unmarshal(assertion, &wrap) == nil && wrap.ErrorCode != 0 {
+		t.Fatalf("first credential cannot assert after second register: %s", assertion)
+	}
+}
+
+func mustRegister(t *testing.T, a *App, human protocol.Principal, create json.RawMessage) json.RawMessage {
+	t.Helper()
+	resp, err := a.FillPasskeyRegister(human, "http://localhost:8899", create, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wrap struct {
+		ErrorCode int `json:"errorCode"`
+	}
+	if json.Unmarshal(resp, &wrap) == nil && wrap.ErrorCode != 0 {
+		t.Fatalf("register failed: %s", resp)
+	}
+	return resp
+}
+
 func TestRevokeAgentKillsGrantsAndSessions(t *testing.T) {
 	a, err := Init(t.TempDir())
 	if err != nil {

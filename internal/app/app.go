@@ -1559,7 +1559,12 @@ func (a *App) FillPasskeyRegister(p protocol.Principal, origin string, publicKey
 		uris = unionURIs(uris, []string{origin})
 	}
 	uris = unionURIs(uris, extraURIs)
+	itemID, err := id.NewItem()
+	if err != nil {
+		return passkey.ErrorResponse(passkey.ErrUnknown), nil
+	}
 	if _, err := a.PutItemFor(p, ItemOpts{
+		ID:      itemID,
 		Name:    rec.RpID,
 		Kind:    protocol.ItemPasskey,
 		URIs:    uris,
