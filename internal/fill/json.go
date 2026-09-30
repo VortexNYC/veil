@@ -64,23 +64,33 @@ type jsonFillEntry struct {
 	Email      string `json:"email,omitempty"`
 }
 
+type jsonRequest struct {
+	Action         string          `json:"action"`
+	URL            string          `json:"url"`
+	App            string          `json:"app"`
+	UUID           string          `json:"uuid"`
+	Login          string          `json:"login"`
+	Password       string          `json:"password"`
+	PasswordRules  string          `json:"passwordRules"`
+	OTPAuth        string          `json:"otpauth"`
+	Origin         string          `json:"origin"`
+	PublicKey      json.RawMessage `json:"publicKey"`
+	RelatedOrigins []string        `json:"relatedOrigins"`
+	// ReqID correlates replies to requests on the browser side — a late
+	// reply must never resolve a newer request. Optional: native clients
+	// read synchronously and leave it empty.
+	ReqID string `json:"reqId"`
+}
+
 func (h *Host) handleJSON(raw []byte) []byte {
-	var in struct {
-		Action         string          `json:"action"`
-		URL            string          `json:"url"`
-		App            string          `json:"app"`
-		UUID           string          `json:"uuid"`
-		Login          string          `json:"login"`
-		Password       string          `json:"password"`
-		PasswordRules  string          `json:"passwordRules"`
-		OTPAuth        string          `json:"otpauth"`
-		Origin         string          `json:"origin"`
-		PublicKey      json.RawMessage `json:"publicKey"`
-		RelatedOrigins []string        `json:"relatedOrigins"`
-	}
+	var in jsonRequest
 	if json.Unmarshal(raw, &in) != nil {
 		return jsonFillReply(nil, "")
 	}
+	return jsonEcho(in.ReqID, h.dispatchJSON(in))
+}
+
+func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	switch in.Action {
 	case "ping":
 		if h.Replica != nil {
@@ -847,6 +857,28 @@ func jsonPasskeyErr(err string) []byte {
 	return jsonBytes(struct {
 		Error string `json:"error"`
 	}{Error: err})
+}
+
+// jsonEcho stamps the request's reqId onto the reply so the extension can
+// drop stale responses instead of letting them resolve the wrong request.
+func jsonEcho(reqID string, raw []byte) []byte {
+	if reqID == "" {
+		return raw
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return raw
+	}
+	id, err := json.Marshal(reqID)
+	if err != nil {
+		return raw
+	}
+	m["reqId"] = id
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 func jsonBytes(v any) []byte {

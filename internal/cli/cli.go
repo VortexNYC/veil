@@ -1841,12 +1841,22 @@ func serveCmd(home *string) *cobra.Command {
 }
 
 func fillCmd(home *string) *cobra.Command {
-	var bridge bool
+	var bridge, confirmPrompt bool
 	c := &cobra.Command{
 		Use:   "fill",
 		Short: "Veil fill native host. Fill writes into the page. Agents never see the secret.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runtime.LockOSThread()
+			if confirmPrompt {
+				// Internal: the bridge daemon spawns one of these per
+				// confirm so the AppKit sheet + LA eval live in a
+				// transient child, not the daemon — a daemon that calls
+				// NSApp gets managed like an app and killed when idle.
+				if err := confirm.TouchID(os.Getenv("VEIL_CONFIRM_REASON")); err != nil {
+					os.Exit(1)
+				}
+				return nil
+			}
 			dir, err := resolveFillHome(*home)
 			if err != nil {
 				return err
@@ -1895,18 +1905,20 @@ func fillCmd(home *string) *cobra.Command {
 					return err
 				}
 				paths := fill.BridgeSocketPaths(dir, user)
-				go func() {
-					_ = fill.ServeBridge(cmd.Context(), h, paths...)
-				}()
-				// Confirms arrive on socket workers — main owns the AppKit
-				// run loop the access sheet's modal is dispatched to.
-				confirm.PumpMain(cmd.Context())
-				return nil
+				// Confirms spawn a transient --confirm-prompt child — the
+				// daemon itself stays a pure Go process with no AppKit, so
+				// macOS never manages it as an app (efficiency/TAL kills)
+				// and the socket stays bound for the daemon's life.
+				if h.Confirm != nil {
+					h.Confirm = confirm.TouchIDHelper
+				}
+				return fill.ServeBridge(cmd.Context(), h, paths...)
 			}
 			return h.Serve(os.Stdin, os.Stdout)
 		},
 	}
 	c.Flags().BoolVar(&bridge, "bridge", false, "serve fill frames on <home>/fill.sock instead of stdio (Safari appex)")
+	c.Flags().BoolVar(&confirmPrompt, "confirm-prompt", false, "run one access sheet + Touch ID eval then exit (internal: spawned by the bridge daemon)")
 	c.AddCommand(&cobra.Command{
 		Use:   "install",
 		Short: "Install the nyc.veil.fill native messaging host. Does not copy the extension.",

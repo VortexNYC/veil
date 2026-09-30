@@ -75,12 +75,16 @@ type Host struct {
 	// the same file TokenFn re-reads.
 	Issuer, ClientID, Redirect, TokenPath string
 
-	mu           sync.Mutex
-	sessions     map[string]*session
-	assocKey     string
-	index        []protocol.Item
-	indexOK      bool
-	indexAt      time.Time
+	mu       sync.Mutex
+	sessions map[string]*session
+	assocKey string
+	index    []protocol.Item
+	indexOK  bool
+	indexAt  time.Time
+	// confirmMu serializes device-owner evals — SecureUI is single-user, so
+	// concurrent requests wait their turn and then usually hit the reuse
+	// window instead of stacking a second sheet.
+	confirmMu    sync.Mutex
 	confirmUntil time.Time
 	confirmScope string
 	needLogin    bool
@@ -697,6 +701,8 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 		fillDebug("confirm missing")
 		return fmt.Errorf("fill: confirm not attached")
 	}
+	h.confirmMu.Lock()
+	defer h.confirmMu.Unlock()
 	now := time.Now()
 	h.mu.Lock()
 	until := h.confirmUntil

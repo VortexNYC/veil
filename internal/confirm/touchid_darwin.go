@@ -329,9 +329,12 @@ static int veil_access(const char *action, const char *account, const char *reas
 		veil_confirm_log(@"sheet run enter");
 		[NSApplication sharedApplication];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		// Without finishLaunching the plist-less host never completes app
-		// startup — the WindowServer flags it unresponsive and every hover
-		// over the sheet spins the beachball.
+		// finishLaunching makes this plist-less helper a managed app —
+		// without the opt-out, efficiency termination can kill it mid-eval
+		// and the daemon's socket reply never lands. The flag (not the
+		// counter) sticks because AppKit unbalances the counter as windows
+		// open and close.
+		[NSProcessInfo processInfo].automaticTerminationSupportEnabled = NO;
 		[NSApp finishLaunching];
 		PWMAccessSheet *ctrl = [[PWMAccessSheet alloc] init];
 		ctrl.lac = [[LAContext alloc] init];

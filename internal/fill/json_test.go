@@ -1360,3 +1360,21 @@ func TestJSONListPasskeyIdentityFields(t *testing.T) {
 		}
 	}
 }
+
+// reqId is the browser's reply correlation: echoes let it drop stale replies
+// that land after a timeout instead of resolving the next waiter. Native
+// clients omit it and get an unchanged reply.
+func TestJSONEchoesReqID(t *testing.T) {
+	h := NewOrigin(t.TempDir(), "http://127.0.0.1:1", "")
+	raw := jsonHandle(t, h, map[string]string{"action": "match", "reqId": "req-7"})
+	var withID struct {
+		ReqID string `json:"reqId"`
+	}
+	if err := json.Unmarshal(raw, &withID); err != nil || withID.ReqID != "req-7" {
+		t.Fatalf("reqId not echoed: %s", raw)
+	}
+	raw = jsonHandle(t, h, map[string]string{"action": "match"})
+	if strings.Contains(string(raw), "reqId") {
+		t.Fatalf("reqId appeared unrequested: %s", raw)
+	}
+}

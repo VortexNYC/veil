@@ -12,7 +12,7 @@ import (
 )
 
 func TestFieldsJS(t *testing.T) {
-	cmd := exec.Command("node", "--test", "fields.test.cjs", "passkeys.test.cjs", "tab.test.cjs")
+	cmd := exec.Command("node", "--test", "fields.test.cjs", "passkeys.test.cjs", "tab.test.cjs", "background.test.cjs")
 	cmd.Dir = filepath.Join(repoRoot(t), "apps/fill")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -3,9 +3,13 @@
 package confirm
 
 import (
+	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Enabled is Mac + VEIL_FILL_TOUCHID not "0". Linux/Windows wait for 35–36.
@@ -68,6 +72,35 @@ func commandReason() string {
 		verb = verb[:72] + "…"
 	}
 	return "run `veil " + verb + "`"
+}
+
+// TouchIDHelper runs the access sheet + eval in a short-lived child
+// (`veil fill --confirm-prompt`). The bridge daemon must never initialize
+// AppKit in-process: once it does, launchd/RBS manage it as an app and
+// the OS kills it for efficiency mid-session — the socket then refuses
+// connections. A transient helper carries the app lifecycle instead and
+// exits cleanly per confirm.
+//
+// helperDeadline bounds the child: the in-process eval times out at 60s and
+// the browser request at 90s, so a wedged child must die between the two —
+// otherwise its ultra-late reply desyncs request/reply order on the socket.
+const helperDeadline = 75 * time.Second
+
+func TouchIDHelper(reason string) error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), helperDeadline)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, self, "fill", "--confirm-prompt")
+	cmd.Env = append(os.Environ(), "VEIL_CONFIRM_REASON="+reason)
+	// The child's veil-confirm logs land in the daemon's fill-bridge.log.
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("fill: touch id declined")
+	}
+	return nil
 }
 
 // CLIAccess is the consent sheet: Allow {app} to run `veil <verb>`.

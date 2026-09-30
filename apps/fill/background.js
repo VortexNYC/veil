@@ -7,7 +7,10 @@ const HOST = "nyc.veil.fill";
 const LOGIN = "https://login.veil.nyc";
 
 let port = null;
-const waiters = [];
+// Host replies are matched to their request by reqId — a reply that lands
+// after its browser-side timeout must not resolve whoever waits next.
+const waiters = new Map();
+let reqSeq = 0;
 const matches = new Map();
 let openedLogin = false;
 let lastPage = null;
@@ -66,17 +69,32 @@ function connect() {
   port = chrome.runtime.connectNative(HOST);
   port.onMessage.addListener(function (msg) {
     noteLive(msg || {});
-    const w = waiters.shift();
-    if (w) {
+    const id = msg && msg.reqId;
+    if (id != null) {
+      const w = waiters.get(id);
+      if (!w) {
+        return;
+      }
+      waiters.delete(id);
       w.resolve(msg || {});
+      return;
     }
+    // Older host builds never echo reqId — insertion order keeps them FIFO.
+    const first = waiters.keys().next();
+    if (first.done) {
+      return;
+    }
+    const w = waiters.get(first.value);
+    waiters.delete(first.value);
+    w.resolve(msg || {});
   });
   port.onDisconnect.addListener(function () {
     port = null;
     const err = chrome.runtime.lastError && chrome.runtime.lastError.message;
-    while (waiters.length) {
-      waiters.shift().reject(new Error(err || "host gone"));
-    }
+    waiters.forEach(function (w) {
+      w.reject(new Error(err || "host gone"));
+    });
+    waiters.clear();
   });
 }
 
@@ -88,6 +106,8 @@ function hostSend(msg, timeoutMs) {
       reject(new Error("no host"));
       return;
     }
+    const id = "req-" + ++reqSeq;
+    msg.reqId = id;
     let done = false;
     const finish = function (fn, v) {
       if (done) {
@@ -106,17 +126,14 @@ function hostSend(msg, timeoutMs) {
       },
     };
     const timer = setTimeout(function () {
-      const i = waiters.indexOf(wait);
-      if (i >= 0) {
-        waiters.splice(i, 1);
-      }
+      waiters.delete(id);
       wait.reject(new Error("host timeout"));
     }, ms);
-    waiters.push(wait);
+    waiters.set(id, wait);
     try {
       port.postMessage(msg);
     } catch (err) {
-      waiters.pop();
+      waiters.delete(id);
       wait.reject(err);
     }
   });
@@ -716,3 +733,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return true;
   }
 });
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { hostSend: hostSend };
+}
