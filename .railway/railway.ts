@@ -36,6 +36,11 @@ export default defineRailway(() => {
   // The Railway volume keeps its original name — the API has no volume
   // rename, and renaming the resource would provision an empty volume.
   const veilVolume = volume("pwm-volume", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
+  // Audit spool needs real persistence: on store failure the auditor
+  // fsyncs events here (internal/audit/spool.go). Ephemeral fs would lose
+  // them on host eviction mid-outage — the exact scenario the spool exists
+  // for. Tiny by design; the relay drains it the moment Postgres returns.
+  const veilSpool = volume("veil-spool", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
   // Replica budget (VEIL-5, docs/scale.md): each origin replica holds
   // VEIL_PG_MAX_CONNS (default 20) + VEIL_PG_AUDIT_CONNS (default 2) backend
   // connections against the shared Postgres. At the stock
@@ -48,7 +53,8 @@ export default defineRailway(() => {
     healthcheckTimeout: 300,
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve() },
+    volumeMounts: { "/spool": veilSpool },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_AUDIT_SPOOL_DIR: "/spool", VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
@@ -165,6 +171,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport, veilWal],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilSpool, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport, veilWal],
   });
 });
