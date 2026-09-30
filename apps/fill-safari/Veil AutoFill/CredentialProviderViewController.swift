@@ -37,35 +37,93 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
+    private let emptyLabel = NSTextField(labelWithString: "")
+
     override func loadView() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 280))
-        preferredContentSize = view.frame.size
+        let W: CGFloat = 400, H: CGFloat = 316
+        let root = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: W, height: H))
+        root.material = .popover
+        root.blendingMode = .behindWindow
+        root.state = .active
+        preferredContentSize = root.frame.size
 
-        status.font = .systemFont(ofSize: 13, weight: .semibold)
-        status.frame = NSRect(x: 14, y: 244, width: 280, height: 20)
-        view.addSubview(status)
+        // Header — brand mark + name, site context as the subtitle.
+        let mark = NSImageView(frame: NSRect(x: 16, y: H - 32, width: 18, height: 18))
+        mark.image = NSImage(
+            systemSymbolName: "key.fill",
+            accessibilityDescription: "Veil",
+        )
+        mark.contentTintColor = .controlAccentColor
+        root.addSubview(mark)
 
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelRequest))
-        cancel.bezelStyle = .rounded
-        cancel.frame = NSRect(x: 288, y: 240, width: 80, height: 24)
-        view.addSubview(cancel)
+        let brand = NSTextField(labelWithString: "Veil")
+        brand.font = .systemFont(ofSize: 14, weight: .semibold)
+        brand.frame = NSRect(x: 42, y: H - 34, width: 200, height: 20)
+        root.addSubview(brand)
 
+        status.font = .systemFont(ofSize: 11.5)
+        status.textColor = .secondaryLabelColor
+        status.frame = NSRect(x: 42, y: H - 50, width: W - 58, height: 16)
+        status.lineBreakMode = .byTruncatingTail
+        root.addSubview(status)
+
+        func hairline(_ y: CGFloat) {
+            let b = NSBox(frame: NSRect(x: 0, y: y, width: W, height: 1))
+            b.boxType = .separator
+            root.addSubview(b)
+        }
+        hairline(H - 58)
+
+        // Rows.
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
         table.addTableColumn(col)
         table.headerView = nil
-        table.rowHeight = 26
+        table.rowHeight = 46
+        table.intercellSpacing = .zero
+        table.selectionHighlightStyle = .sourceList
+        table.backgroundColor = .clear
         table.dataSource = self
         table.delegate = self
         table.target = self
         table.action = #selector(rowClicked(_:))
         table.doubleAction = #selector(rowClicked(_:))
 
-        scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 232))
+        scroll = NSScrollView(frame: NSRect(x: 0, y: 40, width: W, height: H - 98))
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
-        view.addSubview(scroll)
-        self.view = view
+        root.addSubview(scroll)
+
+        emptyLabel.font = .systemFont(ofSize: 12)
+        emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.alignment = .center
+        emptyLabel.frame = NSRect(x: 0, y: 40 + (H - 98) / 2 - 8, width: W, height: 18)
+        emptyLabel.isHidden = true
+        root.addSubview(emptyLabel)
+
+        hairline(39)
+
+        // Footer — the next step is always Touch ID; say so.
+        let fp = NSImageView(frame: NSRect(x: 16, y: 12, width: 14, height: 14))
+        fp.image = NSImage(
+            systemSymbolName: "touchid",
+            accessibilityDescription: nil,
+        )
+        fp.contentTintColor = .secondaryLabelColor
+        root.addSubview(fp)
+
+        let hint = NSTextField(labelWithString: "Touch ID required to fill")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        hint.frame = NSRect(x: 36, y: 11, width: 220, height: 16)
+        root.addSubview(hint)
+
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelRequest))
+        cancel.bezelStyle = .rounded
+        cancel.frame = NSRect(x: W - 92, y: 8, width: 78, height: 24)
+        root.addSubview(cancel)
+
+        self.view = root
     }
 
     /// Field-menu picks arrive through the legacy password-only entry point —
@@ -103,8 +161,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                         return params.allowedCredentials.contains(data)
                     }
                     self.status.stringValue = self.entries.isEmpty
-                        ? "Veil — no passkeys for \(params.relyingPartyIdentifier)"
-                        : "Veil — choose a passkey"
+                        ? "No passkeys for \(params.relyingPartyIdentifier)"
+                        : "Choose a passkey for \(params.relyingPartyIdentifier)"
+                    self.emptyLabel.stringValue = "No passkeys for \(params.relyingPartyIdentifier)"
+                    self.emptyLabel.isHidden = !self.entries.isEmpty
                     self.table.reloadData()
                 }
             }
@@ -126,11 +186,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             }
             DispatchQueue.main.async {
                 self.entries = got.filter { ($0["kind"] as? String) == "login" }
+                let host = Self.host(self.serviceURL)
                 if self.entries.isEmpty {
-                    self.status.stringValue = "Veil — no logins for this site"
+                    self.status.stringValue = host.isEmpty
+                        ? "No saved logins" : "No logins for \(host)"
+                    self.emptyLabel.stringValue = host.isEmpty
+                        ? "No saved logins" : "No logins for \(host)"
                 } else {
-                    self.status.stringValue = "Veil — choose a sign-in"
+                    self.status.stringValue = host.isEmpty
+                        ? "Choose a sign-in" : "Fill for \(host)"
                 }
+                self.emptyLabel.isHidden = !self.entries.isEmpty
                 self.table.reloadData()
             }
         }
@@ -158,7 +224,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             return
         }
         serviceURL = Self.url(for: identity.serviceIdentifier)
-        status.stringValue = "Veil — confirming \(identity.user)"
+        status.stringValue = "Confirming \(identity.user)…"
         fill(uuid: uuid)
     }
 
@@ -198,7 +264,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             "pubKeyCredParams": [["type": "public-key", "alg": -7]],
             "excludeCredentials": excluded,
         ]
-        status.stringValue = "Veil — confirming passkey for \(identity.userName)"
+        status.stringValue = "Confirming passkey for \(identity.userName)…"
         vlog("reg uh=\(identity.userHandle.count)B cdh=\(req.clientDataHash.count)B excl=\(excluded.count)")
         DispatchQueue.global().async {
             guard let resp = try? FillBridge.shared.passkeyRegister(origin: origin, publicKey: publicKey) else {
@@ -331,7 +397,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             return
         }
         guard let uuid = e["uuid"] as? String, !uuid.isEmpty else { return }
-        status.stringValue = "Veil — confirming…"
+        status.stringValue = "Confirming…"
         fill(uuid: uuid)
     }
 
@@ -371,6 +437,24 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             return id.identifier
         }
     }
+
+    private static func host(_ url: String) -> String {
+        URL(string: url)?.host ?? url
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+            .components(separatedBy: "/").first ?? url
+    }
+
+    /// Deterministic row tint — a muted system-color palette hashed off the
+    /// item name, so the same vault entry always shows the same monogram.
+    private static func tint(for name: String) -> NSColor {
+        let palette: [NSColor] = [
+            .systemBlue, .systemPurple, .systemPink,
+            .systemOrange, .systemTeal, .systemIndigo,
+        ]
+        let h = abs(name.unicodeScalars.reduce(0) { $0 &* 31 &+ Int($1.value) })
+        return palette[h % palette.count]
+    }
 }
 
 extension CredentialProviderViewController: NSTableViewDataSource, NSTableViewDelegate {
@@ -380,23 +464,41 @@ extension CredentialProviderViewController: NSTableViewDataSource, NSTableViewDe
         let e = entries[row]
         let name = e["name"] as? String ?? "item"
         let login = e["login"] as? String ?? ""
-        let id = NSUserInterfaceItemIdentifier("cell")
-        let cell = tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView ?? {
-            let v = NSTableCellView()
-            let tf = NSTextField(labelWithString: "")
-            tf.translatesAutoresizingMaskIntoConstraints = false
-            v.addSubview(tf)
-            v.textField = tf
-            NSLayoutConstraint.activate([
-                tf.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 12),
-                tf.centerYAnchor.constraint(equalTo: v.centerYAnchor),
-                tf.trailingAnchor.constraint(lessThanOrEqualTo: v.trailingAnchor, constant: -8),
-            ])
-            v.identifier = id
-            return v
-        }()
-        cell.textField?.stringValue = login.isEmpty ? name : "\(name) — \(login)"
-        cell.textField?.lineBreakMode = .byTruncatingTail
+
+        let cell = NSTableCellView()
+
+        // Monogram circle — first letter of the item on a hashed tint wash.
+        let tint = Self.tint(for: name)
+        let circle = NSView(frame: NSRect(x: 12, y: 9, width: 28, height: 28))
+        circle.wantsLayer = true
+        circle.layer?.cornerRadius = 14
+        circle.layer?.backgroundColor = tint.withAlphaComponent(0.16).cgColor
+        cell.addSubview(circle)
+
+        let initial = NSTextField(labelWithString: String(name.prefix(1)).uppercased())
+        initial.font = .systemFont(ofSize: 12, weight: .semibold)
+        initial.textColor = tint
+        initial.alignment = .center
+        initial.frame = circle.frame
+        cell.addSubview(initial)
+
+        let nameLabel = NSTextField(labelWithString: name)
+        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.frame = NSRect(x: 50, y: 23, width: 330, height: 17)
+        cell.addSubview(nameLabel)
+
+        if !login.isEmpty {
+            let loginLabel = NSTextField(labelWithString: login)
+            loginLabel.font = .systemFont(ofSize: 11.5)
+            loginLabel.textColor = .secondaryLabelColor
+            loginLabel.lineBreakMode = .byTruncatingTail
+            loginLabel.frame = NSRect(x: 50, y: 7, width: 330, height: 15)
+            cell.addSubview(loginLabel)
+        } else {
+            nameLabel.frame.origin.y = 14
+        }
+        cell.textField = nameLabel
         return cell
     }
 }

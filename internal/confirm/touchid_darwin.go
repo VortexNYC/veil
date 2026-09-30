@@ -118,14 +118,21 @@ static int veil_access(const char *action, const char *account, const char *reas
 		[NSApp finishLaunching];
 		veil_confirm_log(@"finishLaunching done");
 		NSRunningApplication *client = veil_client_app();
-		NSString *appName = client.localizedName.length ? client.localizedName : @"this app";
-		NSString *allow = [NSString stringWithFormat:@"Allow %@ to %s", appName, action];
+		NSString *appName = client.localizedName;
+		NSString *what = [NSString stringWithUTF8String:action];
 		NSString *who = [NSString stringWithUTF8String:account];
 		// Exactly one surface: the macOS LA dialog. No Veil window behind
 		// it — stacked prompts (ours, then the system's, then Touch ID)
-		// read as three asks for one approval. The reason line carries
-		// app + action + account; the dialog's own Cancel fails closed.
-		NSString *why = who.length ? [NSString stringWithFormat:@"%@ — %@", allow, who] : allow;
+		// read as three asks for one approval. The reason reads as a
+		// continuation of "Veil is trying to …": action, the calling app
+		// when one resolves, and the vault account.
+		NSString *why = what;
+		if (appName.length) {
+			why = [NSString stringWithFormat:@"%@ for %@", why, appName];
+		}
+		if (who.length) {
+			why = [NSString stringWithFormat:@"%@ — %@", why, who];
+		}
 		LAContext *ctx = [[LAContext alloc] init];
 		out = veil_touchid_ctx(ctx, why.UTF8String);
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];

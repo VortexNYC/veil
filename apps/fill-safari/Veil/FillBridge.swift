@@ -112,10 +112,19 @@ final class FillBridge {
     /// resends once — but only when the write failed: a request the host
     /// already received (e.g. a fill sitting at Touch ID) is never retried,
     /// or a read timeout would double the confirmation prompt.
-    func roundTrip(_ message: [String: Any]) throws -> [String: Any] {
+    ///
+    /// `timeout` bounds the reply read. Confirm-gated calls must outlive the
+    /// host's Touch ID window (60s) or the extension would cancel the OS
+    /// request while the user is still at the prompt — the credential arrives
+    /// after the context is dead and nothing is inserted.
+    func roundTrip(_ message: [String: Any], timeout: TimeInterval = 30) throws -> [String: Any] {
         lock.lock()
         defer { lock.unlock() }
         try connect()
+        if let sock {
+            var tv = timeval(tv_sec: Int(timeout), tv_usec: 0)
+            setsockopt(sock.fileDescriptor, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        }
         do {
             try send(message)
         } catch {
@@ -147,14 +156,14 @@ final class FillBridge {
 
     /// Confirm-gated: the host runs its own Touch ID step before answering.
     func fill(app bundleID: String, uuid: String) throws -> (entries: [[String: Any]], error: String) {
-        let reply = try roundTrip(["action": "fill", "url": "app://" + bundleID, "app": bundleID, "uuid": uuid])
+        let reply = try roundTrip(["action": "fill", "url": "app://" + bundleID, "app": bundleID, "uuid": uuid], timeout: 95)
         let entries = reply["entries"] as? [[String: Any]] ?? []
         return (entries, reply["error"] as? String ?? "")
     }
 
     /// Same fill for a web service — the appex path.
     func fill(url: String, uuid: String) throws -> (entries: [[String: Any]], error: String) {
-        let reply = try roundTrip(["action": "fill", "url": url, "uuid": uuid])
+        let reply = try roundTrip(["action": "fill", "url": url, "uuid": uuid], timeout: 95)
         let entries = reply["entries"] as? [[String: Any]] ?? []
         return (entries, reply["error"] as? String ?? "")
     }
@@ -170,14 +179,14 @@ final class FillBridge {
     /// OS-provided clientDataHash: publicKey carries `clientDataHash`
     /// instead of `challenge`.
     func passkeyGet(origin: String, publicKey: [String: Any]) throws -> [String: Any]? {
-        let reply = try roundTrip(["action": "passkeyGet", "origin": origin, "publicKey": publicKey])
+        let reply = try roundTrip(["action": "passkeyGet", "origin": origin, "publicKey": publicKey], timeout: 95)
         return reply["response"] as? [String: Any]
     }
 
     /// Passkey registration — same confirm gate, response carries the
     /// attestation object and new credential id.
     func passkeyRegister(origin: String, publicKey: [String: Any]) throws -> [String: Any]? {
-        let reply = try roundTrip(["action": "passkeyCreate", "origin": origin, "publicKey": publicKey])
+        let reply = try roundTrip(["action": "passkeyCreate", "origin": origin, "publicKey": publicKey], timeout: 95)
         return reply["response"] as? [String: Any]
     }
 }
