@@ -1064,6 +1064,9 @@ func ExtensionManifestFirefox(chromeManifest []byte) ([]byte, error) {
 		"gecko": map[string]any{
 			"id":                 JSONFirefoxID(),
 			"strict_min_version": "128.0",
+			"data_collection_permissions": map[string]any{
+				"required": []string{"authenticationInfo", "websiteActivity", "websiteContent"},
+			},
 		},
 	}
 	raw, err := json.MarshalIndent(m, "", "  ")

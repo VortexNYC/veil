@@ -1,5 +1,10 @@
 # Store listing — Veil extension (Chrome Web Store / AMO)
 
+Publisher identity is **Vortex** everywhere — store developer name, support
+contact, homepage. Veil is the product; Vortex is the company that ships it.
+Accounts: Google `shlomo@vortex.nyc`, Apple `shlomo@plasmapos.com`
+(team VFWGNKKT4G, Plasma POS, Inc.). Nothing personal, nothing invented.
+
 Private alpha distribution: CWS "unlisted" (link-only) + AMO self-distributed
 signed .xpi. Safari ships inside Veil.app (Developer ID + notarize).
 
@@ -51,6 +56,16 @@ authentication information is used only for the core function, never sold
 or transferred to third parties.
 
 ## AMO (Firefox)
+
+Submitted 2026-09-30 as **Vortex** (`shlomo@vortex.nyc`, 2FA on — TOTP seed
++ recovery codes in Veil items `mozilla-amo` / `mozilla-amo-recovery`).
+Channel: **unlisted** (self-distributed signed .xpi). Add-on `081badce029046738f07`,
+version 0.0.1 auto-approved; signed artifact at
+`~/.veil/store/veil-firefox-signed-0.0.1.xpi`. API credentials for
+`web-ext sign` live in Veil item `mozilla-amo-api`.
+Manifest declares `data_collection_permissions` (authenticationInfo,
+websiteActivity, websiteContent) — AMO validator requires it.
+Known validator warnings for next version: innerHTML assignment, 6 others.
 
 Same copy. Category: Security & Privacy + Productivity. Notes for reviewer:
 
