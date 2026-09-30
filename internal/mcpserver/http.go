@@ -192,7 +192,11 @@ func ready(a *app.App, issuer string, errs *errWindow) http.HandlerFunc {
 				return
 			}
 		}
-		_, _ = w.Write([]byte(fmt.Sprintf("ok errors_5m=%d\n", errs.count())))
+		spool := 0
+		if s, ok := a.Auditor.(interface{ Pending() int }); ok {
+			spool = s.Pending()
+		}
+		_, _ = w.Write([]byte(fmt.Sprintf("ok errors_5m=%d audit_spool=%d\n", errs.count(), spool)))
 	}
 }
 

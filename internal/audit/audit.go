@@ -6,6 +6,9 @@
 //
 // Durability semantics are explicit: Async buffers in memory. A process crash
 // before a flush loses queued events. Callers must call Close to drain.
+// Spool removes even that window: a failed store write is fsynced to a local
+// file and relayed in order once the store recovers, so an event that Append
+// reports success for is never memory-only.
 package audit
 
 import (

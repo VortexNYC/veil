@@ -153,7 +153,7 @@ func Init(dir string) (*App, error) {
 		_ = s.Close()
 		return nil, err
 	}
-	return finish(dir, cfg, s, &audit.Sync{Store: s})
+	return finish(dir, cfg, s, spoolAuditor(dir, s))
 }
 
 func Open(dir string) (*App, error) {
@@ -173,7 +173,7 @@ func Open(dir string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	return finish(dir, cfg, s, &audit.Sync{Store: s})
+	return finish(dir, cfg, s, spoolAuditor(dir, s))
 }
 
 func hasKeyMaterial(dir string) bool {
@@ -258,8 +258,28 @@ func OpenPostgres(dsn string) (*App, error) {
 	// Postgres before the response returns. The buffered Async path traded a
 	// few hundred ms of crash-window loss for batch COPY efficiency — wrong
 	// trade for an authorization system. A single-row INSERT costs ~0.6ms
-	// against a measured ~10x DB headroom.
-	return finish("", cfg, s, &audit.Sync{Store: s})
+	// against a measured ~10x DB headroom. The Spool underneath covers the
+	// window Postgres itself cannot: a store write that fails outright (or
+	// an outbox insert that fails with it) is fsynced to local disk and
+	// relayed in order once the store recovers.
+	return finish("", cfg, s, spoolAuditor("", s))
+}
+
+// spoolAuditor wraps the store's synchronous audit path with a durable
+// on-disk fallback: when AppendAudit fails, the event is fsynced into a
+// spool segment and relayed later — deny decisions, heal events, and local
+// vault audits stay durable through store outages and process crashes.
+// dir is the vault dir for local apps; the origin overrides it with
+// VEIL_AUDIT_SPOOL_DIR or falls back to the container temp dir, which still
+// survives a process crash/restart on the same host.
+func spoolAuditor(dir string, s store.Store) audit.Auditor {
+	if dir == "" {
+		dir = os.Getenv("VEIL_AUDIT_SPOOL_DIR")
+	}
+	if dir == "" {
+		dir = filepath.Join(os.TempDir(), "veil")
+	}
+	return audit.NewSpool(s, filepath.Join(dir, "audit-spool"))
 }
 
 func loadKeyEnv(name string, required bool) ([]byte, error) {

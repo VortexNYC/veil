@@ -164,6 +164,11 @@ func checkBeat(ctx context.Context, pool *pgxpool.Pool, name string, stale time.
 // counts as an outage — blips below this are noise, at-or-above is a bleed.
 const errBudget = 10
 
+// spoolBudget is the on-disk audit backlog that turns into a finding. Any
+// nonzero depth means store writes are failing; the grace absorbs a short
+// burst draining between monitor ticks.
+const spoolBudget = 100
+
 func probeReady(ctx context.Context, u string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -180,13 +185,20 @@ func probeReady(ctx context.Context, u string) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("%s -> %d", u, res.StatusCode)
 	}
-	// /ready reports the rolling 5xx count: "ok errors_5m=N". A process can
-	// be green and still bleeding — this is how the monitor sees it.
+	// /ready reports the rolling 5xx count and audit spool depth:
+	// "ok errors_5m=N audit_spool=N". A process can be green and still
+	// bleeding — this is how the monitor sees it.
 	for _, f := range strings.Fields(string(body)) {
 		if n, ok := strings.CutPrefix(f, "errors_5m="); ok {
 			var c int
 			if _, err := fmt.Sscanf(n, "%d", &c); err == nil && c >= errBudget {
 				return fmt.Errorf("origin 5xx: %d in the last 5m", c)
+			}
+		}
+		if n, ok := strings.CutPrefix(f, "audit_spool="); ok {
+			var c int
+			if _, err := fmt.Sscanf(n, "%d", &c); err == nil && c > spoolBudget {
+				return fmt.Errorf("audit spool backlog: %d events awaiting relay", c)
 			}
 		}
 	}

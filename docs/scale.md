@@ -6,8 +6,7 @@ arithmetic from those numbers, not marketing.
 
 ## Request geometry
 
-One `POST /v1/use` performs exactly **4 synchronous DB round trips** plus an
-asynchronous audit write:
+One `POST /v1/use` performs exactly **5 synchronous DB round trips**:
 
 | Query | /request | Mean | Notes |
 |---|---|---|---|
@@ -15,7 +14,14 @@ asynchronous audit write:
 | `UseAuth` (LEFT JOIN agents/items/grants/approvals) | 1 | ~0.034 ms | one-shot authz snapshot |
 | `agents` reload | 1 | ~0.014 ms | final check before secret access |
 | `items` secret | 1 | ~0.014 ms | ciphertext fetch |
-| `audit` COPY | ~0.017 | ~1.07 ms | async, ~40–60 rows/batch |
+| `audit` INSERT | 1 | ~0.60 ms | synchronous — durable before the secret is released |
+
+Audit durability: the allow-path write commits (inside the session-consume
+transaction for session tokens) before the credential leaves the origin. A
+provably-failed `audit` insert falls back to the `audit_outbox` table and is
+re-landed by the relay; a failure that takes out both (DB unreachable)
+is fsynced to the local audit spool and replayed in order on recovery. An
+event is never held in memory-only form.
 
 Session consumption (`uses` increment) is atomic in the `sessions` update —
 two replicas racing a `max_uses` session cannot both succeed. Everything

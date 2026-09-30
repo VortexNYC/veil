@@ -298,10 +298,17 @@ func TestAsyncAuditorRetriesFailedFlush(t *testing.T) {
 	}
 }
 
-// flakyStore fails AppendAudits fail-times before delegating to Memory.
+// flakyStore fails audit appends fail-times before delegating to Memory.
 type flakyStore struct {
 	*store.Memory
 	fail atomic.Int64
+}
+
+func (s *flakyStore) AppendAudit(e protocol.AuditEvent) error {
+	if s.fail.Add(-1) >= 0 {
+		return errors.New("store down")
+	}
+	return s.Memory.AppendAudit(e)
 }
 
 func (s *flakyStore) AppendAudits(events []protocol.AuditEvent) error {
