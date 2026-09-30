@@ -25,7 +25,7 @@ import (
 // once, not every tick.
 func monitorCmd() *cobra.Command {
 	var dsn, mailURL, mailToken, alertTo, readyURL string
-	var backupStale, sweepStale, alertCooldown, usageStale, auditExportStale time.Duration
+	var backupStale, sweepStale, alertCooldown, usageStale, auditExportStale, walStale time.Duration
 	var usagePending int64
 	c := &cobra.Command{
 		Use:   "monitor",
@@ -48,6 +48,7 @@ func monitorCmd() *cobra.Command {
 				findings = append(findings, checkBeat(ctx, pool, "backup", backupStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "sweep", sweepStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "audit-export", auditExportStale)...)
+				findings = append(findings, checkBeat(ctx, pool, "wal-archive", walStale)...)
 				// usage-report is opt-in: unmetered deploys never run the
 				// flusher, so a missing beat is silence, not a finding. A
 				// beat that exists and goes stale means the reporter wedged.
@@ -120,6 +121,7 @@ func monitorCmd() *cobra.Command {
 	c.Flags().DurationVar(&sweepStale, "sweep-stale", 100*time.Minute, "sweep beat older than this is a finding")
 	c.Flags().DurationVar(&usageStale, "usage-stale", 10*time.Minute, "usage-report beat older than this is a finding (absent beat = unmetered deploy, skipped)")
 	c.Flags().DurationVar(&auditExportStale, "audit-export-stale", 3*time.Hour, "audit-export beat older than this is a finding")
+	c.Flags().DurationVar(&walStale, "wal-stale", 10*time.Minute, "wal-archive beat older than this is a finding — WAL archiving is what bounds backup RPO")
 	c.Flags().Int64Var(&usagePending, "usage-pending", 25, "unreported usage org-windows beyond this is a finding")
 	c.Flags().DurationVar(&alertCooldown, "alert-cooldown", 6*time.Hour, "minimum time between alert emails")
 	c.PreRunE = func(cmd *cobra.Command, args []string) error {

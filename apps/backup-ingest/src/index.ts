@@ -3,11 +3,13 @@ interface Env {
 	INGEST_TOKEN: string;
 }
 
-// Names are deliberately narrow: db dumps are <db>-YYYY-MM-DD-HHMM.dump and
-// the audit archive is audit-YYYYMMDD-HHMMSS-<firstId>-<lastId>.jsonl.
-// Nothing else lands in the bucket, and a crafted name can't write outside
-// the prefixes.
-const NAME = /^([a-z0-9]+-\d{4}-\d{2}-\d{2}-\d{4}\.dump|audit-\d{8}-\d{6}-\d+-\d+\.jsonl)$/;
+// Names are deliberately narrow: db dumps are <db>-YYYY-MM-DD-HHMM.dump,
+// the audit archive is audit-YYYYMMDD-HHMMSS-<firstId>-<lastId>.jsonl,
+// base backups are base-YYYY-MM-DD-HHMM.tar.gz, and WAL archiving lands
+// wal-<24-hex-segment> (plus .partial in-flight, .<lsn-offset>.backup
+// labels, wal-<8-hex>.history timelines). Nothing else lands in the bucket,
+// and a crafted name can't write outside the prefixes.
+const NAME = /^([a-z0-9]+-\d{4}-\d{2}-\d{2}-\d{4}\.dump|audit-\d{8}-\d{6}-\d+-\d+\.jsonl|base-\d{4}-\d{2}-\d{2}-\d{4}\.tar\.gz|wal-[0-9A-F]{24}(?:\.partial|\.[0-9A-F]{8}\.backup)?|wal-[0-9A-F]{8}\.history)$/;
 
 function authed(req: Request, env: Env): boolean {
 	return req.headers.get("Authorization") === `Bearer ${env.INGEST_TOKEN}`;
@@ -16,7 +18,7 @@ function authed(req: Request, env: Env): boolean {
 export default {
 	async fetch(req: Request, env: Env): Promise<Response> {
 		const url = new URL(req.url);
-		const m = url.pathname.match(/^\/v1\/([a-z0-9.-]+\.(?:dump|jsonl))$/);
+		const m = url.pathname.match(/^\/v1\/([A-Za-z0-9._-]+)$/);
 		if (!m || !NAME.test(m[1])) {
 			return new Response("not found", { status: 404 });
 		}

@@ -1,0 +1,6 @@
+# WAL archiver: pg client pinned to the server major (same rule as
+# Dockerfile.backup), curl for the offsite R2 push.
+FROM postgres:18-alpine
+RUN apk add --no-cache curl
+COPY scripts/wal-archive.sh /wal-archive.sh
+CMD ["sh", "/wal-archive.sh"]

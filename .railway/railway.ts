@@ -91,10 +91,26 @@ export default defineRailway(() => {
   const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
   const veilBackup = service("veil-backup", {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.backup" },
-    start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if [ -n \"$OFFSITE_TOKEN\" ]; then for f in /backups/*-$(date +%F)-*.dump; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/$(basename \"$f\")\" || rc=1; done; fi; find /backups -name \"*.dump\" -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES('\"'\"'backup'\"'\"',now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
+    start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if pg_basebackup -D /backups/base -Ft -z -X stream -d \"$PGDUMP_BASE/postgres?replication=database\"; then mv /backups/base/base.tar.gz /backups/base-$(date +%F-%H%M).tar.gz; rm -f /backups/base/pg_wal.tar.gz; else rc=1; fi; if [ -n \"$OFFSITE_TOKEN\" ]; then for f in /backups/*-$(date +%F)-*.dump /backups/base-$(date +%F)-*.tar.gz; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/$(basename \"$f\")\" || rc=1; done; fi; find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" \\) -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES('\"'\"'backup'\"'\"',now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
     replicas: { "sfo": 1 },
     volumeMounts: { "/backups": veilBackups },
+    env: {
+      PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      OFFSITE_TOKEN: preserve(),
+    },
+  });
+  // Continuous WAL archive — the PITR half of the backup plane. Streams WAL
+  // over the replication protocol into physical slot wal_archive (retains
+  // WAL server-side while this service is down; max_slot_wal_keep_size caps
+  // what a dead archiver can pin) and pushes every segment plus the
+  // in-flight .partial to R2 every ~15s. With the daily base-*.tar.gz from
+  // veil-backup this restores to any second — loss window is the push
+  // interval, not the dump interval. Always-on, unlike the cron siblings.
+  const veilWal = service("veil-wal", {
+    build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.wal" },
+    start: "sh /wal-archive.sh",
+    replicas: { "sfo": 1 },
     env: {
       PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
       OFFSITE_TOKEN: preserve(),
@@ -149,6 +165,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport, veilWal],
   });
 });
