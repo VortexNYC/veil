@@ -25,6 +25,8 @@ const (
 	algES256 = -7
 	flagUP   = 1 << 0
 	flagUV   = 1 << 2
+	flagBE   = 1 << 3
+	flagBS   = 1 << 4
 	flagAT   = 1 << 6
 )
 
@@ -180,8 +182,8 @@ func Register(origin string, publicKey json.RawMessage, existing []Record, verif
 	if err != nil {
 		return Credential{}, Record{}, ErrUnknown
 	}
-	full := authData(rpID, flagUP|flagUV|flagAT, credID, cose)
-	short := authData(rpID, flagUP|flagUV, nil, nil)
+	full := authData(rpID, flagUP|flagUV|flagBE|flagBS|flagAT, credID, cose)
+	short := authData(rpID, flagUP|flagUV|flagBE|flagBS, nil, nil)
 	att, err := encodeAttestation(full)
 	if err != nil {
 		return Credential{}, Record{}, ErrUnknown
@@ -267,7 +269,7 @@ func Assert(origin string, publicKey json.RawMessage, recs []Record, verified bo
 	if err != nil {
 		return Credential{}, ErrUnknown
 	}
-	short := authData(rpID, flagUP|flagUV, nil, nil)
+	short := authData(rpID, flagUP|flagUV|flagBE|flagBS, nil, nil)
 	// ES256 is ECDSA-SHA256 over authenticatorData || SHA-256(clientDataJSON).
 	// SignASN1 takes a digest, not the raw concatenation — passing 69 bytes
 	// truncates to the first 32 of authenticatorData and an RP will reject it.
