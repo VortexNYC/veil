@@ -25,8 +25,10 @@ export with extra steps.
 
 ## Backing up
 
-Railway managed Postgres takes platform snapshots; that is the baseline.
-For logical backups (point-in-time-independent, portable across instances):
+Three layers, in increasing tightness: platform snapshots (crash recovery),
+nightly logical dumps + daily base backups (durable, portable), and the
+continuous WAL archive (point-in-time recovery, RPO seconds — see below).
+For logical dumps by hand:
 
 ```bash
 pg_dump --no-owner --no-privileges --format=custom \
@@ -75,6 +77,39 @@ vault and the `INGEST_TOKEN` worker secret. A dump plus its KEK is a
 plaintext export — the token only gates the ciphertext; `VEIL_KEK` stays
 in its own escrow.
 
+## WAL archive (PITR — offsite, continuous)
+
+Nightly dumps bound loss to ~24h; that is not acceptable for an auth store.
+The `veil-wal` Railway service (always-on, `Dockerfile.wal`,
+`scripts/wal-archive.sh`) streams WAL from the primary over the replication
+protocol into physical slot `wal_archive` and pushes to the same R2 bucket:
+
+- Every completed 16MB segment lands as `wal-<24-hex>`, plus
+  `.history` timelines and `.<offset>.backup` labels.
+- The in-flight `.partial` is re-pushed whenever its content hash changes
+  (~15s loop) — segment names are preallocated so mtime/size don't move;
+  content hashing is the only reliable signal. This is what bounds RPO:
+  **~15–30s**, not hours. Segments older than the slot start never exist
+  in the archive — replay starts at a base backup, not at genesis.
+
+Base backups give the PITR start point: `veil-backup` also runs
+`pg_basebackup -Ft -z -X stream` daily → `base-YYYY-MM-DD-HHMM.tar.gz`.
+The streamed `pg_wal.tar.gz` is discarded — the archive is authoritative.
+
+Runtime config on the Postgres container (set 2026-09-30, persisted on the
+volume — pg_hba.conf and postgresql.auto.conf live in PGDATA):
+
+- `host replication all 0.0.0.0/0 scram-sha-256` appended to pg_hba +
+  `pg_reload_conf()` — stock images only permit replication on loopback.
+- `ALTER SYSTEM SET max_slot_wal_keep_size='256MB'` — caps WAL a dead
+  archiver pins. Beyond the cap the slot goes `wal_status='lost'` instead
+  of filling the 500MB volume; wal-archive drops and recreates a lost
+  slot on boot. The monitor pages on a stale `wal-archive` beat
+  (`--wal-stale`, default 10m — beats are written every ~15s push loop).
+
+If the Postgres volume is ever rebuilt from scratch, both must be re-applied;
+the beat staleness finding is the tripwire that makes that visible.
+
 ## Audit archive (offsite, append-only)
 
 Nightly dumps are the coarse net; the audit trail also exports continuously
@@ -109,6 +144,39 @@ pg_restore --clean --if-exists --no-owner --no-privileges \
 
 Or a plain-text dump straight through psql. Then boot the origin with the
 same `VEIL_KEK`; `EnsurePostgresSchema` is idempotent over restored DDL.
+
+### Point-in-time restore (base backup + archived WAL)
+
+To recover to an arbitrary timestamp — not just the last dump:
+
+```bash
+# 1. Fetch the base backup and every wal-* object (no list endpoint —
+#    probe names, or pull the bucket via rclone/aws s3 with R2 creds).
+curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
+  https://backup-ingest.veil.nyc/v1/base-YYYY-MM-DD-HHMM.tar.gz -o base.tar.gz
+
+# 2. Extract the cluster.
+mkdir data && tar -xzf base.tar.gz -C data && chmod 700 data
+
+# 3. Stage the archive: strip the wal- prefix off each object into a dir.
+#    A complete segment beats a .partial of the same name; a .partial with
+#    no complete counterpart is renamed to its segment name — that is the
+#    live tail, valid WAL up to the last flush before loss.
+
+# 4. Recover. recovery.signal flips the server into archive-recovery mode.
+cat >> data/postgresql.auto.conf <<'EOF'
+restore_command = 'cp /walarchive/%f %p'
+recovery_target_time = 'YYYY-MM-DD HH:MM:SS+00'   # omit for end-of-log
+EOF
+touch data/recovery.signal
+postgres -D data     # or container equivalent; replays, then pauses/promotes
+```
+
+`recovery_target_time` stops before the first commit newer than the target
+(exclusive bound); omitting it replays to the tail of the newest `.partial` —
+RPO is whatever hadn't flushed through the archiver, typically <30s. After
+recovery, follow the verify list below (unwrap + item decrypt + wrong-KEK
+fail-closed) before declaring it done.
 
 Verify before declaring the restore done — the drill asserts each of
 these, do the same by hand:
@@ -160,6 +228,14 @@ the binary.
     contiguous: objects covering ids 1576→1614 all present in R2, and
     `audit-20260929-192042-1608-1614.jsonl` row-for-row identical to the
     restored table.
+  - 2026-09-30 — PITR chain proven end-to-end locally before prod rollout:
+    `pg_receivewal` + slot `wal_archive` streamed WAL from a scratch pg18,
+    `pg_basebackup` base taken, primary hard-killed; recovery with
+    `recovery_target_time` between two commits replayed exactly the earlier
+    commit and excluded the later one, and end-of-log recovery picked up the
+    final in-flight `.partial` (row committed ~4s before the kill survived).
+    Live on prod same day: slot active, `wal-*.partial` + first
+    `base-*.tar.gz` verified in R2, `wal-archive` beat reporting.
 
 ## The drill tool
 
