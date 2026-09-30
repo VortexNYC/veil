@@ -98,10 +98,14 @@ fill-safari:
 
 # Store payloads: zips the two installed extension dirs for CWS / AMO
 # upload. Run `veil fill install` first so ~/.veil/extension* is current.
+# CWS rejects the dev-pinned manifest "key" — the store signature owns the ID,
+# so the Chrome zip gets a stripped manifest while ~/.veil/extension keeps it.
 fill-pack:
 	@mkdir -p ~/.veil/store
 	@VER=$$(python3 -c "import json;print(json.load(open('$(HOME)/.veil/extension/manifest.json'))['version'])") && \
-	cd ~/.veil/extension && zip -qr ~/.veil/store/veil-chrome-$$VER.zip . && \
+	rm -rf /tmp/veil-cws && cp -R ~/.veil/extension /tmp/veil-cws && \
+	python3 -c "import json;p='/tmp/veil-cws/manifest.json';m=json.load(open(p));m.pop('key',None);json.dump(m,open(p,'w'),indent=2)" && \
+	cd /tmp/veil-cws && zip -qr ~/.veil/store/veil-chrome-$$VER.zip . && \
 	cd ~/.veil/extension-firefox && zip -qr ~/.veil/store/veil-firefox-$$VER.zip . && \
 	echo "~/.veil/store/veil-chrome-$$VER.zip + veil-firefox-$$VER.zip"
 
