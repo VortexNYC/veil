@@ -1841,12 +1841,19 @@ func serveCmd(home *string) *cobra.Command {
 }
 
 func fillCmd(home *string) *cobra.Command {
-	var bridge, confirmPrompt bool
+	var bridge, confirmPrompt, confirmServer bool
 	c := &cobra.Command{
 		Use:   "fill",
 		Short: "Veil fill native host. Fill writes into the page. Agents never see the secret.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runtime.LockOSThread()
+			if confirmServer {
+				// Internal: the bridge daemon's warm confirm helper —
+				// stdio JSON lines in/out, one sheet+eval per line. Runs
+				// on the main thread so veil_access drives AppKit.
+				confirm.ServeStdio()
+				return nil
+			}
 			if confirmPrompt {
 				// Internal: the bridge daemon spawns one of these per
 				// confirm so the AppKit sheet + LA eval live in a
@@ -1905,12 +1912,17 @@ func fillCmd(home *string) *cobra.Command {
 					return err
 				}
 				paths := fill.BridgeSocketPaths(dir, user)
-				// Confirms spawn a transient --confirm-prompt child — the
-				// daemon itself stays a pure Go process with no AppKit, so
-				// macOS never manages it as an app (efficiency/TAL kills)
-				// and the socket stays bound for the daemon's life.
+				// Confirms live in a persistent --confirm-server child —
+				// the daemon itself stays a pure Go process with no
+				// AppKit, so macOS never manages it as an app
+				// (efficiency/TAL kills) and the socket stays bound for
+				// the daemon's life. The child is spawned once and kept
+				// warm: a prompt costs a pipe round trip + the LA eval
+				// instead of ~6s of process boot + AppKit init per
+				// confirm. Prewarm now so the first prompt is warm too.
 				if h.Confirm != nil {
-					h.Confirm = confirm.TouchIDHelper
+					h.Confirm = confirm.TouchIDServer
+					confirm.PrewarmServer()
 				}
 				return fill.ServeBridge(cmd.Context(), h, paths...)
 			}
@@ -1919,6 +1931,7 @@ func fillCmd(home *string) *cobra.Command {
 	}
 	c.Flags().BoolVar(&bridge, "bridge", false, "serve fill frames on <home>/fill.sock instead of stdio (Safari appex)")
 	c.Flags().BoolVar(&confirmPrompt, "confirm-prompt", false, "run one access sheet + Touch ID eval then exit (internal: spawned by the bridge daemon)")
+	c.Flags().BoolVar(&confirmServer, "confirm-server", false, "serve access sheets over stdio until stdin closes (internal: the bridge daemon's warm confirm helper)")
 	c.AddCommand(&cobra.Command{
 		Use:   "install",
 		Short: "Install the nyc.veil.fill native messaging host. Does not copy the extension.",

@@ -3,11 +3,15 @@
 package confirm
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -98,6 +102,134 @@ func TouchIDHelper(reason string) error {
 	// The child's veil-confirm logs land in the daemon's fill-bridge.log.
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("fill: touch id declined")
+	}
+	return nil
+}
+
+// ServeStdio is the --confirm-server child loop: one JSON line in
+// {"reason":...} → a sheet + LA eval → one JSON line out {"ok":bool}.
+// It must run on the main thread: veil_access drives AppKit and pumps the
+// runloop itself while an eval is in flight; between requests the main
+// thread just blocks on stdin. Stdin EOF (daemon exit) ends the process.
+func ServeStdio() {
+	// Pay the AppKit boot once, at spawn — the daemon prewarms this child
+	// at bridge start so even the first prompt is warm.
+	warmAppKit()
+	sc := bufio.NewScanner(os.Stdin)
+	sc.Buffer(make([]byte, 64<<10), 64<<10)
+	enc := json.NewEncoder(os.Stdout)
+	for sc.Scan() {
+		var req struct {
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal(sc.Bytes(), &req) != nil {
+			_ = enc.Encode(map[string]bool{"ok": false})
+			continue
+		}
+		err := TouchID(req.Reason)
+		_ = enc.Encode(map[string]bool{"ok": err == nil})
+	}
+}
+
+// TouchIDServer keeps one --confirm-server child warm so a prompt costs a
+// pipe round trip + the LA eval (~1.5s + the human) instead of a full
+// process boot — measured 6-7s of spawn/AppKit/LS per prompt otherwise.
+// Requests serialize through the mutex; a wedged or dead child is killed
+// and the next call respawns. Same 75s deadline as TouchIDHelper.
+func TouchIDServer(reason string) error {
+	return server.ask(reason)
+}
+
+// PrewarmServer spawns the child in the background so the first real
+// prompt is already warm. Called once at bridge boot.
+func PrewarmServer() {
+	go func() {
+		server.mu.Lock()
+		defer server.mu.Unlock()
+		_ = server.ensure()
+	}()
+}
+
+var server = &confirmServer{}
+
+type confirmServer struct {
+	mu   sync.Mutex
+	cmd  *exec.Cmd
+	in   io.WriteCloser
+	out  io.Reader
+	dead bool
+}
+
+func (s *confirmServer) ensure() error {
+	if s.cmd != nil && !s.dead {
+		return nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(self, "fill", "--confirm-server")
+	cmd.Env = os.Environ()
+	cmd.Stderr = os.Stderr
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	s.cmd, s.in, s.out, s.dead = cmd, in, out, false
+	go func() {
+		_ = cmd.Wait()
+		server.mu.Lock()
+		server.dead = true
+		server.mu.Unlock()
+	}()
+	return nil
+}
+
+func (s *confirmServer) kill() {
+	if s.cmd != nil && s.cmd.Process != nil {
+		_ = s.cmd.Process.Kill()
+	}
+	s.dead = true
+}
+
+func (s *confirmServer) ask(reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensure(); err != nil {
+		return TouchIDHelper(reason)
+	}
+	req, _ := json.Marshal(struct {
+		Reason string `json:"reason"`
+	}{Reason: reason})
+	if f, ok := s.in.(*os.File); ok {
+		_ = f.SetWriteDeadline(time.Now().Add(helperDeadline))
+	}
+	if _, err := s.in.Write(append(req, '\n')); err != nil {
+		s.kill()
+		return TouchIDHelper(reason)
+	}
+	if f, ok := s.out.(*os.File); ok {
+		_ = f.SetReadDeadline(time.Now().Add(helperDeadline))
+	}
+	var reply struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.NewDecoder(s.out).Decode(&reply); err != nil {
+		// Timeout or dead child: its late reply would desync the next
+		// request, so the process must die. Fall back to a fresh
+		// one-shot child for this prompt.
+		s.kill()
+		return TouchIDHelper(reason)
+	}
+	if !reply.OK {
 		return fmt.Errorf("fill: touch id declined")
 	}
 	return nil

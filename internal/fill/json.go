@@ -480,6 +480,7 @@ func (h *Host) jsonGenerate(rawURL, login, rules, uuid string) []byte {
 		return jsonGenerateErr("failed")
 	}
 	h.invalidateIndex()
+	h.replicaSyncSoon()
 	h.rememberCreated(rawURL, item.ID)
 	return jsonBytes(struct {
 		UUID     string `json:"uuid"`
@@ -516,6 +517,7 @@ func (h *Host) jsonRotate(rawURL, uuid, login, rules string, matches []jsonMatch
 		return jsonGenerateErr("failed")
 	}
 	h.invalidateIndex()
+	h.replicaSyncSoon()
 	if login == "" {
 		login = hit.Login
 	}
@@ -571,6 +573,7 @@ func (h *Host) jsonTypedRotate(rawURL, uuid, login, password string, matches []j
 		return jsonGenerateErr("failed")
 	}
 	h.invalidateIndex()
+	h.replicaSyncSoon()
 	if login == "" {
 		login = hit.Login
 	}
@@ -622,6 +625,7 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string) []byte {
 		return jsonGenerateErr("failed")
 	}
 	h.invalidateIndex()
+	h.replicaSyncSoon()
 	h.rememberCreated(rawURL, item.ID)
 	return jsonBytes(struct {
 		UUID  string `json:"uuid"`
@@ -661,6 +665,7 @@ func (h *Host) jsonEnrollTotp(rawURL, otpauth string) []byte {
 	}
 	h.forgetCreated()
 	h.invalidateIndex()
+	h.replicaSyncSoon()
 	return jsonBytes(struct {
 		UUID    string `json:"uuid"`
 		HasTOTP bool   `json:"hasTotp"`
@@ -821,7 +826,9 @@ func (h *Host) jsonPasskeyCreate(origin string, publicKey json.RawMessage, extra
 	if err := h.confirm("Veil wants to save a passkey", grant.Registrable(origin), true); err != nil {
 		return jsonPasskeyErr("canceled")
 	}
-	return jsonPasskeyFromHost(h.passkeysRegister(origin, publicKey, extra))
+	out := jsonPasskeyFromHost(h.passkeysRegister(origin, publicKey, extra))
+	h.replicaSyncSoon()
+	return out
 }
 
 func (h *Host) jsonPasskeyGet(origin string, publicKey json.RawMessage) []byte {

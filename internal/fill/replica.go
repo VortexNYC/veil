@@ -2,6 +2,7 @@ package fill
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/VortexNYC/veil/internal/app"
@@ -26,6 +27,7 @@ func (h *Host) PullReplica() error {
 	if json.Unmarshal(raw, &out) != nil {
 		return errGenerateCreate
 	}
+	seal := debugMark("replica seal", 0)
 	for _, row := range out.Items {
 		if row.Item.ID == "" || row.Material == "" {
 			continue
@@ -34,8 +36,43 @@ func (h *Host) PullReplica() error {
 			return err
 		}
 	}
+	seal()
+	fillDebug(fmt.Sprintf("replica sync items=%d", len(out.Items)))
 	h.invalidateIndex()
 	return nil
+}
+
+// replicaSyncSoon refreshes the replica off the reply path so an item the
+// origin just accepted shows up in list/match without putting the ~1s sync
+// inside the write reply. Concurrent writes coalesce; a write that lands
+// mid-pull marks dirty so the loop runs once more — no write is missed.
+func (h *Host) replicaSyncSoon() {
+	if h.Replica == nil || h.Origin == "" {
+		return
+	}
+	h.pullMu.Lock()
+	if h.pullRunning {
+		h.pullDirty = true
+		h.pullMu.Unlock()
+		return
+	}
+	h.pullRunning = true
+	h.pullMu.Unlock()
+	go func() {
+		for {
+			h.pullMu.Lock()
+			h.pullDirty = false
+			h.pullMu.Unlock()
+			_ = h.PullReplica()
+			h.pullMu.Lock()
+			if !h.pullDirty {
+				h.pullRunning = false
+				h.pullMu.Unlock()
+				return
+			}
+			h.pullMu.Unlock()
+		}
+	}()
 }
 
 func (h *Host) replicaFill(uuid string, mintTotp bool) (app.FillEntry, bool) {

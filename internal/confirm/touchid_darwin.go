@@ -20,7 +20,12 @@ import (
 #import <AppKit/AppKit.h>
 
 static void veil_confirm_log(NSString *msg) {
-	fprintf(stderr, "veil-confirm %s\n", msg.UTF8String);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	struct tm tmv;
+	localtime_r(&tv.tv_sec, &tmv);
+	fprintf(stderr, "veil-confirm %02d:%02d:%02d.%03d %s\n",
+		tmv.tm_hour, tmv.tm_min, tmv.tm_sec, (int)(tv.tv_usec / 1000), msg.UTF8String);
 }
 
 static int veil_touchid_ctx(LAContext *ctx, const char *reason) {
@@ -323,12 +328,136 @@ static NSImageView *veil_icon_view(NSImage *img) {
 	return v;
 }
 
+// The access sheet is the same window every time — only the asking-app
+// icon, the verb line, and the account change. Build it once (the daemon's
+// warm child pays this at spawn) and per request swap those three + reset.
+static NSWindow *veil_sheet_win = nil;
+static NSImageView *veil_sheet_left = nil;
+static NSTextField *veil_sheet_allow = nil;
+static NSTextField *veil_sheet_acct = nil;
+static NSButton *veil_sheet_cancel = nil;
+
+static void veil_sheet_once(void) {
+	if (veil_sheet_win) {
+		return;
+	}
+	NSRect frame = NSMakeRect(0, 0, 420, 288);
+	NSWindow *win = [[NSWindow alloc] initWithContentRect:frame
+		styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+			NSWindowStyleMaskNonactivatingPanel)
+		backing:NSBackingStoreBuffered
+		defer:NO];
+	win.title = @"Veil Access Requested";
+	win.level = NSModalPanelWindowLevel;
+	// The requester (browser, terminal) may live on another Space than
+	// the one the human is looking at — the sheet must follow the
+	// human, not the requester, or the armed sensor reads as nothing
+	// happening.
+	win.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+		NSWindowCollectionBehaviorStationary |
+		NSWindowCollectionBehaviorFullScreenAuxiliary;
+	win.releasedWhenClosed = NO;
+	veil_sheet_win = win;
+
+	NSView *content = win.contentView;
+	veil_sheet_left = veil_icon_view([NSImage imageWithSystemSymbolName:@"terminal" accessibilityDescription:nil]);
+	NSImageView *check = [[NSImageView alloc] initWithFrame:NSZeroRect];
+	NSApp.applicationIconImage = veil_veil_mark();
+	check.image = [NSImage imageWithSystemSymbolName:@"checkmark.circle.fill" accessibilityDescription:nil];
+	check.contentTintColor = [NSColor systemGreenColor];
+	[check.widthAnchor constraintEqualToConstant:22].active = YES;
+	[check.heightAnchor constraintEqualToConstant:22].active = YES;
+	NSImageView *right = veil_icon_view(veil_veil_mark());
+	NSStackView *icons = [NSStackView stackViewWithViews:@[veil_sheet_left, check, right]];
+	icons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+	icons.alignment = NSLayoutAttributeCenterY;
+	icons.spacing = 16;
+
+	veil_sheet_allow = [NSTextField labelWithString:@""];
+	veil_sheet_allow.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
+	veil_sheet_allow.alignment = NSTextAlignmentCenter;
+
+	NSImageView *acctIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+	acctIcon.image = veil_veil_mark();
+	acctIcon.wantsLayer = YES;
+	acctIcon.layer.cornerRadius = 6;
+	acctIcon.layer.masksToBounds = YES;
+	[acctIcon.widthAnchor constraintEqualToConstant:28].active = YES;
+	[acctIcon.heightAnchor constraintEqualToConstant:28].active = YES;
+	veil_sheet_acct = [NSTextField labelWithString:@""];
+	veil_sheet_acct.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+	NSImageView *chev = [[NSImageView alloc] initWithFrame:NSZeroRect];
+	chev.image = [NSImage imageWithSystemSymbolName:@"chevron.right" accessibilityDescription:nil];
+	chev.contentTintColor = [NSColor tertiaryLabelColor];
+	[chev.widthAnchor constraintEqualToConstant:12].active = YES;
+	[chev.heightAnchor constraintEqualToConstant:12].active = YES;
+	NSStackView *acctRow = [NSStackView stackViewWithViews:@[acctIcon, veil_sheet_acct, chev]];
+	acctRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+	acctRow.alignment = NSLayoutAttributeCenterY;
+	acctRow.spacing = 10;
+	acctRow.edgeInsets = NSEdgeInsetsMake(8, 10, 8, 12);
+	acctRow.wantsLayer = YES;
+	acctRow.layer.cornerRadius = 8;
+	acctRow.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
+	[veil_sheet_acct setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+	[veil_sheet_acct setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+	veil_sheet_cancel = [NSButton buttonWithTitle:@"Cancel" target:nil action:@selector(cancel:)];
+	veil_sheet_cancel.keyEquivalent = @"\e";
+	// The sensor is the button — the scan is already running. The hint
+	// exists so nobody waits on a control that would stack a second ask.
+	NSImageView *finger = [[NSImageView alloc] init];
+	finger.image = [[NSImage imageWithSystemSymbolName:@"touchid" accessibilityDescription:@"Touch ID"] imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:18 weight:NSFontWeightRegular]];
+	NSTextField *hint = [NSTextField labelWithString:@"Touch the sensor"];
+	hint.textColor = NSColor.secondaryLabelColor;
+	NSStackView *hintRow = [NSStackView stackViewWithViews:@[finger, hint]];
+	hintRow.spacing = 8;
+	hintRow.alignment = NSLayoutAttributeCenterY;
+	NSStackView *btns = [NSStackView stackViewWithViews:@[hintRow, veil_sheet_cancel]];
+	btns.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+	btns.alignment = NSLayoutAttributeCenterY;
+	btns.distribution = NSStackViewDistributionEqualSpacing;
+	btns.spacing = 12;
+
+	NSStackView *stack = [NSStackView stackViewWithViews:@[icons, veil_sheet_allow, acctRow, btns]];
+	stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+	stack.alignment = NSLayoutAttributeCenterX;
+	stack.spacing = 16;
+	stack.translatesAutoresizingMaskIntoConstraints = NO;
+	[content addSubview:stack];
+	[NSLayoutConstraint activateConstraints:@[
+		[stack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+		[stack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+		[stack.topAnchor constraintEqualToAnchor:content.topAnchor constant:20],
+		[acctRow.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
+		[acctRow.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
+		[btns.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
+		[btns.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
+	]];
+
+	[win center];
+}
+
+static void veil_warm_app(void) {
+	// The --confirm-server child runs this at spawn: every per-request
+	// veil_access then skips the 1.5s LaunchServices handshake +
+	// sharedApplication boot + the ~1.3s first window build.
+	[NSApplication sharedApplication];
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+	[NSProcessInfo processInfo].automaticTerminationSupportEnabled = NO;
+	[NSApp finishLaunching];
+	veil_sheet_once();
+	veil_confirm_log(@"warm appkit done");
+}
+
 static int veil_access(const char *action, const char *account, const char *reason) {
 	__block int out = 0;
 	void (^run)(void) = ^{
 		veil_confirm_log(@"sheet run enter");
 		[NSApplication sharedApplication];
+		veil_confirm_log(@"sharedApplication done");
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		veil_confirm_log(@"activationPolicy done");
 		// finishLaunching makes this plist-less helper a managed app —
 		// without the opt-out, efficiency termination can kill it mid-eval
 		// and the daemon's socket reply never lands. The flag (not the
@@ -336,9 +465,12 @@ static int veil_access(const char *action, const char *account, const char *reas
 		// open and close.
 		[NSProcessInfo processInfo].automaticTerminationSupportEnabled = NO;
 		[NSApp finishLaunching];
+		veil_confirm_log(@"finishLaunching done");
 		PWMAccessSheet *ctrl = [[PWMAccessSheet alloc] init];
 		ctrl.lac = [[LAContext alloc] init];
+		veil_confirm_log(@"lac done");
 		NSRunningApplication *client = veil_client_app();
+		veil_confirm_log(@"client done");
 		NSString *appName = client.localizedName.length ? client.localizedName : @"this app";
 		NSImage *clientIcon = client.icon ?: [NSImage imageWithSystemSymbolName:@"terminal" accessibilityDescription:nil];
 		NSString *allow = [NSString stringWithFormat:@"Allow %@ to %s", appName, action];
@@ -348,115 +480,32 @@ static int veil_access(const char *action, const char *account, const char *reas
 		// second prompt competing with it.
 		ctrl.why = who.length ? [NSString stringWithFormat:@"%@ — %@", allow, who] : allow;
 
-		NSRect frame = NSMakeRect(0, 0, 420, 288);
-		NSWindow *win = [[NSWindow alloc] initWithContentRect:frame
-			styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-				NSWindowStyleMaskNonactivatingPanel)
-			backing:NSBackingStoreBuffered
-			defer:NO];
-		win.title = @"Veil Access Requested";
-		win.level = NSModalPanelWindowLevel;
-		// The requester (browser, terminal) may live on another Space than
-		// the one the human is looking at — the sheet must follow the
-		// human, not the requester, or the armed sensor reads as nothing
-		// happening.
-		win.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
-			NSWindowCollectionBehaviorStationary |
-			NSWindowCollectionBehaviorFullScreenAuxiliary;
-		win.releasedWhenClosed = NO;
+		// The window is pooled: built once (the warm child pays it at
+		// spawn) — per request swap the three request-specific bits and
+		// rebind the per-call controller as delegate + cancel target.
+		veil_sheet_once();
+		NSWindow *win = veil_sheet_win;
 		win.delegate = ctrl;
 		ctrl.win = win;
-
-		NSView *content = win.contentView;
-		NSImageView *left = veil_icon_view(clientIcon);
-		NSImageView *check = [[NSImageView alloc] initWithFrame:NSZeroRect];
-		NSApp.applicationIconImage = veil_veil_mark();
-		check.image = [NSImage imageWithSystemSymbolName:@"checkmark.circle.fill" accessibilityDescription:nil];
-		check.contentTintColor = [NSColor systemGreenColor];
-		[check.widthAnchor constraintEqualToConstant:22].active = YES;
-		[check.heightAnchor constraintEqualToConstant:22].active = YES;
-		NSImageView *right = veil_icon_view(veil_veil_mark());
-		NSStackView *icons = [NSStackView stackViewWithViews:@[left, check, right]];
-		icons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-		icons.alignment = NSLayoutAttributeCenterY;
-		icons.spacing = 16;
-
-		NSTextField *allowLabel = [NSTextField labelWithString:allow];
-		allowLabel.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
-		allowLabel.alignment = NSTextAlignmentCenter;
-
-		NSImageView *acctIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
-		acctIcon.image = veil_veil_mark();
-		acctIcon.wantsLayer = YES;
-		acctIcon.layer.cornerRadius = 6;
-		acctIcon.layer.masksToBounds = YES;
-		[acctIcon.widthAnchor constraintEqualToConstant:28].active = YES;
-		[acctIcon.heightAnchor constraintEqualToConstant:28].active = YES;
-		NSTextField *acctName = [NSTextField labelWithString:who];
-		acctName.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
-		NSImageView *chev = [[NSImageView alloc] initWithFrame:NSZeroRect];
-		chev.image = [NSImage imageWithSystemSymbolName:@"chevron.right" accessibilityDescription:nil];
-		chev.contentTintColor = [NSColor tertiaryLabelColor];
-		[chev.widthAnchor constraintEqualToConstant:12].active = YES;
-		[chev.heightAnchor constraintEqualToConstant:12].active = YES;
-		NSStackView *acctRow = [NSStackView stackViewWithViews:@[acctIcon, acctName, chev]];
-		acctRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-		acctRow.alignment = NSLayoutAttributeCenterY;
-		acctRow.spacing = 10;
-		acctRow.edgeInsets = NSEdgeInsetsMake(8, 10, 8, 12);
-		acctRow.wantsLayer = YES;
-		acctRow.layer.cornerRadius = 8;
-		acctRow.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
-		[acctName setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-		[acctName setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-
-		NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:ctrl action:@selector(cancel:)];
-		cancel.keyEquivalent = @"\e";
-		// The sensor is the button — the scan is already running. The hint
-		// exists so nobody waits on a control that would stack a second ask.
-		NSImageView *finger = [[NSImageView alloc] init];
-		finger.image = [[NSImage imageWithSystemSymbolName:@"touchid" accessibilityDescription:@"Touch ID"] imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:18 weight:NSFontWeightRegular]];
-		NSTextField *hint = [NSTextField labelWithString:@"Touch the sensor"];
-		hint.textColor = NSColor.secondaryLabelColor;
-		NSStackView *hintRow = [NSStackView stackViewWithViews:@[finger, hint]];
-		hintRow.spacing = 8;
-		hintRow.alignment = NSLayoutAttributeCenterY;
-		NSStackView *btns = [NSStackView stackViewWithViews:@[hintRow, cancel]];
-		btns.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-		btns.alignment = NSLayoutAttributeCenterY;
-		btns.distribution = NSStackViewDistributionEqualSpacing;
-		btns.spacing = 12;
-
-		NSStackView *stack = [NSStackView stackViewWithViews:@[icons, allowLabel, acctRow, btns]];
-		stack.orientation = NSUserInterfaceLayoutOrientationVertical;
-		stack.alignment = NSLayoutAttributeCenterX;
-		stack.spacing = 16;
-		stack.translatesAutoresizingMaskIntoConstraints = NO;
-		[content addSubview:stack];
-		[NSLayoutConstraint activateConstraints:@[
-			[stack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
-			[stack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
-			[stack.topAnchor constraintEqualToAnchor:content.topAnchor constant:20],
-			[acctRow.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
-			[acctRow.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
-			[btns.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
-			[btns.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
-		]];
-
-		[win center];
+		veil_sheet_cancel.target = ctrl;
+		veil_sheet_left.image = clientIcon;
+		veil_sheet_allow.stringValue = allow;
+		veil_sheet_acct.stringValue = who;
+		veil_confirm_log(@"sheet ready");
 		// Never activate or take key: activating our process pulls focus
 		// away from the requester — and for a Safari AutoFill/passkey
 		// request, the OS cancels the provider handoff the moment the
 		// host app loses key. orderFrontRegardless + CanJoinAllSpaces
 		// puts the sheet on the human's Space without stealing it.
+		// Eval first, surface second: ordering the pooled window costs up
+		// to ~1s of compositor work, and scan() only arms a flag + hands
+		// the eval to a global queue — so start the system prompt NOW and
+		// let our sheet composite in parallel. The Touch ID dialog is the
+		// thing the human is waiting on; the brand sheet can trail it the
+		// way 1Password's trails the OS prompt.
+		[ctrl scan];
 		[win orderFrontRegardless];
-		// Scheduled as a runloop perform: the GCD main queue is not drained
-		// while we pump the run loop, so the scan must be invoked by the
-		// runloop, not dispatch_async.
-		[ctrl performSelector:@selector(scan)
-			withObject:nil
-			afterDelay:0
-			inModes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
+		veil_confirm_log(@"ordered front");
 		// A nonactivating window cannot own a modal session —
 		// runModalForWindow returns immediately and the eval would be
 		// orphaned. Pump the default mode until finish() settles instead.
@@ -467,6 +516,7 @@ static int veil_access(const char *action, const char *account, const char *reas
 		}
 		veil_confirm_log(@"runloop exited");
 		[win orderOut:nil];
+		win.delegate = nil;
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 		out = ctrl.result;
 	};
@@ -516,6 +566,12 @@ static char *veil_caller_label(void) {
 import "C"
 
 const touchIDAvailable = true
+
+// warmAppKit runs NSApp init once at --confirm-server spawn so the first
+// request never pays it. Must run on the main thread (ServeStdio is).
+func warmAppKit() {
+	C.veil_warm_app()
+}
 
 // TouchID is the Veil access sheet, then device owner auth. Cancel fails closed.
 func TouchID(reason string) error {

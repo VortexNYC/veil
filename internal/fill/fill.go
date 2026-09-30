@@ -91,6 +91,9 @@ type Host struct {
 	lastScope    string
 	lastUUID     string
 	login        *loginFlow
+	pullMu       sync.Mutex
+	pullRunning  bool
+	pullDirty    bool
 }
 
 type session struct {
@@ -173,6 +176,19 @@ func fillDebug(msg string) {
 	_ = f.Close()
 }
 
+// debugMark returns a done() that logs "<label> Nms" — cheap phase timing
+// so a slow action reports which leg ate the time instead of a bare action
+// line. Threshold filters cheap legs out of the log; 0 logs everything.
+func debugMark(label string, threshold time.Duration) func() {
+	start := time.Now()
+	return func() {
+		d := time.Since(start)
+		if d >= threshold {
+			fillDebug(fmt.Sprintf("%s %dms", label, d.Milliseconds()))
+		}
+	}
+}
+
 func (h *Host) Handle(raw []byte) []byte {
 	var peek struct {
 		Action  string `json:"action"`
@@ -187,6 +203,7 @@ func (h *Host) Handle(raw []byte) []byte {
 		switch peek.Action {
 		case "ping", "match", "fill", "generate", "save", "enrollTotp", "passkeyCreate", "passkeyGet":
 			fillDebug("action=" + peek.Action + " nonce=")
+			defer debugMark("done "+peek.Action, 0)()
 			return h.handleJSON(raw)
 		}
 	}
@@ -196,6 +213,7 @@ func (h *Host) Handle(raw []byte) []byte {
 		return []byte(`{"success":"false","error":"bad json"}`)
 	}
 	fillDebug("action=" + env.Action + " nonce=" + env.Nonce)
+	defer debugMark("done "+env.Action, 0)()
 	switch env.Action {
 	case "change-public-keys":
 		return h.changeKeys(env)
@@ -312,7 +330,9 @@ func (h *Host) encrypted(env envelope) []byte {
 		if err := h.confirm("Veil wants to save a passkey", grant.Registrable(inner.Origin), true); err != nil {
 			return h.reply(s, nonce, action, h.passkeyErr(passkeysCanceled))
 		}
-		return h.reply(s, nonce, action, h.passkeysRegister(inner.Origin, inner.PublicKey, inner.RelatedOrigins))
+		raw := h.passkeysRegister(inner.Origin, inner.PublicKey, inner.RelatedOrigins)
+		h.replicaSyncSoon()
+		return h.reply(s, nonce, action, raw)
 	case "passkeys-get":
 		if !h.knownKey(inner.Keys) {
 			return h.reply(s, nonce, action, mustJSON(failMap("not associated")))
@@ -608,23 +628,31 @@ func (e originStatusError) Error() string {
 }
 
 func (h *Host) originCall(method, path string, body []byte) ([]byte, error) {
+	bearerMark := debugMark("bearer "+method+" "+path, 0)
 	tok, err := h.bearer()
+	bearerMark()
 	if err != nil {
 		h.setNeedLogin(true)
 		return nil, err
 	}
+	callMark := debugMark("origin "+method+" "+path, 0)
 	raw, code, err := h.originDo(method, path, body, tok)
+	callMark()
 	if err != nil {
 		return nil, err
 	}
 	if code == http.StatusUnauthorized && h.Refresh != nil {
+		refreshMark := debugMark("refresh "+method+" "+path, 0)
 		tok, err = h.Refresh()
+		refreshMark()
 		if err != nil {
 			h.setNeedLogin(true)
 			return nil, err
 		}
 		h.invalidateIndex()
+		callMark = debugMark("origin "+method+" "+path+" (retry)", 0)
 		raw, code, err = h.originDo(method, path, body, tok)
+		callMark()
 		if err != nil {
 			return nil, err
 		}
@@ -701,7 +729,9 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 		fillDebug("confirm missing")
 		return fmt.Errorf("fill: confirm not attached")
 	}
+	queued := debugMark("confirm queued", 20*time.Millisecond)
 	h.confirmMu.Lock()
+	queued()
 	defer h.confirmMu.Unlock()
 	now := time.Now()
 	h.mu.Lock()
@@ -726,11 +756,14 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 		fillDebug("confirm reuse")
 		return nil
 	}
+	eval := debugMark("confirm eval", 0)
 	if err := h.Confirm(reason); err != nil {
+		eval()
 		fillDebug("confirm denied")
 		h.InvalidateConfirm()
 		return err
 	}
+	eval()
 	h.mu.Lock()
 	if reuse && scope != "" {
 		h.confirmUntil = now.Add(ttl)
