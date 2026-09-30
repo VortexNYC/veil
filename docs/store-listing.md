@@ -10,6 +10,19 @@ signed .xpi. Safari ships inside Veil.app (Developer ID + notarize).
 
 ## Chrome Web Store
 
+**Account state (2026-09-30):** publisher `shlomo@vortex.nyc` (ID
+`db4d4328-8fd0-44cc-bcc5-f824185c2b5d`), $5 fee paid, contact email
+**verified**. Item created: Veil 0.0.1, draft `cfkdimikgngipjiiklmnoagnanpkapcn`.
+Trader declaration (trader), display name **Vortex**, and address (895
+Broadway, New York, NY 10003) are entered but **cannot save until publisher
+verification completes** — Google Payments KYC ("Start verification" on
+Settings). The payments iframe rejects synthetic input; the profile picker
+offers **Organization XIII Inc., 895 Broadway 4th Floor, NY 10003-1226**
+(the Google Workspace/Ads org profile = Vortex's legal entity). Select it,
+then org name/address/phone + registration proof. Until then the item editor
+redirects to Settings. Once verified: re-enter name/trader/address, save, then
+upload icon + screenshots below.
+
 - **Name:** Veil
 - **Summary (132):** Fill saved sign-ins. Touch ID-gated fills, passkeys, TOTP — secrets never leave your Mac.
 - **Category:** Productivity
