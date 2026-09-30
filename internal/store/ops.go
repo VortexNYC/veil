@@ -134,6 +134,25 @@ func SetAuditExportCursor(ctx context.Context, pool *pgxpool.Pool, lastID int64)
 	return nil
 }
 
+// WalSlotStatus reads the archive slot's liveness from the server's side.
+// The wal-archive heartbeat proves the shipper loop is alive; this proves a
+// pg_receivewal is actually attached — a dead receiver with a live shipper
+// otherwise pages nothing while WAL silently stops flowing. ok=false means
+// the slot is missing entirely; status='lost' means max_slot_wal_keep_size
+// fired and retained WAL was dropped.
+func WalSlotStatus(ctx context.Context, pool *pgxpool.Pool, name string) (active bool, status string, ok bool, err error) {
+	err = pool.QueryRow(ctx,
+		`SELECT active, coalesce(wal_status, '') FROM pg_replication_slots WHERE slot_name = $1`, name).
+		Scan(&active, &status)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, "", false, nil
+		}
+		return false, "", false, fmt.Errorf("wal slot %s: %w", name, err)
+	}
+	return active, status, true, nil
+}
+
 // AuditExportRow is one audit event on the export wire — the full row plus
 // its sequence id so the archive is independently ordered and dedup-able.
 type AuditExportRow struct {

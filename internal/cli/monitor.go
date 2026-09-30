@@ -49,6 +49,17 @@ func monitorCmd() *cobra.Command {
 				findings = append(findings, checkBeat(ctx, pool, "sweep", sweepStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "audit-export", auditExportStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "wal-archive", walStale)...)
+				// The beat proves the shipper loop is alive; the slot proves
+				// a receiver is actually attached and WAL is flowing.
+				if active, status, ok, err := store.WalSlotStatus(ctx, pool, "wal_archive"); err != nil {
+					findings = append(findings, "wal-archive slot unreadable: "+err.Error())
+				} else if !ok {
+					findings = append(findings, "wal-archive slot missing")
+				} else if status == "lost" {
+					findings = append(findings, "wal-archive slot lost retained WAL (max_slot_wal_keep_size fired)")
+				} else if !active {
+					findings = append(findings, "wal-archive slot inactive — WAL not streaming")
+				}
 				// usage-report is opt-in: unmetered deploys never run the
 				// flusher, so a missing beat is silence, not a finding. A
 				// beat that exists and goes stale means the reporter wedged.

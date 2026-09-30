@@ -117,6 +117,51 @@ func TestOpsUsageReportLag(t *testing.T) {
 	}
 }
 
+// The wal-archive slot check distinguishes missing, attached, and
+// retained-WAL-lost states — the monitor pages on all but a live stream.
+func TestOpsWalSlotStatus(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	if _, err := pool.Exec(ctx,
+		`SELECT pg_drop_replication_slot('test_wal_slot')`); err != nil {
+		// Absent slot is fine; only a real error should fail.
+		t.Logf("pre-clean drop: %v", err)
+	}
+	if _, _, ok, err := WalSlotStatus(ctx, pool, "test_wal_slot"); err != nil || ok {
+		t.Fatalf("missing slot should be ok=false: %v %v", ok, err)
+	}
+	if _, err := pool.Exec(ctx,
+		`SELECT pg_create_physical_replication_slot('test_wal_slot', true)`); err != nil {
+		t.Fatal(err)
+	}
+	active, status, ok, err := WalSlotStatus(ctx, pool, "test_wal_slot")
+	if err != nil || !ok {
+		t.Fatalf("created slot: %v %v", ok, err)
+	}
+	if active {
+		t.Fatal("no receiver attached — slot must report inactive")
+	}
+	if status != "reserved" {
+		t.Fatalf("fresh slot status = %q, want reserved", status)
+	}
+	if _, err := pool.Exec(ctx,
+		`SELECT pg_drop_replication_slot('test_wal_slot')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err := WalSlotStatus(ctx, pool, "test_wal_slot"); err != nil || ok {
+		t.Fatalf("dropped slot should be ok=false: %v %v", ok, err)
+	}
+}
+
 // The export cursor starts at zero, only moves forward, and the read
 // cursor returns rows after it in sequence order.
 func TestOpsAuditExport(t *testing.T) {
