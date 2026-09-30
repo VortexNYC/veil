@@ -35,7 +35,9 @@
         status.textContent = cred && cred.id ? "ok " + cred.id + cd : "err empty";
       })
       .catch(function (err) {
-        status.textContent = "err " + (err && err.name ? err.name : "fail");
+        status.textContent =
+          "err " + (err && err.name ? err.name : "fail") +
+          " " + (err && err.message ? err.message : "");
       });
   });
   document.getElementById("login").addEventListener("click", function () {
@@ -65,7 +67,9 @@
         status.textContent = cred && cred.id ? "got " + cred.id + cd : "err empty-get";
       })
       .catch(function (err) {
-        status.textContent = "err " + (err && err.name ? err.name : "fail");
+        status.textContent =
+          "err " + (err && err.name ? err.name : "fail") +
+          " " + (err && err.message ? err.message : "");
       });
   });
 </script>

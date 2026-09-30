@@ -350,7 +350,8 @@ static int veil_access(const char *action, const char *account, const char *reas
 
 		NSRect frame = NSMakeRect(0, 0, 420, 288);
 		NSWindow *win = [[NSWindow alloc] initWithContentRect:frame
-			styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+			styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+				NSWindowStyleMaskNonactivatingPanel)
 			backing:NSBackingStoreBuffered
 			defer:NO];
 		win.title = @"Veil Access Requested";
@@ -443,17 +444,28 @@ static int veil_access(const char *action, const char *account, const char *reas
 		]];
 
 		[win center];
-		[NSApp activateIgnoringOtherApps:YES];
-		[win makeKeyAndOrderFront:nil];
-		// Scheduled as a runloop perform (modal mode included): inside the
-		// modal session the GCD main queue is not drained, so the scan must
-		// be invoked by the runloop, not dispatch_async.
+		// Never activate or take key: activating our process pulls focus
+		// away from the requester — and for a Safari AutoFill/passkey
+		// request, the OS cancels the provider handoff the moment the
+		// host app loses key. orderFrontRegardless + CanJoinAllSpaces
+		// puts the sheet on the human's Space without stealing it.
+		[win orderFrontRegardless];
+		// Scheduled as a runloop perform: the GCD main queue is not drained
+		// while we pump the run loop, so the scan must be invoked by the
+		// runloop, not dispatch_async.
 		[ctrl performSelector:@selector(scan)
 			withObject:nil
 			afterDelay:0
 			inModes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
-		[NSApp runModalForWindow:win];
-		veil_confirm_log(@"modal loop exited");
+		// A nonactivating window cannot own a modal session —
+		// runModalForWindow returns immediately and the eval would be
+		// orphaned. Pump the default mode until finish() settles instead.
+		while (!ctrl.finished) {
+			[[NSRunLoop currentRunLoop]
+				runMode:NSDefaultRunLoopMode
+				beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.25]];
+		}
+		veil_confirm_log(@"runloop exited");
 		[win orderOut:nil];
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 		out = ctrl.result;
