@@ -12,6 +12,7 @@ import {
   listGrants,
   listItems,
   listRequests,
+  vaultReport,
 } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
 
@@ -97,6 +98,12 @@ export function addAgent(name: string) {
 
 export function events() {
   return listEvents({ client: client() })
+}
+
+// report is the vault health surface (weak/reused/pwned) — metadata only,
+// no secrets cross the wire. hibp=1 opts into k-anonymity breach counts.
+export function report(hibp?: boolean) {
+  return vaultReport({ client: client(), query: hibp ? { hibp: "1" } : {} })
 }
 
 // billing reads the owner's plan + window usage for the cap banner.

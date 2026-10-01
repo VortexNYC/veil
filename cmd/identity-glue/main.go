@@ -30,6 +30,9 @@ func main() {
 			env("SPA_REDIRECT_URL", "https://app.veil.nyc/oidc/callback"),
 			"http://127.0.0.1:4470/oidc/callback",
 		},
+		NativeRedirectURLs: []string{
+			env("PHONE_REDIRECT_URL", "veil://oidc/callback"),
+		},
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	ory "github.com/ory/hydra-client-go/v26"
 
@@ -14,6 +16,9 @@ type FirstParty struct {
 	ID           string
 	RedirectURL  string
 	RedirectURLs []string
+	// NativeRedirectURLs are custom-scheme app callbacks (veil://…) that
+	// absurl's http(s) rule would reject. Hydra accepts them for public clients.
+	NativeRedirectURLs []string
 }
 
 func (fp FirstParty) id() string {
@@ -41,6 +46,17 @@ func firstPartyClient(fp FirstParty) (*ory.OAuth2Client, error) {
 		}
 		seen[redirect] = struct{}{}
 		uris = append(uris, redirect)
+	}
+	for _, r := range fp.NativeRedirectURLs {
+		u, err := url.Parse(strings.TrimSpace(r))
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return nil, fmt.Errorf("hydra: native redirect: %w", err)
+		}
+		if _, ok := seen[u.String()]; ok {
+			continue
+		}
+		seen[u.String()] = struct{}{}
+		uris = append(uris, u.String())
 	}
 	if len(uris) == 0 {
 		return nil, fmt.Errorf("hydra: redirect")

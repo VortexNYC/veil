@@ -243,6 +243,31 @@ func TestEnsureFirstPartyAddsSPAWithoutDroppingLaptop(t *testing.T) {
 	}
 }
 
+func TestEnsureFirstPartyAddsNativeRedirect(t *testing.T) {
+	ory := &fakeOry{}
+	k, h := ory.start(t)
+	g := newGlue(t, k, h)
+
+	err := g.EnsureFirstParty(context.Background(), FirstParty{
+		RedirectURL:        "http://127.0.0.1:4460/oidc/callback",
+		NativeRedirectURLs: []string{"veil://oidc/callback"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	uris, _ := ory.client["redirect_uris"].([]any)
+	joined := fmt.Sprint(uris)
+	if !strings.Contains(joined, "veil://oidc/callback") || !strings.Contains(joined, "127.0.0.1:4460") {
+		t.Fatalf("redirect %v", uris)
+	}
+	if err := g.EnsureFirstParty(context.Background(), FirstParty{
+		RedirectURL:        "http://127.0.0.1:4460/oidc/callback",
+		NativeRedirectURLs: []string{"not-a-uri"},
+	}); err == nil {
+		t.Fatal("native redirect: invalid URI accepted")
+	}
+}
+
 func TestEnsureAgentIsNotAHuman(t *testing.T) {
 	ory := &fakeOry{}
 	k, h := ory.start(t)

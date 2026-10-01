@@ -2,8 +2,9 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 
+import { syncAutofill } from "../../modules/identity-sync";
 import { listItems, type Item } from "../lib/api";
-import { signOut, storedToken } from "../lib/auth";
+import { originAPI, signOut, storedToken } from "../lib/auth";
 
 function hostOf(uri?: string): string {
   if (!uri) return "";
@@ -29,6 +30,20 @@ export default function Items() {
       const got = await listItems();
       setItems(got.filter((i) => !i.archived));
       setError(null);
+      // Hand item metadata (never secrets) to the AutoFill appex: the
+      // token + identities live in the shared container; the appex calls
+      // origin for the actual secret behind Face ID.
+      void syncAutofill(
+        tok,
+        originAPI,
+        got.map((i) => ({
+          uuid: i.id,
+          name: i.name,
+          login: i.login ?? "",
+          uris: i.uris ?? [],
+          kind: i.kind ?? "login",
+        })),
+      ).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not load items");
     }
