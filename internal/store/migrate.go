@@ -225,6 +225,21 @@ func MigrateSQLiteToPostgres(ctx context.Context, sqlitePath, dsn string) (*Migr
 				}
 			}
 		}
+		if mt.name == "owner_keys" {
+			// Pre-org vaults have a bare owner_keys — every row belongs to
+			// the single local org.
+			hasOrg, err := sqliteHasColumn(src, "owner_keys", "org_id")
+			if err != nil {
+				return report, err
+			}
+			if !hasOrg {
+				for i, c := range mt.selectCols {
+					if c == "org_id" {
+						mt.selectCols[i] = `'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' AS org_id`
+					}
+				}
+			}
+		}
 		tr, err := migrateOneTable(ctx, src, pool, mt)
 		if err != nil {
 			return report, fmt.Errorf("migrate %s: %w", mt.name, err)
