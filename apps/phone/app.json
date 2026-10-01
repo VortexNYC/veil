@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "nyc.veil.phone",
+      "appleTeamId": "VFWGNKKT4G",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Veil uses Face ID before a password leaves the vault."
