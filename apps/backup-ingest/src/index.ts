@@ -86,7 +86,20 @@ export default {
 				return new Response("PUT requires the arc-<sysid>/ namespace", { status: 400 });
 			}
 			if (name.endsWith(".partial")) {
-				return fencedPartialPut(env.BUCKET, name, await req.arrayBuffer());
+				// The size fence needs the whole body in memory — bound it.
+				// A .partial is a prefix of a 16MB WAL segment; anything
+				// bigger is hostile or corrupt, and a stolen bearer can't
+				// OOM the worker with an unbounded upload.
+				const max = 16 * 1024 * 1024;
+				const cl = Number(req.headers.get("Content-Length") ?? -1);
+				if (cl < 0 || cl > max) {
+					return new Response("bad content-length", { status: 400 });
+				}
+				const body = await req.arrayBuffer();
+				if (body.byteLength > max) {
+					return new Response("partial exceeds 16MB segment", { status: 413 });
+				}
+				return fencedPartialPut(env.BUCKET, name, body);
 			}
 			if (!req.body) {
 				return new Response("empty body", { status: 400 });

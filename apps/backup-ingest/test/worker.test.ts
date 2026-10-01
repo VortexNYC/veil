@@ -52,13 +52,21 @@ class MemBucket {
 	async delete(key: string) {
 		this.objects.delete(key);
 	}
+	// Tests can shrink pageSize to exercise pagination; R2's cursor is
+	// opaque, so an index works for the stub.
+	pageSize: number | null = null;
 	async list(opts: { prefix?: string; cursor?: string; limit?: number }) {
 		const keys = [...this.objects.keys()]
 			.filter((k) => k.startsWith(opts.prefix ?? ""))
 			.sort();
+		const start = opts.cursor ? Number(opts.cursor) : 0;
+		const lim = this.pageSize ?? opts.limit ?? 1000;
+		const page = keys.slice(start, start + lim);
+		const end = start + lim;
 		return {
-			objects: keys.map((key) => ({ key, size: this.objects.get(key)!.size })),
-			truncated: false,
+			objects: page.map((key) => ({ key, size: this.objects.get(key)!.size })),
+			truncated: end < keys.length,
+			cursor: String(end),
 		};
 	}
 }
@@ -108,6 +116,7 @@ test("PUT requires the arc-<sysid>/ namespace", async () => {
 		const res = await call(`/v1/${name}`, {
 			method: "PUT",
 			body: "payload",
+			headers: { "Content-Length": "7" },
 		});
 		assert.equal(res.status, 200, name);
 	}
@@ -143,7 +152,11 @@ test("rejects malformed and traversal names", async () => {
 test("partial fencing: smaller rewrite is 409, larger succeeds", async () => {
 	const key = `arc-1/${SEG}.partial`;
 	const put = (n: number) =>
-		call(`/v1/${key}`, { method: "PUT", body: new Uint8Array(n) });
+		call(`/v1/${key}`, {
+			method: "PUT",
+			body: new Uint8Array(n),
+			headers: { "Content-Length": String(n) },
+		});
 	assert.equal((await put(100)).status, 200);
 	assert.equal((await put(50)).status, 409);
 	assert.equal(env.BUCKET.objects.get(key)!.size, 100); // untouched
@@ -169,6 +182,7 @@ test("partial fencing holds under a concurrent write (CAS retry)", async () => {
 	const res = await call(`/v1/${key}`, {
 		method: "PUT",
 		body: new Uint8Array(100),
+		headers: { "Content-Length": "100" },
 	});
 	env.BUCKET.onPut = null;
 	assert.equal(res.status, 409);
@@ -193,6 +207,7 @@ test("partial fencing: sustained contention surfaces 503, not a silent shrink", 
 	const res = await call(`/v1/${key}`, {
 		method: "PUT",
 		body: new Uint8Array(200),
+		headers: { "Content-Length": "200" },
 	});
 	env.BUCKET.onPut = null;
 	assert.equal(res.status, 503);
@@ -235,6 +250,24 @@ test("LIST accepts namespace prefixes, rejects bad prefixes", async () => {
 	);
 	const bad = await call("/v1/?prefix=" + encodeURIComponent("arc-1/../"));
 	assert.equal(bad.status, 400);
+});
+
+test("LIST pages with an opaque cursor", async () => {
+	env.BUCKET.pageSize = 2;
+	for (const k of ["arc-88/a.dump".replace("a.dump", "veil-2026-10-01-0001.dump"),
+		"arc-88/veil-2026-10-01-0002.dump",
+		"arc-88/veil-2026-10-01-0003.dump"]) {
+		await call(`/v1/${k}`, { method: "PUT", body: "x", headers: { "Content-Length": "1" } });
+	}
+	const p1 = await call("/v1/?prefix=arc-88/");
+	const j1 = (await p1.json()) as { keys: { key: string }[]; cursor?: string };
+	assert.equal(j1.keys.length, 2);
+	assert.ok(j1.cursor);
+	const p2 = await call(`/v1/?prefix=arc-88/&cursor=${j1.cursor}`);
+	const j2 = (await p2.json()) as { keys: { key: string }[]; cursor?: string };
+	assert.equal(j2.keys.length, 1);
+	assert.equal(j2.cursor, undefined);
+	env.BUCKET.pageSize = null;
 });
 
 test("GET and HEAD serve namespaced objects", async () => {

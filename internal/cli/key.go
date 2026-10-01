@@ -366,21 +366,26 @@ func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
 	}
 	fp := shareFingerprint(key)
 	var staged []string
+	fail := func(err error) ([]string, error) {
+		for _, done := range staged {
+			_ = os.Remove(done)
+		}
+		return nil, err
+	}
 	for i, p := range parts {
 		f := filepath.Join(dir, fmt.Sprintf("share-%d-%s.hex.tmp", i+1, fp))
-		// WriteFile's perm applies only on create — a pre-existing loose-mode
-		// tmp file would keep it. Chmod unconditionally after write.
+		// Remove before write: a pre-existing loose-mode tmp file must not
+		// keep its mode through overwrite — WriteFile's perm only applies
+		// on create. Chmod is belt-on-top (umask can't widen 0600 anyway).
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			return fail(fmt.Errorf("key: %w", err))
+		}
 		if err := os.WriteFile(f, []byte(hex.EncodeToString(p)+"\n"), 0o600); err != nil {
-			for _, done := range staged {
-				_ = os.Remove(done)
-			}
-			return nil, fmt.Errorf("key: %w", err)
+			return fail(fmt.Errorf("key: %w", err))
 		}
 		if err := os.Chmod(f, 0o600); err != nil {
-			for _, done := range staged {
-				_ = os.Remove(done)
-			}
-			return nil, fmt.Errorf("key: %w", err)
+			_ = os.Remove(f)
+			return fail(fmt.Errorf("key: %w", err))
 		}
 		staged = append(staged, f)
 	}
