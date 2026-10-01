@@ -110,5 +110,7 @@ export async function signIn(): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  const { clearAutofill } = await import("../../modules/identity-sync");
+  await clearAutofill().catch(() => {});
   await SecureStore.deleteItemAsync(tokenKey);
 }
