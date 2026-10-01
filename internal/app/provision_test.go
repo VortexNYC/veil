@@ -498,7 +498,9 @@ func TestProvisionSurvivesBillingOutage(t *testing.T) {
 	if p.OrgID == "" {
 		t.Fatal("billing outage blocked provision")
 	}
-	// Failure is audited so a reconcile sweep can find unlinked orgs.
+	// Failure is audited so a reconcile sweep can find unlinked orgs. The
+	// reason carries our stage tag only — the vendor's error body never
+	// lands in an org-visible/exported audit row.
 	events, err := a.Store.Audit()
 	if err != nil {
 		t.Fatal(err)
@@ -507,6 +509,9 @@ func TestProvisionSurvivesBillingOutage(t *testing.T) {
 	for _, e := range events {
 		if e.Action == protocol.ActionBillingProvisionFailed {
 			found = true
+			if strings.Contains(e.Reason, "502") || strings.Contains(e.Reason, srv.URL) {
+				t.Fatalf("audit reason leaked vendor detail: %q", e.Reason)
+			}
 		}
 	}
 	if !found {

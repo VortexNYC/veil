@@ -1090,13 +1090,23 @@ func (a *App) ensureBillingCustomer(ctx context.Context, orgID string) {
 	cancel()
 	if err != nil {
 		slog.Warn("billing link provision failed", "org", orgID, "err", err)
+		// The audit reason is our stage tag only — the wrapped leaf is a
+		// vendor error that can carry provider-sensitive detail into a row
+		// that exports to the org-visible feed and R2.
+		reason := "provision"
+		for _, stage := range []string{"ensure customer", "ensure billing account", "persist customer link", "persist account link"} {
+			if strings.HasPrefix(err.Error(), stage) {
+				reason = stage
+				break
+			}
+		}
 		_ = a.Store.AppendAudit(protocol.AuditEvent{
 			Time:     time.Now().UTC(),
 			OrgID:    orgID,
 			AgentID:  "vortex-provision",
 			Action:   protocol.ActionBillingProvisionFailed,
 			Decision: protocol.DecisionDeny,
-			Reason:   err.Error(),
+			Reason:   reason,
 		})
 	}
 }
