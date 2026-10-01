@@ -170,6 +170,17 @@ func run() error {
 			return fmt.Errorf("dump tokens: %w", err)
 		}
 	}
+	if dump := os.Getenv("LOADTEST_DUMP_ITEMS"); dump != "" {
+		if err := os.WriteFile(dump, []byte(strings.Join(itemIDs, "\n")+"\n"), 0o600); err != nil {
+			return fmt.Errorf("dump items: %w", err)
+		}
+	}
+	// SEED_ONLY writes fixtures into the target DB and exits — the caller runs
+	// k6 itself (the prod ramp loops k6 over a VU ladder against the same seed).
+	if envOr("LOADTEST_SEED_ONLY", "0") == "1" {
+		slog.Warn("seed only", "sessions", len(tokens), "items", len(itemIDs))
+		return nil
+	}
 
 	useProxyDefault := "1"
 	if mode == "process" || mode == "external" {
@@ -509,10 +520,13 @@ func seed(a *app.App, upstreamURL string, n int) (protocol.Principal, protocol.I
 	sessions := make([]protocol.Session, 0, n)
 	tokens := make([]string, 0, n)
 	itemIDs := make([]string, 0, n)
+	// LOADTEST_FRESH_ORGS=1 puts even org 0 in a new org — prod runs use it so
+	// the seed never writes loadtest rows into the real local org.
+	freshOrgs := envOr("LOADTEST_FRESH_ORGS", "0") == "1"
 	perOrg := (n + numOrgs - 1) / numOrgs
 	for o := 0; o < numOrgs; o++ {
 		orgID := a.OrgID
-		if o > 0 {
+		if o > 0 || freshOrgs {
 			fresh, err := id.NewOrg()
 			if err != nil {
 				return protocol.Principal{}, protocol.Item{}, nil, nil, nil, err
@@ -531,7 +545,7 @@ func seed(a *app.App, upstreamURL string, n int) (protocol.Principal, protocol.I
 		// actor.OrgID, so no extra humans rows are needed.
 		human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: orgID}
 		suffix := ""
-		if numOrgs > 1 {
+		if numOrgs > 1 || freshOrgs {
 			suffix = fmt.Sprintf("-o%d", o)
 		}
 		agents := make([]protocol.Principal, 0, numAgents)
@@ -542,7 +556,7 @@ func seed(a *app.App, upstreamURL string, n int) (protocol.Principal, protocol.I
 			}
 			var agent protocol.Principal
 			var err error
-			if o == 0 {
+			if o == 0 && !freshOrgs {
 				agent, err = a.AddAgent(name)
 			} else {
 				agent, err = a.AddAgentFor(human, name)
@@ -554,7 +568,7 @@ func seed(a *app.App, upstreamURL string, n int) (protocol.Principal, protocol.I
 		}
 		var item protocol.Item
 		var err error
-		if o == 0 {
+		if o == 0 && !freshOrgs {
 			item, err = a.AddItem(itemName+suffix, upstreamURL, secret)
 		} else {
 			item, err = a.PutItemFor(human, app.ItemOpts{Name: itemName + suffix, URI: upstreamURL, Token: secret})

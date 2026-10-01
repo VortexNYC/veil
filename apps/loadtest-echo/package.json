@@ -1,0 +1,9 @@
+{
+  "name": "veil-loadtest-echo",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251014.0",
+    "wrangler": "4.137.0"
+  }
+}

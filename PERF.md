@@ -906,3 +906,67 @@ Deliberately not done. Each has a trigger; act when the trigger fires, not befor
    the usage-lag monitor or logs show any org sustaining >100 use/s, or
    metering shows up in p95 complaints — not before.
 
+### 16. Production ramp-to-break gate — behavioral VUs on real infra (2026-10-01)
+
+First run of the launch-gate protocol against **production itself** — not a
+local stand-in. Methodology follows the reference ramp (behavioral virtual
+users, separate load generator, thresholds fixed before the run, double
+until break).
+
+**Fixture** (`cmd/loadtest` `LOADTEST_ORIGIN_MODE=external` +
+`LOADTEST_SEED_ONLY` + `LOADTEST_FRESH_ORGS=1`): 8 fresh orgs (the real
+local org is never written), 32 agents, 2400 agent sessions, seeded
+directly into prod Postgres through a `railway connect` SSH tunnel. k6 ran
+on the ops Mac — request latency includes the real WAN path
+(Mac → Cloudflare edge EWR → Railway origin), which is the path customers
+actually take. Upstream for every `Use`: `loadtest-echo.veil.nyc`, a
+controlled Worker that returns 200 and never echoes headers — injected
+credentials cannot reflect into a response body or a log line.
+
+**VU model** (`tests/load/k6/agent-mix.js`): each VU is one agent session
+looping list → think(1–4s) → use → think(4–12s), ~10% burst second use —
+~0.15–0.2 req/s per agent. **SLO gate**: `use` and `list` each p95<500ms
+and p99<1s; errors <1%. `tests/load/ramp.sh` doubles VUs until the gate
+breaks.
+
+| Concurrent agents | req/s | use p95 | use p99 | list p95 | err | verdict |
+|---|---|---|---|---|---|---|
+| 50  | 7.6   | 201 ms | <1s  | 124 ms | 0%    | PASS |
+| 100 | 15.5  | 312 ms | <1s  | 193 ms | 0%    | PASS |
+| 200 | 30.6  | 260 ms | <1s  | 121 ms | 0%    | PASS |
+| 400 | 62.0  | —    | <1s    | —      | 0%    | PASS |
+| 800 | 122.7 | —    | <1s    | —      | 0%    | PASS |
+| 1600 (cap=100) | 234 attempted | 517 ms | <1s | 460 ms | **1.04%** | **FAIL — shed** |
+| 1200 (cap=600) | 174   | 166 ms | 634 ms | 126 ms | 0%    | PASS |
+| 1600 (cap=600) | 229   | 605 ms | 1.13 s | 477 ms | 0%    | **FAIL — tail** |
+
+**What broke and when:**
+
+- At the prod default `VEIL_MAX_IN_FLIGHT_USE=100`, 1600 agents drove
+  in-flight `Use` occupancy past the semaphore on latency-tail bursts; the
+  origin answered `503 origin overloaded` for 428 of 41,024 requests. The
+  failure mode is the designed shed — loud, bounded, no queue meltdown.
+- With the cap temporarily raised to 600 (var set, redeployed, then
+  restored to default): 1200 agents pass with real headroom; at 1600 the
+  shed never fires but latency crosses the gate — use p95 605ms while the
+  median stays ~123ms. Same signature as the reference run: the tail
+  breaks first.
+- `pg_stat_activity` during the 1600 run: mostly 1–3 active connections
+  with spiky bursts of `IO:WalSync`, `Lock:transactionid`, and
+  `LWLock:WALWrite` waiters (14–22 concurrent at peaks) — early write-path
+  contention from the consume+audit commit, not saturation.
+- **Fixture artifact worth recording**: the first ladder seeded loadtest
+  orgs on `plan=free`; org-0 exhausted `VEIL_FREE_USE_CAP=500` mid-run and
+  every subsequent `use` took the deny path — which synchronously calls the
+  Vortex access-check backstop to heal missed webhooks. That remote call
+  produced the 2–3s tail spikes that looked like degradation. Free-tier
+  denies are correct and correct-by-design; load fixtures now run as
+  `plan=active` (paid) to keep the gate measuring the serving path.
+
+**Gate verdict**: single-replica prod is proven to **~1,200 concurrent
+behavioral agents (~175 req/s mixed)** inside SLO; the knee is ~1,600
+(~230 req/s). Recommendation recorded, not applied: raise
+`VEIL_MAX_IN_FLIGHT_USE` to ~300 — well above the proven headroom, far
+below the tested 600 — so the shed still engages before tail collapse.
+Load-gen constraint: agent sessions are capped at 1h, so seed→run must
+fit inside that window.
