@@ -186,6 +186,13 @@ type Item struct {
 	HasFile bool `json:"has_file,omitempty"`
 	// Login is the fill username. Metadata. Not a secret. Empty is honest.
 	Login string `json:"login,omitempty"`
+	// Passkey identity fields — populated on list for human principals so
+	// credential-provider extensions (iOS/Android AutoFill) can register
+	// ASPasskeyCredentialIdentity and match RPs. Identifiers, not secrets:
+	// the private key never leaves the sealed material.
+	CredID     string `json:"cred_id,omitempty"`
+	RpID       string `json:"rp_id,omitempty"`
+	UserHandle string `json:"user_handle,omitempty"`
 }
 
 // ItemVersion is history metadata. The sealed blob is not here.

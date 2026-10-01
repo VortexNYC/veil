@@ -1141,6 +1141,27 @@ func TestFillPasskeyHumanOnlyNoListLeak(t *testing.T) {
 	if bytes.Contains(listed, []byte("BEGIN")) || bytes.Contains(listed, []byte("passkey_pem")) {
 		t.Fatal("list leaked passkey")
 	}
+	// The appex identity store needs cred_id/rp_id/user_handle to register
+	// ASPasskeyCredentialIdentity — metadata the human's list must carry.
+	var pk *protocol.Item
+	for i := range items {
+		if items[i].Kind == protocol.ItemPasskey {
+			pk = &items[i]
+		}
+	}
+	if pk == nil || pk.CredID == "" || pk.RpID != "github.com" || pk.UserHandle == "" {
+		t.Fatalf("passkey list fields missing: %+v", pk)
+	}
+	// Agents list the same rows but never get passkey identity fields.
+	agentItems, err := a.ItemsForPrincipal(agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range agentItems {
+		if it.CredID != "" || it.RpID != "" || it.UserHandle != "" {
+			t.Fatalf("agent list carried passkey fields: %+v", it)
+		}
+	}
 	logins, err := a.FillLogins(human, "https://github.com")
 	if err != nil {
 		t.Fatal(err)

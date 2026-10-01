@@ -1502,6 +1502,25 @@ func (a *App) ItemsForPrincipal(p protocol.Principal) ([]protocol.Item, error) {
 		}
 		add(item)
 	}
+	// Humans get passkey identity fields on list — the phone/Mac appex
+	// needs cred_id/rp_id/user_handle to register credential identities.
+	// Agents never do: their surface stays metadata-thin, and a passkey's
+	// sealed key is never touched here — only the identifiers are read.
+	if p.Kind == protocol.PrincipalHuman {
+		for i := range out {
+			if out[i].Kind != protocol.ItemPasskey {
+				continue
+			}
+			sec, err := a.Store.Secret(out[i].ID)
+			if err != nil {
+				continue
+			}
+			env := material.Unpack([]byte(sec))
+			out[i].CredID = env.CredID
+			out[i].RpID = env.RpID
+			out[i].UserHandle = env.UserHandle
+		}
+	}
 	return out, nil
 }
 
