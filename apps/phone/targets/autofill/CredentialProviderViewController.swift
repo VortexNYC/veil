@@ -18,6 +18,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     private var entries: [HandoffItem] = []
     private var serviceURL = ""
+    private var pendingUUID: String?
 
     private let table = UITableView(frame: .zero, style: .plain)
     private let status = UILabel()
@@ -102,7 +103,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.entries = all.filter { item in
-                    guard item.kind == "login" else { return false }
+                    // ItemAPIKey is "api_key" — the password envelope.
+                    guard ["api_key", "login"].contains(item.kind) else { return false }
                     guard !host.isEmpty else { return true }
                     return item.uris.contains { Self.host($0) == host }
                         || item.name.localizedCaseInsensitiveContains(host)
@@ -130,6 +132,22 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
         serviceURL = Self.url(for: identity.serviceIdentifier)
         status.text = "Confirming \(identity.user)…"
+        // LAContext.evaluatePolicy fails with .notInteractive while the
+        // hosted scene is still off-screen — defer to viewDidAppear.
+        pendingUUID = uuid
+        if isViewLoaded && view.window != nil {
+            flushPending()
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        flushPending()
+    }
+
+    private func flushPending() {
+        guard let uuid = pendingUUID else { return }
+        pendingUUID = nil
         release(uuid: uuid)
     }
 
@@ -148,12 +166,21 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     // MARK: - Fill
 
-    private func release(uuid: String) {
+    private func release(uuid: String, retryNotForeground: Bool = true) {
         let ctx = LAContext()
         ctx.evaluatePolicy(.deviceOwnerAuthentication,
-                           localizedReason: "Veil needs Face ID before this password fills") { [weak self] ok, _ in
+                           localizedReason: "Veil needs Face ID before this password fills") { [weak self] ok, err in
             guard let self else { return }
+            if !ok, retryNotForeground,
+               (err as? LAError)?.code == .notInteractive {
+                vlog("LA notInteractive — retrying once")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.release(uuid: uuid, retryNotForeground: false)
+                }
+                return
+            }
             guard ok else {
+                self.vlog("LA failed \((err as? LAError)?.code.rawValue ?? 0)")
                 DispatchQueue.main.async { self.cancel(with: .userCanceled) }
                 return
             }
