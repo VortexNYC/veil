@@ -199,6 +199,23 @@ test("partial fencing: sustained contention surfaces 503, not a silent shrink", 
 	assert.equal(env.BUCKET.objects.get(key)!.size, 100);
 });
 
+test("completed objects are immutable: same-size re-push ok, different-size 409", async () => {
+	const key = `arc-7/${SEG}`;
+	const put = (body: string, headers: Record<string, string> = {}) =>
+		call(`/v1/${key}`, { method: "PUT", body, headers });
+	// Real shippers (curl --data-binary) always send Content-Length — the
+	// idempotent-retry path needs it to compare sizes.
+	assert.equal((await put("abcd", { "Content-Length": "4" })).status, 200);
+	// Idempotent retry — same artifact arriving twice (shipper restart).
+	assert.equal((await put("wxyz", { "Content-Length": "4" })).status, 200);
+	// A different-size write to a finished name is a collision, never an
+	// overwrite — the stored bytes survive.
+	assert.equal((await put("ab", { "Content-Length": "2" })).status, 409);
+	// No Content-Length → size unverifiable → refuse rather than guess.
+	assert.equal((await put("wxyz")).status, 409);
+	assert.equal(new TextDecoder().decode(env.BUCKET.objects.get(key)!.body), "abcd");
+});
+
 test("two namespaces isolate identical wal names", async () => {
 	await call(`/v1/arc-111/${SEG}`, { method: "PUT", body: "aaaa" });
 	await call(`/v1/arc-222/${SEG}`, { method: "PUT", body: "bb" });

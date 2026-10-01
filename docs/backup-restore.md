@@ -115,8 +115,9 @@ safe because the worker fences writes atomically: a `.partial` PUT smaller
 than the stored object gets 409 (the shipper treats it as success — a
 peer's longer tail is already archived). The check is an R2 conditional
 write on the object's etag, so it holds under concurrent writers, not
-just sequential ones. Complete segments are byte-identical from any
-receiver, so they overwrite freely.
+just sequential ones. Completed artifacts are immutable: the worker only
+puts them if-absent — a same-size re-push is an idempotent retry (200),
+a different-size collision is 409 and never overwrites.
 
 Base backups give the PITR start point: `veil-backup` also runs
 `pg_basebackup -Ft -z -X stream` daily → `arc-<sysid>/base-YYYY-MM-DD-HHMM.tar.gz`.
@@ -178,13 +179,21 @@ To recover to an arbitrary timestamp — not just the last dump:
 ```bash
 # 1. Pick the source cluster. Each archive object lives under
 #    arc-<system_identifier>/ — list the prefixes and choose the sysid of
-#    the cluster being restored (prod's, not a drill's):
-curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
-  "https://backup-ingest.veil.nyc/v1/?prefix=arc-" | jq -r '.keys[].key' \
-  | cut -d/ -f1 | sort -u
+#    the cluster being restored (prod's, not a drill's). LIST pages —
+#    loop on `cursor` until it comes back empty:
+list_keys() { # list_keys <prefix> — emits every key under a prefix
+  cursor=""
+  while :; do
+    out=$(curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
+      "https://backup-ingest.veil.nyc/v1/?prefix=$1&cursor=$cursor")
+    echo "$out" | jq -r '.keys[].key'
+    cursor=$(echo "$out" | jq -r '.cursor // empty')
+    [ -n "$cursor" ] || break
+  done
+}
+list_keys "arc-" | cut -d/ -f1 | sort -u
 #    Then list everything under the chosen one:
-curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
-  "https://backup-ingest.veil.nyc/v1/?prefix=arc-<SYSID>/" | jq -r '.keys[].key'
+list_keys "arc-<SYSID>/"
 
 # 2. Fetch the base backup and every wal-* object in that namespace.
 curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \

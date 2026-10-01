@@ -63,14 +63,15 @@ export default {
 			if (prefix.includes("..")) {
 				return new Response("bad prefix", { status: 400 });
 			}
-			const keys: { key: string; size: number }[] = [];
-			let cursor: string | undefined;
-			do {
-				const page = await env.BUCKET.list({ prefix, cursor, limit: 1000 });
-				for (const o of page.objects) keys.push({ key: o.key, size: o.size });
-				cursor = page.truncated ? page.cursor : undefined;
-			} while (cursor);
-			return Response.json({ keys });
+			// One page per request — the caller loops on `cursor`. Draining
+			// every page into memory here lets an authed client OOM the
+			// worker on a big bucket.
+			const cursor = url.searchParams.get("cursor") ?? undefined;
+			const page = await env.BUCKET.list({ prefix, cursor, limit: 1000 });
+			return Response.json({
+				keys: page.objects.map((o) => ({ key: o.key, size: o.size })),
+				cursor: page.truncated ? page.cursor : undefined,
+			});
 		}
 		const m = url.pathname.match(/^\/v1\/(.+)$/);
 		if (!m || !NAME.test(m[1])) {
@@ -91,8 +92,17 @@ export default {
 				return new Response("empty body", { status: 400 });
 			}
 			// Non-partial objects are immutable-by-content (completed WAL,
-			// dated dumps) — stream straight through; no size rule applies.
-			return env.BUCKET.put(name, req.body).then(() => new Response("ok"));
+			// dated dumps): put-if-absent only, so a stolen upload bearer
+			// cannot clobber a finished artifact. A same-size re-push is an
+			// idempotent retry → 200; a different-size collision → 409.
+			const len = Number(req.headers.get("Content-Length") ?? -1);
+			const r = await env.BUCKET.put(name, req.body, {
+				onlyIf: { etagDoesNotMatch: "*" },
+			});
+			if (r) return new Response("ok");
+			const cur = await env.BUCKET.head(name);
+			if (cur && cur.size === len) return new Response("ok");
+			return new Response("conflict: object exists", { status: 409 });
 		}
 		if (req.method === "DELETE") {
 			if (!authorized(req, env.DELETE_TOKEN)) {

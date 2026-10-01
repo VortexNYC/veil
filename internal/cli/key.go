@@ -368,7 +368,15 @@ func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
 	var staged []string
 	for i, p := range parts {
 		f := filepath.Join(dir, fmt.Sprintf("share-%d-%s.hex.tmp", i+1, fp))
+		// WriteFile's perm applies only on create — a pre-existing loose-mode
+		// tmp file would keep it. Chmod unconditionally after write.
 		if err := os.WriteFile(f, []byte(hex.EncodeToString(p)+"\n"), 0o600); err != nil {
+			for _, done := range staged {
+				_ = os.Remove(done)
+			}
+			return nil, fmt.Errorf("key: %w", err)
+		}
+		if err := os.Chmod(f, 0o600); err != nil {
 			for _, done := range staged {
 				_ = os.Remove(done)
 			}
