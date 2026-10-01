@@ -968,5 +968,7 @@ behavioral agents (~175 req/s mixed)** inside SLO; the knee is ~1,600
 (~230 req/s). Recommendation recorded, not applied: raise
 `VEIL_MAX_IN_FLIGHT_USE` to ~300 — well above the proven headroom, far
 below the tested 600 — so the shed still engages before tail collapse.
+**Applied 2026-10-01**: `VEIL_MAX_IN_FLIGHT_USE=300` on prod, `/ready`
+200 post-deploy.
 Load-gen constraint: agent sessions are capped at 1h, so seed→run must
 fit inside that window.
