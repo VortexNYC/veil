@@ -132,14 +132,18 @@ export default {
 			if (!authorized(req, env.RESTORE_TOKEN) && !authorized(req, env.OFFSITE_TOKEN)) {
 				return new Response("unauthorized", { status: 401 });
 			}
+			if (req.method === "HEAD") {
+				const meta = await env.BUCKET.head(name);
+				if (!meta) {
+					return new Response("not found", { status: 404 });
+				}
+				return new Response(null, {
+					headers: { "content-length": String(meta.size), etag: meta.etag },
+				});
+			}
 			const obj = await env.BUCKET.get(name);
 			if (!obj) {
 				return new Response("not found", { status: 404 });
-			}
-			if (req.method === "HEAD") {
-				return new Response(null, {
-					headers: { "content-length": String(obj.size), etag: obj.etag },
-				});
 			}
 			return new Response(obj.body, {
 				headers: { "content-length": String(obj.size), etag: obj.etag },
