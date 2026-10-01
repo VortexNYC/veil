@@ -18,7 +18,7 @@ const (
 	// Resends for "I didn't get it" need two or three — not twenty. Three a
 	// day per address keeps a human from mail-bombing one victim.
 	invitePerRecipientPerDay = 3
-	inviteWindow           = 24 * time.Hour
+	inviteWindow             = 24 * time.Hour
 )
 
 // inviteLimiter is a per-process sliding-window counter. Postgres does not

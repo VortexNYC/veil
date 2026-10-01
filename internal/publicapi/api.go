@@ -404,7 +404,8 @@ func (s *Server) importItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireItemWrite(w, r); !ok {
+	p, ok := s.requireItemWrite(w, r)
+	if !ok {
 		return
 	}
 	var in UpdateItemRequest
@@ -416,7 +417,7 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	if in.URI != "" {
 		add = []string{in.URI}
 	}
-	item, err := s.App.UpdateItem(r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret))
+	item, err := s.App.UpdateItemFor(p, r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret))
 	if err != nil {
 		http.Error(w, "update failed", http.StatusBadRequest)
 		return
@@ -425,10 +426,11 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireItemWrite(w, r); !ok {
+	p, ok := s.requireItemWrite(w, r)
+	if !ok {
 		return
 	}
-	if err := s.App.ArchiveItem(r.PathValue("name")); err != nil {
+	if err := s.App.ArchiveItemFor(p, r.PathValue("name")); err != nil {
 		http.Error(w, "archive failed", http.StatusBadRequest)
 		return
 	}
@@ -436,10 +438,11 @@ func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireItemWrite(w, r); !ok {
+	p, ok := s.requireItemWrite(w, r)
+	if !ok {
 		return
 	}
-	if err := s.App.DeleteItem(r.PathValue("name")); err != nil {
+	if err := s.App.DeleteItemFor(p, r.PathValue("name")); err != nil {
 		http.Error(w, "delete failed", http.StatusBadRequest)
 		return
 	}

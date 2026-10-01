@@ -56,7 +56,7 @@ func grantKey(agentID, itemID string) string { return agentID + "\x00" + itemID 
 
 func (m *Memory) Close() error { return nil }
 
-func (m *Memory) PutAgent(p protocol.Principal) error {
+func (m *Memory) PutAgent(p protocol.Principal, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing, ok := m.agents[p.ID]; ok {
@@ -68,6 +68,7 @@ func (m *Memory) PutAgent(p protocol.Principal) error {
 		}
 	}
 	m.agents[p.ID] = p
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
@@ -166,7 +167,7 @@ func (m *Memory) ListHumans() ([]protocol.Principal, error) {
 	return out, nil
 }
 
-func (m *Memory) PutItem(item protocol.Item, secret Secret) error {
+func (m *Memory) PutItem(item protocol.Item, secret Secret, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing, ok := m.items[item.ID]; ok {
@@ -184,6 +185,7 @@ func (m *Memory) PutItem(item protocol.Item, secret Secret) error {
 	}
 	m.items[item.ID] = item
 	m.secrets[item.ID] = append(Secret(nil), secret...)
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
@@ -224,7 +226,7 @@ func (m *Memory) ListItems() ([]protocol.Item, error) {
 	return out, nil
 }
 
-func (m *Memory) ArchiveItem(id string) error {
+func (m *Memory) ArchiveItem(id string, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	item, ok := m.items[id]
@@ -233,10 +235,11 @@ func (m *Memory) ArchiveItem(id string) error {
 	}
 	item.Archived = true
 	m.items[id] = item
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
-func (m *Memory) DeleteItem(id string) error {
+func (m *Memory) DeleteItem(id string, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.items[id]; !ok {
@@ -258,6 +261,7 @@ func (m *Memory) DeleteItem(id string) error {
 		kept = append(kept, v)
 	}
 	m.versions = kept
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
@@ -325,10 +329,11 @@ func (m *Memory) Secret(id string) (Secret, error) {
 	return out, nil
 }
 
-func (m *Memory) PutGrant(g protocol.Grant) error {
+func (m *Memory) PutGrant(g protocol.Grant, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.grants[grantKey(g.AgentID, g.ItemID)] = g
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
@@ -888,10 +893,11 @@ func (m *Memory) AuditFeed(orgID string, afterID int64, limit int) ([]protocol.A
 
 func workloadKey(issuer, subject string) string { return issuer + "\x00" + subject }
 
-func (m *Memory) PutWorkload(w protocol.Workload) error {
+func (m *Memory) PutWorkload(w protocol.Workload, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.workloads[workloadKey(w.Issuer, w.Subject)] = w
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
@@ -923,10 +929,11 @@ func (m *Memory) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) 
 
 func sessionHashKey(secretHash []byte) string { return hex.EncodeToString(secretHash) }
 
-func (m *Memory) PutSession(s protocol.Session, secretHash []byte) error {
+func (m *Memory) PutSession(s protocol.Session, secretHash []byte, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions[sessionHashKey(secretHash)] = s
+	m.audit = append(m.audit, events...)
 	return nil
 }
 
@@ -964,7 +971,7 @@ func (m *Memory) SessionByID(id string) (protocol.Session, error) {
 	return protocol.Session{}, ErrNotFound
 }
 
-func (m *Memory) RevokeSession(id string, at time.Time) error {
+func (m *Memory) RevokeSession(id string, at time.Time, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for k, s := range m.sessions {
@@ -974,13 +981,14 @@ func (m *Memory) RevokeSession(id string, at time.Time) error {
 				s.RevokedAt = &t
 				m.sessions[k] = s
 			}
+			m.audit = append(m.audit, events...)
 			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (m *Memory) RenewSession(id string, at time.Time) (protocol.Session, error) {
+func (m *Memory) RenewSession(id string, at time.Time, events ...protocol.AuditEvent) (protocol.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for k, s := range m.sessions {
@@ -1003,6 +1011,7 @@ func (m *Memory) RenewSession(id string, at time.Time) (protocol.Session, error)
 			s.ExpiresAt = newExpires.UTC()
 			s.RenewedAt = &t
 			m.sessions[k] = s
+			m.audit = append(m.audit, events...)
 			return s, nil
 		}
 	}

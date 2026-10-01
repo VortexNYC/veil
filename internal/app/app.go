@@ -460,10 +460,14 @@ func (a *App) PutItemFor(p protocol.Principal, opts ItemOpts) (protocol.Item, er
 		opts.Owner = protocol.Owner{Kind: protocol.OwnerUser, ID: p.ID}
 	}
 	opts.OrgID = p.OrgID
-	return a.PutItem(opts)
+	return a.putItem(p.ID, opts)
 }
 
 func (a *App) PutItem(opts ItemOpts) (protocol.Item, error) {
+	return a.putItem(a.HumanID, opts)
+}
+
+func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 	name := strings.TrimSpace(opts.Name)
 	if name == "" {
 		return protocol.Item{}, fmt.Errorf("app: empty item name")
@@ -540,7 +544,14 @@ func (a *App) PutItem(opts ItemOpts) (protocol.Item, error) {
 	if err != nil {
 		return protocol.Item{}, err
 	}
-	if err := a.Store.PutItem(item, store.Secret(blob)); err != nil {
+	// The store upserts — the event name must match what actually happened.
+	action := protocol.ActionItemCreated
+	if _, err := a.Store.Item(item.ID); err == nil {
+		action = protocol.ActionItemUpdated
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return protocol.Item{}, err
+	}
+	if err := a.Store.PutItem(item, store.Secret(blob), adminEvent(actor, org, item.ID, action, "name="+name)); err != nil {
 		return protocol.Item{}, err
 	}
 	return item, nil
@@ -609,6 +620,16 @@ func unionURIs(have, add []string) []string {
 }
 
 func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
+	return a.updateItem(a.HumanID, name, replaceURIs, addURIs, tags, login, token)
+}
+
+// UpdateItemFor is UpdateItem attributed to an explicit actor — the HTTP
+// layer's write-gated path.
+func (a *App) UpdateItemFor(actor protocol.Principal, name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
+	return a.updateItem(actor.ID, name, replaceURIs, addURIs, tags, login, token)
+}
+
+func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
 	item, err := a.Store.Item(name)
 	if err != nil {
 		return protocol.Item{}, err
@@ -641,24 +662,48 @@ func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login
 			return protocol.Item{}, err
 		}
 	}
-	if err := a.Store.PutItem(item, store.Secret(raw)); err != nil {
+	if err := a.Store.PutItem(item, store.Secret(raw), adminEvent(actorID, item.OrgID, item.ID, protocol.ActionItemUpdated, "")); err != nil {
 		return protocol.Item{}, err
 	}
 	return item, nil
 }
 
 func (a *App) ArchiveItem(name string) error {
-	if err := a.Store.ArchiveItem(name); err != nil {
+	return a.archiveItem(a.HumanID, name)
+}
+
+func (a *App) ArchiveItemFor(actor protocol.Principal, name string) error {
+	return a.archiveItem(actor.ID, name)
+}
+
+func (a *App) archiveItem(actorID, name string) error {
+	item, err := a.Store.Item(name)
+	if err != nil {
 		return err
 	}
-	return a.Store.CancelRequestsForItem(name, time.Now().UTC())
+	if err := a.Store.ArchiveItem(item.ID, adminEvent(actorID, item.OrgID, item.ID, protocol.ActionItemArchived, "")); err != nil {
+		return err
+	}
+	return a.Store.CancelRequestsForItem(item.ID, time.Now().UTC())
 }
 
 func (a *App) DeleteItem(name string) error {
-	if err := a.Store.DeleteItem(name); err != nil {
+	return a.deleteItem(a.HumanID, name)
+}
+
+func (a *App) DeleteItemFor(actor protocol.Principal, name string) error {
+	return a.deleteItem(actor.ID, name)
+}
+
+func (a *App) deleteItem(actorID, name string) error {
+	item, err := a.Store.Item(name)
+	if err != nil {
 		return err
 	}
-	return a.Store.CancelRequestsForItem(name, time.Now().UTC())
+	if err := a.Store.DeleteItem(item.ID, adminEvent(actorID, item.OrgID, item.ID, protocol.ActionItemDeleted, "")); err != nil {
+		return err
+	}
+	return a.Store.CancelRequestsForItem(item.ID, time.Now().UTC())
 }
 
 func (a *App) WriteFile(name, dest string) error {
@@ -676,6 +721,9 @@ func (a *App) WriteFile(name, dest string) error {
 	body, err := material.FileBytes(material.Unpack(secretBytes(raw)))
 	if err != nil {
 		return err
+	}
+	if err := a.auditAdmin(adminEvent(a.HumanID, item.OrgID, item.ID, protocol.ActionFileWrite, "")); err != nil {
+		return fmt.Errorf("app: audit write-file: %w", err)
 	}
 	return os.WriteFile(dest, body, 0o600)
 }
@@ -701,12 +749,15 @@ func (a *App) addAgent(name, orgID, humanID string) (protocol.Principal, error) 
 	}
 	// Agent ids are the global name namespace — a same-name row owned by a
 	// different org or human is a collision, not an upsert.
+	existed := true
 	if existing, err := a.Store.Agent(name); err == nil {
 		if existing.OrgID != orgID || existing.Owner.ID != humanID {
 			return protocol.Principal{}, fmt.Errorf("app: agent name taken")
 		}
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return protocol.Principal{}, err
+	} else {
+		existed = false
 	}
 	p := protocol.Principal{
 		Kind:  protocol.PrincipalAgent,
@@ -714,7 +765,11 @@ func (a *App) addAgent(name, orgID, humanID string) (protocol.Principal, error) 
 		OrgID: orgID,
 		Owner: protocol.Owner{Kind: protocol.OwnerUser, ID: humanID},
 	}
-	if err := a.Store.PutAgent(p); err != nil {
+	var events []protocol.AuditEvent
+	if !existed {
+		events = append(events, adminEvent(humanID, orgID, "", protocol.ActionAgentCreated, "agent="+name))
+	}
+	if err := a.Store.PutAgent(p, events...); err != nil {
 		return protocol.Principal{}, err
 	}
 	got, err := a.Store.Agent(name)
@@ -766,12 +821,12 @@ func (a *App) RevokeAgent(actor protocol.Principal, agentID string) error {
 	now := time.Now().UTC()
 	event := protocol.AuditEvent{
 		Time:     now,
-		OrgID:    a.OrgID,
-		AgentID:  agentID,
+		OrgID:    agent.OrgID,
+		AgentID:  actor.ID,
 		ItemID:   "",
 		Action:   protocol.ActionRevoke,
 		Decision: protocol.DecisionAllow,
-		Reason:   "",
+		Reason:   "agent=" + agentID,
 	}
 	if err := a.Store.RevokeAgent(agentID, now, event); err != nil {
 		return err
@@ -780,15 +835,32 @@ func (a *App) RevokeAgent(actor protocol.Principal, agentID string) error {
 }
 
 func (a *App) BindWorkload(agentID, issuer, subject, audience string) (protocol.Workload, error) {
+	return a.BindWorkloadFor(a.vaultHuman(), agentID, issuer, subject, audience)
+}
+
+// BindWorkloadFor enrolls a workload identity on behalf of actor — owner
+// only, same bar as grants: binding an auth method to a foreign agent is a
+// grant-adjacent write.
+func (a *App) BindWorkloadFor(actor protocol.Principal, agentID, issuer, subject, audience string) (protocol.Workload, error) {
 	if !id.Valid(agentID) {
 		return protocol.Workload{}, fmt.Errorf("app: invalid agent name %q", agentID)
 	}
 	if issuer == "" || subject == "" || audience == "" {
 		return protocol.Workload{}, fmt.Errorf("app: issuer, subject, and audience are required")
 	}
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return protocol.Workload{}, err
+	}
+	if !own {
+		return protocol.Workload{}, ErrForbidden
+	}
 	agent, err := a.Store.Agent(agentID)
 	if err != nil {
 		return protocol.Workload{}, err
+	}
+	if agent.OrgID != actor.OrgID {
+		return protocol.Workload{}, ErrForbidden
 	}
 	if agent.RevokedAt != nil {
 		return protocol.Workload{}, ErrAgentRevoked
@@ -799,7 +871,7 @@ func (a *App) BindWorkload(agentID, issuer, subject, audience string) (protocol.
 		Subject:  subject,
 		Audience: audience,
 	}
-	if err := a.Store.PutWorkload(w); err != nil {
+	if err := a.Store.PutWorkload(w, adminEvent(actor.ID, agent.OrgID, "", protocol.ActionWorkloadBound, "agent="+agentID+" issuer="+issuer)); err != nil {
 		return protocol.Workload{}, err
 	}
 	return w, nil
@@ -872,6 +944,7 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 	}
 
 	orgID := ""
+	planted := false
 	if h, herr := a.Store.Human(sub); herr == nil {
 		orgID = h.OrgID
 	} else if errors.Is(herr, store.ErrNotFound) {
@@ -895,12 +968,15 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 				return protocol.Principal{}, err
 			}
 		}
-		planted, perr := a.Store.PlantHuman(protocol.Principal{
+		var perr error
+		planted, perr = a.Store.PlantHuman(protocol.Principal{
 			Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID,
 		})
 		if perr != nil {
 			return protocol.Principal{}, perr
 		}
+		// human_provisioned fires once, after the org key + tuples below
+		// land — planted rows mid-signup are recorded at the success path.
 		if !planted {
 			// Concurrent provision won the anchor — converge on its org.
 			h, rerr := a.Store.Human(sub)
@@ -942,6 +1018,11 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 		if err := a.Provision.SetIdentityOrg(ctx, sub, orgID); err != nil {
 			return protocol.Principal{}, err
 		}
+	}
+	if planted {
+		// First provision only — repeats are logins, not events. Post-commit
+		// by nature (the humans row and tuples already landed).
+		a.auditBestEffort(adminEvent(sub, orgID, "", protocol.ActionHumanProvisioned, ""))
 	}
 	a.ensureBillingCustomer(ctx, orgID)
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
@@ -1055,7 +1136,12 @@ func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteRe
 	if !a.inviteLim.allowInvite(sub, email) {
 		return InviteResult{}, ErrInviteLimit
 	}
-	return a.Invites.Invite(ctx, email, sub, h.OrgID)
+	res, err := a.Invites.Invite(ctx, email, sub, h.OrgID)
+	if err != nil {
+		return InviteResult{}, err
+	}
+	a.auditBestEffort(adminEvent(sub, h.OrgID, "", protocol.ActionMemberInvited, "email="+email))
+	return res, nil
 }
 
 // ErrUnauthorized marks token/principal resolution failure on verbs that
@@ -1117,6 +1203,7 @@ func (a *App) RemoveMember(ctx context.Context, rawToken, memberID string) error
 			return err
 		}
 	}
+	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionMemberRemoved, "member="+memberID))
 	return nil
 }
 
@@ -1136,7 +1223,11 @@ func (a *App) PromoteOwner(ctx context.Context, rawToken, memberID string) error
 	if a.OrgAdmin == nil {
 		return fmt.Errorf("app: org admin not configured")
 	}
-	return a.OrgAdmin.PromoteOwner(ctx, p.OrgID, memberID)
+	if err := a.OrgAdmin.PromoteOwner(ctx, p.OrgID, memberID); err != nil {
+		return err
+	}
+	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionOwnerPromoted, "member="+memberID))
+	return nil
 }
 
 // DemoteOwner strips the owners tuple — the last owner cannot be demoted or
@@ -1163,7 +1254,11 @@ func (a *App) DemoteOwner(ctx context.Context, rawToken, memberID string) error 
 	if len(owners) <= 1 {
 		return fmt.Errorf("app: cannot demote the last owner")
 	}
-	return a.OrgAdmin.RemoveOwner(ctx, p.OrgID, memberID)
+	if err := a.OrgAdmin.RemoveOwner(ctx, p.OrgID, memberID); err != nil {
+		return err
+	}
+	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionOwnerDemoted, "member="+memberID))
+	return nil
 }
 
 // DeleteMe is the human kill-switch: drop both tuple legs and the humans
@@ -1204,6 +1299,7 @@ func (a *App) DeleteMe(ctx context.Context, rawToken string) error {
 			return err
 		}
 	}
+	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionHumanDeleted, ""))
 	return nil
 }
 
@@ -1225,7 +1321,12 @@ func (a *App) DeleteOrg(ctx context.Context, rawToken string) (store.PurgeReport
 	if err := a.OrgAdmin.RemoveOrgTuples(ctx, p.OrgID); err != nil {
 		return store.PurgeReport{}, err
 	}
-	return lc.PurgeOrg(ctx, p.OrgID)
+	rep, err := lc.PurgeOrg(ctx, p.OrgID)
+	if err != nil {
+		return rep, err
+	}
+	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionOrgDeleted, ""))
+	return rep, nil
 }
 
 func (a *App) ownsVault(p protocol.Principal) (bool, error) {
@@ -1239,6 +1340,43 @@ func (a *App) ownsVault(p protocol.Principal) (bool, error) {
 		return false, nil
 	}
 	return a.Members.IsOwner(context.Background(), p.OrgID, p.ID)
+}
+
+// adminEvent builds an administration/read-plane audit row (VEIL-86):
+// AgentID is the acting principal and the target rides ItemID plus
+// `key=value` Reason fields.
+func adminEvent(actor, orgID, itemID string, action protocol.ActionKind, reason string) protocol.AuditEvent {
+	return protocol.AuditEvent{
+		Time: time.Now().UTC(), OrgID: orgID, AgentID: actor, ItemID: itemID,
+		Action: action, Decision: protocol.DecisionAllow, Reason: reason,
+	}
+}
+
+// auditAdmin appends an administration/read-plane event through the durable
+// auditor when wired (spool-backed on vault opens) and falls back to the
+// store's synchronous append otherwise — App literals in tests carry no
+// auditor.
+func (a *App) auditAdmin(e protocol.AuditEvent) error {
+	if a.Auditor != nil {
+		return a.Auditor.Append(context.Background(), e)
+	}
+	return a.Store.AppendAudit(e)
+}
+
+// auditBestEffort is for post-commit events where another system already owns
+// the commit (Keto tuples, Kratos invites, org purge): returning the error
+// would invite a retry of a finished operation, so a failed append logs loud
+// instead. The spool-backed auditor means this path rarely fires.
+func (a *App) auditBestEffort(e protocol.AuditEvent) {
+	if err := a.auditAdmin(e); err != nil {
+		slog.Warn("admin audit append failed", "action", e.Action, "org", e.OrgID, "err", err)
+	}
+}
+
+// vaultHuman is the local-vault operator principal — the actor attributed
+// when the CLI path runs a mutator with no explicit principal.
+func (a *App) vaultHuman() protocol.Principal {
+	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
 }
 
 func (a *App) CanCreateGrant(p protocol.Principal) (bool, error) {
@@ -1397,6 +1535,10 @@ func (a *App) FillLogin(p protocol.Principal, uuid string, mintTotp bool) (FillE
 		e.Login = item.Login
 	}
 	if !mintTotp {
+		// Fail closed: a failed audit write denies the reveal.
+		if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionFill, "login")); err != nil {
+			return FillEntry{}, fmt.Errorf("app: audit fill: %w", err)
+		}
 		return e, nil
 	}
 	if env.TOTP == "" {
@@ -1405,6 +1547,12 @@ func (a *App) FillLogin(p protocol.Principal, uuid string, mintTotp bool) (FillE
 	code, err := material.Mint(env.TOTP, time.Now())
 	if err != nil || code == "" {
 		return FillEntry{}, fmt.Errorf("app: no totp")
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionFill, "login")); err != nil {
+		return FillEntry{}, fmt.Errorf("app: audit fill: %w", err)
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionTOTPMint, "")); err != nil {
+		return FillEntry{}, fmt.Errorf("app: audit totp: %w", err)
 	}
 	e.TOTP = code
 	return e, nil
@@ -1426,6 +1574,21 @@ func (a *App) FillSync(p protocol.Principal, since string) ([]FillSyncRow, strin
 	items, err := a.ItemsForPrincipal(p)
 	if err != nil {
 		return nil, "", err
+	}
+	var decryptable int
+	for _, item := range items {
+		if item.Archived {
+			continue
+		}
+		switch item.Kind {
+		case protocol.ItemAPIKey, protocol.ItemPasskey, protocol.ItemCard, protocol.ItemIdentity:
+			decryptable++
+		}
+	}
+	// Audit the replica pull before any secret material is decrypted — the
+	// event is durable even if a mid-sync failure denies the payload.
+	if err := a.auditAdmin(adminEvent(p.ID, p.OrgID, "", protocol.ActionFillSync, fmt.Sprintf("items=%d", decryptable))); err != nil {
+		return nil, "", fmt.Errorf("app: audit sync: %w", err)
 	}
 	out := make([]FillSyncRow, 0, len(items))
 	for _, item := range items {
@@ -1500,6 +1663,9 @@ func (a *App) FillTOTP(p protocol.Principal, itemID string, now time.Time) (stri
 	if err != nil || code == "" {
 		return "", fmt.Errorf("app: no totp")
 	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionTOTPMint, "")); err != nil {
+		return "", fmt.Errorf("app: audit totp: %w", err)
+	}
 	return code, nil
 }
 
@@ -1555,14 +1721,14 @@ func (a *App) AttachTOTP(p protocol.Principal, itemID, seed string) error {
 		return err
 	}
 	item.HasTOTP = true
-	return a.Store.PutItem(item, store.Secret(blob))
+	return a.Store.PutItem(item, store.Secret(blob), adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionItemUpdated, "totp_attached"))
 }
 
 func (a *App) FillPasskeyRegister(p protocol.Principal, origin string, publicKey json.RawMessage, extraURIs []string) (json.RawMessage, error) {
 	if p.Kind != protocol.PrincipalHuman {
 		return nil, fmt.Errorf("app: fill is human")
 	}
-	existing, err := a.passkeyRecords(p)
+	existing, _, err := a.passkeyRecords(p)
 	if err != nil {
 		return nil, err
 	}
@@ -1604,13 +1770,16 @@ func (a *App) FillPasskeyGet(p protocol.Principal, origin string, publicKey json
 	if p.Kind != protocol.PrincipalHuman {
 		return nil, fmt.Errorf("app: fill is human")
 	}
-	recs, err := a.passkeyRecords(p)
+	recs, itemByCred, err := a.passkeyRecords(p)
 	if err != nil {
 		return nil, err
 	}
 	cred, code := passkey.Assert(origin, publicKey, recs, true)
 	if code != 0 {
 		return passkey.ErrorResponse(code), nil
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, p.OrgID, itemByCred[cred.ID], protocol.ActionPasskeyAssert, "")); err != nil {
+		return nil, fmt.Errorf("app: audit passkey: %w", err)
 	}
 	raw, err := json.Marshal(cred)
 	if err != nil {
@@ -1619,12 +1788,13 @@ func (a *App) FillPasskeyGet(p protocol.Principal, origin string, publicKey json
 	return raw, nil
 }
 
-func (a *App) passkeyRecords(p protocol.Principal) ([]passkey.Record, error) {
+func (a *App) passkeyRecords(p protocol.Principal) ([]passkey.Record, map[string]string, error) {
 	items, err := a.ItemsForPrincipal(p)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []passkey.Record
+	itemByCred := map[string]string{}
 	for _, item := range items {
 		if item.Kind != protocol.ItemPasskey {
 			continue
@@ -1644,8 +1814,9 @@ func (a *App) passkeyRecords(p protocol.Principal) ([]passkey.Record, error) {
 			UserHandle: env.UserHandle,
 			UserName:   env.Login,
 		})
+		itemByCred[env.CredID] = item.ID
 	}
-	return out, nil
+	return out, itemByCred, nil
 }
 
 func (a *App) AddGrant(agentID, itemID string, level protocol.GrantLevel) (protocol.Grant, error) {
@@ -1721,7 +1892,7 @@ func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level
 		Actions:   []protocol.ActionKind{protocol.ActionFetch},
 		ExpiresAt: expires,
 	}
-	if err := a.Store.PutGrant(g); err != nil {
+	if err := a.Store.PutGrant(g, adminEvent(actor.ID, org, itemID, protocol.ActionGrantGranted, fmt.Sprintf("agent=%s level=%s", grantee, level))); err != nil {
 		return protocol.Grant{}, err
 	}
 	return g, nil
