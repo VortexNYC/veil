@@ -129,3 +129,16 @@ test("GET and HEAD serve namespaced objects", async () => {
 	const head = await call(`/v1/arc-111/${SEG}`, { method: "HEAD" });
 	assert.equal(head.headers.get("Content-Length"), "4");
 });
+
+test("DELETE removes objects, 404s on missing", async () => {
+	const key = `arc-1/${SEG}`;
+	assert.equal(
+		(await call(`/v1/${key}`, { method: "DELETE" }, false)).status,
+		401,
+	);
+	await call(`/v1/${key}`, { method: "PUT", body: "x" });
+	assert.equal((await call(`/v1/${key}`, { method: "DELETE" })).status, 200);
+	assert.equal(env.BUCKET.objects.has(key), false);
+	assert.equal((await call(`/v1/${key}`, { method: "GET" })).status, 404);
+	assert.equal((await call(`/v1/${key}`, { method: "DELETE" })).status, 404);
+});

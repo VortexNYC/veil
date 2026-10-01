@@ -98,6 +98,16 @@ export default {
 					headers: { "Content-Length": String(head.size) },
 				});
 			}
+			case "DELETE": {
+				const head = await env.BUCKET.head(key);
+				if (!head) {
+					return new Response("not found", { status: 404 });
+				}
+				await env.BUCKET.delete(key);
+				return new Response(JSON.stringify({ deleted: key }), {
+					headers: { "Content-Type": "application/json" },
+				});
+			}
 			default:
 				return new Response("method not allowed", { status: 405 });
 		}
