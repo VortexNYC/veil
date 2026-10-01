@@ -85,8 +85,8 @@ github.com/modelcontextprotocol/go-sdk v1.7.0 h1:yqjY2dsbKAC0LSuWZVBMrHgiG8ukXv6
 github.com/modelcontextprotocol/go-sdk v1.7.0/go.mod h1:dL7u98E/zjJTGzEq+j30jQ8K2k1mb6LeAH4inEcSGts=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/openbao/openbao/sdk/v2 v2.1.0 h1:1Dlg+zqoSPfxuwuUYKev5o7jsu5QBPX+vMgFQ/gNkl4=
-github.com/openbao/openbao/sdk/v2 v2.1.0/go.mod h1:hf59Fuqi0CMgN5jlQvkFvt6UiD5qoJPs2kC570Dr/4A=
+github.com/openbao/openbao/sdk/v2 v2.3.0 h1:MhmNp0+v6FvKrXWth18/ctRtY+rRBNefMwnZSMdZ++4=
+github.com/openbao/openbao/sdk/v2 v2.3.0/go.mod h1:GCzNI9CqDlk4xcjZCfzqy/+KyeVPwLEEkOvS78dwshA=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde h1:x0TT0RDC7UhAVbbWWBzr41ElhJx5tXPWkIHA2HWPRuw=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/ory/hydra-client-go/v26 v26.2.0 h1:el+M6dV5CK3Am2V4isorOoZ8pJdDaJm0irQzqnxZHqU=
