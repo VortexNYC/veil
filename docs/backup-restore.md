@@ -69,13 +69,25 @@ Pull an offsite artifact any time (no container window needed):
 
 ```bash
 curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
-  https://backup-ingest.veil.nyc/v1/veil-YYYY-MM-DD-HHMM.dump -o veil.dump
+  https://backup-ingest.veil.nyc/v1/arc-<sysid>/veil-YYYY-MM-DD-HHMM.dump -o veil.dump
 ```
 
 `OFFSITE_TOKEN` is `Veil backup-ingest token` in the 1Password Agents
-vault and the `INGEST_TOKEN` worker secret. A dump plus its KEK is a
+vault and a worker secret of the same name. A dump plus its KEK is a
 plaintext export — the token only gates the ciphertext; `VEIL_KEK` stays
 in its own escrow.
+
+The worker split tokens by capability: `OFFSITE_TOKEN` (writers + readers)
+cannot delete. `DELETE /v1/<name>` requires the separate `DELETE_TOKEN`
+secret — held only in escrow, never set on any writer service, so a
+stolen upload token cannot erase the archive. `RESTORE_TOKEN` (optional)
+can read without write.
+
+All new PUTs must carry the `arc-<sysid>/` prefix — flat names return 400
+(GET/HEAD/DELETE still serve the pre-namespace objects). The `.partial`
+fence is a compare-and-swap on the R2 etag: a smaller PUT loses the race
+atomically (409), and a writer that keeps losing gets a retryable 503 —
+a `.partial` can never regress under concurrent archivers.
 
 ## WAL archive (PITR — offsite, continuous)
 
@@ -99,9 +111,11 @@ same bytes concurrently.
 exports — lives under `arc-<pg system_identifier>/`. A rebuilt cluster has
 a fresh sysid (timeline 1, LSN 0), so a drill or replacement cluster can
 never overwrite the archive of the cluster it replaced. Two archivers are
-safe because the worker fences writes: a `.partial` PUT smaller than the
-stored object gets 409 (the shipper treats it as success — a peer's longer
-tail is already archived). Complete segments are byte-identical from any
+safe because the worker fences writes atomically: a `.partial` PUT smaller
+than the stored object gets 409 (the shipper treats it as success — a
+peer's longer tail is already archived). The check is an R2 conditional
+write on the object's etag, so it holds under concurrent writers, not
+just sequential ones. Complete segments are byte-identical from any
 receiver, so they overwrite freely.
 
 Base backups give the PITR start point: `veil-backup` also runs

@@ -21,11 +21,18 @@ physical location. The analog for an infra-level KEK:
   in the two existing escrow points.
 - Shamir 2-of-3 ships inside the rotation ceremony:
   `veil key rotate-kek --generate --shares 3 --threshold 2 --shares-dir D`
-  mints the new KEK, stages share-*.hex.tmp (mode 600, dir 700), commits
-  the atomic rewrap, and only then finalizes shares — a share of a key
-  that never rotated can never look real. `veil key combine --shares-dir
-  D --out F` reconstructs to a mode-600 file. The assembled key exists
-  only to be typed into Railway VEIL_KEK; custody is the shares.
+  mints the new KEK, stages `share-<i>-<fp>.hex.tmp` (mode 600, dir 700),
+  commits the atomic rewrap, and only then finalizes shares — a share of
+  a key that never rotated can never look real. The 8-hex `<fp>` is a
+  sha256 prefix of the key: it binds a directory to ONE ceremony, so
+  `veil key combine` refuses mixed or foreign share files instead of
+  interpolating a wrong key. `--generate` requires `--shares` — a minted
+  KEK must be born split, never rotated into a vacuum. Splitting uses
+  `openbao/openbao/sdk/v2/helper/shamir` (MPL-2.0 — the prior-art doc
+  forbids the HashiCorp Vault import).
+  `veil key combine --shares-dir D --out F` reconstructs to a mode-600
+  file (existing files are chmod'd, never left permissive). The assembled
+  key exists only to be typed into Railway VEIL_KEK; custody is the shares.
 
 ## Org-level recovery (product, separate layer — filed VEIL-78)
 

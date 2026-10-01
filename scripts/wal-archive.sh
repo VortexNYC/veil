@@ -38,11 +38,11 @@ done
 ARC="arc-$SYSID"
 echo "wal-archive: slot=$SLOT sysid=$SYSID prefix=$ARC"
 
-push() { # push <path> <object> — 409 on .partial means a peer's copy is newer
+push() { # push <path> <object> — 409 is benign ONLY for .partial (a peer's copy is newer)
 	rc=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
 		-H "Authorization: Bearer $OFFSITE_TOKEN" \
 		--data-binary "@$1" "$INGEST/$ARC/$2" || echo 0)
-	[ "$rc" = "409" ] && return 0
+	case "$2" in *.partial) [ "$rc" = "409" ] && return 0 ;; esac
 	[ "$rc" -ge 200 ] && [ "$rc" -lt 300 ]
 }
 

@@ -11,9 +11,9 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/go-webauthn/webauthn v0.13.4
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/vault v1.21.4
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/openbao/openbao/sdk/v2 v2.1.0
 	github.com/ory/hydra-client-go/v26 v26.2.0
 	github.com/ory/keto-client-go/v26 v26.2.0
 	github.com/ory/kratos-client-go/v26 v26.2.0

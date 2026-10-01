@@ -16,7 +16,7 @@ import (
 	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
-	"github.com/hashicorp/vault/shamir"
+	"github.com/openbao/openbao/sdk/v2/helper/shamir"
 )
 
 // The custody ceremony: a minted KEK splits 2-of-3, any two shares rebuild
@@ -151,18 +151,16 @@ func TestRotateKEKCeremony(t *testing.T) {
 	if err := c.ExecuteContext(ctx); err != nil {
 		t.Fatalf("rotate-kek ceremony: %v", err)
 	}
-	for i := 1; i <= 3; i++ {
-		f := fmt.Sprintf("%s/share-%d.hex", sharesDir, i)
-		if _, err := os.Stat(f); err != nil {
-			t.Fatalf("final share missing: %s", f)
-		}
+	final, err := filepath.Glob(sharesDir + "/share-*.hex")
+	if err != nil || len(final) != 3 {
+		t.Fatalf("final shares = %v, %v — want 3 share-<i>-<fp>.hex", final, err)
 	}
-	if _, err := os.Stat(sharesDir + "/share-1.hex.tmp"); !os.IsNotExist(err) {
-		t.Fatal("staged .tmp left behind — shares must finalize post-commit")
+	if tmps, _ := filepath.Glob(sharesDir + "/*.tmp"); len(tmps) > 0 {
+		t.Fatalf("staged .tmp left behind: %v", tmps)
 	}
 
-	// Reconstruct from a threshold subset (drop share-3) via the command.
-	os.Remove(sharesDir + "/share-3.hex")
+	// Reconstruct from a threshold subset (drop one share) via the command.
+	os.Remove(final[len(final)-1])
 	combined := dir + "/combined.hex"
 	c2 := keyCmd()
 	c2.SetArgs([]string{"combine", "--shares-dir", sharesDir, "--out", combined})
@@ -182,5 +180,101 @@ func TestRotateKEKCeremony(t *testing.T) {
 	sec, err := s2.Secret("it")
 	if err != nil || string(sec) != "vault-secret" {
 		t.Fatalf("vault under reconstructed KEK: %v %q", err, sec)
+	}
+}
+
+// A minted KEK exists only in memory — --generate without --shares would
+// rotate the vault under a key nobody can ever reproduce. It must refuse
+// before touching the database (these run without PG_TEST_DSN).
+func TestRotateKEKGenerateValidation(t *testing.T) {
+	t.Setenv("VEIL_KEK_NEW", "")
+	run := func(args ...string) error {
+		c := keyCmd()
+		c.SetArgs(args)
+		return c.ExecuteContext(context.Background())
+	}
+	// --generate with no share output → refuse before touching the DB.
+	if err := run("rotate-kek", "--generate"); err == nil ||
+		!bytes.Contains([]byte(err.Error()), []byte("requires --shares")) {
+		t.Fatalf("--generate without --shares: %v", err)
+	}
+	// --generate plus any other new-key source → refuse.
+	if err := run("rotate-kek", "--generate", "--new-kek-file", "x"); err == nil ||
+		!bytes.Contains([]byte(err.Error()), []byte("exclusive")) {
+		t.Fatalf("--generate + --new-kek-file should fail closed, got %v", err)
+	}
+}
+
+// combine must only accept one fingerprinted share set — a stray share from
+// another ceremony, or a non-share .hex, interpolates to a wrong key with no
+// error and must be rejected up front.
+func TestCombineRejectsMixedSets(t *testing.T) {
+	mkShares := func(key []byte) string {
+		dir := t.TempDir()
+		parts, err := shamir.Split(key, 3, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fp := shareFingerprint(key)
+		for i, p := range parts {
+			f := filepath.Join(dir, fmt.Sprintf("share-%d-%s.hex", i+1, fp))
+			if err := os.WriteFile(f, []byte(hex.EncodeToString(p)+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	k1 := make([]byte, crypto.KeySize)
+	k2 := make([]byte, crypto.KeySize)
+	rand.Read(k1)
+	rand.Read(k2)
+	d1, d2 := mkShares(k1), mkShares(k2)
+
+	// Two ceremonies in one dir → refuse.
+	mixed := t.TempDir()
+	for _, src := range []string{d1, d2} {
+		ents, _ := os.ReadDir(src)
+		for _, e := range ents {
+			raw, _ := os.ReadFile(filepath.Join(src, e.Name()))
+			os.WriteFile(filepath.Join(mixed, e.Name()), raw, 0o600)
+		}
+	}
+	c := keyCmd()
+	c.SetArgs([]string{"combine", "--shares-dir", mixed, "--out", mixed + "/o.hex"})
+	if err := c.ExecuteContext(context.Background()); err == nil ||
+		!bytes.Contains([]byte(err.Error()), []byte("multiple ceremonies")) {
+		t.Fatalf("mixed ceremonies should fail closed, got %v", err)
+	}
+
+	// A foreign .hex (not share-<i>-<fp>.hex shape) → refuse, don't skip.
+	foreign := t.TempDir()
+	ents, _ := os.ReadDir(d1)
+	for _, e := range ents {
+		raw, _ := os.ReadFile(filepath.Join(d1, e.Name()))
+		os.WriteFile(filepath.Join(foreign, e.Name()), raw, 0o600)
+	}
+	os.WriteFile(filepath.Join(foreign, "old-backup.hex"), []byte("deadbeef\n"), 0o600)
+	c2 := keyCmd()
+	c2.SetArgs([]string{"combine", "--shares-dir", foreign, "--out", foreign + "/o.hex"})
+	if err := c2.ExecuteContext(context.Background()); err == nil ||
+		!bytes.Contains([]byte(err.Error()), []byte("not a share")) {
+		t.Fatalf("foreign .hex should fail closed, got %v", err)
+	}
+
+	// A pre-existing world-readable --out must be tightened, not left open.
+	out := filepath.Join(t.TempDir(), "combined.hex")
+	os.WriteFile(out, []byte("junk"), 0o644)
+	c3 := keyCmd()
+	c3.SetArgs([]string{"combine", "--shares-dir", d1, "--out", out})
+	if err := c3.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(out)
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("out file mode = %v, want 0600", st.Mode().Perm())
+	}
+	got, _ := loadHexKey("", out)
+	if !bytes.Equal(got, k1) {
+		t.Fatal("combined key mismatch")
 	}
 }

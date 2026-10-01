@@ -2,17 +2,19 @@ package cli
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
-	"github.com/hashicorp/vault/shamir"
+	"github.com/openbao/openbao/sdk/v2/helper/shamir"
 	"github.com/spf13/cobra"
 )
 
@@ -86,11 +88,21 @@ func keyCmd() *cobra.Command {
 			"fails to unwrap aborts the whole rotation — a backup KEK that " +
 			"opens nothing is not a KEK. With --generate --shares N " +
 			"--threshold M, the new KEK is minted and Shamir-split into " +
-			"share-*.hex files in --shares-dir BEFORE the rotation commits — " +
-			"the assembled key never needs to exist as a stored artifact; " +
-			"ops reconstruct it (veil kek combine) only to set VEIL_KEK. " +
+			"share-<i>-<fp>.hex files in --shares-dir (staged .tmp, finalized " +
+			"only after the rotation commits) — the assembled key never " +
+			"needs to exist as a stored artifact; ops reconstructs it " +
+			"('veil key combine') only to set VEIL_KEK. " +
 			"After commit, update VEIL_KEK on every origin replica and redeploy.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if generateNew && (newKekFile != "" || os.Getenv("VEIL_KEK_NEW") != "") {
+				return fmt.Errorf("key: --generate is exclusive with --new-kek-file/VEIL_KEK_NEW")
+			}
+			// A minted KEK exists only in memory — rotating without emitting
+			// shares would leave every org_keys row wrapped under a key
+			// nobody holds.
+			if generateNew && shareCount == 0 {
+				return fmt.Errorf("key: --generate requires --shares (a minted KEK must be born split)")
+			}
 			d, kek, err := resolve()
 			if err != nil {
 				return err
@@ -149,7 +161,7 @@ func keyCmd() *cobra.Command {
 	}
 	persistent(rotateKEK)
 	rotateKEK.Flags().StringVar(&newKekFile, "new-kek-file", "", "file containing the new KEK as hex (default env VEIL_KEK_NEW)")
-	rotateKEK.Flags().BoolVar(&generateNew, "generate", false, "mint the new KEK (mutually exclusive with --new-kek-file/VEIL_KEK_NEW)")
+	rotateKEK.Flags().BoolVar(&generateNew, "generate", false, "mint the new KEK (requires --shares; exclusive with --new-kek-file/VEIL_KEK_NEW)")
 	rotateKEK.Flags().IntVar(&shareCount, "shares", 0, "Shamir-split the new KEK into N share files (0 = off)")
 	rotateKEK.Flags().IntVar(&shareThreshold, "threshold", 2, "shares needed to reconstruct (with --shares)")
 	rotateKEK.Flags().StringVar(&sharesDir, "shares-dir", "", "directory for share-*.hex files (created mode 700)")
@@ -252,11 +264,22 @@ func keyCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("key: %w", err)
 			}
+			// Only files from ONE ceremony: share-<i>-<fp>.hex where fp is
+			// identical across every file. A stray .hex or a share from a
+			// different split interpolates to a wrong key with no error —
+			// the fingerprint in the name is what binds the set.
+			re := regexp.MustCompile(`^share-\d+-([0-9a-f]{8})\.hex$`)
+			fps := map[string]bool{}
 			var parts [][]byte
 			for _, e := range ents {
-				if e.IsDir() || !strings.HasSuffix(e.Name(), ".hex") {
+				m := re.FindStringSubmatch(e.Name())
+				if m == nil {
+					if strings.HasSuffix(e.Name(), ".hex") {
+						return fmt.Errorf("key: %s is not a share-<i>-<fp>.hex — refusing to mix sets", e.Name())
+					}
 					continue
 				}
+				fps[m[1]] = true
 				raw, err := os.ReadFile(filepath.Join(combineDir, e.Name()))
 				if err != nil {
 					return err
@@ -267,8 +290,11 @@ func keyCmd() *cobra.Command {
 				}
 				parts = append(parts, b)
 			}
+			if len(fps) > 1 {
+				return fmt.Errorf("key: shares from multiple ceremonies in %s — split the dirs", combineDir)
+			}
 			if len(parts) < 2 {
-				return fmt.Errorf("key: need at least 2 share-*.hex files in %s", combineDir)
+				return fmt.Errorf("key: need at least 2 share-<i>-<fp>.hex files in %s", combineDir)
 			}
 			key, err := shamir.Combine(parts)
 			if err != nil {
@@ -277,10 +303,32 @@ func keyCmd() *cobra.Command {
 			if len(key) != crypto.KeySize {
 				return fmt.Errorf("key: combined %d bytes, want %d — wrong shares?", len(key), crypto.KeySize)
 			}
+			var fp string
+			for f := range fps {
+				fp = f
+			}
+			if shareFingerprint(key) != fp {
+				return fmt.Errorf("key: reconstructed key fingerprint does not match share names — set is corrupt")
+			}
 			if combineOut == "" {
 				return fmt.Errorf("key: --out required")
 			}
-			if err := os.WriteFile(combineOut, []byte(hex.EncodeToString(key)+"\n"), 0o600); err != nil {
+			// OpenFile+Chmod: WriteFile's perm applies only on create; a
+			// pre-existing world-readable --out would keep its mode with a
+			// reconstructed KEK inside.
+			out, err := os.OpenFile(combineOut, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+			if err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			if err := out.Chmod(0o600); err != nil {
+				out.Close()
+				return fmt.Errorf("key: %w", err)
+			}
+			if _, err := fmt.Fprintln(out, hex.EncodeToString(key)); err != nil {
+				out.Close()
+				return fmt.Errorf("key: %w", err)
+			}
+			if err := out.Close(); err != nil {
 				return fmt.Errorf("key: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "reconstructed KEK from %d shares → %s\n", len(parts), combineOut)
@@ -297,8 +345,10 @@ func keyCmd() *cobra.Command {
 }
 
 // stageShares Shamir-splits key into n shares (threshold m) and writes them
-// as share-<i>.hex.tmp files in dir (created mode 700, files mode 600). The
-// caller renames them to share-<i>.hex only after the rotation commits —
+// as share-<i>-<fp>.hex.tmp in dir (mode 700, files mode 600), where fp is
+// an 8-hex fingerprint of the key — a share-set binding so combine can't
+// silently interpolate files from two different ceremonies. The caller
+// renames them to share-<i>-<fp>.hex only after the rotation commits —
 // a share of a KEK that never took effect must never look final.
 func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
 	if n < 2 || threshold < 2 || threshold > n {
@@ -311,9 +361,13 @@ func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("key: %w", err)
 	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("key: %w", err)
+	}
+	fp := shareFingerprint(key)
 	var staged []string
 	for i, p := range parts {
-		f := filepath.Join(dir, fmt.Sprintf("share-%d.hex.tmp", i+1))
+		f := filepath.Join(dir, fmt.Sprintf("share-%d-%s.hex.tmp", i+1, fp))
 		if err := os.WriteFile(f, []byte(hex.EncodeToString(p)+"\n"), 0o600); err != nil {
 			for _, done := range staged {
 				_ = os.Remove(done)
@@ -323,6 +377,14 @@ func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
 		staged = append(staged, f)
 	}
 	return staged, nil
+}
+
+// shareFingerprint is a short sha256 prefix of the secret — a key-id for
+// matching shares to one ceremony, never a disclosure oracle (the secret
+// is 256 bits of CSPRNG, not a dictionary).
+func shareFingerprint(key []byte) string {
+	sum := sha256.Sum256(key)
+	return hex.EncodeToString(sum[:4])
 }
 
 // loadHexKey reads a hex-encoded key from file (preferred) or an env var.
