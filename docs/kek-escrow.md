@@ -7,31 +7,31 @@ places — `~/.config/vortex/veil-kek` (mode 600, founder's Mac) and the
 copies but one operator: the vault is unrecoverable if that operator is
 unavailable. This is the last single-point-of-person in the system.
 
-## The custody decision (founder's call)
+## The custody decision — DECIDED 2026-10-01
 
-Pick one — ordered by effort:
+**Emergency Kit (physical custody ×2), Shamir deferred to VEIL-77.**
+Following the 1Password model: their answer to "what if I lose everything"
+isn't splitting — it's a printed Secret Key (Emergency Kit) in a second
+physical location. The analog for an infra-level KEK:
 
-**A. Second human, full key.** A printed/recorded copy held by counsel or
-a second officer in their own safe/vault. Cheapest, weakest against
-collusion-free misuse — a full copy under someone else's mattress is a
-credential theft vector. Fine if the custodian is a trusted officer.
+- `~/.config/vortex/veil-kek-emergency-kit.txt` (mode 600) — print-ready
+  artifact with the KEK + restore pointer. Founder prints **two sealed
+  copies in two physical locations** (e.g. office safe + safe-deposit box),
+  then shreds/deletes the file if desired — the digital copy already lives
+  in the two existing escrow points.
+- Shamir 2-of-3 is NOT built standalone: splitting a static key without a
+  rotation path is ceremony without payoff. Share support ships inside
+  `veil master rotate` (VEIL-77) — one tool, one ceremony, rotation +
+  split-knowledge land together.
 
-**B. Split knowledge — 2-of-3 Shamir.** Split the 32-byte KEK into three
-shares; any two rebuild it. Shares: founder (1Password/paper), counsel or
-second officer, third party (safe-deposit box, or a hardware token in a
-different physical location). No single share is a credential; theft of
-any one share yields nothing. `ssss-split`/`ssss-combine` is the standard
-tool; do not hand-roll a splitter. This is the right answer for an auth
-product once it has >1 employee.
+## Org-level recovery (product, separate layer — filed VEIL-78)
 
-**C. Cloud KMS escrow.** Encrypt the KEK under a KMS key in a *different*
-provider/account than everything else (e.g. a dedicated AWS account nobody
-else touches), store the ciphertext in the repo-adjacent vault of record.
-Cross-provider failure domain; adds a vendor dependency and a recurring
-cost. Good as a *third* leg, not the only one.
-
-Recommended: **B**, or A-then-B if there is no second officer yet — even a
-documented interim custodian beats none.
+The KEK protects against losing *infra*. The other half of the 1P model —
+org survives losing a *member* — is a product feature: org vault keys
+wrapped per-member recovery keypair, organizer re-wraps to a recovered
+member's new keypair. Requires members to hold a persistent client-side
+recovery secret (issued at join), which Veil doesn't have today — Kratos
+sessions are server-issued. Filed as its own ticket; not ops custody.
 
 ## Ceremony (whichever lands)
 
@@ -67,6 +67,7 @@ documented interim custodian beats none.
 | 2026-09-23 | full key | founder | local escrow file + 1P vault | unwrap drill pass |
 | 2026-09-30 | full key | founder | (same — verified live) | drillrestore PASS |
 | 2026-09-30 | env snapshot | founder | `~/.config/vortex/veil-env-escrow.json` + 1P `Veil prod env (escrow)` | VEIL-73 drill — SECRETS_SYSTEM truncated entry found & fixed |
+| 2026-10-01 | emergency kit | founder | `~/.config/vortex/veil-kek-emergency-kit.txt` → 2 physical copies | pending print |
 
 Note the escrow now covers more than the KEK: `veil-env-escrow.json` is a
 full per-service var snapshot (235 vars, 11 services) including kratos
