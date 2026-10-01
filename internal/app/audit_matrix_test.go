@@ -9,6 +9,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -265,4 +266,83 @@ func TestAuditMatrix_MembershipOps(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionMemberRemoved), owner.ID, "", "member="+member.ID)
+}
+
+// The one row compliance.md flagged as untested: a registered passkey
+// asserting must land passkey_assert with the item id attributed.
+func TestAuditMatrix_PasskeyAssert(t *testing.T) {
+	a, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	human := protocol.Principal{Kind: protocol.PrincipalHuman, ID: DefaultHuman, OrgID: a.OrgID}
+
+	create, err := json.Marshal(map[string]any{
+		"challenge": "dGVzdGNoYWxsZW5nZQ",
+		"rp":        map[string]string{"id": "localhost", "name": "Veil fixture"},
+		"user":      map[string]string{"id": "AQIDBA", "name": "ada", "displayName": "Ada"},
+		"pubKeyCredParams": []map[string]any{
+			{"type": "public-key", "alg": -7},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := a.FillPasskeyRegister(human, "http://localhost:8899", create, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cred struct {
+		ID        string `json:"id"`
+		ErrorCode int    `json:"errorCode"`
+	}
+	if err := json.Unmarshal(resp, &cred); err != nil || cred.ErrorCode != 0 || cred.ID == "" {
+		t.Fatalf("register: %s", resp)
+	}
+
+	var itemID string
+	items, err := a.ItemsForPrincipal(human)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.Kind == protocol.ItemPasskey {
+			itemID = it.ID
+		}
+	}
+	if itemID == "" {
+		t.Fatal("no passkey item after register")
+	}
+
+	get, err := json.Marshal(map[string]any{
+		"challenge": "b3RoZXJjaGFsbGVuZ2U",
+		"rpId":      "localhost",
+		"allowCredentials": []map[string]any{
+			{"type": "public-key", "id": cred.ID},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertion, err := a.FillPasskeyGet(human, "http://localhost:8899", get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		ErrorCode int `json:"errorCode"`
+	}
+	if json.Unmarshal(assertion, &got) == nil && got.ErrorCode != 0 {
+		t.Fatalf("assert failed: %s", assertion)
+	}
+
+	ev := lastOf(t, auditRows(t, a), protocol.ActionPasskeyAssert)
+	checkEvent(t, ev, human.ID, itemID, "")
+	raw, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "BEGIN") || strings.Contains(string(raw), cred.ID) {
+		t.Fatal("passkey_assert event leaked credential material")
+	}
 }

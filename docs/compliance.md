@@ -155,9 +155,8 @@ Ordered by what hurts a real customer first. Every gap has an owner action.
 Every security-significant operation lands one audit row answering who
 (`agent_id` = acting principal — human id, agent id, or `vortex-*` system
 name), what (`action` + `item_id` + `key=value` targets in `reason`), when
-(`at`). `internal/app/audit_matrix_test.go` drives every row except
-`passkey_assert` (needs a registered passkey fixture) and asserts the event —
-the table is a test, not a promise.
+(`at`). `internal/app/audit_matrix_test.go` drives every row in this table
+and asserts the event — the table is a test, not a promise.
 
 | Plane | Actions | Atomicity |
 |---|---|---|
