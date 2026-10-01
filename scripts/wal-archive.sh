@@ -47,8 +47,12 @@ push() { # push <path> <object> — 409 is benign ONLY for .partial (a peer's co
 }
 
 beat() {
+	# Two rows: the shared 'wal-archive' beat means some shipper is alive;
+	# the per-slot beat is what pages when THIS archiver wedges while a peer
+	# keeps the shared row fresh (a dead primary invisible behind the DR
+	# standby was the VEIL-74 gap).
 	psql "$DB" -qc "CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null);
-		INSERT INTO ops_heartbeat(name,at) VALUES('wal-archive',now())
+		INSERT INTO ops_heartbeat(name,at) VALUES('wal-archive',now()),('wal-archive:$SLOT',now())
 		ON CONFLICT(name) DO UPDATE SET at=now()" >/dev/null 2>&1
 }
 

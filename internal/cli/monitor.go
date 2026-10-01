@@ -66,6 +66,10 @@ func monitorCmd() *cobra.Command {
 							findings = append(findings,
 								fmt.Sprintf("wal-archive slot %s lost retained WAL (max_slot_wal_keep_size fired)", s.Name))
 						}
+						// Per-archiver beat: two archivers share the
+						// 'wal-archive' row, so a wedged shipper is only
+						// visible on its own slot-named beat.
+						findings = append(findings, checkBeat(ctx, pool, "wal-archive:"+s.Name, walStale)...)
 					}
 					if len(slots) == 0 {
 						findings = append(findings, "wal-archive slot missing")
