@@ -91,8 +91,8 @@ export default {
 				// bigger is hostile or corrupt, and a stolen bearer can't
 				// OOM the worker with an unbounded upload.
 				const max = 16 * 1024 * 1024;
-				const cl = Number(req.headers.get("Content-Length") ?? -1);
-				if (cl < 0 || cl > max) {
+				const cl = Number(req.headers.get("Content-Length") ?? NaN);
+				if (!Number.isFinite(cl) || cl < 0 || cl > max) {
 					return new Response("bad content-length", { status: 400 });
 				}
 				const body = await req.arrayBuffer();

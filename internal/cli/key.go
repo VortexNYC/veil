@@ -381,6 +381,7 @@ func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
 			return fail(fmt.Errorf("key: %w", err))
 		}
 		if err := os.WriteFile(f, []byte(hex.EncodeToString(p)+"\n"), 0o600); err != nil {
+			_ = os.Remove(f)
 			return fail(fmt.Errorf("key: %w", err))
 		}
 		if err := os.Chmod(f, 0o600); err != nil {
