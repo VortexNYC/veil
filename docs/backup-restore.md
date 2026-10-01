@@ -208,9 +208,15 @@ mkdir data && tar -xzf base.tar.gz -C data && chmod 700 data
 #    live tail, valid WAL up to the last flush before loss.
 
 # 5. Recover. recovery.signal flips the server into archive-recovery mode.
+#    Two prod-specific gotchas proven in the 2026-10-01 drill: the base is
+#    amd64 — on an arm64 host run `docker run --platform linux/amd64` — and
+#    the base's postgresql.auto.conf references Railway TLS cert paths that
+#    are not in the backup, so append `ssl = off` for the scratch restore.
+#    On postgres:18 images the default PGDATA is /var/lib/postgresql/data.
 cat >> data/postgresql.auto.conf <<'EOF'
 restore_command = 'cp /walarchive/%f %p'
 recovery_target_time = 'YYYY-MM-DD HH:MM:SS+00'   # omit for end-of-log
+ssl = off          # scratch only — prod's cert paths aren't in the base
 EOF
 touch data/recovery.signal
 postgres -D data     # or container equivalent; replays, then pauses/promotes
@@ -280,6 +286,24 @@ the binary.
     final in-flight `.partial` (row committed ~4s before the kill survived).
     Live on prod same day: slot active, `wal-*.partial` + first
     `base-*.tar.gz` verified in R2, `wal-archive` beat reporting.
+  - 2026-10-01 — first PITR drill against the real prod archive. Pulled
+    `arc-7683897721194086465/base-2026-10-01-0518.tar.gz` + WAL segments
+    C/D (incl. live `D.partial`) from R2 into a scratch `postgres:18`
+    amd64 container (prod arch; arm64 host needs `--platform linux/amd64`,
+    and prod's Railway TLS cert paths must be overridden with `ssl=off`
+    since they aren't in the base backup). Two canaries planted in prod
+    (`13:46:23`, `13:46:58`); `recovery_target_time=13:46:40` replayed
+    exactly the earlier canary and stopped before the first commit after
+    the target (`recovery stopping before commit … 13:46:43.9`; last
+    completed tx `13:46:33`). Canary A present, B absent. End-of-log run
+    recovered both canaries — WAL tail reached `13:50:48`, ~4.5 min past
+    the last canary. `drillrestore` on the PITR-restored cluster: `github`
+    decrypts under the escrowed KEK, `-wrongkek` fails closed. 349 items /
+    33 grants / 1614 audit / 6 agents / 2 org_keys match prod. RPO
+    demonstrated honestly: the first `.partial` pull was ~15s stale and
+    recovery correctly *failed* to reach the target (`recovery ended
+    before configured recovery target was reached`) until the next
+    archiver push landed — partial-segment lag is the real RPO bound.
 
 ## The drill tool
 
