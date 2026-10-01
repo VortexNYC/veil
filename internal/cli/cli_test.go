@@ -596,6 +596,45 @@ func TestCLIItemImportCSVNoSecretInOutput(t *testing.T) {
 	}
 }
 
+func TestCLIItemImportBitwardenJSONThenIdempotent(t *testing.T) {
+	t.Setenv("VEIL_ORIGIN", "")
+	home := t.TempDir()
+	if _, err := run(t, home, "", "init"); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join("..", "oneimport", "testdata", "bitwarden.json")
+	out, err := run(t, home, "", "item", "import", src)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	var first struct {
+		Count int `json:"count"`
+	}
+	if json.Unmarshal([]byte(out), &first) != nil || first.Count != 5 {
+		t.Fatalf("import %s", out)
+	}
+	out, err = run(t, home, "", "item", "import", src)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	var again struct {
+		Count   int      `json:"count"`
+		Skipped []string `json:"skipped"`
+	}
+	if json.Unmarshal([]byte(out), &again) != nil || again.Count != 0 || len(again.Skipped) != 5 {
+		t.Fatalf("re-import %s", out)
+	}
+	listOut, err := run(t, home, "", "item", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"s3cret", "hunter2", "synthetic-note-body", "4111111111111111"} {
+		if scrub.Contains([]byte(out+listOut), []byte(s)) {
+			t.Fatalf("cli leaked %q", s)
+		}
+	}
+}
+
 func TestCLIItemAddCardNoPANInOutput(t *testing.T) {
 	t.Setenv("VEIL_ORIGIN", "")
 	const pan = "4111111111111111"

@@ -1,0 +1,200 @@
+{
+  "encrypted": false,
+  "passwordProtected": false,
+  "folders": [
+    {
+      "id": "3c1fe3f2-3f6b-4a15-9f9d-4ab8d61b04a1",
+      "name": "work"
+    }
+  ],
+  "collections": [],
+  "items": [
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": null,
+      "id": "aaaa0000-0000-4000-8000-000000000001",
+      "organizationId": null,
+      "folderId": "3c1fe3f2-3f6b-4a15-9f9d-4ab8d61b04a1",
+      "type": 1,
+      "reprompt": 0,
+      "name": "GitHub",
+      "notes": "main account",
+      "favorite": true,
+      "fields": null,
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://github.com"
+          },
+          {
+            "match": null,
+            "uri": "https://github.com/login"
+          }
+        ],
+        "username": "ada@example.com",
+        "password": "s3cret",
+        "totp": "otpauth://totp/GitHub:ada@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub",
+        "fido2Credentials": null
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": null,
+      "id": "aaaa0000-0000-4000-8000-000000000002",
+      "organizationId": null,
+      "folderId": null,
+      "type": 1,
+      "reprompt": 0,
+      "name": "Steam",
+      "notes": null,
+      "favorite": false,
+      "fields": null,
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://store.steampowered.com"
+          }
+        ],
+        "username": "gabe",
+        "password": "hunter2",
+        "totp": "JBSWY3DP"
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": null,
+      "id": "aaaa0000-0000-4000-8000-000000000003",
+      "organizationId": null,
+      "folderId": null,
+      "type": 2,
+      "reprompt": 0,
+      "name": "wifi passphrase",
+      "notes": "synthetic-note-body",
+      "favorite": false,
+      "fields": null,
+      "secureNote": {
+        "type": 0
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": null,
+      "id": "aaaa0000-0000-4000-8000-000000000004",
+      "organizationId": null,
+      "folderId": null,
+      "type": 3,
+      "reprompt": 0,
+      "name": "Amex",
+      "notes": null,
+      "favorite": false,
+      "fields": null,
+      "card": {
+        "cardholderName": "Ada Lovelace",
+        "brand": "Visa",
+        "number": "4111111111111111",
+        "expMonth": "12",
+        "expYear": "2030",
+        "code": "123"
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": null,
+      "id": "aaaa0000-0000-4000-8000-000000000005",
+      "organizationId": null,
+      "folderId": null,
+      "type": 4,
+      "reprompt": 0,
+      "name": "Home",
+      "notes": null,
+      "favorite": false,
+      "fields": null,
+      "identity": {
+        "title": null,
+        "firstName": "Ada",
+        "middleName": null,
+        "lastName": "Lovelace",
+        "address1": "1 Street",
+        "address2": "Flat 2",
+        "address3": null,
+        "city": "London",
+        "state": "LDN",
+        "postalCode": "E1",
+        "country": "UK",
+        "company": null,
+        "email": "ada@example.com",
+        "phone": "+44",
+        "ssn": null,
+        "username": null,
+        "passportNumber": null,
+        "licenseNumber": null
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": "2026-09-02T12:00:00.000Z",
+      "id": "aaaa0000-0000-4000-8000-000000000006",
+      "organizationId": null,
+      "folderId": null,
+      "type": 1,
+      "reprompt": 0,
+      "name": "Trashed",
+      "notes": null,
+      "favorite": false,
+      "fields": null,
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://trash.example"
+          }
+        ],
+        "username": "gone",
+        "password": "gone2",
+        "totp": null
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": null,
+      "revisionDate": "2026-09-01T12:00:00.000Z",
+      "creationDate": "2026-08-01T12:00:00.000Z",
+      "deletedDate": null,
+      "id": "aaaa0000-0000-4000-8000-000000000007",
+      "organizationId": null,
+      "folderId": null,
+      "type": 1,
+      "reprompt": 0,
+      "name": "Empty",
+      "notes": null,
+      "favorite": false,
+      "fields": null,
+      "login": {
+        "uris": null,
+        "username": "nobody",
+        "password": null,
+        "totp": null
+      },
+      "collectionIds": null
+    }
+  ]
+}
