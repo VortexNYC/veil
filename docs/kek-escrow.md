@@ -19,10 +19,13 @@ physical location. The analog for an infra-level KEK:
   copies in two physical locations** (e.g. office safe + safe-deposit box),
   then shreds/deletes the file if desired — the digital copy already lives
   in the two existing escrow points.
-- Shamir 2-of-3 is NOT built standalone: splitting a static key without a
-  rotation path is ceremony without payoff. Share support ships inside
-  `veil master rotate` (VEIL-77) — one tool, one ceremony, rotation +
-  split-knowledge land together.
+- Shamir 2-of-3 ships inside the rotation ceremony:
+  `veil key rotate-kek --generate --shares 3 --threshold 2 --shares-dir D`
+  mints the new KEK, stages share-*.hex.tmp (mode 600, dir 700), commits
+  the atomic rewrap, and only then finalizes shares — a share of a key
+  that never rotated can never look real. `veil key combine --shares-dir
+  D --out F` reconstructs to a mode-600 file. The assembled key exists
+  only to be typed into Railway VEIL_KEK; custody is the shares.
 
 ## Org-level recovery (product, separate layer — filed VEIL-78)
 
@@ -46,11 +49,10 @@ sessions are server-issued. Filed as its own ticket; not ops custody.
    holder identity, storage location class (not the address).
 4. Re-verify at the quarterly DR drill: each holder confirms possession by
    hash. A holder who cannot produce the share is treated as compromised —
-   NOTE: KEK rotation is not implemented today (re-wrapping every
-   `org_keys` row under a new KEK is its own work item). A compromised
-   share therefore means: assume the KEK could be read, re-cut the escrow,
-   and schedule the rotation feature — do not silently re-share the same
-   key.
+   run `veil key rotate-kek --generate --shares 3 --threshold 2` to rotate
+   to a KEK the missing share can no longer help reconstruct, update
+   VEIL_KEK on every replica, and redistribute shares. Never re-share the
+   same key.
 
 ## Rules that do not bend
 

@@ -1,15 +1,18 @@
 package cli
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
+	"github.com/hashicorp/vault/shamir"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +44,9 @@ func keyCmd() *cobra.Command {
 		return dsn, kek, nil
 	}
 
-	var newKekFile string
+	var newKekFile, sharesDir string
+	var generateNew bool
+	var shareCount, shareThreshold int
 	rotateOrg := &cobra.Command{
 		Use:   "rotate-org ORG",
 		Short: "Mint a fresh org master and rewrap the org's owner DEKs",
@@ -75,20 +80,49 @@ func keyCmd() *cobra.Command {
 		Use:   "rotate-kek",
 		Short: "Rewrap every org master under a new deployment KEK",
 		Long: "Unwraps each org_keys row under the current KEK (VEIL_KEK or " +
-			"--kek-file) and rewraps it under the new KEK (VEIL_KEK_NEW or " +
-			"--new-kek-file) in one transaction. Org masters, owner DEKs, and " +
-			"item ciphertexts do not change. Any row that fails to unwrap " +
-			"aborts the whole rotation — a backup KEK that opens nothing is " +
-			"not a KEK. After commit, update VEIL_KEK on every origin replica " +
-			"and redeploy.",
+			"--kek-file) and rewraps it under the new KEK (VEIL_KEK_NEW, " +
+			"--new-kek-file, or --generate) in one transaction. Org masters, " +
+			"owner DEKs, and item ciphertexts do not change. Any row that " +
+			"fails to unwrap aborts the whole rotation — a backup KEK that " +
+			"opens nothing is not a KEK. With --generate --shares N " +
+			"--threshold M, the new KEK is minted and Shamir-split into " +
+			"share-*.hex files in --shares-dir BEFORE the rotation commits — " +
+			"the assembled key never needs to exist as a stored artifact; " +
+			"ops reconstruct it (veil kek combine) only to set VEIL_KEK. " +
+			"After commit, update VEIL_KEK on every origin replica and redeploy.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			d, kek, err := resolve()
 			if err != nil {
 				return err
 			}
-			newKEK, err := loadHexKey("VEIL_KEK_NEW", newKekFile)
-			if err != nil {
-				return err
+			var newKEK []byte
+			if generateNew {
+				newKEK = make([]byte, crypto.KeySize)
+				if _, err := rand.Read(newKEK); err != nil {
+					return fmt.Errorf("key: generate: %w", err)
+				}
+			} else {
+				newKEK, err = loadHexKey("VEIL_KEK_NEW", newKekFile)
+				if err != nil {
+					return err
+				}
+			}
+			// Emit shares before committing: if the split or the write fails,
+			// nothing has rotated and no shares of a live key are stranded.
+			var staged []string
+			if shareCount > 0 {
+				if sharesDir == "" {
+					return fmt.Errorf("key: --shares requires --shares-dir")
+				}
+				staged, err = stageShares(newKEK, shareCount, shareThreshold, sharesDir)
+				if err != nil {
+					return err
+				}
+				defer func() {
+					for _, f := range staged {
+						_ = os.Remove(f)
+					}
+				}()
 			}
 			s, err := store.OpenPostgres(d, kek)
 			if err != nil {
@@ -98,12 +132,27 @@ func keyCmd() *cobra.Command {
 			if err := s.RotateKEK(cmd.Context(), newKEK); err != nil {
 				return err
 			}
+			wantShares := len(staged) > 0
+			for _, f := range staged {
+				if err := os.Rename(f, strings.TrimSuffix(f, ".tmp")); err != nil {
+					staged = nil // keep every share artifact for ops
+					return fmt.Errorf("key: rotation committed but share finalize failed — files remain in %s: %w", sharesDir, err)
+				}
+			}
+			staged = nil
 			fmt.Fprintln(cmd.OutOrStdout(), "rotated KEK: every org_keys row rewrapped; set VEIL_KEK to the new key on all replicas")
+			if wantShares {
+				fmt.Fprintf(cmd.OutOrStdout(), "shares written to %s — distribute to custodians, then delete the dir\n", sharesDir)
+			}
 			return nil
 		},
 	}
 	persistent(rotateKEK)
 	rotateKEK.Flags().StringVar(&newKekFile, "new-kek-file", "", "file containing the new KEK as hex (default env VEIL_KEK_NEW)")
+	rotateKEK.Flags().BoolVar(&generateNew, "generate", false, "mint the new KEK (mutually exclusive with --new-kek-file/VEIL_KEK_NEW)")
+	rotateKEK.Flags().IntVar(&shareCount, "shares", 0, "Shamir-split the new KEK into N share files (0 = off)")
+	rotateKEK.Flags().IntVar(&shareThreshold, "threshold", 2, "shares needed to reconstruct (with --shares)")
+	rotateKEK.Flags().StringVar(&sharesDir, "shares-dir", "", "directory for share-*.hex files (created mode 700)")
 
 	var ownerKind, ownerID, recoveryFile string
 	var expires time.Duration
@@ -190,8 +239,90 @@ func keyCmd() *cobra.Command {
 	persistent(recoverOrg)
 	ownerFlags(recoverOrg)
 
-	c.AddCommand(rotateOrg, rotateKEK, storeRecovery, recoverOrg)
+	var combineDir, combineOut string
+	combine := &cobra.Command{
+		Use:   "combine",
+		Short: "Reconstruct a KEK from Shamir share files (custody ceremony)",
+		Long: "Reads share-*.hex files in --shares-dir, reconstructs the KEK " +
+			"with any threshold-sufficient subset, and writes the hex key to " +
+			"--out (mode 600). The assembled key goes to Railway VEIL_KEK and " +
+			"the file is deleted — shares are the custody artifact, not this.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ents, err := os.ReadDir(combineDir)
+			if err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			var parts [][]byte
+			for _, e := range ents {
+				if e.IsDir() || !strings.HasSuffix(e.Name(), ".hex") {
+					continue
+				}
+				raw, err := os.ReadFile(filepath.Join(combineDir, e.Name()))
+				if err != nil {
+					return err
+				}
+				b, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+				if err != nil {
+					return fmt.Errorf("key: %s is not valid hex: %w", e.Name(), err)
+				}
+				parts = append(parts, b)
+			}
+			if len(parts) < 2 {
+				return fmt.Errorf("key: need at least 2 share-*.hex files in %s", combineDir)
+			}
+			key, err := shamir.Combine(parts)
+			if err != nil {
+				return fmt.Errorf("key: combine: %w", err)
+			}
+			if len(key) != crypto.KeySize {
+				return fmt.Errorf("key: combined %d bytes, want %d — wrong shares?", len(key), crypto.KeySize)
+			}
+			if combineOut == "" {
+				return fmt.Errorf("key: --out required")
+			}
+			if err := os.WriteFile(combineOut, []byte(hex.EncodeToString(key)+"\n"), 0o600); err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "reconstructed KEK from %d shares → %s\n", len(parts), combineOut)
+			return nil
+		},
+	}
+	combine.Flags().StringVar(&combineDir, "shares-dir", "", "directory holding share-*.hex files")
+	combine.Flags().StringVar(&combineOut, "out", "", "file to write the reconstructed hex key (mode 600)")
+	_ = combine.MarkFlagRequired("shares-dir")
+	_ = combine.MarkFlagRequired("out")
+
+	c.AddCommand(rotateOrg, rotateKEK, storeRecovery, recoverOrg, combine)
 	return c
+}
+
+// stageShares Shamir-splits key into n shares (threshold m) and writes them
+// as share-<i>.hex.tmp files in dir (created mode 700, files mode 600). The
+// caller renames them to share-<i>.hex only after the rotation commits —
+// a share of a KEK that never took effect must never look final.
+func stageShares(key []byte, n, threshold int, dir string) ([]string, error) {
+	if n < 2 || threshold < 2 || threshold > n {
+		return nil, fmt.Errorf("key: invalid --shares/--threshold %d-of-%d", threshold, n)
+	}
+	parts, err := shamir.Split(key, n, threshold)
+	if err != nil {
+		return nil, fmt.Errorf("key: split: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("key: %w", err)
+	}
+	var staged []string
+	for i, p := range parts {
+		f := filepath.Join(dir, fmt.Sprintf("share-%d.hex.tmp", i+1))
+		if err := os.WriteFile(f, []byte(hex.EncodeToString(p)+"\n"), 0o600); err != nil {
+			for _, done := range staged {
+				_ = os.Remove(done)
+			}
+			return nil, fmt.Errorf("key: %w", err)
+		}
+		staged = append(staged, f)
+	}
+	return staged, nil
 }
 
 // loadHexKey reads a hex-encoded key from file (preferred) or an env var.
