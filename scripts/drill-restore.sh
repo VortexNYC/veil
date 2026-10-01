@@ -93,6 +93,7 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
+# secretlint-disable-next-line -- throwaway password for the ephemeral docker postgres above (POSTGRES_PASSWORD=drill)
 PG="postgres://postgres:drill@127.0.0.1:$(docker port veil-drill 5432/tcp | cut -d: -f2)"
 for db in veil kratos keto railway; do
   docker cp "$RUN/$db.dump" "veil-drill:/tmp/$db.dump" || fail "cp $db"
