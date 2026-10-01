@@ -18,6 +18,9 @@ struct HandoffItem: Decodable {
     let login: String
     let uris: [String]
     let kind: String
+    let credId: String?
+    let rpId: String?
+    let userHandle: String?
 }
 
 struct Handoff: Decodable {
@@ -69,7 +72,8 @@ final class VaultStore {
             }
             done(body.items.map {
                 HandoffItem(uuid: $0.id, name: $0.name, login: $0.login ?? "",
-                            uris: $0.uris ?? [], kind: $0.kind ?? "login")
+                            uris: $0.uris ?? [], kind: $0.kind ?? "login",
+                            credId: $0.cred_id, rpId: $0.rp_id, userHandle: $0.user_handle)
             })
         }.resume()
     }
@@ -96,6 +100,35 @@ final class VaultStore {
         }.resume()
     }
 
+    /// WebAuthn ceremony through the origin. The caller passes the RP's
+    /// publicKey request object verbatim; the reply is the origin's
+    /// `response` payload — a PublicKeyCredential-shaped dict with the
+    /// attestation (register) or assertion (get) inside. Face ID gates the
+    /// call the same way a password fill does.
+    static func passkeys(register: Bool, origin: String, publicKey: [String: Any],
+                         _ done: @escaping (Result<[String: Any], Error>) -> Void) {
+        guard let h = loadHandoff() else { done(.failure(VaultStoreError.noHandoff)); return }
+        let path = register ? "/v1/fill/passkeys/register" : "/v1/fill/passkeys/get"
+        var req = URLRequest(url: URL(string: h.origin + path)!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(h.token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "origin": origin,
+            "publicKey": publicKey,
+        ])
+        req.timeoutInterval = 15
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            if let err { done(.failure(err)); return }
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            guard code == 200, let data,
+                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let response = body["response"] as? [String: Any]
+            else { done(.failure(VaultStoreError.origin(code))); return }
+            done(.success(response))
+        }.resume()
+    }
+
     private struct ItemsBody: Decodable {
         struct Item: Decodable {
             let id: String
@@ -103,6 +136,9 @@ final class VaultStore {
             let kind: String?
             let login: String?
             let uris: [String]?
+            let cred_id: String?
+            let rp_id: String?
+            let user_handle: String?
         }
         let items: [Item]
     }

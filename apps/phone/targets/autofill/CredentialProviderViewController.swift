@@ -7,7 +7,8 @@
 //  this view controller lists matching logins and completes the request.
 //  Mirrors the macOS appex contract: Face ID before a secret leaves, no
 //  silent releases, deny/down/unknown cancels — fail closed.
-//  Passkeys are out of scope for this slice (macOS slice 32d covers them).
+//  Passkeys: assertion + registration port the macOS appex (slice 32d)
+//  contract — origin signs the OS's clientDataHash; Face ID gates first.
 //
 
 import UIKit
@@ -16,9 +17,22 @@ import LocalAuthentication
 
 final class CredentialProviderViewController: ASCredentialProviderViewController {
 
+    /// What the next Face ID gate releases. Everything that crosses the
+    /// wire — a password fill, a passkey signature, a new passkey's
+    /// attestation — is one of these, deferred until the scene is
+    /// foregrounded (LAContext returns .notInteractive before then).
+    private enum PendingOp {
+        case password(uuid: String)
+        case passkeyAssert(rpID: String, credID: Data, userHandle: Data, clientDataHash: Data)
+        case passkeyRegister(request: ASPasskeyCredentialRequest, userName: String)
+    }
+
     private var entries: [HandoffItem] = []
     private var serviceURL = ""
-    private var pendingUUID: String?
+    private var pending: PendingOp?
+    /// Set when the system is asking for a passkey — the OS owns
+    /// clientDataJSON and hands us its hash to sign.
+    private var passkeyParams: ASPasskeyCredentialRequestParameters?
 
     private let table = UITableView(frame: .zero, style: .plain)
     private let status = UILabel()
@@ -95,7 +109,45 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// User picked Veil from the AutoFill sheet — list logins matching the
     /// service identifier (or everything when the system sends none).
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
-        vlog("prepareCredentialList ids=\(serviceIdentifiers.map { $0.identifier })")
+        prepareCredentialList(for: serviceIdentifiers, requestParameters: nil)
+    }
+
+    /// The two-arg overload runs when a passkey request is in flight; nil
+    /// parameters means passwords. Both funnel into the same list logic.
+    override func prepareCredentialList(
+        for serviceIdentifiers: [ASCredentialServiceIdentifier],
+        requestParameters: ASPasskeyCredentialRequestParameters?,
+    ) {
+        vlog("prepareCredentialList ids=\(serviceIdentifiers.map { $0.identifier }) passkey=\(requestParameters != nil)")
+        passkeyParams = requestParameters
+        if let params = requestParameters {
+            // Passkey assertion: candidates need credId/rpId/userHandle,
+            // which the items list carries for human principals.
+            serviceURL = "https://" + params.relyingPartyIdentifier
+            status.text = "Choose a passkey for \(params.relyingPartyIdentifier)"
+            VaultStore.items { [weak self] all in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.entries = all.filter { item in
+                        guard item.kind == "passkey",
+                              item.rpId == params.relyingPartyIdentifier,
+                              let credB64 = item.credId,
+                              let credID = Self.data(b64url: credB64), !credID.isEmpty
+                        else { return false }
+                        // Empty allow-list means any credential is acceptable.
+                        if params.allowedCredentials.isEmpty { return true }
+                        return params.allowedCredentials.contains(credID)
+                    }
+                    if self.entries.isEmpty {
+                        self.status.text = "No passkeys for \(params.relyingPartyIdentifier)"
+                        self.emptyLabel.text = self.status.text
+                    }
+                    self.emptyLabel.isHidden = !self.entries.isEmpty
+                    self.table.reloadData()
+                }
+            }
+            return
+        }
         serviceURL = serviceIdentifiers.first.map(Self.url(for:)) ?? ""
         let host = Self.host(serviceURL)
         status.text = host.isEmpty ? "Choose a sign-in" : "Fill for \(host)"
@@ -120,9 +172,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     /// The user tapped one of our inline suggestions — the identity store
-    /// already knows which record; Face ID, then fill it.
+    /// already knows which record; Face ID, then fill or sign.
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
         vlog("prepareInterfaceToProvideCredential")
+        if let req = credentialRequest as? ASPasskeyCredentialRequest,
+           let identity = req.credentialIdentity as? ASPasskeyCredentialIdentity {
+            status.text = "Confirming \(identity.userName)…"
+            deferPending(.passkeyAssert(
+                rpID: identity.relyingPartyIdentifier,
+                credID: identity.credentialID,
+                userHandle: identity.userHandle,
+                clientDataHash: req.clientDataHash,
+            ))
+            return
+        }
         guard let req = credentialRequest as? ASPasswordCredentialRequest,
               let identity = req.credentialIdentity as? ASPasswordCredentialIdentity,
               let uuid = identity.recordIdentifier, !uuid.isEmpty
@@ -132,12 +195,27 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
         serviceURL = Self.url(for: identity.serviceIdentifier)
         status.text = "Confirming \(identity.user)…"
-        // LAContext.evaluatePolicy fails with .notInteractive while the
-        // hosted scene is still off-screen — defer to viewDidAppear.
-        pendingUUID = uuid
-        if isViewLoaded && view.window != nil {
-            flushPending()
+        deferPending(.password(uuid: uuid))
+    }
+
+    /// Site wants a new passkey: origin mints the ES256 credential, the OS
+    /// owns clientData — we return the attestation and save the identity.
+    override func prepareInterface(forPasskeyRegistration registrationRequest: any ASCredentialRequest) {
+        vlog("prepareInterfaceForPasskeyRegistration")
+        guard let req = registrationRequest as? ASPasskeyCredentialRequest,
+              let identity = req.credentialIdentity as? ASPasskeyCredentialIdentity
+        else {
+            cancel(with: .failed)
+            return
         }
+        // We mint ES256 only — if the RP's list excludes it we cannot serve.
+        let algs = req.supportedAlgorithms.map(\.rawValue)
+        if !algs.isEmpty && !algs.contains(ASCOSEAlgorithmIdentifier.ES256.rawValue) {
+            cancel(with: .failed)
+            return
+        }
+        status.text = "Confirming passkey for \(identity.userName)…"
+        deferPending(.passkeyRegister(request: req, userName: identity.userName))
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -145,10 +223,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         flushPending()
     }
 
+    /// LAContext.evaluatePolicy fails with .notInteractive while the hosted
+    /// scene is still off-screen — every credential release defers to
+    /// viewDidAppear (or immediately when the view is already up).
+    private func deferPending(_ op: PendingOp) {
+        pending = op
+        if isViewLoaded && view.window != nil {
+            flushPending()
+        }
+    }
+
     private func flushPending() {
-        guard let uuid = pendingUUID else { return }
-        pendingUUID = nil
-        release(uuid: uuid)
+        guard let op = pending else { return }
+        pending = nil
+        release(op)
     }
 
     /// Passwords settings → Veil gear. Credentials live in the vault; this
@@ -166,16 +254,25 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     // MARK: - Fill
 
-    private func release(uuid: String, retryNotForeground: Bool = true) {
+    private func release(_ op: PendingOp, retryNotForeground: Bool = true) {
+        let reason: String
+        switch op {
+        case .password:
+            reason = "Veil needs Face ID before this password fills"
+        case .passkeyAssert:
+            reason = "Veil needs Face ID before this passkey signs you in"
+        case .passkeyRegister:
+            reason = "Veil needs Face ID to create this passkey"
+        }
         let ctx = LAContext()
         ctx.evaluatePolicy(.deviceOwnerAuthentication,
-                           localizedReason: "Veil needs Face ID before this password fills") { [weak self] ok, err in
+                           localizedReason: reason) { [weak self] ok, err in
             guard let self else { return }
             if !ok, retryNotForeground,
                (err as? LAError)?.code == .notInteractive {
                 vlog("LA notInteractive — retrying once")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.release(uuid: uuid, retryNotForeground: false)
+                    self.release(op, retryNotForeground: false)
                 }
                 return
             }
@@ -184,17 +281,135 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 DispatchQueue.main.async { self.cancel(with: .userCanceled) }
                 return
             }
-            VaultStore.fill(uuid: uuid, url: self.serviceURL) { result in
-                switch result {
-                case .success(let c):
-                    let cred = ASPasswordCredential(user: c.user, password: c.password)
-                    DispatchQueue.main.async {
-                        self.extensionContext.completeRequest(withSelectedCredential: cred)
-                    }
-                case .failure(let err):
-                    self.vlog("fill failed \(err.localizedDescription)")
-                    DispatchQueue.main.async { self.cancel(with: .failed) }
+            switch op {
+            case .password(let uuid):
+                self.completePassword(uuid: uuid)
+            case .passkeyAssert(let rpID, let credID, let userHandle, let clientDataHash):
+                self.completePasskeyAssert(rpID: rpID, credID: credID,
+                                           userHandle: userHandle, clientDataHash: clientDataHash)
+            case .passkeyRegister(let req, let userName):
+                self.completePasskeyRegister(request: req, userName: userName)
+            }
+        }
+    }
+
+    private func completePassword(uuid: String) {
+        VaultStore.fill(uuid: uuid, url: serviceURL) { result in
+            switch result {
+            case .success(let c):
+                let cred = ASPasswordCredential(user: c.user, password: c.password)
+                DispatchQueue.main.async {
+                    self.extensionContext.completeRequest(withSelectedCredential: cred)
                 }
+            case .failure(let err):
+                self.vlog("fill failed \(err.localizedDescription)")
+                DispatchQueue.main.async { self.cancel(with: .failed) }
+            }
+        }
+    }
+
+    /// Sign the OS's clientDataHash over origin — Face ID already passed,
+    /// so this is the one call that releases a signature.
+    private func completePasskeyAssert(rpID: String, credID: Data, userHandle: Data, clientDataHash: Data) {
+        let publicKey: [String: Any] = [
+            "clientDataHash": Self.b64url(clientDataHash),
+            "rpId": rpID,
+            "allowCredentials": [["type": "public-key", "id": Self.b64url(credID)]],
+        ]
+        vlog("passkeyGet rp=\(rpID) cdh=\(clientDataHash.count)B")
+        VaultStore.passkeys(register: false, origin: "https://" + rpID, publicKey: publicKey) { result in
+            switch result {
+            case .success(let resp):
+                guard let inner = resp["response"] as? [String: Any],
+                      let authB64 = inner["authenticatorData"] as? String,
+                      let sigB64 = inner["signature"] as? String,
+                      let auth = Self.data(b64url: authB64),
+                      let sig = Self.data(b64url: sigB64)
+                else {
+                    self.vlog("passkeyGet decode fail keys=\(resp.keys.sorted())")
+                    DispatchQueue.main.async { self.cancel(with: .failed) }
+                    return
+                }
+                let assertion = ASPasskeyAssertionCredential(
+                    userHandle: userHandle,
+                    relyingParty: rpID,
+                    signature: sig,
+                    clientDataHash: clientDataHash,
+                    authenticatorData: auth,
+                    credentialID: credID,
+                )
+                DispatchQueue.main.async {
+                    self.vlog("passkey assertion ok rp=\(rpID)")
+                    self.extensionContext.completeAssertionRequest(using: assertion)
+                }
+            case .failure(let err):
+                self.vlog("passkeyGet failed \(err.localizedDescription)")
+                DispatchQueue.main.async { self.cancel(with: .failed) }
+            }
+        }
+    }
+
+    /// Mint a new ES256 credential on origin from the RP's publicKey
+    /// request, hand the OS its attestation, and save the identity so
+    /// future assertions can find the record.
+    private func completePasskeyRegister(request req: ASPasskeyCredentialRequest, userName: String) {
+        guard let identity = req.credentialIdentity as? ASPasskeyCredentialIdentity else {
+            cancel(with: .failed)
+            return
+        }
+        let rpID = identity.relyingPartyIdentifier
+        var excluded: [[String: Any]] = []
+        if #available(iOS 18.0, *) {
+            for c in req.excludedCredentials ?? [] {
+                excluded.append(["type": "public-key", "id": Self.b64url(c.credentialID)])
+            }
+        }
+        let publicKey: [String: Any] = [
+            "clientDataHash": Self.b64url(req.clientDataHash),
+            "rp": ["id": rpID, "name": rpID],
+            "user": [
+                "id": Self.b64url(identity.userHandle),
+                "name": userName,
+                "displayName": userName,
+            ],
+            "pubKeyCredParams": [["type": "public-key", "alg": -7]],
+            "excludeCredentials": excluded,
+        ]
+        vlog("reg rp=\(rpID) uh=\(identity.userHandle.count)B cdh=\(req.clientDataHash.count)B")
+        VaultStore.passkeys(register: true, origin: "https://" + rpID, publicKey: publicKey) { result in
+            switch result {
+            case .success(let resp):
+                guard let inner = resp["response"] as? [String: Any],
+                      let attB64 = inner["attestationObject"] as? String,
+                      let att = Self.data(b64url: attB64),
+                      let rawID = (resp["rawId"] as? String) ?? (resp["id"] as? String),
+                      let credID = Self.data(b64url: rawID)
+                else {
+                    self.vlog("passkeyRegister decode fail keys=\(resp.keys.sorted())")
+                    DispatchQueue.main.async { self.cancel(with: .failed) }
+                    return
+                }
+                let registration = ASPasskeyRegistrationCredential(
+                    relyingParty: rpID,
+                    clientDataHash: req.clientDataHash,
+                    credentialID: credID,
+                    attestationObject: att,
+                )
+                let saved = ASPasskeyCredentialIdentity(
+                    relyingPartyIdentifier: rpID,
+                    userName: userName,
+                    credentialID: credID,
+                    userHandle: identity.userHandle,
+                    recordIdentifier: rawID,
+                )
+                DispatchQueue.main.async {
+                    ASCredentialIdentityStore.shared.saveCredentialIdentities([saved]) { _, _ in }
+                    self.vlog("passkey registered rp=\(rpID)")
+                    self.extensionContext.completeRegistrationRequest(using: registration)
+                }
+            case .failure(let err):
+                self.vlog("passkeyRegister failed \(err.localizedDescription)")
+                DispatchQueue.main.async { self.cancel(with: .failed) }
             }
         }
     }
@@ -216,6 +431,24 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         @unknown default:
             return id.identifier
         }
+    }
+
+    /// The origin speaks unpadded base64url (the WebAuthn encoding) —
+    /// Data's own codec is the padded standard alphabet.
+    private static func b64url(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "="))
+    }
+
+    private static func data(b64url: String) -> Data? {
+        var s = b64url
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let pad = (4 - s.count % 4) % 4
+        if pad > 0 { s += String(repeating: "=", count: pad) }
+        return Data(base64Encoded: s)
     }
 
     private static func host(_ url: String) -> String {
@@ -241,10 +474,24 @@ extension CredentialProviderViewController: UITableViewDataSource, UITableViewDe
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: false)
-        let uuid = entries[indexPath.row].uuid
-        guard !uuid.isEmpty else { return }
+        let e = entries[indexPath.row]
+        // Passkey list pick: sign with the row's credential over the OS's
+        // clientDataHash — same Face ID gate as an inline identity pick.
+        if let params = passkeyParams, e.kind == "passkey",
+           let credB64 = e.credId, let credID = Self.data(b64url: credB64),
+           let handleB64 = e.userHandle, let handle = Self.data(b64url: handleB64) {
+            status.text = "Confirming \(e.login.isEmpty ? e.name : e.login)…"
+            deferPending(.passkeyAssert(
+                rpID: params.relyingPartyIdentifier,
+                credID: credID,
+                userHandle: handle,
+                clientDataHash: params.clientDataHash,
+            ))
+            return
+        }
+        guard !e.uuid.isEmpty else { return }
         status.text = "Confirming…"
-        release(uuid: uuid)
+        deferPending(.password(uuid: e.uuid))
     }
 }
 

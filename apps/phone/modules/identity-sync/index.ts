@@ -7,6 +7,9 @@ export type HandoffItem = {
   login: string;
   uris: string[];
   kind: string;
+  credId?: string;
+  rpId?: string;
+  userHandle?: string;
 };
 
 type NativeIdentitySync = {

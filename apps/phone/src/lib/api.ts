@@ -43,6 +43,9 @@ export type Item = {
   login?: string;
   has_totp?: boolean;
   archived?: boolean;
+  cred_id?: string;
+  rp_id?: string;
+  user_handle?: string;
 };
 
 export type FillEntry = {

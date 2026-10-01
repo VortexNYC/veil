@@ -42,6 +42,9 @@ export default function Items() {
           login: i.login ?? "",
           uris: i.uris ?? [],
           kind: i.kind ?? "login",
+          credId: i.cred_id,
+          rpId: i.rp_id,
+          userHandle: i.user_handle,
         })),
       ).catch(() => {});
     } catch (e) {
