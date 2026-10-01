@@ -13,15 +13,37 @@ set -u
 DB="$PGDUMP_BASE/veil"
 REPL="$PGDUMP_BASE/postgres?replication=database"
 WALDIR="${WAL_DIR:-/wal}"
+# Each archiver service owns a pinned slot via WAL_SLOT — a slot is
+# single-writer. Primary is `wal_archive` (veil-wal, sfo); a standby runs
+# `wal_archive_dr` from another region over private networking. Both stream
+# the same WAL bytes; the worker's monotonic .partial rule fences the
+# archive so a slower archiver can never overwrite a longer tail.
 SLOT="${WAL_SLOT:-wal_archive}"
 INGEST="${WAL_INGEST_URL:-https://backup-ingest.veil.nyc}/v1"
 INTERVAL="${WAL_PUSH_INTERVAL:-15}"
 
 mkdir -p "$WALDIR"
 
-push() { # push <path> <object>
-	curl -fsS -X PUT -H "Authorization: Bearer $OFFSITE_TOKEN" \
-		--data-binary "@$1" "$INGEST/$2" >/dev/null
+# Archive namespace: the source cluster's system identifier. A rebuilt
+# cluster gets a fresh sysid (timeline 1, LSN 0) so its wal-*/base-* names
+# can never collide with — or silently overwrite — the archive of the
+# cluster it replaces. Restore enumerates arc-*/ prefixes and picks the
+# sysid embedded in the chosen base backup's name. Postgres must be up
+# before anything below works, so wait for it here.
+SYSID=
+while [ -z "$SYSID" ]; do
+	SYSID=$(psql "$DB" -Atc "SELECT system_identifier FROM pg_control_system()" 2>/dev/null | tr -cd '0-9')
+	[ -z "$SYSID" ] && sleep 3
+done
+ARC="arc-$SYSID"
+echo "wal-archive: slot=$SLOT sysid=$SYSID prefix=$ARC"
+
+push() { # push <path> <object> — 409 on .partial means a peer's copy is newer
+	rc=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
+		-H "Authorization: Bearer $OFFSITE_TOKEN" \
+		--data-binary "@$1" "$INGEST/$ARC/$2" || echo 0)
+	[ "$rc" = "409" ] && return 0
+	[ "$rc" -ge 200 ] && [ "$rc" -lt 300 ]
 }
 
 beat() {

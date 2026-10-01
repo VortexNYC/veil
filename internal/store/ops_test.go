@@ -162,6 +162,58 @@ func TestOpsWalSlotStatus(t *testing.T) {
 	}
 }
 
+// WalSlots is the multi-slot view the monitor pages on: it lists only
+// wal_archive% slots so a standby (wal_archive_dr) is checked alongside the
+// primary. SystemIdentifier is the arc-<sysid>/ namespace every offsite
+// archive object is written under.
+func TestOpsWalSlotsAndSysid(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	sysid, err := SystemIdentifier(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sysid) == 0 || len(sysid) > 20 {
+		t.Fatalf("sysid %q: want 1-20 decimal digits", sysid)
+	}
+	for _, c := range sysid {
+		if c < '0' || c > '9' {
+			t.Fatalf("sysid %q not decimal", sysid)
+		}
+	}
+
+	for _, name := range []string{"wal_archive_t1", "wal_archive_dr_t"} {
+		pool.Exec(ctx, `SELECT pg_drop_replication_slot('`+name+`')`)
+	}
+	pool.Exec(ctx, `SELECT pg_create_physical_replication_slot('wal_archive_t1', true)`)
+	pool.Exec(ctx, `SELECT pg_create_physical_replication_slot('wal_archive_dr_t', true)`)
+	defer func() {
+		pool.Exec(ctx, `SELECT pg_drop_replication_slot('wal_archive_t1')`)
+		pool.Exec(ctx, `SELECT pg_drop_replication_slot('wal_archive_dr_t')`)
+	}()
+
+	slots, err := WalSlots(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, s := range slots {
+		names[s.Name] = true
+	}
+	if !names["wal_archive_t1"] || !names["wal_archive_dr_t"] {
+		t.Fatalf("WalSlots = %v, want both test slots", names)
+	}
+}
+
 // The export cursor starts at zero, only moves forward, and the read
 // cursor returns rows after it in sequence order.
 func TestOpsAuditExport(t *testing.T) {

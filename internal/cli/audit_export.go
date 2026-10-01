@@ -94,6 +94,11 @@ func runAuditExport(ctx context.Context, pool *pgxpool.Pool, put func(name strin
 	if err != nil {
 		return 0, err
 	}
+	sysid, err := store.SystemIdentifier(ctx, pool)
+	if err != nil {
+		return 0, err
+	}
+	ns := "arc-" + sysid
 	var total int64
 	for {
 		rows, err := store.ExportableAudits(ctx, pool, after, batch)
@@ -110,7 +115,11 @@ func runAuditExport(ctx context.Context, pool *pgxpool.Pool, put func(name strin
 				return total, err
 			}
 		}
-		name := fmt.Sprintf("audit-%s-%d-%d.jsonl",
+		// Namespace by cluster system identifier — same fencing as the WAL
+		// archive: a rebuilt cluster's audit names can collide (same cursor,
+		// same id range), and arc-<sysid>/ keeps each cluster's trail in its
+		// own prefix.
+		name := fmt.Sprintf("%s/audit-%s-%d-%d.jsonl", ns,
 			rows[0].At.UTC().Format("20060102-150405"), rows[0].ID, rows[len(rows)-1].ID)
 		if err := put(name, &buf); err != nil {
 			return total, err

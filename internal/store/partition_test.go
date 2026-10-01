@@ -359,9 +359,11 @@ func TestPostgresAuditPartitionDrainDefault(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// "recent" is now itself — now-1h lands in last month's partition for
+	// the first hour of the 1st and flakes the inMonth assertion below.
 	if _, err := pool.Exec(ctx, `INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
 		VALUES ($1,'org','a','i','fetch','allow','recent',''), ($2,'org','a','i','fetch','allow','old','')`,
-		now.Add(-time.Hour), now.AddDate(0, -4, 0)); err != nil {
+		now, now.AddDate(0, -4, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := EnsureAuditPartitions(ctx, pool, 3); err != nil {

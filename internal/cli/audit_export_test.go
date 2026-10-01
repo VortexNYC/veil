@@ -85,8 +85,10 @@ func TestAuditExportRun(t *testing.T) {
 		t.Fatalf("exported %d in %d puts, want 5/3", n, len(puts))
 	}
 	for i, p := range puts {
-		if !strings.HasPrefix(p.name, "audit-") || !strings.HasSuffix(p.name, ".jsonl") {
-			t.Fatalf("object %d named %q", i, p.name)
+		if !strings.HasPrefix(p.name, "arc-") ||
+			!strings.Contains(p.name, "/audit-") ||
+			!strings.HasSuffix(p.name, ".jsonl") {
+			t.Fatalf("object %d named %q — want arc-<sysid>/audit-*.jsonl", i, p.name)
 		}
 		lines := bufio.NewScanner(bytes.NewReader(p.body))
 		cnt := 0

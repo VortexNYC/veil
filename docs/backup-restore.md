@@ -82,18 +82,30 @@ in its own escrow.
 Nightly dumps bound loss to ~24h; that is not acceptable for an auth store.
 The `veil-wal` Railway service (always-on, `Dockerfile.wal`,
 `scripts/wal-archive.sh`) streams WAL from the primary over the replication
-protocol into physical slot `wal_archive` and pushes to the same R2 bucket:
+protocol into physical slot `wal_archive` and pushes to the same R2 bucket.
+A standby archiver, `veil-wal-dr` (iad, slot `wal_archive_dr`), streams the
+same bytes concurrently.
 
-- Every completed 16MB segment lands as `wal-<24-hex>`, plus
-  `.history` timelines and `.<offset>.backup` labels.
+- Every completed 16MB segment lands as
+  `arc-<sysid>/wal-<24-hex>`, plus `.history` timelines and
+  `.<offset>.backup` labels.
 - The in-flight `.partial` is re-pushed whenever its content hash changes
   (~15s loop) — segment names are preallocated so mtime/size don't move;
   content hashing is the only reliable signal. This is what bounds RPO:
   **~15–30s**, not hours. Segments older than the slot start never exist
   in the archive — replay starts at a base backup, not at genesis.
 
+**Namespace fencing.** Everything offsite — WAL, base backups, dumps, audit
+exports — lives under `arc-<pg system_identifier>/`. A rebuilt cluster has
+a fresh sysid (timeline 1, LSN 0), so a drill or replacement cluster can
+never overwrite the archive of the cluster it replaced. Two archivers are
+safe because the worker fences writes: a `.partial` PUT smaller than the
+stored object gets 409 (the shipper treats it as success — a peer's longer
+tail is already archived). Complete segments are byte-identical from any
+receiver, so they overwrite freely.
+
 Base backups give the PITR start point: `veil-backup` also runs
-`pg_basebackup -Ft -z -X stream` daily → `base-YYYY-MM-DD-HHMM.tar.gz`.
+`pg_basebackup -Ft -z -X stream` daily → `arc-<sysid>/base-YYYY-MM-DD-HHMM.tar.gz`.
 The streamed `pg_wal.tar.gz` is discarded — the archive is authoritative.
 
 Runtime config on the Postgres container (set 2026-09-30, persisted on the
@@ -130,7 +142,7 @@ Re-read an exported range:
 
 ```bash
 curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
-  https://backup-ingest.veil.nyc/v1/audit-YYYYMMDD-HHMMSS-<first>-<last>.jsonl
+  "https://backup-ingest.veil.nyc/v1/arc-<sysid>/audit-YYYYMMDD-HHMMSS-<first>-<last>.jsonl"
 ```
 
 ## Restoring
@@ -150,20 +162,29 @@ same `VEIL_KEK`; `EnsurePostgresSchema` is idempotent over restored DDL.
 To recover to an arbitrary timestamp — not just the last dump:
 
 ```bash
-# 1. Fetch the base backup and every wal-* object (no list endpoint —
-#    probe names, or pull the bucket via rclone/aws s3 with R2 creds).
+# 1. Pick the source cluster. Each archive object lives under
+#    arc-<system_identifier>/ — list the prefixes and choose the sysid of
+#    the cluster being restored (prod's, not a drill's):
 curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
-  https://backup-ingest.veil.nyc/v1/base-YYYY-MM-DD-HHMM.tar.gz -o base.tar.gz
+  "https://backup-ingest.veil.nyc/v1/?prefix=arc-" | jq -r '.keys[].key' \
+  | cut -d/ -f1 | sort -u
+#    Then list everything under the chosen one:
+curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
+  "https://backup-ingest.veil.nyc/v1/?prefix=arc-<SYSID>/" | jq -r '.keys[].key'
 
-# 2. Extract the cluster.
+# 2. Fetch the base backup and every wal-* object in that namespace.
+curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
+  "https://backup-ingest.veil.nyc/v1/arc-<SYSID>/base-YYYY-MM-DD-HHMM.tar.gz" -o base.tar.gz
+
+# 3. Extract the cluster.
 mkdir data && tar -xzf base.tar.gz -C data && chmod 700 data
 
-# 3. Stage the archive: strip the wal- prefix off each object into a dir.
+# 4. Stage the archive: strip the wal- prefix off each object into a dir.
 #    A complete segment beats a .partial of the same name; a .partial with
 #    no complete counterpart is renamed to its segment name — that is the
 #    live tail, valid WAL up to the last flush before loss.
 
-# 4. Recover. recovery.signal flips the server into archive-recovery mode.
+# 5. Recover. recovery.signal flips the server into archive-recovery mode.
 cat >> data/postgresql.auto.conf <<'EOF'
 restore_command = 'cp /walarchive/%f %p'
 recovery_target_time = 'YYYY-MM-DD HH:MM:SS+00'   # omit for end-of-log

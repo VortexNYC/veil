@@ -153,6 +153,45 @@ func WalSlotStatus(ctx context.Context, pool *pgxpool.Pool, name string) (active
 	return active, status, true, nil
 }
 
+// SystemIdentifier is the cluster's stable identity (pg_control) — the
+// arc-<sysid>/ namespace prefix every offsite archive object lives under.
+func SystemIdentifier(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var id string
+	if err := pool.QueryRow(ctx, `SELECT system_identifier::text FROM pg_control_system()`).Scan(&id); err != nil {
+		return "", fmt.Errorf("system identifier: %w", err)
+	}
+	return id, nil
+}
+
+// WalSlot is one replication slot's server-side liveness — the multi-slot
+// view for monitor: primary + standby archivers each own a pinned slot.
+type WalSlot struct {
+	Name   string
+	Active bool
+	Status string
+}
+
+// WalSlots lists every archive slot (wal_archive, wal_archive_dr, …). The
+// monitor pages when none is active or any shows wal_status='lost'.
+func WalSlots(ctx context.Context, pool *pgxpool.Pool) ([]WalSlot, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT slot_name, active, coalesce(wal_status, '') FROM pg_replication_slots
+		 WHERE slot_name LIKE 'wal\_archive%' ORDER BY slot_name`)
+	if err != nil {
+		return nil, fmt.Errorf("wal slots: %w", err)
+	}
+	defer rows.Close()
+	var out []WalSlot
+	for rows.Next() {
+		var s WalSlot
+		if err := rows.Scan(&s.Name, &s.Active, &s.Status); err != nil {
+			return nil, fmt.Errorf("wal slots: %w", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // AuditExportRow is one audit event on the export wire — the full row plus
 // its sequence id so the archive is independently ordered and dedup-able.
 type AuditExportRow struct {

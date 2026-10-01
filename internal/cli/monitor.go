@@ -49,16 +49,29 @@ func monitorCmd() *cobra.Command {
 				findings = append(findings, checkBeat(ctx, pool, "sweep", sweepStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "audit-export", auditExportStale)...)
 				findings = append(findings, checkBeat(ctx, pool, "wal-archive", walStale)...)
-				// The beat proves the shipper loop is alive; the slot proves
-				// a receiver is actually attached and WAL is flowing.
-				if active, status, ok, err := store.WalSlotStatus(ctx, pool, "wal_archive"); err != nil {
-					findings = append(findings, "wal-archive slot unreadable: "+err.Error())
-				} else if !ok {
-					findings = append(findings, "wal-archive slot missing")
-				} else if status == "lost" {
-					findings = append(findings, "wal-archive slot lost retained WAL (max_slot_wal_keep_size fired)")
-				} else if !active {
-					findings = append(findings, "wal-archive slot inactive — WAL not streaming")
+				// The beat proves the shipper loop is alive; the slots prove
+				// a receiver is actually attached and WAL is flowing. Primary
+				// (wal_archive) and standby (wal_archive_dr) both archive;
+				// page only when no receiver is attached or a slot went lost.
+				slots, err := store.WalSlots(ctx, pool)
+				if err != nil {
+					findings = append(findings, "wal-archive slots unreadable: "+err.Error())
+				} else {
+					anyActive := false
+					for _, s := range slots {
+						if s.Active {
+							anyActive = true
+						}
+						if s.Status == "lost" {
+							findings = append(findings,
+								fmt.Sprintf("wal-archive slot %s lost retained WAL (max_slot_wal_keep_size fired)", s.Name))
+						}
+					}
+					if len(slots) == 0 {
+						findings = append(findings, "wal-archive slot missing")
+					} else if !anyActive {
+						findings = append(findings, "wal-archive: no active slot — WAL not streaming")
+					}
 				}
 				// usage-report is opt-in: unmetered deploys never run the
 				// flusher, so a missing beat is silence, not a finding. A

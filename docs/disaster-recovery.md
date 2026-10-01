@@ -46,12 +46,16 @@ identity plane, then the broker, then DNS.
    done
    ```
 
-   **B. PITR (loses ~15–30s):** fetch `base-*.tar.gz` + all `wal-*` objects
-   (`GET /v1/?prefix=wal-` lists them — VEIL-75), extract base into PGDATA,
-   stage WAL with the wal- prefix stripped (a `.partial` with no complete
-   counterpart renames to its segment name), set `restore_command =
-   'cp /walarchive/%f %p'` + optional `recovery_target_time`, touch
-   `recovery.signal`, start postgres. Details in docs/backup-restore.md.
+   **B. PITR (loses ~15–30s):** everything lives under `arc-<sysid>/` —
+   list prefixes with `GET /v1/?prefix=arc-`, pick the source cluster's
+   sysid, then fetch its `base-*.tar.gz` + `wal-*` objects. Extract base
+   into PGDATA, stage WAL with the wal- prefix stripped (a `.partial` with
+   no complete counterpart renames to its segment name), set
+   `restore_command = 'cp /walarchive/%f %p'` + optional
+   `recovery_target_time`, touch `recovery.signal`, start postgres.
+   Details in docs/backup-restore.md. The rebuilt cluster gets a NEW sysid
+   — its archivers write to their own `arc-` prefix and can never collide
+   with the archive just restored from (VEIL-74).
 
 4. **Identity plane order.** Kratos and Keto have `preDeploy` migrations —
    apply runs them; restoring their dumps into the fresh cluster must happen

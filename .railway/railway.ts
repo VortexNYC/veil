@@ -103,7 +103,7 @@ export default defineRailway(() => {
   const veilBackup = service("veil-backup", {
     source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.backup" },
-    start: "sh -c 'rc=0; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if pg_basebackup -D /backups/base -Ft -z -X stream -d \"$PGDUMP_BASE/postgres?replication=database\"; then mv /backups/base/base.tar.gz /backups/base-$(date +%F-%H%M).tar.gz; rm -f /backups/base/pg_wal.tar.gz; else rc=1; fi; if [ -n \"$OFFSITE_TOKEN\" ]; then for f in /backups/*-$(date +%F)-*.dump /backups/base-$(date +%F)-*.tar.gz; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/$(basename \"$f\")\" || rc=1; done; fi; find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" \\) -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES('\"'\"'backup'\"'\"',now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
+    start: "sh -c 'rc=0; SYSID=$(psql \"$PGDUMP_BASE/veil\" -Atc \"SELECT system_identifier FROM pg_control_system()\" | tr -cd 0-9); for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if pg_basebackup -D /backups/base -Ft -z -X stream -d \"$PGDUMP_BASE/postgres?replication=database\"; then mv /backups/base/base.tar.gz /backups/base-$(date +%F-%H%M).tar.gz; rm -f /backups/base/pg_wal.tar.gz; else rc=1; fi; if [ -n \"$OFFSITE_TOKEN\" ] && [ -n \"$SYSID\" ]; then for f in /backups/*-$(date +%F)-*.dump /backups/base-$(date +%F)-*.tar.gz; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/arc-$SYSID/$(basename \"$f\")\" || rc=1; done; fi; find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" \\) -mtime +14 -delete; psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES('\"'\"'backup'\"'\"',now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; sleep 600; exit $rc'",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
     replicas: { "sfo": 1 },
     volumeMounts: { "/backups": veilBackups },
@@ -127,6 +127,24 @@ export default defineRailway(() => {
     env: {
       PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
       OFFSITE_TOKEN: preserve(),
+    },
+  });
+  // Standby WAL archiver in a second region (iad). Separate service because a
+  // replication slot is single-writer — this one owns wal_archive_dr. It
+  // streams the identical WAL bytes into the same arc-<sysid>/ prefix; R2
+  // last-write-wins is fenced server-side (a shorter .partial can never
+  // overwrite a longer one), so duplicate pushes are harmless. Covers an
+  // sfo-side archiver host failure, not region loss — if sfo Postgres dies
+  // the archive is already offsite and this receiver dies too.
+  const veilWalDr = service("veil-wal-dr", {
+    source: github("VortexNYC/veil", { branch: "main" }),
+    build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.wal" },
+    start: "sh /wal-archive.sh",
+    replicas: { "iad": 1 },
+    env: {
+      PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      OFFSITE_TOKEN: preserve(),
+      WAL_SLOT: "wal_archive_dr",
     },
   });
   // Hourly audit archive: every audit row past the export cursor is shipped
@@ -181,6 +199,6 @@ export default defineRailway(() => {
   });
 
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilSpool, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport, veilWal],
+    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilSpool, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport, veilWal, veilWalDr],
   });
 });
