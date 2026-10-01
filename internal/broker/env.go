@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/VortexNYC/veil/internal/grant"
@@ -27,28 +28,63 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 	if err != nil {
 		return nil, err
 	}
+	groupIDs, err := b.Store.GroupIDsFor(agent.MemberKeys())
+	if err != nil {
+		return nil, err
+	}
+	groups := groupSet(groupIDs)
+	// Candidates per item: the direct grant plus every member group's grant.
+	// Select then applies the precedence — direct beats group, deny wins.
+	byItem := map[string][]protocol.Grant{}
+	for _, g := range grants {
+		if g.Subject() == protocol.SubjectGroup {
+			if _, ok := groups[g.AgentID]; ok {
+				byItem[g.ItemID] = append(byItem[g.ItemID], g)
+			}
+		} else if g.AgentID == agent.ID {
+			byItem[g.ItemID] = append(byItem[g.ItemID], g)
+		}
+	}
+	var itemIDs []string
+	for id := range byItem {
+		itemIDs = append(itemIDs, id)
+	}
+	sort.Strings(itemIDs)
 	now := b.now()
 	var pairs []string
-	for _, g := range grants {
-		if g.AgentID != agent.ID {
-			continue
-		}
-		item, err := b.Store.Item(g.ItemID)
+	for _, itemID := range itemIDs {
+		cands := byItem[itemID]
+		item, err := b.Store.Item(itemID)
 		if err != nil {
 			return nil, err
+		}
+		approved := map[string]bool{}
+		var appr *protocol.Approval
+		live := map[string]*protocol.Approval{}
+		for _, c := range cands {
+			a, err := b.Store.LiveApproval(c.ID, now)
+			if err != nil {
+				return nil, err
+			}
+			if a != nil {
+				approved[c.ID] = true
+				live[c.ID] = a
+			}
+		}
+		g := grant.Select(cands, now, approved)
+		if g == nil {
+			continue
 		}
 		if !item.Kind.Injects() || item.Archived {
 			continue
 		}
-		cp := g
-		appr, err := b.Store.LiveApproval(g.ID, now)
-		if err != nil {
-			return nil, err
-		}
+		cp := *g
+		appr = live[g.ID]
 		dec := grant.Evaluate(grant.Input{
 			Principal: agent,
 			Item:      item,
 			Grant:     &cp,
+			Groups:    groups,
 			Action:    protocol.ActionEnv,
 			Now:       now,
 			Approval:  appr,
