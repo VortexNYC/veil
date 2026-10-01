@@ -50,11 +50,14 @@ SET status = 'approved', resolved_at = $1::timestamptz,
     resolved_by = $2::text, approval_id = $3::text
 WHERE id = $4::text AND status = 'open' AND expires_at > $1::timestamptz
     AND EXISTS (SELECT 1 FROM grants g
-        JOIN agents ag ON ag.id = g.agent_id
         JOIN items i ON i.id = g.item_id
+        LEFT JOIN agents ag ON g.subject_kind <> 'group' AND ag.id = g.agent_id
+        LEFT JOIN groups grp ON g.subject_kind = 'group' AND grp.id = g.agent_id
         WHERE g.id = grant_id
         AND (g.expires_at IS NULL OR g.expires_at > $1::timestamptz)
-        AND ag.revoked_at IS NULL AND NOT i.archived)
+        AND NOT i.archived
+        AND ((g.subject_kind <> 'group' AND ag.id IS NOT NULL AND ag.revoked_at IS NULL)
+          OR (g.subject_kind = 'group' AND grp.id IS NOT NULL)))
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
 `
@@ -402,6 +405,22 @@ func (q *Queries) ConsumeUse(ctx context.Context, arg ConsumeUseParams) (int64, 
 	return used, err
 }
 
+const deleteGroupMember = `-- name: DeleteGroupMember :exec
+DELETE FROM group_members
+WHERE group_id = $1::text AND member_kind = $2::text AND member_id = $3::text
+`
+
+type DeleteGroupMemberParams struct {
+	GroupID    string
+	MemberKind string
+	MemberID   string
+}
+
+func (q *Queries) DeleteGroupMember(ctx context.Context, arg DeleteGroupMemberParams) error {
+	_, err := q.db.Exec(ctx, deleteGroupMember, arg.GroupID, arg.MemberKind, arg.MemberID)
+	return err
+}
+
 const deleteItem = `-- name: DeleteItem :execrows
 DELETE FROM items WHERE id = $1::text
 `
@@ -601,7 +620,7 @@ func (q *Queries) GetUsageReportPending(ctx context.Context, lim int64) ([]GetUs
 }
 
 const grantByID = `-- name: GrantByID :one
-SELECT id, org_id, agent_id, item_id, level, actions, expires_at
+SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at
 FROM grants WHERE id = $1::text
 `
 
@@ -612,6 +631,7 @@ func (q *Queries) GrantByID(ctx context.Context, id string) (Grant, error) {
 		&i.ID,
 		&i.OrgID,
 		&i.AgentID,
+		&i.SubjectKind,
 		&i.ItemID,
 		&i.Level,
 		&i.Actions,
@@ -621,7 +641,7 @@ func (q *Queries) GrantByID(ctx context.Context, id string) (Grant, error) {
 }
 
 const grantFor = `-- name: GrantFor :one
-SELECT id, org_id, agent_id, item_id, level, actions, expires_at
+SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at
 FROM grants WHERE agent_id = $1::text AND item_id = $2::text
 `
 
@@ -637,12 +657,77 @@ func (q *Queries) GrantFor(ctx context.Context, arg GrantForParams) (Grant, erro
 		&i.ID,
 		&i.OrgID,
 		&i.AgentID,
+		&i.SubjectKind,
 		&i.ItemID,
 		&i.Level,
 		&i.Actions,
 		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const groupByID = `-- name: GroupByID :one
+SELECT id, org_id, name FROM groups WHERE id = $1::text
+`
+
+func (q *Queries) GroupByID(ctx context.Context, id string) (Group, error) {
+	row := q.db.QueryRow(ctx, groupByID, id)
+	var i Group
+	err := row.Scan(&i.ID, &i.OrgID, &i.Name)
+	return i, err
+}
+
+const groupIDsFor = `-- name: GroupIDsFor :many
+SELECT DISTINCT group_id FROM group_members
+WHERE member_kind || ':' || member_id = ANY($1::text[])
+`
+
+// The principal's group set: every membership edge naming one of the
+// candidate members (the principal itself plus its user owner for agents).
+// Keys are "kind:id" pairs so the two legs stay paired.
+func (q *Queries) GroupIDsFor(ctx context.Context, keys []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, groupIDsFor, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var group_id string
+		if err := rows.Scan(&group_id); err != nil {
+			return nil, err
+		}
+		items = append(items, group_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const groupMembers = `-- name: GroupMembers :many
+SELECT group_id, member_kind, member_id FROM group_members
+WHERE group_id = $1::text ORDER BY member_kind, member_id
+`
+
+func (q *Queries) GroupMembers(ctx context.Context, groupID string) ([]GroupMember, error) {
+	rows, err := q.db.Query(ctx, groupMembers, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GroupMember
+	for rows.Next() {
+		var i GroupMember
+		if err := rows.Scan(&i.GroupID, &i.MemberKind, &i.MemberID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const humanByID = `-- name: HumanByID :one
@@ -1061,7 +1146,7 @@ func (q *Queries) ListAuditFeed(ctx context.Context, arg ListAuditFeedParams) ([
 }
 
 const listGrants = `-- name: ListGrants :many
-SELECT id, org_id, agent_id, item_id, level, actions, expires_at
+SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at
 FROM grants ORDER BY id LIMIT $1::bigint
 `
 
@@ -1078,11 +1163,36 @@ func (q *Queries) ListGrants(ctx context.Context, maxResults int64) ([]Grant, er
 			&i.ID,
 			&i.OrgID,
 			&i.AgentID,
+			&i.SubjectKind,
 			&i.ItemID,
 			&i.Level,
 			&i.Actions,
 			&i.ExpiresAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGroups = `-- name: ListGroups :many
+SELECT id, org_id, name FROM groups ORDER BY org_id, name LIMIT $1::bigint
+`
+
+func (q *Queries) ListGroups(ctx context.Context, maxResults int64) ([]Group, error) {
+	rows, err := q.db.Query(ctx, listGroups, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Group
+	for rows.Next() {
+		var i Group
+		if err := rows.Scan(&i.ID, &i.OrgID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1364,11 +1474,14 @@ func (q *Queries) ListSessions(ctx context.Context, maxResults int64) ([]Session
 
 const liveGrantForApprove = `-- name: LiveGrantForApprove :one
 SELECT g.id FROM grants g
-JOIN agents ag ON ag.id = g.agent_id
 JOIN items i ON i.id = g.item_id
+LEFT JOIN agents ag ON g.subject_kind <> 'group' AND ag.id = g.agent_id
+LEFT JOIN groups grp ON g.subject_kind = 'group' AND grp.id = g.agent_id
 WHERE g.id = $1::text
     AND (g.expires_at IS NULL OR g.expires_at > $2::timestamptz)
-    AND ag.revoked_at IS NULL AND NOT i.archived
+    AND NOT i.archived
+    AND ((g.subject_kind <> 'group' AND ag.id IS NOT NULL AND ag.revoked_at IS NULL)
+      OR (g.subject_kind = 'group' AND grp.id IS NOT NULL))
 `
 
 type LiveGrantForApproveParams struct {
@@ -1579,21 +1692,22 @@ func (q *Queries) PutApproval(ctx context.Context, arg PutApprovalParams) error 
 }
 
 const putGrant = `-- name: PutGrant :exec
-INSERT INTO grants(id, org_id, agent_id, item_id, level, actions, expires_at)
-VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7)
+INSERT INTO grants(id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8)
 ON CONFLICT(agent_id, item_id) DO UPDATE SET
-    id=excluded.id, org_id=excluded.org_id, level=excluded.level,
+    id=excluded.id, org_id=excluded.org_id, subject_kind=excluded.subject_kind, level=excluded.level,
     actions=excluded.actions, expires_at=excluded.expires_at
 `
 
 type PutGrantParams struct {
-	ID        string
-	OrgID     string
-	AgentID   string
-	ItemID    string
-	Level     string
-	Actions   string
-	ExpiresAt sql.NullTime
+	ID          string
+	OrgID       string
+	AgentID     string
+	SubjectKind string
+	ItemID      string
+	Level       string
+	Actions     string
+	ExpiresAt   sql.NullTime
 }
 
 func (q *Queries) PutGrant(ctx context.Context, arg PutGrantParams) error {
@@ -1601,11 +1715,45 @@ func (q *Queries) PutGrant(ctx context.Context, arg PutGrantParams) error {
 		arg.ID,
 		arg.OrgID,
 		arg.AgentID,
+		arg.SubjectKind,
 		arg.ItemID,
 		arg.Level,
 		arg.Actions,
 		arg.ExpiresAt,
 	)
+	return err
+}
+
+const putGroup = `-- name: PutGroup :exec
+INSERT INTO groups(id, org_id, name) VALUES($1::text, $2::text, $3::text)
+ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id, name=excluded.name
+`
+
+type PutGroupParams struct {
+	ID    string
+	OrgID string
+	Name  string
+}
+
+func (q *Queries) PutGroup(ctx context.Context, arg PutGroupParams) error {
+	_, err := q.db.Exec(ctx, putGroup, arg.ID, arg.OrgID, arg.Name)
+	return err
+}
+
+const putGroupMember = `-- name: PutGroupMember :exec
+INSERT INTO group_members(group_id, member_kind, member_id)
+VALUES($1::text, $2::text, $3::text)
+ON CONFLICT(group_id, member_kind, member_id) DO NOTHING
+`
+
+type PutGroupMemberParams struct {
+	GroupID    string
+	MemberKind string
+	MemberID   string
+}
+
+func (q *Queries) PutGroupMember(ctx context.Context, arg PutGroupMemberParams) error {
+	_, err := q.db.Exec(ctx, putGroupMember, arg.GroupID, arg.MemberKind, arg.MemberID)
 	return err
 }
 
@@ -2204,6 +2352,7 @@ SELECT
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
+    g.subject_kind AS grant_subject_kind,
     g.item_id AS grant_item_id,
     g.level AS grant_level,
     g.actions AS grant_actions,
@@ -2211,11 +2360,31 @@ SELECT
     ap.id AS approval_id,
     ap.grant_id AS approval_grant_id,
     ap.human_id AS approval_human_id,
-    ap.expires_at AS approval_expires_at
+    ap.expires_at AS approval_expires_at,
+    (SELECT array_agg(DISTINCT m.group_id) FROM group_members m
+     WHERE (m.member_kind = 'agent' AND m.member_id = a.id)
+        OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id))::text[] AS group_ids
 FROM (SELECT $1::text AS agent_id, $2::text AS item_id, $3::timestamptz AS now) AS v
 LEFT JOIN agents a ON a.id = v.agent_id
 LEFT JOIN items i ON i.id = v.item_id
-LEFT JOIN grants g ON g.agent_id = v.agent_id AND g.item_id = i.id
+LEFT JOIN LATERAL (
+    SELECT gg.id AS win_id FROM grants gg
+    LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
+    WHERE gg.item_id = i.id
+      AND ((gg.subject_kind <> 'group' AND gg.agent_id = v.agent_id)
+        OR (gg.subject_kind = 'group' AND EXISTS (
+            SELECT 1 FROM group_members m WHERE m.group_id = gg.agent_id
+              AND ((m.member_kind = 'agent' AND m.member_id = v.agent_id)
+                OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id)))))
+    ORDER BY (gg.expires_at IS NOT NULL AND gg.expires_at <= v.now),
+             (gg.subject_kind = 'group'),
+             CASE WHEN gg.level = 'deny' THEN 0
+                  WHEN gg.level = 'level2' OR lap.id IS NOT NULL THEN 1
+                  ELSE 2 END,
+             gg.id
+    LIMIT 1
+) pick ON true
+LEFT JOIN grants g ON g.id = pick.win_id
 LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now
 `
 
@@ -2246,6 +2415,7 @@ type UseAuthRow struct {
 	GrantID           sql.NullString
 	GrantOrgID        sql.NullString
 	GrantAgentID      sql.NullString
+	GrantSubjectKind  sql.NullString
 	GrantItemID       sql.NullString
 	GrantLevel        sql.NullString
 	GrantActions      sql.NullString
@@ -2254,8 +2424,14 @@ type UseAuthRow struct {
 	ApprovalGrantID   sql.NullString
 	ApprovalHumanID   sql.NullString
 	ApprovalExpiresAt sql.NullTime
+	GroupIds          []string
 }
 
+// The grant leg is picked by a LATERAL scalar: the principal's direct
+// grant, else a grant to a group the principal holds membership in (its own
+// rows plus, for a user-owned agent, the owner's). Precedence inside the
+// candidate set: direct beats group, deny beats allow, a grant that
+// resolves now (level2 or carrying a live approval) beats a bare level1.
 func (q *Queries) UseAuth(ctx context.Context, arg UseAuthParams) (UseAuthRow, error) {
 	row := q.db.QueryRow(ctx, useAuth, arg.AgentID, arg.ItemID, arg.Now)
 	var i UseAuthRow
@@ -2280,6 +2456,7 @@ func (q *Queries) UseAuth(ctx context.Context, arg UseAuthParams) (UseAuthRow, e
 		&i.GrantID,
 		&i.GrantOrgID,
 		&i.GrantAgentID,
+		&i.GrantSubjectKind,
 		&i.GrantItemID,
 		&i.GrantLevel,
 		&i.GrantActions,
@@ -2288,6 +2465,7 @@ func (q *Queries) UseAuth(ctx context.Context, arg UseAuthParams) (UseAuthRow, e
 		&i.ApprovalGrantID,
 		&i.ApprovalHumanID,
 		&i.ApprovalExpiresAt,
+		&i.GroupIds,
 	)
 	return i, err
 }
@@ -2315,6 +2493,7 @@ SELECT
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
+    g.subject_kind AS grant_subject_kind,
     g.item_id AS grant_item_id,
     g.level AS grant_level,
     g.actions AS grant_actions,
@@ -2322,12 +2501,32 @@ SELECT
     ap.id AS approval_id,
     ap.grant_id AS approval_grant_id,
     ap.human_id AS approval_human_id,
-    ap.expires_at AS approval_expires_at
+    ap.expires_at AS approval_expires_at,
+    (SELECT array_agg(DISTINCT m.group_id) FROM group_members m
+     WHERE (m.member_kind = 'agent' AND m.member_id = a.id)
+        OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id))::text[] AS group_ids
 FROM (SELECT $1::bytea AS session_hash, $2::text AS item_id, $3::timestamptz AS now) AS v
 LEFT JOIN sessions s ON s.secret_hash = v.session_hash AND s.expires_at > v.now AND s.revoked_at IS NULL AND (s.max_uses = 0 OR s.uses < s.max_uses)
 LEFT JOIN agents a ON a.id = s.agent_id
 LEFT JOIN items i ON i.id = v.item_id
-LEFT JOIN grants g ON g.agent_id = s.agent_id AND g.item_id = i.id
+LEFT JOIN LATERAL (
+    SELECT gg.id AS win_id FROM grants gg
+    LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
+    WHERE gg.item_id = i.id
+      AND ((gg.subject_kind <> 'group' AND gg.agent_id = a.id)
+        OR (gg.subject_kind = 'group' AND EXISTS (
+            SELECT 1 FROM group_members m WHERE m.group_id = gg.agent_id
+              AND ((m.member_kind = 'agent' AND m.member_id = a.id)
+                OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id)))))
+    ORDER BY (gg.expires_at IS NOT NULL AND gg.expires_at <= v.now),
+             (gg.subject_kind = 'group'),
+             CASE WHEN gg.level = 'deny' THEN 0
+                  WHEN gg.level = 'level2' OR lap.id IS NOT NULL THEN 1
+                  ELSE 2 END,
+             gg.id
+    LIMIT 1
+) pick ON true
+LEFT JOIN grants g ON g.id = pick.win_id
 LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now
 `
 
@@ -2359,6 +2558,7 @@ type UseAuthSessionRow struct {
 	GrantID           sql.NullString
 	GrantOrgID        sql.NullString
 	GrantAgentID      sql.NullString
+	GrantSubjectKind  sql.NullString
 	GrantItemID       sql.NullString
 	GrantLevel        sql.NullString
 	GrantActions      sql.NullString
@@ -2367,6 +2567,7 @@ type UseAuthSessionRow struct {
 	ApprovalGrantID   sql.NullString
 	ApprovalHumanID   sql.NullString
 	ApprovalExpiresAt sql.NullTime
+	GroupIds          []string
 }
 
 func (q *Queries) UseAuthSession(ctx context.Context, arg UseAuthSessionParams) (UseAuthSessionRow, error) {
@@ -2394,6 +2595,7 @@ func (q *Queries) UseAuthSession(ctx context.Context, arg UseAuthSessionParams) 
 		&i.GrantID,
 		&i.GrantOrgID,
 		&i.GrantAgentID,
+		&i.GrantSubjectKind,
 		&i.GrantItemID,
 		&i.GrantLevel,
 		&i.GrantActions,
@@ -2402,6 +2604,7 @@ func (q *Queries) UseAuthSession(ctx context.Context, arg UseAuthSessionParams) 
 		&i.ApprovalGrantID,
 		&i.ApprovalHumanID,
 		&i.ApprovalExpiresAt,
+		&i.GroupIds,
 	)
 	return i, err
 }

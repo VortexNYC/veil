@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -119,11 +120,24 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
+			subject_kind TEXT NOT NULL DEFAULT 'agent',
 			item_id TEXT NOT NULL,
 			level TEXT NOT NULL,
 			actions TEXT NOT NULL,
 			expires_at INTEGER,
 			UNIQUE(agent_id, item_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS groups (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			UNIQUE(org_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS group_members (
+			group_id TEXT NOT NULL,
+			member_kind TEXT NOT NULL,
+			member_id TEXT NOT NULL,
+			PRIMARY KEY (group_id, member_kind, member_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS approvals (
 			grant_id TEXT PRIMARY KEY,
@@ -233,6 +247,10 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN max_ttl INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN uses INTEGER NOT NULL DEFAULT 0`)
+	// VEIL-20: the grant subject widens — agent_id stays the subject id
+	// column; subject_kind tells agent/human/group apart. Existing rows are
+	// all agent grants.
+	_, _ = s.db.Exec(`ALTER TABLE grants ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'agent'`)
 	// Legacy rows predate the lifecycle columns. Give them usable
 	// created_at/ttl/max_ttl so RenewSession can extend them.
 	_, _ = s.db.Exec(`UPDATE sessions SET created_at = expires_at WHERE created_at = 0`)
@@ -272,6 +290,7 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_items_org_name ON items(org_id, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_org_archived_name ON items(org_id, archived, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_grants_item ON grants(item_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_group_members_member ON group_members(member_kind, member_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_agent_at ON audit(agent_id, at)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
@@ -749,6 +768,8 @@ func (s *SQLite) PurgeOrg(ctx context.Context, orgID string) (PurgeReport, error
 		{`DELETE FROM sessions WHERE org_id = ?`, &rep.Sessions},
 		{`DELETE FROM grants WHERE org_id = ?`, &rep.Grants},
 		{`DELETE FROM workloads WHERE agent_id IN (SELECT id FROM agents WHERE org_id = ?)`, new(int64)},
+		{`DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE org_id = ?)`, new(int64)},
+		{`DELETE FROM groups WHERE org_id = ?`, new(int64)},
 		{`DELETE FROM owner_keys WHERE org_id = ?`, new(int64)},
 		{`DELETE FROM items WHERE org_id = ?`, &rep.Items},
 		{`DELETE FROM agents WHERE org_id = ?`, &rep.Agents},
@@ -845,19 +866,76 @@ func (s *SQLite) Secret(id string) (Secret, error) {
 	return Secret(plain), nil
 }
 
+// useAuthGrantJoin is the VEIL-20 grant leg shared by both auth reads: the
+// principal's direct grant, else a grant to a group the principal holds —
+// its own memberships plus, for a user-owned agent, the owner's. The ORDER
+// BY is the precedence: expired edges rank last, direct beats group, deny
+// beats allow, a grant that resolves now (level2 or carrying a live
+// approval) beats a bare level1. LIMIT 1 keeps the first row the winner;
+// QueryRow reads just it.
+const useAuthGrantJoin = `
+	LEFT JOIN grants g ON g.item_id = i.id AND (
+		(g.subject_kind <> 'group' AND g.agent_id = %s)
+		OR (g.subject_kind = 'group' AND EXISTS (
+			SELECT 1 FROM group_members m WHERE m.group_id = g.agent_id
+			  AND ((m.member_kind = 'agent' AND m.member_id = %s)
+				OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id)))))
+	LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now
+	ORDER BY CASE WHEN g.id IS NULL THEN 1 ELSE 0 END,
+		 CASE WHEN g.expires_at IS NOT NULL AND g.expires_at <= v.now THEN 1 ELSE 0 END,
+		 CASE WHEN g.subject_kind = 'group' THEN 1 ELSE 0 END,
+		 CASE WHEN g.level = 'deny' THEN 0
+			  WHEN g.level = 'level2' OR ap.id IS NOT NULL THEN 1
+			  ELSE 2 END,
+		 g.id
+	LIMIT 1`
+
+// groupIDs resolves the groups holding any of the member (kind,id) pairs.
+func (s *SQLite) groupIDs(members []protocol.GroupMember) ([]string, error) {
+	if len(members) == 0 {
+		return nil, nil
+	}
+	var (
+		place []string
+		args  []any
+	)
+	for _, m := range members {
+		place = append(place, "?")
+		args = append(args, string(m.MemberKind)+":"+m.MemberID)
+	}
+	rows, err := s.db.Query(`SELECT DISTINCT group_id FROM group_members
+		WHERE member_kind || ':' || member_id IN (`+strings.Join(place, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, rows.Err()
+}
+
+func (s *SQLite) GroupIDsFor(members []protocol.GroupMember) ([]string, error) {
+	return s.groupIDs(members)
+}
+
 func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time) (UseAuth, error) {
 	row := s.db.QueryRow(`SELECT
 		s.id,
 		a.id, a.org_id, a.owner_kind, a.owner_id, a.revoked_at,
 		i.id, i.org_id, i.name, i.kind, i.owner_kind, i.owner_id, i.uris, i.has_totp, i.tags, i.archived, i.has_file, i.login,
-		g.id, g.org_id, g.agent_id, g.item_id, g.level, g.actions, g.expires_at,
+		g.id, g.org_id, g.agent_id, g.subject_kind, g.item_id, g.level, g.actions, g.expires_at,
 		ap.id, ap.grant_id, ap.human_id, ap.expires_at
 	FROM (SELECT ? AS session_hash, ? AS item_id, ? AS now) AS v
 	LEFT JOIN sessions s ON s.secret_hash = v.session_hash AND s.expires_at > v.now AND s.revoked_at IS NULL AND (s.max_uses = 0 OR s.uses < s.max_uses)
 	LEFT JOIN agents a ON a.id = s.agent_id
-	LEFT JOIN items i ON i.id = v.item_id
-	LEFT JOIN grants g ON g.agent_id = s.agent_id AND g.item_id = i.id
-	LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now`,
+	LEFT JOIN items i ON i.id = v.item_id`+fmt.Sprintf(useAuthGrantJoin, "a.id", "a.id"),
 		sessionHash, itemID, now.Unix())
 
 	var (
@@ -866,7 +944,7 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 		iID, iOrgID, iName, iKind, iOwnerKind, iOwnerID, iLogin sql.NullString
 		iURIs, iTags                                            []byte
 		iHasTOTP, iArchived, iHasFile                           sql.NullInt64
-		gID, gOrgID, gAgentID, gItemID, gLevel                  sql.NullString
+		gID, gOrgID, gAgentID, gSubjectKind, gItemID, gLevel    sql.NullString
 		gActions                                                []byte
 		gExpires, apExpires                                     sql.NullInt64
 		apID, apGrantID, apHumanID                              sql.NullString
@@ -875,7 +953,7 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 		&sID,
 		&aID, &aOrgID, &aOwnerKind, &aOwnerID, &aRevoked,
 		&iID, &iOrgID, &iName, &iKind, &iOwnerKind, &iOwnerID, &iURIs, &iHasTOTP, &iTags, &iArchived, &iHasFile, &iLogin,
-		&gID, &gOrgID, &gAgentID, &gItemID, &gLevel, &gActions, &gExpires,
+		&gID, &gOrgID, &gAgentID, &gSubjectKind, &gItemID, &gLevel, &gActions, &gExpires,
 		&apID, &apGrantID, &apHumanID, &apExpires,
 	); err != nil {
 		return UseAuth{}, err
@@ -914,7 +992,7 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 		r.Item.Login = iLogin.String
 	}
 	if gID.Valid && gID.String != "" {
-		g := &protocol.Grant{ID: gID.String, OrgID: gOrgID.String, AgentID: gAgentID.String, ItemID: gItemID.String, Level: protocol.GrantLevel(gLevel.String)}
+		g := &protocol.Grant{ID: gID.String, OrgID: gOrgID.String, AgentID: gAgentID.String, SubjectKind: protocol.SubjectKind(gSubjectKind.String), ItemID: gItemID.String, Level: protocol.GrantLevel(gLevel.String)}
 		if len(gActions) > 0 {
 			_ = json.Unmarshal(gActions, &g.Actions)
 		}
@@ -929,6 +1007,11 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 			r.Approval = &protocol.Approval{ID: apID.String, GrantID: apGrantID.String, HumanID: apHumanID.String, ExpiresAt: time.Unix(apExpires.Int64, 0).UTC()}
 		}
 	}
+	groups, err := s.groupIDs(r.Agent.MemberKeys())
+	if err != nil {
+		return UseAuth{}, err
+	}
+	r.Groups = groups
 	return r, nil
 }
 
@@ -1005,13 +1088,11 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 	row := s.db.QueryRow(`SELECT
 		a.id, a.org_id, a.owner_kind, a.owner_id, a.revoked_at,
 		i.id, i.org_id, i.name, i.kind, i.owner_kind, i.owner_id, i.uris, i.has_totp, i.tags, i.archived, i.has_file, i.login,
-		g.id, g.org_id, g.agent_id, g.item_id, g.level, g.actions, g.expires_at,
+		g.id, g.org_id, g.agent_id, g.subject_kind, g.item_id, g.level, g.actions, g.expires_at,
 		ap.id, ap.grant_id, ap.human_id, ap.expires_at
 	FROM (SELECT ? AS agent_id, ? AS item_id, ? AS now) AS v
 	LEFT JOIN agents a ON a.id = v.agent_id
-	LEFT JOIN items i ON i.id = v.item_id
-	LEFT JOIN grants g ON g.agent_id = v.agent_id AND g.item_id = i.id
-	LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now`,
+	LEFT JOIN items i ON i.id = v.item_id`+fmt.Sprintf(useAuthGrantJoin, "v.agent_id", "v.agent_id"),
 		agentID, itemID, now.Unix())
 
 	var (
@@ -1019,7 +1100,7 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 		iID, iOrgID, iName, iKind, iOwnerKind, iOwnerID, iLogin sql.NullString
 		iURIs, iTags                                            []byte
 		iHasTOTP, iArchived, iHasFile                           sql.NullInt64
-		gID, gOrgID, gAgentID, gItemID, gLevel                  sql.NullString
+		gID, gOrgID, gAgentID, gSubjectKind, gItemID, gLevel    sql.NullString
 		gActions                                                []byte
 		gExpires, apExpires                                     sql.NullInt64
 		apID, apGrantID, apHumanID                              sql.NullString
@@ -1027,7 +1108,7 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 	if err := row.Scan(
 		&aID, &aOrgID, &aOwnerKind, &aOwnerID, &aRevoked,
 		&iID, &iOrgID, &iName, &iKind, &iOwnerKind, &iOwnerID, &iURIs, &iHasTOTP, &iTags, &iArchived, &iHasFile, &iLogin,
-		&gID, &gOrgID, &gAgentID, &gItemID, &gLevel, &gActions, &gExpires,
+		&gID, &gOrgID, &gAgentID, &gSubjectKind, &gItemID, &gLevel, &gActions, &gExpires,
 		&apID, &apGrantID, &apHumanID, &apExpires,
 	); err != nil {
 		return UseAuth{}, err
@@ -1063,7 +1144,7 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 		r.Item.Login = iLogin.String
 	}
 	if gID.Valid && gID.String != "" {
-		g := &protocol.Grant{ID: gID.String, OrgID: gOrgID.String, AgentID: gAgentID.String, ItemID: gItemID.String, Level: protocol.GrantLevel(gLevel.String)}
+		g := &protocol.Grant{ID: gID.String, OrgID: gOrgID.String, AgentID: gAgentID.String, SubjectKind: protocol.SubjectKind(gSubjectKind.String), ItemID: gItemID.String, Level: protocol.GrantLevel(gLevel.String)}
 		if len(gActions) > 0 {
 			_ = json.Unmarshal(gActions, &g.Actions)
 		}
@@ -1078,6 +1159,11 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 			r.Approval = &protocol.Approval{ID: apID.String, GrantID: apGrantID.String, HumanID: apHumanID.String, ExpiresAt: time.Unix(apExpires.Int64, 0).UTC()}
 		}
 	}
+	groups, err := s.groupIDs(r.Agent.MemberKeys())
+	if err != nil {
+		return UseAuth{}, err
+	}
+	r.Groups = groups
 	return r, nil
 }
 
@@ -1091,12 +1177,12 @@ func (s *SQLite) PutGrant(g protocol.Grant, events ...protocol.AuditEvent) error
 		exp = g.ExpiresAt.Unix()
 	}
 	return s.writeAudited(events, func(ex sqlExecer) error {
-		_, err := ex.Exec(`INSERT INTO grants(id, org_id, agent_id, item_id, level, actions, expires_at)
-			VALUES(?,?,?,?,?,?,?)
+		_, err := ex.Exec(`INSERT INTO grants(id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at)
+			VALUES(?,?,?,?,?,?,?,?)
 			ON CONFLICT(agent_id, item_id) DO UPDATE SET
-				id=excluded.id, org_id=excluded.org_id, level=excluded.level,
+				id=excluded.id, org_id=excluded.org_id, subject_kind=excluded.subject_kind, level=excluded.level,
 				actions=excluded.actions, expires_at=excluded.expires_at`,
-			g.ID, g.OrgID, g.AgentID, g.ItemID, g.Level, actions, exp)
+			g.ID, g.OrgID, g.AgentID, string(g.Subject()), g.ItemID, g.Level, actions, exp)
 		return err
 	})
 }
@@ -1105,7 +1191,7 @@ func scanGrant(scan func(dest ...any) error) (*protocol.Grant, error) {
 	var g protocol.Grant
 	var actions []byte
 	var exp sql.NullInt64
-	err := scan(&g.ID, &g.OrgID, &g.AgentID, &g.ItemID, &g.Level, &actions, &exp)
+	err := scan(&g.ID, &g.OrgID, &g.AgentID, &g.SubjectKind, &g.ItemID, &g.Level, &actions, &exp)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -1123,12 +1209,12 @@ func scanGrant(scan func(dest ...any) error) (*protocol.Grant, error) {
 }
 
 func (s *SQLite) Grant(id string) (*protocol.Grant, error) {
-	row := s.db.QueryRow(`SELECT id, org_id, agent_id, item_id, level, actions, expires_at FROM grants WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at FROM grants WHERE id=?`, id)
 	return scanGrant(row.Scan)
 }
 
 func (s *SQLite) GrantFor(agentID, itemID string) (*protocol.Grant, error) {
-	row := s.db.QueryRow(`SELECT id, org_id, agent_id, item_id, level, actions, expires_at FROM grants WHERE agent_id=? AND item_id=?`, agentID, itemID)
+	row := s.db.QueryRow(`SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at FROM grants WHERE agent_id=? AND item_id=?`, agentID, itemID)
 	g, err := scanGrant(row.Scan)
 	if err == ErrNotFound {
 		return nil, nil
@@ -1137,7 +1223,7 @@ func (s *SQLite) GrantFor(agentID, itemID string) (*protocol.Grant, error) {
 }
 
 func (s *SQLite) ListGrants() ([]protocol.Grant, error) {
-	rows, err := s.db.Query(`SELECT id, org_id, agent_id, item_id, level, actions, expires_at FROM grants ORDER BY id LIMIT ?`, maxListResults)
+	rows, err := s.db.Query(`SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at FROM grants ORDER BY id LIMIT ?`, maxListResults)
 	if err != nil {
 		return nil, err
 	}
@@ -1149,6 +1235,107 @@ func (s *SQLite) ListGrants() ([]protocol.Grant, error) {
 			return nil, err
 		}
 		out = append(out, *g)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) PutGroup(g protocol.Group, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(`INSERT INTO groups(id, org_id, name) VALUES(?,?,?)
+			ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id, name=excluded.name`,
+			g.ID, g.OrgID, g.Name)
+		return err
+	})
+}
+
+func (s *SQLite) Group(id string) (protocol.Group, error) {
+	var g protocol.Group
+	err := s.db.QueryRow(`SELECT id, org_id, name FROM groups WHERE id=?`, id).Scan(&g.ID, &g.OrgID, &g.Name)
+	if err == sql.ErrNoRows {
+		return protocol.Group{}, ErrNotFound
+	}
+	return g, err
+}
+
+func (s *SQLite) ListGroups() ([]protocol.Group, error) {
+	rows, err := s.db.Query(`SELECT id, org_id, name FROM groups ORDER BY org_id, name LIMIT ?`, maxListResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.Group
+	for rows.Next() {
+		var g protocol.Group
+		if err := rows.Scan(&g.ID, &g.OrgID, &g.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) groupExists(ex sqlExecer, groupID string) (bool, error) {
+	var one int
+	err := ex.QueryRow(`SELECT 1 FROM groups WHERE id=?`, groupID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (s *SQLite) AddGroupMember(groupID string, mb protocol.GroupMember, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		ok, err := s.groupExists(ex, groupID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		_, err = ex.Exec(`INSERT INTO group_members(group_id, member_kind, member_id) VALUES(?,?,?)
+			ON CONFLICT(group_id, member_kind, member_id) DO NOTHING`,
+			groupID, string(mb.MemberKind), mb.MemberID)
+		return err
+	})
+}
+
+func (s *SQLite) RemoveGroupMember(groupID string, mb protocol.GroupMember, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		ok, err := s.groupExists(ex, groupID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		_, err = ex.Exec(`DELETE FROM group_members WHERE group_id=? AND member_kind=? AND member_id=?`,
+			groupID, string(mb.MemberKind), mb.MemberID)
+		return err
+	})
+}
+
+func (s *SQLite) GroupMembers(groupID string) ([]protocol.GroupMember, error) {
+	ok, err := s.groupExists(s.db, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotFound
+	}
+	rows, err := s.db.Query(`SELECT group_id, member_kind, member_id FROM group_members WHERE group_id=? ORDER BY member_kind, member_id`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.GroupMember
+	for rows.Next() {
+		var m protocol.GroupMember
+		var kind string
+		if err := rows.Scan(&m.GroupID, &kind, &m.MemberID); err != nil {
+			return nil, err
+		}
+		m.MemberKind = protocol.PrincipalKind(kind)
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }
@@ -1457,10 +1644,13 @@ func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 	target, err := s.scanRequest(tx.QueryRow(`UPDATE approval_requests SET status='approved',
 		resolved_at=?, resolved_by=?, approval_id=? WHERE id=? AND status='open' AND expires_at > ?
 		AND EXISTS (SELECT 1 FROM grants g
-			JOIN agents ag ON ag.id = g.agent_id
 			JOIN items i ON i.id = g.item_id
+			LEFT JOIN agents ag ON g.subject_kind <> 'group' AND ag.id = g.agent_id
+			LEFT JOIN groups grp ON g.subject_kind = 'group' AND grp.id = g.agent_id
 			WHERE g.id=grant_id AND (g.expires_at IS NULL OR g.expires_at > ?)
-			AND ag.revoked_at IS NULL AND NOT i.archived)
+			AND NOT i.archived
+			AND ((g.subject_kind <> 'group' AND ag.id IS NOT NULL AND ag.revoked_at IS NULL)
+			  OR (g.subject_kind = 'group' AND grp.id IS NOT NULL)))
 		RETURNING `+requestCols, at.Unix(), appr.HumanID, appr.ID, id, at.Unix(), at.Unix()))
 	if err == sql.ErrNoRows {
 		return nil, false, nil
@@ -1490,15 +1680,18 @@ func (s *SQLite) ApproveRequest(id string, appr protocol.Approval, at time.Time)
 }
 
 // grantLiveForApprove reports whether a grant's edge is still usable:
-// grant unexpired, agent unrevoked, item not archived. Runs in the
-// caller's transaction.
+// grant unexpired, subject unrevoked (agent row, or the group row for a
+// group grant), item not archived. Runs in the caller's transaction.
 func grantLiveForApproveTx(tx *sql.Tx, grantID string, at time.Time) (bool, error) {
 	var one int
 	err := tx.QueryRow(`SELECT 1 FROM grants g
-		JOIN agents ag ON ag.id = g.agent_id
 		JOIN items i ON i.id = g.item_id
+		LEFT JOIN agents ag ON g.subject_kind <> 'group' AND ag.id = g.agent_id
+		LEFT JOIN groups grp ON g.subject_kind = 'group' AND grp.id = g.agent_id
 		WHERE g.id=? AND (g.expires_at IS NULL OR g.expires_at > ?)
-		AND ag.revoked_at IS NULL AND NOT i.archived`, grantID, at.Unix()).Scan(&one)
+		AND NOT i.archived
+		AND ((g.subject_kind <> 'group' AND ag.id IS NOT NULL AND ag.revoked_at IS NULL)
+		  OR (g.subject_kind = 'group' AND grp.id IS NOT NULL))`, grantID, at.Unix()).Scan(&one)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}

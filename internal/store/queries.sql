@@ -1,3 +1,9 @@
+-- The grant leg is picked by a LATERAL scalar: the principal's direct
+-- grant, else a grant to a group the principal holds membership in (its own
+-- rows plus, for a user-owned agent, the owner's). Precedence inside the
+-- candidate set: expired edges rank last, direct beats group, deny beats
+-- allow, a grant that resolves now (level2 or a live approval) beats a bare
+-- level1.
 -- name: UseAuth :one
 SELECT
     a.id AS agent_id,
@@ -20,6 +26,7 @@ SELECT
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
+    g.subject_kind AS grant_subject_kind,
     g.item_id AS grant_item_id,
     g.level AS grant_level,
     g.actions AS grant_actions,
@@ -27,11 +34,31 @@ SELECT
     ap.id AS approval_id,
     ap.grant_id AS approval_grant_id,
     ap.human_id AS approval_human_id,
-    ap.expires_at AS approval_expires_at
+    ap.expires_at AS approval_expires_at,
+    (SELECT array_agg(DISTINCT m.group_id) FROM group_members m
+     WHERE (m.member_kind = 'agent' AND m.member_id = a.id)
+        OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id))::text[] AS group_ids
 FROM (SELECT @agent_id::text AS agent_id, @item_id::text AS item_id, @now::timestamptz AS now) AS v
 LEFT JOIN agents a ON a.id = v.agent_id
 LEFT JOIN items i ON i.id = v.item_id
-LEFT JOIN grants g ON g.agent_id = v.agent_id AND g.item_id = i.id
+LEFT JOIN LATERAL (
+    SELECT gg.id AS win_id FROM grants gg
+    LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
+    WHERE gg.item_id = i.id
+      AND ((gg.subject_kind <> 'group' AND gg.agent_id = v.agent_id)
+        OR (gg.subject_kind = 'group' AND EXISTS (
+            SELECT 1 FROM group_members m WHERE m.group_id = gg.agent_id
+              AND ((m.member_kind = 'agent' AND m.member_id = v.agent_id)
+                OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id)))))
+    ORDER BY (gg.expires_at IS NOT NULL AND gg.expires_at <= v.now),
+             (gg.subject_kind = 'group'),
+             CASE WHEN gg.level = 'deny' THEN 0
+                  WHEN gg.level = 'level2' OR lap.id IS NOT NULL THEN 1
+                  ELSE 2 END,
+             gg.id
+    LIMIT 1
+) pick ON true
+LEFT JOIN grants g ON g.id = pick.win_id
 LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now;
 
 -- name: UseAuthSession :one
@@ -57,6 +84,7 @@ SELECT
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
+    g.subject_kind AS grant_subject_kind,
     g.item_id AS grant_item_id,
     g.level AS grant_level,
     g.actions AS grant_actions,
@@ -64,12 +92,32 @@ SELECT
     ap.id AS approval_id,
     ap.grant_id AS approval_grant_id,
     ap.human_id AS approval_human_id,
-    ap.expires_at AS approval_expires_at
+    ap.expires_at AS approval_expires_at,
+    (SELECT array_agg(DISTINCT m.group_id) FROM group_members m
+     WHERE (m.member_kind = 'agent' AND m.member_id = a.id)
+        OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id))::text[] AS group_ids
 FROM (SELECT @session_hash::bytea AS session_hash, @item_id::text AS item_id, @now::timestamptz AS now) AS v
 LEFT JOIN sessions s ON s.secret_hash = v.session_hash AND s.expires_at > v.now AND s.revoked_at IS NULL AND (s.max_uses = 0 OR s.uses < s.max_uses)
 LEFT JOIN agents a ON a.id = s.agent_id
 LEFT JOIN items i ON i.id = v.item_id
-LEFT JOIN grants g ON g.agent_id = s.agent_id AND g.item_id = i.id
+LEFT JOIN LATERAL (
+    SELECT gg.id AS win_id FROM grants gg
+    LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
+    WHERE gg.item_id = i.id
+      AND ((gg.subject_kind <> 'group' AND gg.agent_id = a.id)
+        OR (gg.subject_kind = 'group' AND EXISTS (
+            SELECT 1 FROM group_members m WHERE m.group_id = gg.agent_id
+              AND ((m.member_kind = 'agent' AND m.member_id = a.id)
+                OR (m.member_kind = 'human' AND a.owner_kind = 'user' AND m.member_id = a.owner_id)))))
+    ORDER BY (gg.expires_at IS NOT NULL AND gg.expires_at <= v.now),
+             (gg.subject_kind = 'group'),
+             CASE WHEN gg.level = 'deny' THEN 0
+                  WHEN gg.level = 'level2' OR lap.id IS NOT NULL THEN 1
+                  ELSE 2 END,
+             gg.id
+    LIMIT 1
+) pick ON true
+LEFT JOIN grants g ON g.id = pick.win_id
 LEFT JOIN approvals ap ON ap.grant_id = g.id AND ap.expires_at > v.now;
 
 -- name: ConsumeSession :one
@@ -174,23 +222,53 @@ UPDATE items SET secret = @secret::bytea WHERE id = @id::text;
 SELECT secret, org_id, owner_kind, owner_id FROM items WHERE id = @id::text;
 
 -- name: PutGrant :exec
-INSERT INTO grants(id, org_id, agent_id, item_id, level, actions, expires_at)
-VALUES(@id::text, @org_id::text, @agent_id::text, @item_id::text, @level::text, @actions::text, sqlc.narg(expires_at))
+INSERT INTO grants(id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at)
+VALUES(@id::text, @org_id::text, @agent_id::text, @subject_kind::text, @item_id::text, @level::text, @actions::text, sqlc.narg(expires_at))
 ON CONFLICT(agent_id, item_id) DO UPDATE SET
-    id=excluded.id, org_id=excluded.org_id, level=excluded.level,
+    id=excluded.id, org_id=excluded.org_id, subject_kind=excluded.subject_kind, level=excluded.level,
     actions=excluded.actions, expires_at=excluded.expires_at;
 
 -- name: GrantByID :one
-SELECT id, org_id, agent_id, item_id, level, actions, expires_at
+SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at
 FROM grants WHERE id = @id::text;
 
 -- name: GrantFor :one
-SELECT id, org_id, agent_id, item_id, level, actions, expires_at
+SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at
 FROM grants WHERE agent_id = @agent_id::text AND item_id = @item_id::text;
 
 -- name: ListGrants :many
-SELECT id, org_id, agent_id, item_id, level, actions, expires_at
+SELECT id, org_id, agent_id, subject_kind, item_id, level, actions, expires_at
 FROM grants ORDER BY id LIMIT @max_results::bigint;
+
+-- name: PutGroup :exec
+INSERT INTO groups(id, org_id, name) VALUES(@id::text, @org_id::text, @name::text)
+ON CONFLICT(id) DO UPDATE SET org_id=excluded.org_id, name=excluded.name;
+
+-- name: GroupByID :one
+SELECT id, org_id, name FROM groups WHERE id = @id::text;
+
+-- name: ListGroups :many
+SELECT id, org_id, name FROM groups ORDER BY org_id, name LIMIT @max_results::bigint;
+
+-- name: PutGroupMember :exec
+INSERT INTO group_members(group_id, member_kind, member_id)
+VALUES(@group_id::text, @member_kind::text, @member_id::text)
+ON CONFLICT(group_id, member_kind, member_id) DO NOTHING;
+
+-- name: DeleteGroupMember :exec
+DELETE FROM group_members
+WHERE group_id = @group_id::text AND member_kind = @member_kind::text AND member_id = @member_id::text;
+
+-- name: GroupMembers :many
+SELECT group_id, member_kind, member_id FROM group_members
+WHERE group_id = @group_id::text ORDER BY member_kind, member_id;
+
+-- name: GroupIDsFor :many
+-- The principal's group set: every membership edge naming one of the
+-- candidate members (the principal itself plus its user owner for agents).
+-- Keys are "kind:id" pairs so the two legs stay paired.
+SELECT DISTINCT group_id FROM group_members
+WHERE member_kind || ':' || member_id = ANY(@keys::text[]);
 
 -- name: PutApproval :exec
 INSERT INTO approvals(grant_id, id, human_id, expires_at)
@@ -259,11 +337,14 @@ SET status = 'approved', resolved_at = @at::timestamptz,
     resolved_by = @human_id::text, approval_id = @approval_id::text
 WHERE id = @id::text AND status = 'open' AND expires_at > @at::timestamptz
     AND EXISTS (SELECT 1 FROM grants g
-        JOIN agents ag ON ag.id = g.agent_id
         JOIN items i ON i.id = g.item_id
+        LEFT JOIN agents ag ON g.subject_kind <> 'group' AND ag.id = g.agent_id
+        LEFT JOIN groups grp ON g.subject_kind = 'group' AND grp.id = g.agent_id
         WHERE g.id = grant_id
         AND (g.expires_at IS NULL OR g.expires_at > @at::timestamptz)
-        AND ag.revoked_at IS NULL AND NOT i.archived)
+        AND NOT i.archived
+        AND ((g.subject_kind <> 'group' AND ag.id IS NOT NULL AND ag.revoked_at IS NULL)
+          OR (g.subject_kind = 'group' AND grp.id IS NOT NULL)))
 RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id;
 
@@ -272,11 +353,14 @@ RETURNING id, org_id, agent_id, item_id, grant_id, action, status, created_at,
 -- expired grant, revoked agent, or archived item — rather than mint an
 -- approval that can never be used.
 SELECT g.id FROM grants g
-JOIN agents ag ON ag.id = g.agent_id
 JOIN items i ON i.id = g.item_id
+LEFT JOIN agents ag ON g.subject_kind <> 'group' AND ag.id = g.agent_id
+LEFT JOIN groups grp ON g.subject_kind = 'group' AND grp.id = g.agent_id
 WHERE g.id = @grant_id::text
     AND (g.expires_at IS NULL OR g.expires_at > @at::timestamptz)
-    AND ag.revoked_at IS NULL AND NOT i.archived;
+    AND NOT i.archived
+    AND ((g.subject_kind <> 'group' AND ag.id IS NOT NULL AND ag.revoked_at IS NULL)
+      OR (g.subject_kind = 'group' AND grp.id IS NOT NULL));
 
 -- name: ApproveRequestsForGrant :many
 UPDATE approval_requests

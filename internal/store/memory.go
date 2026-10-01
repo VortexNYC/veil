@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/protocol"
 )
 
@@ -19,7 +20,9 @@ type Memory struct {
 	humans    map[string]protocol.Principal
 	items     map[string]protocol.Item
 	secrets   map[string]Secret
-	grants    map[string]protocol.Grant // key: agentID+"\x00"+itemID
+	grants    map[string]protocol.Grant // key: subjectID+"\x00"+itemID
+	groups    map[string]protocol.Group
+	members   map[string]protocol.GroupMember // key: groupID+"\x00"+kind+"\x00"+id
 	approvals map[string]protocol.Approval
 	requests  map[string]protocol.ApprovalRequest
 	audit     []protocol.AuditEvent
@@ -41,6 +44,8 @@ func NewMemory() *Memory {
 		items:     map[string]protocol.Item{},
 		secrets:   map[string]Secret{},
 		grants:    map[string]protocol.Grant{},
+		groups:    map[string]protocol.Group{},
+		members:   map[string]protocol.GroupMember{},
 		approvals: map[string]protocol.Approval{},
 		requests:  map[string]protocol.ApprovalRequest{},
 		workloads: map[string]protocol.Workload{},
@@ -355,6 +360,26 @@ func (m *Memory) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 	return m.useAuthLocked(agentID, itemID, now), nil
 }
 
+// groupIDsLocked is the agent's resolved group set: its own memberships
+// plus, for a user-owned agent, the owner's — an agent inherits its human's
+// team grants. Callers hold m.mu.
+func (m *Memory) groupIDsLocked(agent protocol.Principal) []string {
+	seen := map[string]struct{}{}
+	for _, key := range agent.MemberKeys() {
+		for _, mb := range m.members {
+			if mb.MemberKind == key.MemberKind && mb.MemberID == key.MemberID {
+				seen[mb.GroupID] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (m *Memory) useAuthLocked(agentID, itemID string, now time.Time) UseAuth {
 	var r UseAuth
 	if a, ok := m.agents[agentID]; ok {
@@ -363,9 +388,32 @@ func (m *Memory) useAuthLocked(agentID, itemID string, now time.Time) UseAuth {
 	if item, ok := m.items[itemID]; ok {
 		r.Item = item
 	}
-	if g, ok := m.grants[grantKey(agentID, itemID)]; ok {
-		cp := g
-		r.Grant = &cp
+	groups := m.groupIDsLocked(r.Agent)
+	r.Groups = groups
+	gset := make(map[string]struct{}, len(groups))
+	for _, id := range groups {
+		gset[id] = struct{}{}
+	}
+	var cands []protocol.Grant
+	if g, ok := m.grants[grantKey(agentID, itemID)]; ok && g.Subject() != protocol.SubjectGroup {
+		cands = append(cands, g)
+	}
+	for _, g := range m.grants {
+		if g.ItemID != itemID || g.Subject() != protocol.SubjectGroup {
+			continue
+		}
+		if _, ok := gset[g.AgentID]; ok {
+			cands = append(cands, g)
+		}
+	}
+	approved := map[string]bool{}
+	for _, c := range cands {
+		if a, ok := m.approvals[c.ID]; ok && now.Before(a.ExpiresAt) {
+			approved[c.ID] = true
+		}
+	}
+	if g := grant.Select(cands, now, approved); g != nil {
+		r.Grant = g
 		if a, ok := m.approvals[g.ID]; ok && now.Before(a.ExpiresAt) {
 			ap := a
 			r.Approval = &ap
@@ -440,6 +488,115 @@ func (m *Memory) GrantFor(agentID, itemID string) (*protocol.Grant, error) {
 	}
 	cp := g
 	return &cp, nil
+}
+
+func memberKey(groupID string, kind protocol.PrincipalKind, id string) string {
+	return groupID + "\x00" + string(kind) + "\x00" + id
+}
+
+func (m *Memory) PutGroup(g protocol.Group, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.groups {
+		if e.OrgID == g.OrgID && e.Name == g.Name && e.ID != g.ID {
+			return fmt.Errorf("store: group name taken")
+		}
+	}
+	m.groups[g.ID] = g
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
+func (m *Memory) Group(id string) (protocol.Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.groups[id]
+	if !ok {
+		return protocol.Group{}, ErrNotFound
+	}
+	return g, nil
+}
+
+func (m *Memory) ListGroups() ([]protocol.Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]protocol.Group, 0, len(m.groups))
+	for _, g := range m.groups {
+		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].OrgID != out[j].OrgID {
+			return out[i].OrgID < out[j].OrgID
+		}
+		return out[i].Name < out[j].Name
+	})
+	if len(out) > maxListResults {
+		out = out[:maxListResults]
+	}
+	return out, nil
+}
+
+func (m *Memory) AddGroupMember(groupID string, mb protocol.GroupMember, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.groups[groupID]; !ok {
+		return ErrNotFound
+	}
+	mb.GroupID = groupID
+	m.members[memberKey(groupID, mb.MemberKind, mb.MemberID)] = mb
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
+func (m *Memory) RemoveGroupMember(groupID string, mb protocol.GroupMember, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.groups[groupID]; !ok {
+		return ErrNotFound
+	}
+	delete(m.members, memberKey(groupID, mb.MemberKind, mb.MemberID))
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
+func (m *Memory) GroupMembers(groupID string) ([]protocol.GroupMember, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.groups[groupID]; !ok {
+		return nil, ErrNotFound
+	}
+	var out []protocol.GroupMember
+	for _, mb := range m.members {
+		if mb.GroupID == groupID {
+			out = append(out, mb)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].MemberKind != out[j].MemberKind {
+			return out[i].MemberKind < out[j].MemberKind
+		}
+		return out[i].MemberID < out[j].MemberID
+	})
+	return out, nil
+}
+
+func (m *Memory) GroupIDsFor(members []protocol.GroupMember) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := map[string]struct{}{}
+	for _, key := range members {
+		for _, mb := range m.members {
+			if mb.MemberKind == key.MemberKind && mb.MemberID == key.MemberID {
+				seen[mb.GroupID] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (m *Memory) ListGrants() ([]protocol.Grant, error) {
@@ -623,7 +780,11 @@ func (m *Memory) grantEdgeLive(grantID string, at time.Time) bool {
 	if g == nil || (g.ExpiresAt != nil && !at.Before(*g.ExpiresAt)) {
 		return false
 	}
-	if a, ok := m.agents[g.AgentID]; ok && a.RevokedAt != nil {
+	if g.Subject() == protocol.SubjectGroup {
+		if _, ok := m.groups[g.AgentID]; !ok {
+			return false
+		}
+	} else if a, ok := m.agents[g.AgentID]; ok && a.RevokedAt != nil {
 		return false
 	}
 	if it, ok := m.items[g.ItemID]; ok && it.Archived {

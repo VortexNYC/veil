@@ -40,11 +40,14 @@ type Secret []byte
 
 // UseAuth is the consolidated authorization snapshot for a single Use call.
 // It is returned by Store.UseAuth in one round trip and contains no secret.
+// Groups is the agent's resolved group set — the ids the group-grant leg of
+// the lookup already matched against.
 type UseAuth struct {
 	Agent    protocol.Principal
 	Item     protocol.Item
 	Grant    *protocol.Grant
 	Approval *protocol.Approval
+	Groups   []string
 }
 
 // FileOutcome is what one FileRequest did: the live ask, whether this call
@@ -185,6 +188,21 @@ type Store interface {
 	Grant(id string) (*protocol.Grant, error)
 	GrantFor(agentID, itemID string) (*protocol.Grant, error)
 	ListGrants() ([]protocol.Grant, error)
+
+	// Groups are vault data (VEIL-20): an org-owned item plus a grant to a
+	// group is the shared-vault shape. PutGroup upserts by id; the name is
+	// unique per org. Membership is idempotent — adding an existing member
+	// is a no-op, removing an absent one succeeds.
+	PutGroup(protocol.Group, ...protocol.AuditEvent) error
+	Group(id string) (protocol.Group, error)
+	ListGroups() ([]protocol.Group, error)
+	AddGroupMember(groupID string, m protocol.GroupMember, events ...protocol.AuditEvent) error
+	RemoveGroupMember(groupID string, m protocol.GroupMember, events ...protocol.AuditEvent) error
+	GroupMembers(groupID string) ([]protocol.GroupMember, error)
+	// GroupIDsFor resolves the distinct groups holding any of the passed
+	// members — a principal passes its MemberKeys (itself plus, for a
+	// user-owned agent, the owning human).
+	GroupIDsFor(members []protocol.GroupMember) ([]string, error)
 
 	PutApproval(protocol.Approval) error
 	LiveApproval(grantID string, now time.Time) (*protocol.Approval, error)

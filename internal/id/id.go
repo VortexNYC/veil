@@ -36,6 +36,19 @@ func NewItem() (string, error) {
 	return s, nil
 }
 
+// NewGroup is a random group row id. The name is the org-scoped handle.
+func NewGroup() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	s := "g" + hex.EncodeToString(b[:])
+	if !Valid(s) {
+		return "", fmt.Errorf("id: generated invalid group id")
+	}
+	return s, nil
+}
+
 // NewOrg is a uuid v4 — the same join-key shape Kratos organization_id and
 // the Keto object use.
 func NewOrg() (string, error) {

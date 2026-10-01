@@ -31,11 +31,28 @@ CREATE TABLE grants (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
+    subject_kind TEXT NOT NULL DEFAULT 'agent',
     item_id TEXT NOT NULL,
     level TEXT NOT NULL,
     actions TEXT NOT NULL,
     expires_at TIMESTAMPTZ,
     UNIQUE(agent_id, item_id)
+);
+
+-- Org-scoped principal sets (VEIL-20). agent_id on a group grant carries
+-- the group id; membership edges name agents and humans.
+CREATE TABLE groups (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE(org_id, name)
+);
+
+CREATE TABLE group_members (
+    group_id TEXT NOT NULL,
+    member_kind TEXT NOT NULL,
+    member_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, member_kind, member_id)
 );
 
 CREATE TABLE approvals (
@@ -195,6 +212,7 @@ CREATE INDEX idx_items_login_trgm ON items USING GIN (login gin_trgm_ops);
 CREATE INDEX idx_items_org_name ON items(org_id, name);
 CREATE INDEX idx_items_org_archived_name ON items(org_id, archived, name);
 CREATE INDEX idx_grants_item ON grants(item_id);
+CREATE INDEX idx_group_members_member ON group_members(member_kind, member_id);
 CREATE INDEX idx_audit_agent_at ON audit(agent_id, at);
 CREATE INDEX idx_audit_at ON audit(at);
 CREATE INDEX idx_sessions_expires ON sessions(expires_at);
