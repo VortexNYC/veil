@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'nyc.veil.phone'
+version = '0.1.0'
+
+android {
+  namespace "nyc.veil.identitysync"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  implementation "androidx.biometric:biometric:1.1.0"
+  implementation "androidx.credentials:credentials:1.5.0"
+}

@@ -1,5 +1,5 @@
 .expo/
 dist/
-ios/
-android/
+/ios/
+/android/
 *.orig.*

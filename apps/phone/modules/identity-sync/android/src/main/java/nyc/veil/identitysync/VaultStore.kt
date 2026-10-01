@@ -1,0 +1,141 @@
+package nyc.veil.identitysync
+
+import android.content.Context
+import android.util.Log
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+// Mirrors the iOS appex's VaultStore: reads the handoff the containing app
+// wrote (token + item metadata — never secrets) and calls the origin's fill
+// endpoint only *after* the biometric gate passed. Failures are quiet —
+// autofill must fail closed, not leak.
+
+internal object VaultStore {
+    private const val TAG = "veil-autofill"
+
+    fun log(msg: String) = Log.i(TAG, msg)
+
+    internal fun handoff(ctx: Context): JSONObject? = try {
+        val f = handoffFile(ctx)
+        if (f.exists()) JSONObject(f.readText()) else null
+    } catch (_: Exception) { null }
+
+    /// Vault items whose URI list contains `host`. Password kinds only —
+    /// passkeys go through Credential Manager, not form autofill.
+    internal fun matching(ctx: Context, host: String): List<JSONObject> {
+        val h = handoff(ctx) ?: return emptyList()
+        val items = h.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<JSONObject>()
+        for (i in 0 until items.length()) {
+            val it = items.optJSONObject(i) ?: continue
+            val kind = it.optString("kind")
+            if (kind != "api_key" && kind != "login") continue
+            val uris = it.optJSONArray("uris") ?: continue
+            for (j in 0 until uris.length()) {
+                if (hostOf(uris.optString(j)) == host) { out.add(it); break }
+            }
+        }
+        return out
+    }
+
+    /// Passkey items — CredMan matches by rpId in the RP's request JSON,
+    /// not by page URIs.
+    internal fun matchingPasskeys(ctx: Context, rpId: String): List<JSONObject> {
+        val h = handoff(ctx) ?: return emptyList()
+        val items = h.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<JSONObject>()
+        for (i in 0 until items.length()) {
+            val it = items.optJSONObject(i) ?: continue
+            if (it.optString("kind") != "passkey") continue
+            if (rpId.isEmpty() || it.optString("rpId") == rpId) out.add(it)
+        }
+        return out
+    }
+
+    /// Every password-kind item — the CredMan fallback when the calling app
+    /// doesn't populate a web origin to match against.
+    internal fun allPasswords(ctx: Context): List<JSONObject> {
+        val h = handoff(ctx) ?: return emptyList()
+        val items = h.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<JSONObject>()
+        for (i in 0 until items.length()) {
+            val it = items.optJSONObject(i) ?: continue
+            val kind = it.optString("kind")
+            if (kind == "api_key" || kind == "login") out.add(it)
+        }
+        return out
+    }
+
+    internal fun hostOf(uri: String): String? {
+        val u = if (uri.startsWith("http")) uri else "https://$uri"
+        return try { URL(u).host?.takeIf { it.isNotEmpty() } } catch (_: Exception) { null }
+    }
+
+    /// POST /v1/fill/logins — the only call that releases a secret. Caller
+    /// must already have passed BiometricPrompt; the audit row lands
+    /// server-side. Returns (login, password) or null on any failure.
+    internal fun fill(ctx: Context, uuid: String, url: String): Pair<String, String>? {
+        val h = handoff(ctx) ?: run { log("no handoff"); return null }
+        val body = JSONObject().apply {
+            put("uuid", uuid)
+            put("url", url)
+        }
+        return try {
+            val conn = (URL(h.getString("origin") + "/v1/fill/logins").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                setRequestProperty("Authorization", "Bearer ${h.getString("token")}")
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+            }
+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
+            if (conn.responseCode != 200) {
+                log("fill http ${conn.responseCode}")
+                return null
+            }
+            val resp = JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
+            val entry = resp.optJSONArray("entries")?.optJSONObject(0)
+            val login = entry?.optString("login")
+            val password = entry?.optString("password")
+            if (login.isNullOrEmpty() || password.isNullOrEmpty()) null else login to password
+        } catch (e: Exception) {
+            log("fill error ${e.javaClass.simpleName}")
+            null
+        }
+    }
+
+    /// WebAuthn ceremony through the origin — same contract as iOS. The
+    /// caller passes the RP's publicKey request object verbatim; the reply's
+    /// `response` is a PublicKeyCredential-shaped JSON ready to hand to
+    /// Credential Manager. The biometric gate precedes this call.
+    internal fun passkeys(ctx: Context, register: Boolean, origin: String, publicKey: JSONObject): String? {
+        val h = handoff(ctx) ?: run { log("no handoff"); return null }
+        val path = if (register) "/v1/fill/passkeys/register" else "/v1/fill/passkeys/get"
+        val body = JSONObject().apply {
+            put("origin", origin)
+            put("publicKey", publicKey)
+        }
+        return try {
+            val conn = (URL(h.getString("origin") + path).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                setRequestProperty("Authorization", "Bearer ${h.getString("token")}")
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+            }
+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
+            if (conn.responseCode != 200) {
+                log("passkeys http ${conn.responseCode}")
+                return null
+            }
+            JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
+                .optJSONObject("response")?.toString()
+        } catch (e: Exception) {
+            log("passkeys error ${e.javaClass.simpleName}")
+            null
+        }
+    }
+}

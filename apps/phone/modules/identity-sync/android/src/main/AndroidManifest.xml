@@ -1,0 +1,33 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Android AutoFill provider: parse forms, offer vault matches, gate
+         every release behind FillAuthActivity's BiometricPrompt. -->
+    <service
+      android:name=".VeilAutofillService"
+      android:label="Veil"
+      android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.service.autofill.AutofillService"/>
+      </intent-filter>
+      <meta-data android:name="android.autofill" android:resource="@xml/autofill_service"/>
+    </service>
+    <!-- Credential Manager provider — the surface Chrome and modern apps
+         actually query on Android 14+. -->
+    <service
+      android:name=".VeilCredentialProviderService"
+      android:label="Veil"
+      android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.service.credentials.CredentialProviderService"/>
+      </intent-filter>
+      <meta-data android:name="android.credentials.provider" android:resource="@xml/credential_provider"/>
+    </service>
+    <activity
+      android:name=".FillAuthActivity"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar"
+      android:exported="false"
+      android:excludeFromRecents="true"/>
+  </application>
+</manifest>

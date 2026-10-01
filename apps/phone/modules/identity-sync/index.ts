@@ -18,7 +18,7 @@ type NativeIdentitySync = {
 };
 
 function native(): NativeIdentitySync | null {
-  if (Platform.OS !== "ios") return null;
+  if (Platform.OS === "web") return null;
   try {
     return requireNativeModule<NativeIdentitySync>("IdentitySync");
   } catch {
@@ -26,9 +26,10 @@ function native(): NativeIdentitySync | null {
   }
 }
 
-/** Publish the credential handoff the AutoFill appex reads: the bearer
- *  token plus item metadata (never secrets) into the shared app-group
- *  container, then push QuickType identities to ASCredentialIdentityStore. */
+/** Publish the credential handoff the AutoFill provider reads: the bearer
+ *  token plus item metadata (never secrets). iOS writes the shared app-group
+ *  container + pushes QuickType identities; Android drops the file in
+ *  filesDir where VeilAutofillService reads it in-process. */
 export async function syncAutofill(token: string, origin: string, items: HandoffItem[]): Promise<void> {
   await native()?.syncAutofill(token, origin, items);
 }

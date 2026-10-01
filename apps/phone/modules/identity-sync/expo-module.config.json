@@ -1,6 +1,9 @@
 {
-  "platforms": ["ios"],
+  "platforms": ["ios", "android"],
   "ios": {
     "modules": ["IdentitySyncModule"]
+  },
+  "android": {
+    "modules": ["nyc.veil.identitysync.IdentitySyncModule"]
   }
 }
