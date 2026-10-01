@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as OidcCallbackRouteImport } from './routes/oidc.callback'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppRequestsRouteImport } from './routes/_app/requests'
+import { Route as AppReportRouteImport } from './routes/_app/report'
 import { Route as AppItemsRouteImport } from './routes/_app/items'
 import { Route as AppInvitesRouteImport } from './routes/_app/invites'
 import { Route as AppGrantsRouteImport } from './routes/_app/grants'
@@ -42,6 +43,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppRequestsRoute = AppRequestsRouteImport.update({
   id: '/requests',
   path: '/requests',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReportRoute = AppReportRouteImport.update({
+  id: '/report',
+  path: '/report',
   getParentRoute: () => AppRoute,
 } as any)
 const AppItemsRoute = AppItemsRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/grants': typeof AppGrantsRoute
   '/invites': typeof AppInvitesRoute
   '/items': typeof AppItemsRoute
+  '/report': typeof AppReportRoute
   '/requests': typeof AppRequestsRoute
   '/settings': typeof AppSettingsRoute
   '/oidc/callback': typeof OidcCallbackRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/grants': typeof AppGrantsRoute
   '/invites': typeof AppInvitesRoute
   '/items': typeof AppItemsRoute
+  '/report': typeof AppReportRoute
   '/requests': typeof AppRequestsRoute
   '/settings': typeof AppSettingsRoute
   '/oidc/callback': typeof OidcCallbackRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/_app/grants': typeof AppGrantsRoute
   '/_app/invites': typeof AppInvitesRoute
   '/_app/items': typeof AppItemsRoute
+  '/_app/report': typeof AppReportRoute
   '/_app/requests': typeof AppRequestsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/oidc/callback': typeof OidcCallbackRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/grants'
     | '/invites'
     | '/items'
+    | '/report'
     | '/requests'
     | '/settings'
     | '/oidc/callback'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/grants'
     | '/invites'
     | '/items'
+    | '/report'
     | '/requests'
     | '/settings'
     | '/oidc/callback'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/_app/grants'
     | '/_app/invites'
     | '/_app/items'
+    | '/_app/report'
     | '/_app/requests'
     | '/_app/settings'
     | '/oidc/callback'
@@ -185,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRequestsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/report': {
+      id: '/_app/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof AppReportRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/items': {
       id: '/_app/items'
       path: '/items'
@@ -229,6 +248,7 @@ interface AppRouteChildren {
   AppGrantsRoute: typeof AppGrantsRoute
   AppInvitesRoute: typeof AppInvitesRoute
   AppItemsRoute: typeof AppItemsRoute
+  AppReportRoute: typeof AppReportRoute
   AppRequestsRoute: typeof AppRequestsRoute
   AppSettingsRoute: typeof AppSettingsRoute
 }
@@ -239,6 +259,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGrantsRoute: AppGrantsRoute,
   AppInvitesRoute: AppInvitesRoute,
   AppItemsRoute: AppItemsRoute,
+  AppReportRoute: AppReportRoute,
   AppRequestsRoute: AppRequestsRoute,
   AppSettingsRoute: AppSettingsRoute,
 }

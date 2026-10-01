@@ -3,6 +3,7 @@ import { Sidebar } from "@cloudflare/kumo/components/sidebar";
 import { Text } from "@cloudflare/kumo/components/text";
 import {
   Gear,
+  Heartbeat,
   Key,
   ListBullets,
   Robot,
@@ -29,11 +30,12 @@ export const Route = createFileRoute("/_app")({
 });
 
 const nav: ReadonlyArray<{
-  to: "/items" | "/grants" | "/requests" | "/agents" | "/invites" | "/audit" | "/settings";
+  to: "/items" | "/grants" | "/requests" | "/agents" | "/invites" | "/audit" | "/report" | "/settings";
   label: string;
   icon: Icon;
 }> = [
   { to: "/items", label: "Items", icon: Key },
+  { to: "/report", label: "Report", icon: Heartbeat },
   { to: "/grants", label: "Grants", icon: Users },
   { to: "/requests", label: "Requests", icon: Stamp },
   { to: "/agents", label: "Agents", icon: Robot },
