@@ -184,8 +184,11 @@ To recover to an arbitrary timestamp — not just the last dump:
 list_keys() { # list_keys <prefix> — emits every key under a prefix
   cursor=""
   while :; do
+    # Never send cursor= empty — the worker forwards "" to R2 list() and
+    # throws (HTTP 1101). Omit the param until the first page returns one.
+    qs="prefix=$1"; [ -n "$cursor" ] && qs="$qs&cursor=$cursor"
     out=$(curl -fsS -H "Authorization: Bearer $OFFSITE_TOKEN" \
-      "https://backup-ingest.veil.nyc/v1/?prefix=$1&cursor=$cursor")
+      "https://backup-ingest.veil.nyc/v1/?$qs")
     echo "$out" | jq -r '.keys[].key'
     cursor=$(echo "$out" | jq -r '.cursor // empty')
     [ -n "$cursor" ] || break
@@ -304,6 +307,35 @@ the binary.
     recovery correctly *failed* to reach the target (`recovery ended
     before configured recovery target was reached`) until the next
     archiver push landed — partial-segment lag is the real RPO bound.
+
+## Recurring cadence (VEIL-80)
+
+The dump-restore drill is scripted and scheduled — it runs itself now, not
+on someone's memory:
+
+- `scripts/drill-restore.sh` runs the whole thing unattended: newest R2
+  dump set → all four databases into a scratch `postgres:18` container →
+  counts sanity → `drillrestore` decrypt + `-wrongkek` fail-closed →
+  audit-archive coverage of the restored table's `max(id)`. ~15s. Exit 0
+  on `DRILL PASS`, 1 on `DRILL FAIL`. Never prints secret bytes.
+- LaunchAgent `nyc.veil.drill` (`~/Library/LaunchAgents/nyc.veil.drill.plist`
+  on the ops host) runs it **every Monday 07:00 local**. Kick it by hand:
+  `launchctl kickstart gui/$(id -u)/nyc.veil.drill`.
+- Artifacts land in `~/.local/state/veil/drills/<UTC-stamp>/` — the four
+  dumps, the drill log, the fetched audit object. launchd's own stdout/stderr
+  are `launchd.out.log` / `launchd.err.log` alongside them.
+- **Findings loop:** a `DRILL FAIL` line in the newest log is the finding.
+  `fail()` fires a macOS notification and exits nonzero; the log names the
+  broken stage. Investigation starts from that line — the dumps and the
+  scratch log are already in the run dir. PITR drills stay manual per the
+  section above — run one after any archiver or base-backup change, and at
+  least quarterly.
+- Needs on the host: `docker` running, `jq`, `op` (Agents vault →
+  `Veil backup-ingest token`), the escrowed KEK at
+  `~/.config/vortex/veil-kek`, and `go` for `drillrestore`. First proven
+  under launchd 2026-10-01 (`20261001-161243`: all four restored,
+  `github` decrypts, wrong-KEK fails closed, audit archive covers
+  max(id)=1614).
 
 ## The drill tool
 
