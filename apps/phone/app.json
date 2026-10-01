@@ -22,7 +22,8 @@
         "NSFaceIDUsageDescription": "Veil uses Face ID before a password leaves the vault."
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.nyc.veil.phone"]
+        "com.apple.security.application-groups": ["group.nyc.veil.phone"],
+        "com.apple.developer.authentication-services.autofill-credential-provider": true
       }
     },
     "android": {
