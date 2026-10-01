@@ -1,5 +1,6 @@
-// Package oneimport turns a 1Password .1pux zip or a CSV dump into draft
-// items. One shot onto origin. Not Connect. Not MCP. Not sync.
+// Package oneimport turns a 1Password .1pux zip, an Apple Passwords or
+// Bitwarden CSV, or a Bitwarden unencrypted JSON export into draft items.
+// One shot onto origin. Not Connect. Not MCP. Not sync.
 package oneimport
 
 import (
@@ -42,6 +43,10 @@ func Parse(name string, raw []byte) ([]Row, error) {
 	lower := strings.ToLower(name)
 	if bytes.HasPrefix(raw, []byte("PK")) || strings.HasSuffix(lower, ".1pux") {
 		return parse1pux(raw)
+	}
+	sniff := bytes.TrimSpace(bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}))
+	if len(sniff) > 0 && sniff[0] == '{' || strings.HasSuffix(lower, ".json") {
+		return parseBitwardenJSON(raw)
 	}
 	return parseCSV(raw)
 }
@@ -230,18 +235,7 @@ func puxIdentity(name string, uris []string, it puxItem) (Row, bool) {
 }
 
 func puxNote(name string, uris []string, it puxItem) (Row, bool) {
-	notes := strings.TrimSpace(it.Details.Notes)
-	if notes == "" {
-		return Row{}, false
-	}
-	return Row{
-		Name:     name,
-		Kind:     protocol.ItemFile,
-		URIs:     uris,
-		File:     []byte(notes),
-		FileName: name + ".txt",
-		MIME:     "text/plain",
-	}, true
+	return noteRow(name, uris, it.Details.Notes)
 }
 
 func puxSSH(name string, uris []string, it puxItem) (Row, bool) {
@@ -470,6 +464,11 @@ func csvRow(idx map[string]int, rec []string) (Row, bool) {
 	case "true", "1", "yes":
 		return Row{}, false
 	}
+	// Bitwarden CSV marks rows by type; notes carry their body in notes.
+	switch strings.ToLower(cell("type")) {
+	case "note", "securenote", "secure note":
+		return noteRow(name, nil, cell("notes"))
+	}
 	pass := cell("password")
 	totp := otpSeed(cell("totp"))
 	if pass == "" && totp == "" {
@@ -486,6 +485,178 @@ func csvRow(idx map[string]int, rec []string) (Row, bool) {
 		Login:    cell("username"),
 		Token:    []byte(pass),
 		TOTPSeed: []byte(totp),
+	}, true
+}
+
+// Bitwarden's unencrypted JSON export is one object with items[].type:
+// 1 login, 2 secure note, 3 card, 4 identity. deletedDate non-null is
+// their trash. Encrypted and password-protected exports are refused —
+// we never hold the vault key.
+type bwExport struct {
+	Encrypted         bool     `json:"encrypted"`
+	PasswordProtected bool     `json:"passwordProtected"`
+	Items             []bwItem `json:"items"`
+}
+
+type bwItem struct {
+	Type        int    `json:"type"`
+	Name        string `json:"name"`
+	Notes       string `json:"notes"`
+	DeletedDate string `json:"deletedDate"`
+	Login       *struct {
+		URIs []struct {
+			URI string `json:"uri"`
+		} `json:"uris"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		TOTP     string `json:"totp"`
+	} `json:"login"`
+	Card *struct {
+		Holder string `json:"cardholderName"`
+		Number string `json:"number"`
+		ExpM   string `json:"expMonth"`
+		ExpY   string `json:"expYear"`
+		Code   string `json:"code"`
+	} `json:"card"`
+	Identity *struct {
+		First   string `json:"firstName"`
+		Last    string `json:"lastName"`
+		Addr1   string `json:"address1"`
+		Addr2   string `json:"address2"`
+		Addr3   string `json:"address3"`
+		City    string `json:"city"`
+		State   string `json:"state"`
+		Postal  string `json:"postalCode"`
+		Country string `json:"country"`
+		Phone   string `json:"phone"`
+		Email   string `json:"email"`
+	} `json:"identity"`
+}
+
+func parseBitwardenJSON(raw []byte) ([]Row, error) {
+	var dump bwExport
+	if json.Unmarshal(bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}), &dump) != nil || dump.Items == nil {
+		return nil, fmt.Errorf("import: not a bitwarden json export")
+	}
+	if dump.Encrypted || dump.PasswordProtected {
+		return nil, fmt.Errorf("import: encrypted bitwarden export — export unencrypted")
+	}
+	var out []Row
+	for _, it := range dump.Items {
+		row, ok := bwRow(it)
+		if ok {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func bwRow(it bwItem) (Row, bool) {
+	if strings.TrimSpace(it.DeletedDate) != "" {
+		return Row{}, false
+	}
+	name := strings.TrimSpace(it.Name)
+	if name == "" {
+		return Row{}, false
+	}
+	switch it.Type {
+	case 1:
+		return bwLogin(name, it)
+	case 2:
+		return noteRow(name, nil, it.Notes)
+	case 3:
+		return bwCard(name, it)
+	case 4:
+		return bwIdentity(name, it)
+	default:
+		return Row{}, false
+	}
+}
+
+func bwLogin(name string, it bwItem) (Row, bool) {
+	if it.Login == nil {
+		return Row{}, false
+	}
+	seen := map[string]struct{}{}
+	var uris []string
+	for _, u := range it.Login.URIs {
+		u.URI = strings.TrimSpace(u.URI)
+		if u.URI == "" {
+			continue
+		}
+		if _, ok := seen[u.URI]; ok {
+			continue
+		}
+		seen[u.URI] = struct{}{}
+		uris = append(uris, u.URI)
+	}
+	pass := it.Login.Password
+	totp := otpSeed(it.Login.TOTP)
+	if strings.TrimSpace(pass) == "" && totp == "" {
+		return Row{}, false
+	}
+	return Row{
+		Name:     name,
+		Kind:     protocol.ItemAPIKey,
+		URIs:     uris,
+		Login:    strings.TrimSpace(it.Login.Username),
+		Token:    []byte(pass),
+		TOTPSeed: []byte(totp),
+	}, true
+}
+
+func bwCard(name string, it bwItem) (Row, bool) {
+	if it.Card == nil {
+		return Row{}, false
+	}
+	blob, err := material.PackCard(it.Card.Number, it.Card.ExpM, it.Card.ExpY, it.Card.Code, it.Card.Holder)
+	if err != nil {
+		return Row{}, false
+	}
+	return Row{Name: name, Kind: protocol.ItemCard, Token: blob}, true
+}
+
+func bwIdentity(name string, it bwItem) (Row, bool) {
+	if it.Identity == nil {
+		return Row{}, false
+	}
+	var street []string
+	for _, l := range []string{it.Identity.Addr1, it.Identity.Addr2, it.Identity.Addr3} {
+		if l = strings.TrimSpace(l); l != "" {
+			street = append(street, l)
+		}
+	}
+	blob, err := material.PackIdentity(
+		it.Identity.First,
+		it.Identity.Last,
+		strings.Join(street, ", "),
+		it.Identity.City,
+		it.Identity.State,
+		it.Identity.Postal,
+		it.Identity.Country,
+		it.Identity.Phone,
+		it.Identity.Email,
+	)
+	if err != nil {
+		return Row{}, false
+	}
+	return Row{Name: name, Kind: protocol.ItemIdentity, Token: blob}, true
+}
+
+// noteRow is the shared secure-note shape: body lands in File so it
+// seals like a document and never lists.
+func noteRow(name string, uris []string, notes string) (Row, bool) {
+	notes = strings.TrimSpace(notes)
+	if notes == "" {
+		return Row{}, false
+	}
+	return Row{
+		Name:     name,
+		Kind:     protocol.ItemFile,
+		URIs:     uris,
+		File:     []byte(notes),
+		FileName: name + ".txt",
+		MIME:     "text/plain",
 	}, true
 }
 

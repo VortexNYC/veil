@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -549,6 +550,35 @@ func (a *App) PutItem(opts ItemOpts) (protocol.Item, error) {
 type ImportResult struct {
 	Names []string `json:"names"`
 	Count int      `json:"count"`
+	// Skipped names already in the vault. Local CLI shows them; the origin
+	// ImportResponse schema is names+count only (spec is SDK-locked).
+	Skipped []string `json:"skipped,omitempty"`
+}
+
+// importKey fingerprints a row for dedup: name + kind + login + the full
+// URI set — the identity a password-manager export carries. Secrets are
+// deliberately not in the key: on a match we skip, never update. Import
+// is additive only — a stale export must not roll back a rotated
+// password, so re-running the same file is a no-op.
+func importKey(kind protocol.ItemKind, name, login string, uris []string) string {
+	u := append([]string(nil), uris...)
+	for i := range u {
+		u[i] = strings.TrimSpace(u[i])
+	}
+	sort.Strings(u)
+	return string(kind) + "\x00" + name + "\x00" + login + "\x00" + strings.Join(u, "\x00")
+}
+
+// rowKind mirrors PutItem's kind resolution so the dedup key matches what
+// the store would record.
+func rowKind(r oneimport.Row) protocol.ItemKind {
+	if r.Kind != "" {
+		return r.Kind
+	}
+	if len(r.File) > 0 {
+		return protocol.ItemFile
+	}
+	return protocol.ItemAPIKey
 }
 
 func (a *App) ImportItems(p protocol.Principal, rows []oneimport.Row) (ImportResult, error) {
@@ -562,8 +592,22 @@ func (a *App) ImportItems(p protocol.Principal, rows []oneimport.Row) (ImportRes
 	if !ok {
 		return ImportResult{}, fmt.Errorf("app: import is owner")
 	}
+	existing, err := a.Store.ListItems()
+	if err != nil {
+		return ImportResult{}, err
+	}
+	seen := make(map[string]struct{}, len(existing)+len(rows))
+	for _, it := range existing {
+		seen[importKey(it.Kind, it.Name, it.Login, it.URIs)] = struct{}{}
+	}
 	names := make([]string, 0, len(rows))
+	var skipped []string
 	for _, row := range rows {
+		key := importKey(rowKind(row), strings.TrimSpace(row.Name), strings.TrimSpace(row.Login), row.URIs)
+		if _, dup := seen[key]; dup {
+			skipped = append(skipped, row.Name)
+			continue
+		}
 		itemID, err := id.NewItem()
 		if err != nil {
 			return ImportResult{}, err
@@ -583,9 +627,10 @@ func (a *App) ImportItems(p protocol.Principal, rows []oneimport.Row) (ImportRes
 		if err != nil {
 			return ImportResult{}, err
 		}
+		seen[key] = struct{}{}
 		names = append(names, item.Name)
 	}
-	return ImportResult{Names: names, Count: len(names)}, nil
+	return ImportResult{Names: names, Count: len(names), Skipped: skipped}, nil
 }
 
 func unionURIs(have, add []string) []string {

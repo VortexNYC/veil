@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/VortexNYC/veil/internal/material"
@@ -68,6 +70,130 @@ func TestParseCSVApplePasswords(t *testing.T) {
 	}
 	if string(rows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" {
 		t.Fatalf("totp %+v", rows[0])
+	}
+}
+
+func fixture(t *testing.T, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestParseApplePasswordsFixture(t *testing.T) {
+	rows, err := Parse("Passwords.csv", fixture(t, "apple-passwords.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("n=%d %+v", len(rows), rows)
+	}
+	if rows[0].Name != "GitHub" || rows[0].Kind != protocol.ItemAPIKey || rows[0].Login != "ada" || string(rows[0].Token) != "s3cret" {
+		t.Fatalf("%+v", rows[0])
+	}
+	if len(rows[0].URIs) != 1 || rows[0].URIs[0] != "https://github.com" {
+		t.Fatalf("uris %+v", rows[0])
+	}
+	if string(rows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("totp %+v", rows[0])
+	}
+	if rows[1].Name != "Bank" || len(rows[1].TOTPSeed) != 0 {
+		t.Fatalf("%+v", rows[1])
+	}
+	if string(rows[2].TOTPSeed) != "JBSWY3DP" {
+		t.Fatalf("totp %+v", rows[2])
+	}
+}
+
+func TestParseBitwardenCSVFixture(t *testing.T) {
+	rows, err := Parse("bitwarden.csv", fixture(t, "bitwarden.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("n=%d %+v", len(rows), rows)
+	}
+	if rows[0].Name != "GitHub" || rows[0].Login != "ada@example.com" || string(rows[0].Token) != "s3cret" {
+		t.Fatalf("%+v", rows[0])
+	}
+	if string(rows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("totp %+v", rows[0])
+	}
+	if string(rows[1].TOTPSeed) != "JBSWY3DP" {
+		t.Fatalf("totp %+v", rows[1])
+	}
+	if rows[2].Name != "wifi passphrase" || rows[2].Kind != protocol.ItemFile || string(rows[2].File) != "synthetic-note-body" {
+		t.Fatalf("note %+v", rows[2])
+	}
+}
+
+func TestParseBitwardenJSONFixture(t *testing.T) {
+	rows, err := Parse("bitwarden_export.json", fixture(t, "bitwarden.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("n=%d %+v", len(rows), rows)
+	}
+	login := rows[0]
+	if login.Name != "GitHub" || login.Kind != protocol.ItemAPIKey || login.Login != "ada@example.com" || string(login.Token) != "s3cret" {
+		t.Fatalf("login %+v", login)
+	}
+	if len(login.URIs) != 2 || login.URIs[0] != "https://github.com" || login.URIs[1] != "https://github.com/login" {
+		t.Fatalf("uris %+v", login.URIs)
+	}
+	if string(login.TOTPSeed) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("totp %+v", login)
+	}
+	if string(rows[1].TOTPSeed) != "JBSWY3DP" {
+		t.Fatalf("totp %+v", rows[1])
+	}
+	if rows[2].Kind != protocol.ItemFile || string(rows[2].File) != "synthetic-note-body" || rows[2].MIME != "text/plain" {
+		t.Fatalf("note %+v", rows[2])
+	}
+	if rows[3].Kind != protocol.ItemCard {
+		t.Fatalf("card kind %s", rows[3].Kind)
+	}
+	card := material.Unpack(rows[3].Token)
+	if card.Number != "4111111111111111" || card.CVV != "123" || card.ExpMonth != "12" || card.ExpYear != "2030" || card.GivenName != "Ada Lovelace" {
+		t.Fatalf("card %+v", card)
+	}
+	if rows[4].Kind != protocol.ItemIdentity {
+		t.Fatalf("identity kind %s", rows[4].Kind)
+	}
+	ident := material.Unpack(rows[4].Token)
+	if ident.GivenName != "Ada" || ident.FamilyName != "Lovelace" || ident.Address != "1 Street, Flat 2" || ident.City != "London" || ident.Region != "LDN" || ident.Postal != "E1" || ident.Country != "UK" || ident.Phone != "+44" || ident.Email != "ada@example.com" {
+		t.Fatalf("identity %+v", ident)
+	}
+	for _, r := range rows {
+		if r.Name == "Trashed" || r.Name == "Empty" {
+			t.Fatalf("deleted/empty row imported: %+v", r)
+		}
+	}
+}
+
+func TestParseBitwardenJSONSniffedWithoutExtension(t *testing.T) {
+	rows, err := Parse("dump", fixture(t, "bitwarden.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("n=%d", len(rows))
+	}
+}
+
+func TestParseBitwardenJSONEncryptedRejected(t *testing.T) {
+	raw := []byte(`{"encrypted":true,"passwordProtected":true,"salt":"x","kdfIterations":600000,"data":"abc"}`)
+	if _, err := Parse("bitwarden_export.json", raw); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestParseJSONNotBitwardenRejected(t *testing.T) {
+	if _, err := Parse("x.json", []byte(`{"hello":"world"}`)); err == nil {
+		t.Fatal("expected error")
 	}
 }
 

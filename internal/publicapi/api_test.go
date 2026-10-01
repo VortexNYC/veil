@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -945,6 +946,59 @@ func TestImportCSVNoSecretInResponse(t *testing.T) {
 	}
 	if scrub.Contains(raw, []byte(pass)) {
 		t.Fatal("list leaked password")
+	}
+}
+
+// All three export shapes round-trip through /v1/import. The fixtures
+// share a "Steam" login and a "wifi passphrase" note on purpose:
+// cross-format dedup (name+kind+login+URIs) must skip them on the second
+// and third import, and a repeat of the same file must be a no-op.
+func TestImportFormatsRoundTripDedup(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	importFile := func(path, filename string) ImportResponse {
+		t.Helper()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, body := doRaw(t, srv, http.MethodPost, "/v1/import?filename="+filename, "human", raw, "application/octet-stream")
+		if code != http.StatusOK {
+			t.Fatalf("import %s: %d %s", filename, code, body)
+		}
+		var got ImportResponse
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("import %s: %s", filename, body)
+		}
+		return got
+	}
+	if got := importFile("../oneimport/testdata/apple-passwords.csv", "Passwords.csv"); got.Count != 3 {
+		t.Fatalf("apple %+v", got)
+	}
+	if got := importFile("../oneimport/testdata/bitwarden.csv", "bitwarden.csv"); got.Count != 2 {
+		t.Fatalf("bitwarden csv %+v", got)
+	}
+	if got := importFile("../oneimport/testdata/bitwarden.json", "bitwarden_export.json"); got.Count != 3 {
+		t.Fatalf("bitwarden json %+v", got)
+	}
+	if got := importFile("../oneimport/testdata/apple-passwords.csv", "Passwords.csv"); got.Count != 0 || len(got.Names) != 0 {
+		t.Fatalf("re-import %+v", got)
+	}
+	code, raw := doJSON(t, srv, http.MethodGet, "/v1/items", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list %d %s", code, raw)
+	}
+	var items ItemsResponse
+	if err := json.Unmarshal(raw, &items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items.Items) != 8 {
+		t.Fatalf("n=%d", len(items.Items))
+	}
+	for _, s := range []string{"s3cret", "hunter2", "pass2", "synthetic-note-body", "4111111111111111", "JBSWY3DPEHPK3PXP"} {
+		if scrub.Contains(raw, []byte(s)) {
+			t.Fatalf("list leaked %q", s)
+		}
 	}
 }
 
