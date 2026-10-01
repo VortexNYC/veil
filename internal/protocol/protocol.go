@@ -86,6 +86,39 @@ const (
 	ActionRequestCancelled ActionKind = "request_cancelled"
 	// Billing plane: the Vortex webhook receiver flips org plan state.
 	ActionBillingPlanChanged ActionKind = "billing_plan_changed"
+
+	// Administration plane (VEIL-86): vault configuration writes. AgentID
+	// carries the acting principal — a human id or a system name — and the
+	// target rides ItemID or a `key=value` Reason. These commit atomically
+	// with the write they describe.
+	ActionItemCreated    ActionKind = "item_created"
+	ActionItemUpdated    ActionKind = "item_updated"
+	ActionItemArchived   ActionKind = "item_archived"
+	ActionItemDeleted    ActionKind = "item_deleted"
+	ActionAgentCreated   ActionKind = "agent_created"
+	ActionGrantGranted   ActionKind = "grant_granted"
+	ActionSessionCreated ActionKind = "session_created"
+	ActionSessionRevoked ActionKind = "session_revoked"
+	ActionSessionRenewed ActionKind = "session_renewed"
+	ActionWorkloadBound  ActionKind = "workload_bound"
+
+	// Human read plane (VEIL-86): credential disclosures. The audit row is
+	// appended before the secret leaves, so a failed write denies the reveal.
+	ActionFill          ActionKind = "fill"
+	ActionTOTPMint      ActionKind = "totp_mint"
+	ActionPasskeyAssert ActionKind = "passkey_assert"
+	ActionFillSync      ActionKind = "fill_sync"
+	ActionFileWrite     ActionKind = "file_write"
+
+	// Org plane (VEIL-86): Keto/identity-side membership changes. These
+	// commit after the external write — the external system owns the tx.
+	ActionMemberInvited    ActionKind = "member_invited"
+	ActionMemberRemoved    ActionKind = "member_removed"
+	ActionOwnerPromoted    ActionKind = "owner_promoted"
+	ActionOwnerDemoted     ActionKind = "owner_demoted"
+	ActionHumanDeleted     ActionKind = "human_deleted"
+	ActionOrgDeleted       ActionKind = "org_deleted"
+	ActionHumanProvisioned ActionKind = "human_provisioned"
 	// billing_provision_failed — Vortex customer upsert failed during
 	// provision; signup succeeded anyway. Reconcile target.
 	ActionBillingProvisionFailed ActionKind = "billing_provision_failed"

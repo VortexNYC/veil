@@ -89,7 +89,10 @@ type UsageReportRow struct {
 }
 
 type Store interface {
-	PutAgent(protocol.Principal) error
+	// Mutators take optional audit events: when passed, the write and its
+	// event commit in one transaction — an administration write can never
+	// land unaudited (VEIL-86). Callers that omit them get the write only.
+	PutAgent(protocol.Principal, ...protocol.AuditEvent) error
 	Agent(id string) (protocol.Principal, error)
 	ListAgents() ([]protocol.Principal, error)
 	// RevokeAgent sets RevokedAt on the agent. It is idempotent and preserves
@@ -136,12 +139,12 @@ type Store interface {
 	// safe composition of OpenRecoveryWrap + ReseedOrgKey; prefer it.
 	RecoverOrgKey(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) error
 
-	PutItem(protocol.Item, Secret) error
+	PutItem(protocol.Item, Secret, ...protocol.AuditEvent) error
 	Item(id string) (protocol.Item, error)
 	ItemByName(orgID, name string) (protocol.Item, error)
 	ListItems() ([]protocol.Item, error)
-	ArchiveItem(id string) error
-	DeleteItem(id string) error
+	ArchiveItem(id string, events ...protocol.AuditEvent) error
+	DeleteItem(id string, events ...protocol.AuditEvent) error
 	Versions(itemID string) ([]protocol.ItemVersion, error)
 	RestoreVersion(itemID string, versionID int64) error
 	// Secret is for the broker only. There is no agent-facing reveal.
@@ -175,10 +178,10 @@ type Store interface {
 	ConsumeSessionAudited(sessionHash []byte, now time.Time, e protocol.AuditEvent) (protocol.Principal, error)
 
 	SessionByID(id string) (protocol.Session, error)
-	RevokeSession(id string, at time.Time) error
-	RenewSession(id string, at time.Time) (protocol.Session, error)
+	RevokeSession(id string, at time.Time, events ...protocol.AuditEvent) error
+	RenewSession(id string, at time.Time, events ...protocol.AuditEvent) (protocol.Session, error)
 
-	PutGrant(protocol.Grant) error
+	PutGrant(protocol.Grant, ...protocol.AuditEvent) error
 	Grant(id string) (*protocol.Grant, error)
 	GrantFor(agentID, itemID string) (*protocol.Grant, error)
 	ListGrants() ([]protocol.Grant, error)
@@ -218,11 +221,11 @@ type Store interface {
 	// data: refetch the list. The channel closes when ctx ends.
 	WatchRequests(ctx context.Context, orgID string) <-chan struct{}
 
-	PutWorkload(protocol.Workload) error
+	PutWorkload(protocol.Workload, ...protocol.AuditEvent) error
 	Workload(issuer, subject string) (*protocol.Workload, error)
 	WorkloadsForIssuer(issuer string) ([]protocol.Workload, error)
 
-	PutSession(s protocol.Session, secretHash []byte) error
+	PutSession(s protocol.Session, secretHash []byte, events ...protocol.AuditEvent) error
 	SessionByHash(secretHash []byte) (protocol.Session, error)
 	ListSessions() ([]protocol.Session, error)
 

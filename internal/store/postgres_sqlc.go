@@ -249,21 +249,23 @@ func nullTime(t *time.Time) sql.NullTime {
 	return sql.NullTime{Time: t.UTC(), Valid: true}
 }
 
-func (p *Postgres) PutSession(sess protocol.Session, secretHash []byte) error {
+func (p *Postgres) PutSession(sess protocol.Session, secretHash []byte, events ...protocol.AuditEvent) error {
 	ctx := context.Background()
-	return p.sqlc.PutSession(ctx, sqlc.PutSessionParams{
-		ID:         sess.ID,
-		OrgID:      sess.OrgID,
-		AgentID:    sess.AgentID,
-		SecretHash: secretHash,
-		ExpiresAt:  sess.ExpiresAt.UTC(),
-		CreatedAt:  sess.CreatedAt.UTC(),
-		RevokedAt:  nullTime(sess.RevokedAt),
-		RenewedAt:  nullTime(sess.RenewedAt),
-		Ttl:        sess.TTL,
-		MaxTtl:     sess.MaxTTL,
-		MaxUses:    int32(sess.MaxUses),
-		Uses:       int32(sess.Uses),
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.PutSession(ctx, sqlc.PutSessionParams{
+			ID:         sess.ID,
+			OrgID:      sess.OrgID,
+			AgentID:    sess.AgentID,
+			SecretHash: secretHash,
+			ExpiresAt:  sess.ExpiresAt.UTC(),
+			CreatedAt:  sess.CreatedAt.UTC(),
+			RevokedAt:  nullTime(sess.RevokedAt),
+			RenewedAt:  nullTime(sess.RenewedAt),
+			Ttl:        sess.TTL,
+			MaxTtl:     sess.MaxTTL,
+			MaxUses:    int32(sess.MaxUses),
+			Uses:       int32(sess.Uses),
+		})
 	})
 }
 
@@ -304,19 +306,21 @@ func (p *Postgres) ListSessions() ([]protocol.Session, error) {
 	return out, nil
 }
 
-func (p *Postgres) RevokeSession(id string, at time.Time) error {
+func (p *Postgres) RevokeSession(id string, at time.Time, events ...protocol.AuditEvent) error {
 	ctx := context.Background()
-	n, err := p.sqlc.RevokeSession(ctx, sqlc.RevokeSessionParams{At: at.UTC(), ID: id})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		n, err := q.RevokeSession(ctx, sqlc.RevokeSessionParams{At: at.UTC(), ID: id})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
-func (p *Postgres) RenewSession(id string, at time.Time) (protocol.Session, error) {
+func (p *Postgres) RenewSession(id string, at time.Time, events ...protocol.AuditEvent) (protocol.Session, error) {
 	ctx := context.Background()
 	sess, err := p.SessionByID(id)
 	if err != nil {
@@ -339,10 +343,12 @@ func (p *Postgres) RenewSession(id string, at time.Time) (protocol.Session, erro
 	rn := at.UTC()
 	sess.ExpiresAt = newExpires.UTC()
 	sess.RenewedAt = &rn
-	err = p.sqlc.RenewSession(ctx, sqlc.RenewSessionParams{
-		ExpiresAt: sess.ExpiresAt.UTC(),
-		RenewedAt: *sess.RenewedAt,
-		ID:        id,
+	err = p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.RenewSession(ctx, sqlc.RenewSessionParams{
+			ExpiresAt: sess.ExpiresAt.UTC(),
+			RenewedAt: *sess.RenewedAt,
+			ID:        id,
+		})
 	})
 	if err != nil {
 		return protocol.Session{}, err
@@ -389,7 +395,7 @@ func itemFromSqlc(r *sqlc.ItemByIDRow) protocol.Item {
 	return item
 }
 
-func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
+func (p *Postgres) PutItem(item protocol.Item, secret Secret, events ...protocol.AuditEvent) error {
 	uris, err := json.Marshal(item.URIs)
 	if err != nil {
 		return err
@@ -453,6 +459,11 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret) error {
 	if rows == 0 {
 		return fmt.Errorf("store: cannot change item owner")
 	}
+	for _, e := range events {
+		if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -496,33 +507,38 @@ func (p *Postgres) ListItems() ([]protocol.Item, error) {
 	return out, nil
 }
 
-func (p *Postgres) ArchiveItem(id string) error {
-	n, err := p.sqlc.ArchiveItem(context.Background(), id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (p *Postgres) ArchiveItem(id string, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		n, err := q.ArchiveItem(ctx, id)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
-func (p *Postgres) DeleteItem(id string) error {
+func (p *Postgres) DeleteItem(id string, events ...protocol.AuditEvent) error {
 	ctx := context.Background()
-	if err := p.sqlc.DeleteItemVersions(ctx, id); err != nil {
-		return err
-	}
-	if err := p.sqlc.DeleteItemGrants(ctx, id); err != nil {
-		return err
-	}
-	n, err := p.sqlc.DeleteItem(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		if err := q.DeleteItemVersions(ctx, id); err != nil {
+			return err
+		}
+		if err := q.DeleteItemGrants(ctx, id); err != nil {
+			return err
+		}
+		n, err := q.DeleteItem(ctx, id)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 func (p *Postgres) Versions(itemID string) ([]protocol.ItemVersion, error) {
@@ -610,14 +626,17 @@ func grantFromSqlc(r *sqlc.Grant) *protocol.Grant {
 	return g
 }
 
-func (p *Postgres) PutGrant(g protocol.Grant) error {
+func (p *Postgres) PutGrant(g protocol.Grant, events ...protocol.AuditEvent) error {
 	actions, err := json.Marshal(g.Actions)
 	if err != nil {
 		return err
 	}
-	return p.sqlc.PutGrant(context.Background(), sqlc.PutGrantParams{
-		ID: g.ID, OrgID: g.OrgID, AgentID: g.AgentID, ItemID: g.ItemID,
-		Level: string(g.Level), Actions: string(actions), ExpiresAt: nullTime(g.ExpiresAt),
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.PutGrant(ctx, sqlc.PutGrantParams{
+			ID: g.ID, OrgID: g.OrgID, AgentID: g.AgentID, ItemID: g.ItemID,
+			Level: string(g.Level), Actions: string(actions), ExpiresAt: nullTime(g.ExpiresAt),
+		})
 	})
 }
 
@@ -1023,13 +1042,16 @@ func agentFromSqlc(a *sqlc.Agent) protocol.Principal {
 	return p
 }
 
-func (p *Postgres) PutAgent(agent protocol.Principal) error {
-	return p.sqlc.PutAgent(context.Background(), sqlc.PutAgentParams{
-		ID:        agent.ID,
-		OrgID:     agent.OrgID,
-		OwnerKind: string(agent.Owner.Kind),
-		OwnerID:   agent.Owner.ID,
-		RevokedAt: nullTime(agent.RevokedAt),
+func (p *Postgres) PutAgent(agent protocol.Principal, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.PutAgent(ctx, sqlc.PutAgentParams{
+			ID:        agent.ID,
+			OrgID:     agent.OrgID,
+			OwnerKind: string(agent.Owner.Kind),
+			OwnerID:   agent.Owner.ID,
+			RevokedAt: nullTime(agent.RevokedAt),
+		})
 	})
 }
 
@@ -1135,9 +1157,12 @@ func (p *Postgres) ListHumans() ([]protocol.Principal, error) {
 	return out, nil
 }
 
-func (p *Postgres) PutWorkload(w protocol.Workload) error {
-	return p.sqlc.PutWorkload(context.Background(), sqlc.PutWorkloadParams{
-		Issuer: w.Issuer, Subject: w.Subject, AgentID: w.AgentID, Audience: w.Audience,
+func (p *Postgres) PutWorkload(w protocol.Workload, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.PutWorkload(ctx, sqlc.PutWorkloadParams{
+			Issuer: w.Issuer, Subject: w.Subject, AgentID: w.AgentID, Audience: w.Audience,
+		})
 	})
 }
 
@@ -1205,6 +1230,41 @@ func shouldOutbox(err error) bool {
 		return true
 	}
 	return pgconn.SafeToRetry(err)
+}
+
+// auditParams converts one protocol event to its row shape.
+func auditParams(e protocol.AuditEvent) sqlc.InsertAuditParams {
+	return sqlc.InsertAuditParams{
+		At: e.Time.UTC(), OrgID: e.OrgID, AgentID: e.AgentID, ItemID: e.ItemID,
+		Action: string(e.Action), Decision: string(e.Decision), Reason: e.Reason, ApprovalID: e.ApprovalID,
+	}
+}
+
+// writeAudited runs work against the sqlc querier; with events it runs inside
+// a fresh transaction and appends the audit rows before commit — the write
+// and its events commit together or not at all (VEIL-86 admin-plane parity
+// with ConsumeSessionAudited).
+func (p *Postgres) writeAudited(ctx context.Context, events []protocol.AuditEvent, work func(q *sqlc.Queries) error) error {
+	if len(events) == 0 {
+		return work(p.sqlc)
+	}
+	_, err := retryOnDeadConn(func() (struct{}, error) {
+		tx, err := p.pool.Begin(ctx)
+		if err != nil {
+			return struct{}{}, err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := work(p.sqlc.WithTx(tx)); err != nil {
+			return struct{}{}, err
+		}
+		for _, e := range events {
+			if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
+				return struct{}{}, err
+			}
+		}
+		return struct{}{}, tx.Commit(ctx)
+	})
+	return err
 }
 
 func (p *Postgres) AppendAudits(events []protocol.AuditEvent) error {

@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/modelcontextprotocol/go-sdk v1.7.0
-	github.com/openbao/openbao/sdk/v2 v2.3.0
+	github.com/openbao/openbao/sdk/v2 v2.3.1
 	github.com/ory/hydra-client-go/v26 v26.2.0
 	github.com/ory/keto-client-go/v26 v26.2.0
 	github.com/ory/kratos-client-go/v26 v26.2.0

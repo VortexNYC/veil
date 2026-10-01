@@ -349,14 +349,16 @@ func parseRevokedAt(s sql.NullString) (*time.Time, error) {
 	return &t, nil
 }
 
-func (s *SQLite) PutAgent(p protocol.Principal) error {
+func (s *SQLite) PutAgent(p protocol.Principal, events ...protocol.AuditEvent) error {
 	rv := revokedAtString(p.RevokedAt)
-	// Conflict keeps the existing org/owner — an agent id must never be
-	// reassigned across orgs by an upsert.
-	_, err := s.db.Exec(`INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at) VALUES(?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)`,
-		p.ID, p.OrgID, p.Owner.Kind, p.Owner.ID, rv)
-	return err
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		// Conflict keeps the existing org/owner — an agent id must never be
+		// reassigned across orgs by an upsert.
+		_, err := ex.Exec(`INSERT INTO agents(id, org_id, owner_kind, owner_id, revoked_at) VALUES(?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET revoked_at=COALESCE(agents.revoked_at, excluded.revoked_at)`,
+			p.ID, p.OrgID, p.Owner.Kind, p.Owner.ID, rv)
+		return err
+	})
 }
 
 func (s *SQLite) Agent(id string) (protocol.Principal, error) {
@@ -534,7 +536,7 @@ func (s *SQLite) snapshot(c sqlExecer, id string) error {
 	return err
 }
 
-func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
+func (s *SQLite) PutItem(item protocol.Item, secret Secret, events ...protocol.AuditEvent) error {
 	uris, err := json.Marshal(item.URIs)
 	if err != nil {
 		return err
@@ -614,6 +616,9 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret) error {
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return fmt.Errorf("store: cannot change item owner")
 	}
+	if err := auditEventsTx(tx, events); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -671,40 +676,44 @@ func (s *SQLite) ListItems() ([]protocol.Item, error) {
 	return out, rows.Err()
 }
 
-func (s *SQLite) ArchiveItem(id string) error {
-	res, err := s.db.Exec(`UPDATE items SET archived=1 WHERE id=?`, id)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (s *SQLite) ArchiveItem(id string, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		res, err := ex.Exec(`UPDATE items SET archived=1 WHERE id=?`, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
-func (s *SQLite) DeleteItem(id string) error {
-	if _, err := s.db.Exec(`DELETE FROM item_versions WHERE item_id=?`, id); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`DELETE FROM grants WHERE item_id=?`, id); err != nil {
-		return err
-	}
-	res, err := s.db.Exec(`DELETE FROM items WHERE id=?`, id)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (s *SQLite) DeleteItem(id string, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		if _, err := ex.Exec(`DELETE FROM item_versions WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		if _, err := ex.Exec(`DELETE FROM grants WHERE item_id=?`, id); err != nil {
+			return err
+		}
+		res, err := ex.Exec(`DELETE FROM items WHERE id=?`, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // DeleteHuman drops the humans row — token resolution fails closed after this.
@@ -1072,7 +1081,7 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 	return r, nil
 }
 
-func (s *SQLite) PutGrant(g protocol.Grant) error {
+func (s *SQLite) PutGrant(g protocol.Grant, events ...protocol.AuditEvent) error {
 	actions, err := json.Marshal(g.Actions)
 	if err != nil {
 		return err
@@ -1081,13 +1090,15 @@ func (s *SQLite) PutGrant(g protocol.Grant) error {
 	if g.ExpiresAt != nil {
 		exp = g.ExpiresAt.Unix()
 	}
-	_, err = s.db.Exec(`INSERT INTO grants(id, org_id, agent_id, item_id, level, actions, expires_at)
-		VALUES(?,?,?,?,?,?,?)
-		ON CONFLICT(agent_id, item_id) DO UPDATE SET
-			id=excluded.id, org_id=excluded.org_id, level=excluded.level,
-			actions=excluded.actions, expires_at=excluded.expires_at`,
-		g.ID, g.OrgID, g.AgentID, g.ItemID, g.Level, actions, exp)
-	return err
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(`INSERT INTO grants(id, org_id, agent_id, item_id, level, actions, expires_at)
+			VALUES(?,?,?,?,?,?,?)
+			ON CONFLICT(agent_id, item_id) DO UPDATE SET
+				id=excluded.id, org_id=excluded.org_id, level=excluded.level,
+				actions=excluded.actions, expires_at=excluded.expires_at`,
+			g.ID, g.OrgID, g.AgentID, g.ItemID, g.Level, actions, exp)
+		return err
+	})
 }
 
 func scanGrant(scan func(dest ...any) error) (*protocol.Grant, error) {
@@ -1265,6 +1276,39 @@ func auditRequestEventTx(tx *sql.Tx, action protocol.ActionKind, r protocol.Appr
 		VALUES(?,?,?,?,?,?,?,?)`,
 		at.UTC().Format(time.RFC3339Nano), r.OrgID, r.AgentID, r.ItemID, string(action), string(decision), r.ID, approvalID)
 	return err
+}
+
+// auditEventsTx writes arbitrary audit rows inside tx — the mutation and its
+// events commit together or not at all (VEIL-86 admin-plane atomicity).
+func auditEventsTx(tx *sql.Tx, events []protocol.AuditEvent) error {
+	for _, e := range events {
+		if _, err := tx.Exec(`INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
+			VALUES(?,?,?,?,?,?,?,?)`,
+			e.Time.UTC().Format(time.RFC3339Nano), e.OrgID, e.AgentID, e.ItemID, e.Action, e.Decision, e.Reason, e.ApprovalID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeAudited runs work against the db when no events are passed, or inside
+// a fresh tx with the events appended after work succeeds.
+func (s *SQLite) writeAudited(events []protocol.AuditEvent, work func(ex sqlExecer) error) error {
+	if len(events) == 0 {
+		return work(s.db)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := work(tx); err != nil {
+		return err
+	}
+	if err := auditEventsTx(tx, events); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // requestActionForStatus maps a resolution status to its audit action —
@@ -1733,13 +1777,15 @@ func (s *SQLite) AuditFeed(orgID string, afterID int64, limit int) ([]protocol.A
 	return out, rows.Err()
 }
 
-func (s *SQLite) PutWorkload(w protocol.Workload) error {
-	_, err := s.db.Exec(`INSERT INTO workloads(issuer, subject, agent_id, audience)
-		VALUES(?,?,?,?)
-		ON CONFLICT(issuer, subject) DO UPDATE SET
-			agent_id=excluded.agent_id, audience=excluded.audience`,
-		w.Issuer, w.Subject, w.AgentID, w.Audience)
-	return err
+func (s *SQLite) PutWorkload(w protocol.Workload, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(`INSERT INTO workloads(issuer, subject, agent_id, audience)
+			VALUES(?,?,?,?)
+			ON CONFLICT(issuer, subject) DO UPDATE SET
+				agent_id=excluded.agent_id, audience=excluded.audience`,
+			w.Issuer, w.Subject, w.AgentID, w.Audience)
+		return err
+	})
 }
 
 func (s *SQLite) Workload(issuer, subject string) (*protocol.Workload, error) {
@@ -1794,10 +1840,12 @@ func (s *SQLite) putSessionSQL(sess protocol.Session, secretHash []byte) (string
 		}
 }
 
-func (s *SQLite) PutSession(sess protocol.Session, secretHash []byte) error {
+func (s *SQLite) PutSession(sess protocol.Session, secretHash []byte, events ...protocol.AuditEvent) error {
 	q, args := s.putSessionSQL(sess, secretHash)
-	_, err := s.db.Exec(q, args...)
-	return err
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(q, args...)
+		return err
+	})
 }
 
 func (s *SQLite) scanSession(rows *sql.Rows) (protocol.Session, error) {
@@ -1909,23 +1957,25 @@ func (s *SQLite) SessionByID(id string) (protocol.Session, error) {
 	return sess, nil
 }
 
-func (s *SQLite) RevokeSession(id string, at time.Time) error {
+func (s *SQLite) RevokeSession(id string, at time.Time, events ...protocol.AuditEvent) error {
 	rv := at.UTC().Format(time.RFC3339)
-	res, err := s.db.Exec(`UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?`, rv, id)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		res, err := ex.Exec(`UPDATE sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?`, rv, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
-func (s *SQLite) RenewSession(id string, at time.Time) (protocol.Session, error) {
+func (s *SQLite) RenewSession(id string, at time.Time, events ...protocol.AuditEvent) (protocol.Session, error) {
 	sess, err := s.SessionByID(id)
 	if err != nil {
 		return protocol.Session{}, err
@@ -1947,8 +1997,11 @@ func (s *SQLite) RenewSession(id string, at time.Time) (protocol.Session, error)
 	rn := at.UTC()
 	sess.ExpiresAt = newExpires.UTC()
 	sess.RenewedAt = &rn
-	_, err = s.db.Exec(`UPDATE sessions SET expires_at = ?, renewed_at = ? WHERE id = ?`,
-		sess.ExpiresAt.UTC().Unix(), sess.RenewedAt.UTC().Format(time.RFC3339), id)
+	err = s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(`UPDATE sessions SET expires_at = ?, renewed_at = ? WHERE id = ?`,
+			sess.ExpiresAt.UTC().Unix(), sess.RenewedAt.UTC().Format(time.RFC3339), id)
+		return err
+	})
 	if err != nil {
 		return protocol.Session{}, err
 	}

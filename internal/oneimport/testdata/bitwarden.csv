@@ -1,0 +1,6 @@
+folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp
+work,true,login,GitHub,main account,,false,https://github.com,ada@example.com,s3cret,otpauth://totp/GitHub:ada@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub
+,false,login,Steam,,,false,https://store.steampowered.com,gabe,hunter2,JBSWY3DP
+,false,note,wifi passphrase,synthetic-note-body,,false,,,,
+,false,card,Amex,,,false,,,,
+,false,login,Empty,,,false,,nobody,,

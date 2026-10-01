@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "veil-loadtest-echo",
+  "account_id": "31bfc2c14a28e0a39e8b9e3c556a18be",
+  "compatibility_date": "2026-10-01",
+  "main": "src/index.ts",
+  "routes": [
+    {
+      "pattern": "loadtest-echo.veil.nyc",
+      "custom_domain": true
+    }
+  ]
+}

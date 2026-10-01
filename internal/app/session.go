@@ -132,7 +132,7 @@ func (a *App) CreateSession(actor protocol.Principal, agentID string, ttl time.D
 		MaxTTL:    int64(SessionTTLMax.Seconds()),
 		MaxUses:   maxUses,
 	}
-	if err := a.Store.PutSession(sess, sessionHash(token)); err != nil {
+	if err := a.Store.PutSession(sess, sessionHash(token), adminEvent(actor.ID, actor.OrgID, "", protocol.ActionSessionCreated, "agent="+agent.ID+" session="+sess.ID)); err != nil {
 		return protocol.Session{}, "", err
 	}
 	return sess, token, nil
@@ -153,7 +153,7 @@ func (a *App) RevokeSession(actor protocol.Principal, id string) (protocol.Sessi
 	if sess.OrgID != actor.OrgID {
 		return protocol.Session{}, ErrForbidden
 	}
-	if err := a.Store.RevokeSession(id, time.Now()); err != nil {
+	if err := a.Store.RevokeSession(id, time.Now(), adminEvent(actor.ID, sess.OrgID, "", protocol.ActionSessionRevoked, "session="+id)); err != nil {
 		return protocol.Session{}, err
 	}
 	return a.Store.SessionByID(id)
@@ -174,7 +174,7 @@ func (a *App) RenewSession(actor protocol.Principal, id string) (protocol.Sessio
 	if sess.OrgID != actor.OrgID {
 		return protocol.Session{}, ErrForbidden
 	}
-	return a.Store.RenewSession(id, time.Now())
+	return a.Store.RenewSession(id, time.Now(), adminEvent(actor.ID, sess.OrgID, "", protocol.ActionSessionRenewed, "session="+id))
 }
 
 func (a *App) ListSessions(actor protocol.Principal) ([]protocol.Session, error) {

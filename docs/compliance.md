@@ -150,6 +150,32 @@ Ordered by what hurts a real customer first. Every gap has an owner action.
 | "Show me data deletion" | Lifecycle verbs + `PurgeOrg` tx + audit-survival decision |
 | "Give my SIEM your audit trail" | `GET /v1/audit/events?after=&limit=` — owner-only, org-scoped, keyset-paginated committed events; poll with `next_after` until a short page lands (`veil audit feed`). Offsite copy: hourly append-only JSONL archive in R2 via `audit-export` cron. |
 
+## Audit event matrix (VEIL-86)
+
+Every security-significant operation lands one audit row answering who
+(`agent_id` = acting principal — human id, agent id, or `vortex-*` system
+name), what (`action` + `item_id` + `key=value` targets in `reason`), when
+(`at`). `internal/app/audit_matrix_test.go` drives every row except
+`passkey_assert` (needs a registered passkey fixture) and asserts the event —
+the table is a test, not a promise.
+
+| Plane | Actions | Atomicity |
+|---|---|---|
+| Credential use | `fetch`, `env` allow/deny (+`item_not_found`, `session_revoked`, `need_approval`) | fail-closed: use-audit commits inside the consume transaction |
+| Approval lifecycle | `request_filed` / `request_approved` / `request_denied` / `request_expired` / `request_cancelled` | atomic with the request state change |
+| Items | `item_created` / `item_updated` (`reason=totp_attached` for TOTP enroll) / `item_archived` / `item_deleted` | atomic with the item write |
+| Agents | `agent_created`, `revoke` (`reason=agent=<id>`) | atomic with the write |
+| Grants | `grant_granted` (`reason=agent=<id> level=<n>`) | atomic with the grant write |
+| Sessions | `session_created` / `session_renewed` / `session_revoked` (`reason=agent=<id> session=<id>`) | atomic with the session write |
+| Workload identity | `workload_bound` (`reason=agent=<id> issuer=<iss>`) | atomic with the bind |
+| Human credential reads | `fill` (login reveal), `totp_mint`, `passkey_assert`, `fill_sync` (`reason=items=<n>`, audited before any material decrypts), `file_write` | the audit row must be durable — committed or spooled — before the secret leaves; a double failure (store + spool) denies the disclosure |
+| Org / membership | `member_invited`, `member_removed`, `owner_promoted`, `owner_demoted`, `human_deleted`, `org_deleted`, `human_provisioned` | post-commit — Keto/identity owns those transactions; append failure logs loudly rather than erroring a finished operation |
+| Billing | `billing_plan_changed`, `billing_provision_failed` | post-commit — the webhook owns the plan write |
+
+Known boundary: human logins themselves (Kratos sign-in events) live in
+Kratos, not the vault audit feed — identity-plane events are Ory's
+responsibility.
+
 ## Vendor register
 
 Every vendor that touches customer data or production access. Review
