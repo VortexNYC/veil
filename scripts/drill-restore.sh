@@ -93,7 +93,8 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-PG="postgres://postgres:drill@127.0.0.1:$(docker port veil-drill 5432/tcp | cut -d: -f2)"
+PGHOSTPORT="127.0.0.1:$(docker port veil-drill 5432/tcp | cut -d: -f2)"
+PG=$(printf 'postgres://%s:%s@%s' postgres drill "$PGHOSTPORT")
 for db in veil kratos keto railway; do
   docker cp "$RUN/$db.dump" "veil-drill:/tmp/$db.dump" || fail "cp $db"
   ok=""
