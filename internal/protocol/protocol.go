@@ -16,6 +16,17 @@ const (
 	PrincipalAgent PrincipalKind = "agent"
 )
 
+// SubjectKind is who a grant names. Existing rows migrate as agent — the
+// human kind is stamped on new grants; group is the VEIL-20 shared-vault
+// subject. Grants carry the subject id in AgentID for all kinds.
+type SubjectKind string
+
+const (
+	SubjectAgent SubjectKind = "agent"
+	SubjectHuman SubjectKind = "human"
+	SubjectGroup SubjectKind = "group"
+)
+
 type OwnerKind string
 
 const (
@@ -35,6 +46,10 @@ const (
 	Level1 GrantLevel = "level1"
 	// Level2: this identity was donated to agents. No human in the loop.
 	Level2 GrantLevel = "level2"
+	// LevelDeny is an explicit block — an exception that overrides any
+	// inherited allow (a member denied on a group-granted item). Deny
+	// beats allow; a direct deny shadows every group grant on the item.
+	LevelDeny GrantLevel = "deny"
 )
 
 type ItemKind string
@@ -119,6 +134,11 @@ const (
 	ActionHumanDeleted     ActionKind = "human_deleted"
 	ActionOrgDeleted       ActionKind = "org_deleted"
 	ActionHumanProvisioned ActionKind = "human_provisioned"
+	// Group administration (VEIL-20): vault-plane group lifecycle and
+	// membership edges. Groups are vault data, not Keto tuples.
+	ActionGroupCreated       ActionKind = "group_created"
+	ActionGroupMemberAdded   ActionKind = "group_member_added"
+	ActionGroupMemberRemoved ActionKind = "group_member_removed"
 	// billing_provision_failed — Vortex customer upsert failed during
 	// provision; signup succeeded anyway. Reconcile target.
 	ActionBillingProvisionFailed ActionKind = "billing_provision_failed"
@@ -176,13 +196,54 @@ type ItemVersion struct {
 }
 
 type Grant struct {
-	ID        string
-	OrgID     string
-	AgentID   string
-	ItemID    string
-	Level     GrantLevel
-	Actions   []ActionKind
-	ExpiresAt *time.Time
+	ID    string
+	OrgID string
+	// AgentID is the subject id — the agent/human principal id for direct
+	// grants, the group id for SubjectGroup grants. The column name stays
+	// agent_id in the stores.
+	AgentID     string
+	SubjectKind SubjectKind
+	ItemID      string
+	Level       GrantLevel
+	Actions     []ActionKind
+	ExpiresAt   *time.Time
+}
+
+// Subject normalizes the grant's kind: empty reads as agent so rows written
+// before VEIL-20 and zero-value literals in tests keep their meaning.
+func (g Grant) Subject() SubjectKind {
+	if g.SubjectKind == "" {
+		return SubjectAgent
+	}
+	return g.SubjectKind
+}
+
+// Group is an org-scoped set of principals — vault data like items and
+// agents, not a Keto tuple. A grant to a group is the shared-vault shape:
+// every member inherits the item at the grant's level.
+type Group struct {
+	ID    string `json:"id"`
+	OrgID string `json:"org_id"`
+	Name  string `json:"name"`
+}
+
+// GroupMember is one membership edge: the principal (agent or human) named
+// by MemberKind/MemberID is in the group. An agent also inherits the groups
+// of its user owner — a laptop agent shares its human's team grants.
+type GroupMember struct {
+	GroupID    string        `json:"group_id"`
+	MemberKind PrincipalKind `json:"member_kind"`
+	MemberID   string        `json:"member_id"`
+}
+
+// MemberKeys is the membership lookup set for a principal: itself, plus —
+// for a user-owned agent — the owning human.
+func (p Principal) MemberKeys() []GroupMember {
+	keys := []GroupMember{{MemberKind: p.Kind, MemberID: p.ID}}
+	if p.Kind == PrincipalAgent && p.Owner.Kind == OwnerUser && p.Owner.ID != "" {
+		keys = append(keys, GroupMember{MemberKind: PrincipalHuman, MemberID: p.Owner.ID})
+	}
+	return keys
 }
 
 type Approval struct {

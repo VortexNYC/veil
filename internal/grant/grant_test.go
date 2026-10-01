@@ -239,3 +239,83 @@ func FuzzHostAllowed(f *testing.F) {
 		_ = HostAllowed(protocol.Item{URIs: []string{uri}}, target)
 	})
 }
+
+func groupFixture(level protocol.GrantLevel, groupID string, groups map[string]struct{}) Input {
+	in := fixture(level)
+	in.Grant.AgentID = groupID
+	in.Grant.SubjectKind = protocol.SubjectGroup
+	in.Groups = groups
+	return in
+}
+
+func TestDenyGrantDenies(t *testing.T) {
+	got := Evaluate(fixture(protocol.LevelDeny))
+	if got.Decision != protocol.DecisionDeny || got.Reason != "grant_denied" {
+		t.Fatalf("deny grant: %+v", got)
+	}
+}
+
+func TestGroupGrantNeedsMembership(t *testing.T) {
+	in := groupFixture(protocol.Level2, "g-eng", nil)
+	got := Evaluate(in)
+	if got.Decision != protocol.DecisionDeny || got.Reason != "wrong_group" {
+		t.Fatalf("no membership: %+v", got)
+	}
+	in.Groups = map[string]struct{}{"g-eng": {}}
+	got = Evaluate(in)
+	if got.Decision != protocol.DecisionAllow {
+		t.Fatalf("member: %+v", got)
+	}
+}
+
+func TestSelect(t *testing.T) {
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-time.Hour)
+	mk := func(id string, kind protocol.SubjectKind, subject string, level protocol.GrantLevel) protocol.Grant {
+		return protocol.Grant{ID: id, AgentID: subject, SubjectKind: kind, ItemID: "item-1", Level: level}
+	}
+	direct := mk("d1", protocol.SubjectAgent, "agent-1", protocol.Level1)
+	grpDeny := mk("g1", protocol.SubjectGroup, "g-eng", protocol.LevelDeny)
+	grpL2 := mk("g2", protocol.SubjectGroup, "g-ops", protocol.Level2)
+	grpL1 := mk("g3", protocol.SubjectGroup, "g-eng", protocol.Level1)
+
+	cases := []struct {
+		name  string
+		cands []protocol.Grant
+		appr  map[string]bool
+		want  string
+	}{
+		{"empty", nil, nil, ""},
+		{"direct shadows group deny", []protocol.Grant{grpDeny, direct}, nil, "d1"},
+		{"deny beats group allow", []protocol.Grant{grpL2, grpDeny}, nil, "g1"},
+		{"level2 beats bare level1", []protocol.Grant{grpL1, grpL2}, nil, "g2"},
+		{"approved level1 beats bare level1", []protocol.Grant{grpL1, grpL2}, nil, "g2"},
+		{"approved beats unresolvable", []protocol.Grant{grpL1, {ID: "g4", AgentID: "g-x", SubjectKind: protocol.SubjectGroup, ItemID: "item-1", Level: protocol.Level1}}, map[string]bool{"g4": true}, "g4"},
+		{"expired loses to live", []protocol.Grant{direct, grpL2}, nil, "d1"},
+	}
+	// expired variants
+	expiredDirect := mk("d-exp", protocol.SubjectAgent, "agent-1", protocol.Level2)
+	expiredDirect.ExpiresAt = &past
+	cases = append(cases,
+		struct {
+			name  string
+			cands []protocol.Grant
+			appr  map[string]bool
+			want  string
+		}{"expired direct loses to live group", []protocol.Grant{expiredDirect, grpL2}, nil, "g2"},
+	)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Select(tc.cands, now, tc.appr)
+			if tc.want == "" {
+				if got != nil {
+					t.Fatalf("want nil got %v", got.ID)
+				}
+				return
+			}
+			if got == nil || got.ID != tc.want {
+				t.Fatalf("want %q got %+v", tc.want, got)
+			}
+		})
+	}
+}

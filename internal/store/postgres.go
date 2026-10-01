@@ -737,11 +737,26 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
+			subject_kind TEXT NOT NULL DEFAULT 'agent',
 			item_id TEXT NOT NULL,
 			level TEXT NOT NULL,
 			actions TEXT NOT NULL,
 			expires_at TIMESTAMPTZ,
 			UNIQUE(agent_id, item_id)
+		)`,
+		// VEIL-20: org-scoped principal sets. agent_id on a group grant
+		// carries the group id; membership edges name agents and humans.
+		`CREATE TABLE IF NOT EXISTS groups (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			UNIQUE(org_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS group_members (
+			group_id TEXT NOT NULL,
+			member_kind TEXT NOT NULL,
+			member_id TEXT NOT NULL,
+			PRIMARY KEY (group_id, member_kind, member_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS approvals (
 			grant_id TEXT PRIMARY KEY,
@@ -951,6 +966,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit(at)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_item_versions_item ON item_versions(item_id, id)`,
+		`CREATE INDEX IF NOT EXISTS idx_group_members_member ON group_members(member_kind, member_id)`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err
@@ -966,6 +982,9 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS max_ttl BIGINT NOT NULL DEFAULT 0`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS max_uses INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS uses INTEGER NOT NULL DEFAULT 0`,
+		// VEIL-20: grants widen to agent/human/group subjects. Existing rows
+		// are all agent grants; agent_id stays the subject id column.
+		`ALTER TABLE grants ADD COLUMN IF NOT EXISTS subject_kind TEXT NOT NULL DEFAULT 'agent'`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err

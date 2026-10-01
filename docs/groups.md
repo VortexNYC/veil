@@ -12,10 +12,11 @@ Three objects, only one is new:
 
 - **`group`** — `{id, org_id, name}`. An org-scoped row in the vault
   store like items and agents. Holds metadata only.
-- **Membership** — Keto tuples, `group:<id>#member@<principal>`. Keto
-  is already membership truth; a `group_members` SQL table would be a
-  second truth. Humans and agents can both be members — `group:ci` for
-  the build fleet is a first-class case.
+- **Membership** — a `group_members` table in the vault store:
+  `{group_id, member_kind, member_id}` edges. Groups are vault data —
+  Keto stays org owner/member and is *not* the group store. Humans and
+  agents can both be members — `group:ci` for the build fleet is a
+  first-class case.
 - **Grant subject** — `grants.agent_id` becomes `subject` with a kind:
   `agent` | `human` | `group`. Existing rows migrate as `agent`.
 
@@ -43,9 +44,10 @@ the group's grants; fix the set, don't approve the recurrence.
 
 ## Evaluation
 
-`Use` resolves the caller's groups once — a Keto `expand` or per-
-candidate `check` — then grant lookup is `subject IN (self, groups)`.
-Rules stay deterministic:
+`Use` resolves the caller's groups once — the store's `UseAuth` already
+expands membership at read time (the caller's own rows plus, for a
+user-owned agent, the owner's) — then grant lookup is `subject IN
+(self, groups)`. Rules stay deterministic:
 
 1. Direct grants evaluate first, group grants second.
 2. Any allow wins; deny beats allow; `need_approval` from the matching
@@ -53,22 +55,22 @@ Rules stay deterministic:
 3. Level conflict (direct `level2` + group `level1` on the same item) →
   the direct grant wins — specificity beats inheritance.
 
-Group expansion hits Keto on the `Use` hot path; cache the principal→
-groups set for a short TTL (seconds, not minutes — revocation must be
-felt fast).
+Membership lives in the same store row space as the grant, so expansion
+is one round trip — no cache needed this slice.
 
 ## Administration
 
-Org owners create groups, manage membership (Keto tuple writes), and
-grant to them — same "owners administer, members consume" split as
-grants today. A member granted via a group sees the item through
+Org owners create groups, manage membership (`veil group member
+add/remove`), and grant to them — same "owners administer, members
+consume" split as grants today. A member granted via a group sees the item through
 list/fill exactly as if granted directly; the grant's provenance
 (`subject=group:eng`) is visible in audit and `grant list`.
 
 ## Edges
 
-- Member leaves the org → Keto membership torn down with the org
-  lifecycle; every group grant they inherited dies in the same pass.
+- Member leaves the org → org teardown (`PurgeOrg`) removes the rows;
+  revoking an agent ends its `Use` regardless of remaining membership
+  edges.
 - Group deleted → its grants are revoked; members keep direct grants.
 - An agent's owner revokes the agent → its sessions die regardless of
   group membership — existing revoke semantics, unchanged.
@@ -77,10 +79,10 @@ list/fill exactly as if granted directly; the grant's provenance
 
 ## Non-goals
 
-Nested groups (group-in-group) — Keto supports it; the UX doesn't earn
-it at this size. Group-owned items — items stay `user`|`org`; a group
-with write access is a grant, not an owner. Cross-org groups — orgs
-stay isolated.
+Nested groups (group-in-group) — membership edges name only agents and
+humans; the UX doesn't earn nesting at this size. Group-owned items —
+items stay `user`|`org`; a group with write access is a grant, not an
+owner. Cross-org groups — orgs stay isolated.
 
 ## Build order
 

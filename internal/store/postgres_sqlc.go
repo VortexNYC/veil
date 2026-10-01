@@ -37,6 +37,7 @@ func useAuthSessionToUseAuthRow(row sqlc.UseAuthSessionRow) sqlc.UseAuthRow {
 		GrantID:           row.GrantID,
 		GrantOrgID:        row.GrantOrgID,
 		GrantAgentID:      row.GrantAgentID,
+		GrantSubjectKind:  row.GrantSubjectKind,
 		GrantItemID:       row.GrantItemID,
 		GrantLevel:        row.GrantLevel,
 		GrantActions:      row.GrantActions,
@@ -45,6 +46,7 @@ func useAuthSessionToUseAuthRow(row sqlc.UseAuthSessionRow) sqlc.UseAuthRow {
 		ApprovalGrantID:   row.ApprovalGrantID,
 		ApprovalHumanID:   row.ApprovalHumanID,
 		ApprovalExpiresAt: row.ApprovalExpiresAt,
+		GroupIds:          row.GroupIds,
 	}
 }
 
@@ -75,7 +77,7 @@ func useAuthFromSqlcRow(r *sqlc.UseAuthRow) (UseAuth, error) {
 		out.Item.Login = r.ItemLogin.String
 	}
 	if r.GrantID.Valid && r.GrantID.String != "" {
-		g := &protocol.Grant{ID: r.GrantID.String, OrgID: r.GrantOrgID.String, AgentID: r.GrantAgentID.String, ItemID: r.GrantItemID.String, Level: protocol.GrantLevel(r.GrantLevel.String)}
+		g := &protocol.Grant{ID: r.GrantID.String, OrgID: r.GrantOrgID.String, AgentID: r.GrantAgentID.String, SubjectKind: protocol.SubjectKind(r.GrantSubjectKind.String), ItemID: r.GrantItemID.String, Level: protocol.GrantLevel(r.GrantLevel.String)}
 		if r.GrantActions.Valid && r.GrantActions.String != "" {
 			_ = json.Unmarshal([]byte(r.GrantActions.String), &g.Actions)
 		}
@@ -90,6 +92,7 @@ func useAuthFromSqlcRow(r *sqlc.UseAuthRow) (UseAuth, error) {
 			out.Approval = &protocol.Approval{ID: r.ApprovalID.String, GrantID: r.ApprovalGrantID.String, HumanID: r.ApprovalHumanID.String, ExpiresAt: r.ApprovalExpiresAt.Time.UTC()}
 		}
 	}
+	out.Groups = r.GroupIds
 	return out, nil
 }
 
@@ -613,7 +616,7 @@ func (p *Postgres) Secret(id string) (Secret, error) {
 
 func grantFromSqlc(r *sqlc.Grant) *protocol.Grant {
 	g := &protocol.Grant{
-		ID: r.ID, OrgID: r.OrgID, AgentID: r.AgentID, ItemID: r.ItemID,
+		ID: r.ID, OrgID: r.OrgID, AgentID: r.AgentID, SubjectKind: protocol.SubjectKind(r.SubjectKind), ItemID: r.ItemID,
 		Level: protocol.GrantLevel(r.Level),
 	}
 	if len(r.Actions) > 0 {
@@ -634,7 +637,7 @@ func (p *Postgres) PutGrant(g protocol.Grant, events ...protocol.AuditEvent) err
 	ctx := context.Background()
 	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
 		return q.PutGrant(ctx, sqlc.PutGrantParams{
-			ID: g.ID, OrgID: g.OrgID, AgentID: g.AgentID, ItemID: g.ItemID,
+			ID: g.ID, OrgID: g.OrgID, AgentID: g.AgentID, SubjectKind: string(g.Subject()), ItemID: g.ItemID,
 			Level: string(g.Level), Actions: string(actions), ExpiresAt: nullTime(g.ExpiresAt),
 		})
 	})
@@ -672,6 +675,95 @@ func (p *Postgres) ListGrants() ([]protocol.Grant, error) {
 		out = append(out, *grantFromSqlc(&rows[i]))
 	}
 	return out, nil
+}
+
+func (p *Postgres) PutGroup(g protocol.Group, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.PutGroup(ctx, sqlc.PutGroupParams{ID: g.ID, OrgID: g.OrgID, Name: g.Name})
+	})
+}
+
+func (p *Postgres) Group(id string) (protocol.Group, error) {
+	r, err := p.sqlc.GroupByID(context.Background(), id)
+	if err == pgx.ErrNoRows {
+		return protocol.Group{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.Group{}, err
+	}
+	return protocol.Group{ID: r.ID, OrgID: r.OrgID, Name: r.Name}, nil
+}
+
+func (p *Postgres) ListGroups() ([]protocol.Group, error) {
+	rows, err := p.sqlc.ListGroups(context.Background(), maxListResults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.Group, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, protocol.Group{ID: r.ID, OrgID: r.OrgID, Name: r.Name})
+	}
+	return out, nil
+}
+
+func (p *Postgres) AddGroupMember(groupID string, m protocol.GroupMember, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		if _, err := q.GroupByID(ctx, groupID); err == pgx.ErrNoRows {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		return q.PutGroupMember(ctx, sqlc.PutGroupMemberParams{
+			GroupID: groupID, MemberKind: string(m.MemberKind), MemberID: m.MemberID,
+		})
+	})
+}
+
+func (p *Postgres) RemoveGroupMember(groupID string, m protocol.GroupMember, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		if _, err := q.GroupByID(ctx, groupID); err == pgx.ErrNoRows {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		return q.DeleteGroupMember(ctx, sqlc.DeleteGroupMemberParams{
+			GroupID: groupID, MemberKind: string(m.MemberKind), MemberID: m.MemberID,
+		})
+	})
+}
+
+func (p *Postgres) GroupMembers(groupID string) ([]protocol.GroupMember, error) {
+	ctx := context.Background()
+	if _, err := p.sqlc.GroupByID(ctx, groupID); err == pgx.ErrNoRows {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	rows, err := p.sqlc.GroupMembers(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.GroupMember, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, protocol.GroupMember{
+			GroupID: r.GroupID, MemberKind: protocol.PrincipalKind(r.MemberKind), MemberID: r.MemberID,
+		})
+	}
+	return out, nil
+}
+
+func (p *Postgres) GroupIDsFor(members []protocol.GroupMember) ([]string, error) {
+	if len(members) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, len(members))
+	for i, m := range members {
+		keys[i] = string(m.MemberKind) + ":" + m.MemberID
+	}
+	return p.sqlc.GroupIDsFor(context.Background(), keys)
 }
 
 func (p *Postgres) PutApproval(a protocol.Approval) error {

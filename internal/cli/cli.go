@@ -70,6 +70,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(agentCmd(&home))
 	root.AddCommand(sessionCmd(&home))
 	root.AddCommand(grantCmd(&home))
+	root.AddCommand(groupCmd(&home))
 	root.AddCommand(useCmd(&home))
 	root.AddCommand(approveCmd(&home))
 	root.AddCommand(requestCmd(&home))
@@ -1324,15 +1325,24 @@ type hydraAgentDTO struct {
 }
 
 func grantCmd(home *string) *cobra.Command {
-	c := &cobra.Command{Use: "grant", Short: "Per-item grants. Agent or Kratos human. Same object."}
-	var agentName, humanName, itemName, level string
+	c := &cobra.Command{Use: "grant", Short: "Per-item grants. Agent, Kratos human, or group. Same object."}
+	var agentName, humanName, groupName, itemName, level string
 	var expires time.Duration
 	add := &cobra.Command{
 		Use:   "add",
-		Short: "Grant Use on an item (level1 or level2). --agent XOR --human.",
+		Short: "Grant Use on an item (level1, level2, or deny). --agent XOR --human XOR --group.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if (agentName == "") == (humanName == "") {
-				return fmt.Errorf("grant add: --agent or --human")
+			n := 0
+			for _, s := range []string{agentName, humanName, groupName} {
+				if s != "" {
+					n++
+				}
+			}
+			if n != 1 {
+				return fmt.Errorf("grant add: one of --agent, --human, --group")
+			}
+			if groupName != "" && originBase() != "" {
+				return fmt.Errorf("grant add --group: not on the origin API — run against the vault")
 			}
 			grantee := agentName
 			asHuman := humanName != ""
@@ -1357,17 +1367,26 @@ func grantCmd(home *string) *cobra.Command {
 				until = &t
 			}
 			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
-			g, err := a.GrantUntil(self, grantee, itemName, protocol.GrantLevel(level), until)
+			var g protocol.Grant
+			switch {
+			case groupName != "":
+				g, err = a.GrantSubject(self, protocol.SubjectGroup, groupName, itemName, protocol.GrantLevel(level), until)
+			case asHuman:
+				g, err = a.GrantSubject(self, protocol.SubjectHuman, grantee, itemName, protocol.GrantLevel(level), until)
+			default:
+				g, err = a.GrantSubject(self, protocol.SubjectAgent, grantee, itemName, protocol.GrantLevel(level), until)
+			}
 			if err != nil {
 				return err
 			}
 			return encode(cmd, g)
 		},
 	}
-	add.Flags().StringVar(&agentName, "agent", "", "agent id. XOR --human")
-	add.Flags().StringVar(&humanName, "human", "", "Kratos identity id, or email resolved via glue. XOR --agent. Not a family vault.")
+	add.Flags().StringVar(&agentName, "agent", "", "agent id. XOR --human/--group")
+	add.Flags().StringVar(&humanName, "human", "", "Kratos identity id, or email resolved via glue. XOR --agent/--group. Not a family vault.")
+	add.Flags().StringVar(&groupName, "group", "", "org group name — the shared vault. XOR --agent/--human")
 	add.Flags().StringVar(&itemName, "item", "", "item id")
-	add.Flags().StringVar(&level, "level", "", "level1 (human last step) or level2 (agent exclusive)")
+	add.Flags().StringVar(&level, "level", "", "level1 (human last step), level2 (agent exclusive), or deny")
 	add.Flags().DurationVar(&expires, "expires", 0, "grant lifetime. zero is forever")
 	_ = add.MarkFlagRequired("item")
 	_ = add.MarkFlagRequired("level")
@@ -1394,6 +1413,118 @@ func grantCmd(home *string) *cobra.Command {
 		},
 	}
 	c.AddCommand(add, list)
+	return c
+}
+
+// groupCmd is the VEIL-20 surface: org-scoped principal sets, and the grant
+// to one is the shared vault. Vault-local only this slice — no publicapi
+// route, no SPA card.
+func groupCmd(home *string) *cobra.Command {
+	c := &cobra.Command{Use: "group", Short: "Org groups. A grant to a group is the shared vault."}
+	add := &cobra.Command{
+		Use:   "add NAME",
+		Short: "Create a group in the org",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			g, err := a.AddGroup(self, args[0])
+			if err != nil {
+				return err
+			}
+			return encode(cmd, g)
+		},
+	}
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List the org's groups",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			groups, err := a.Groups(self)
+			if err != nil {
+				return err
+			}
+			return encode(cmd, groups)
+		},
+	}
+	member := &cobra.Command{Use: "member", Short: "Group membership — the team model"}
+	var mAgent, mHuman string
+	memberOp := func(fn func(*app.App, protocol.Principal, string, protocol.PrincipalKind, string) error) func(*cobra.Command, []string) error {
+		return func(cmd *cobra.Command, args []string) error {
+			if (mAgent == "") == (mHuman == "") {
+				return fmt.Errorf("one of --agent, --human")
+			}
+			kind := protocol.PrincipalAgent
+			memberID := mAgent
+			if mHuman != "" {
+				got, err := resolveHumanGrantee(cmd.Context(), mHuman)
+				if err != nil {
+					return err
+				}
+				kind, memberID = protocol.PrincipalHuman, got
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			return fn(a, self, args[0], kind, memberID)
+		}
+	}
+	madd := &cobra.Command{
+		Use:   "add GROUP",
+		Short: "Add an agent or human to the group",
+		Args:  cobra.ExactArgs(1),
+		RunE: memberOp(func(a *app.App, self protocol.Principal, g string, k protocol.PrincipalKind, id string) error {
+			return a.GroupAddMember(self, g, k, id)
+		}),
+	}
+	mremove := &cobra.Command{
+		Use:   "remove GROUP",
+		Short: "Remove an agent or human from the group",
+		Args:  cobra.ExactArgs(1),
+		RunE: memberOp(func(a *app.App, self protocol.Principal, g string, k protocol.PrincipalKind, id string) error {
+			return a.GroupRemoveMember(self, g, k, id)
+		}),
+	}
+	for _, m := range []*cobra.Command{madd, mremove} {
+		m.Flags().StringVar(&mAgent, "agent", "", "agent id. XOR --human")
+		m.Flags().StringVar(&mHuman, "human", "", "human id or email. XOR --agent")
+	}
+	mlist := &cobra.Command{
+		Use:   "list GROUP",
+		Short: "List a group's members",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			members, err := a.GroupMemberList(self, args[0])
+			if err != nil {
+				return err
+			}
+			if members == nil {
+				members = []protocol.GroupMember{}
+			}
+			return encode(cmd, members)
+		},
+	}
+	member.AddCommand(madd, mremove, mlist)
+	c.AddCommand(add, list, member)
 	return c
 }
 

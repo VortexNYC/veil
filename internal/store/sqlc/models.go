@@ -64,13 +64,26 @@ type AuditOutbox struct {
 }
 
 type Grant struct {
-	ID        string
-	OrgID     string
-	AgentID   string
-	ItemID    string
-	Level     string
-	Actions   string
-	ExpiresAt sql.NullTime
+	ID          string
+	OrgID       string
+	AgentID     string
+	SubjectKind string
+	ItemID      string
+	Level       string
+	Actions     string
+	ExpiresAt   sql.NullTime
+}
+
+type Group struct {
+	ID    string
+	OrgID string
+	Name  string
+}
+
+type GroupMember struct {
+	GroupID    string
+	MemberKind string
+	MemberID   string
 }
 
 type Human struct {

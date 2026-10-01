@@ -140,6 +140,17 @@ func (b *Broker) appendAudit(ctx context.Context, e protocol.AuditEvent) error {
 	return err
 }
 
+func groupSet(ids []string) map[string]struct{} {
+	if len(ids) == 0 {
+		return nil
+	}
+	m := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		m[id] = struct{}{}
+	}
+	return m
+}
+
 func (b *Broker) client() *http.Client {
 	if b.HTTP != nil {
 		return b.HTTP
@@ -229,6 +240,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		Principal: agent,
 		Item:      item,
 		Grant:     auth.Grant,
+		Groups:    groupSet(auth.Groups),
 		Action:    req.Action,
 		TargetURL: target,
 		Approval:  auth.Approval,

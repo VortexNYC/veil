@@ -109,9 +109,21 @@ var migrateTables = []migrateTable{
 	},
 	{
 		name:       "grants",
-		selectCols: []string{"id", "org_id", "agent_id", "item_id", "level", "actions", "expires_at"},
-		insertCols: []string{"id", "org_id", "agent_id", "item_id", "level", "actions", "expires_at"},
-		convs:      []col{keep, keep, keep, keep, keep, keep, toEpochNull},
+		selectCols: []string{"id", "org_id", "agent_id", "subject_kind", "item_id", "level", "actions", "expires_at"},
+		insertCols: []string{"id", "org_id", "agent_id", "subject_kind", "item_id", "level", "actions", "expires_at"},
+		convs:      []col{keep, keep, keep, keep, keep, keep, keep, toEpochNull},
+	},
+	{
+		name:       "groups",
+		selectCols: []string{"id", "org_id", "name"},
+		insertCols: []string{"id", "org_id", "name"},
+		convs:      []col{keep, keep, keep},
+	},
+	{
+		name:       "group_members",
+		selectCols: []string{"group_id", "member_kind", "member_id"},
+		insertCols: []string{"group_id", "member_kind", "member_id"},
+		convs:      []col{keep, keep, keep},
 	},
 	{
 		name:       "approvals",
@@ -189,6 +201,45 @@ func MigrateSQLiteToPostgres(ctx context.Context, sqlitePath, dsn string) (*Migr
 
 	report := &MigrateReport{}
 	for _, mt := range migrateTables {
+		// The source can be a vault from before the table/column existed —
+		// the migrator opens the file read-only, so no ensure-schema ran.
+		// Skip absent tables; an absent grants.subject_kind backfills
+		// 'agent', the kind every pre-VEIL-20 row is.
+		exists, err := sqliteHasTable(src, mt.name)
+		if err != nil {
+			return report, err
+		}
+		if !exists {
+			continue
+		}
+		if mt.name == "grants" {
+			hasKind, err := sqliteHasColumn(src, "grants", "subject_kind")
+			if err != nil {
+				return report, err
+			}
+			if !hasKind {
+				for i, c := range mt.selectCols {
+					if c == "subject_kind" {
+						mt.selectCols[i] = `'agent' AS subject_kind`
+					}
+				}
+			}
+		}
+		if mt.name == "owner_keys" {
+			// Pre-org vaults have a bare owner_keys — every row belongs to
+			// the single local org.
+			hasOrg, err := sqliteHasColumn(src, "owner_keys", "org_id")
+			if err != nil {
+				return report, err
+			}
+			if !hasOrg {
+				for i, c := range mt.selectCols {
+					if c == "org_id" {
+						mt.selectCols[i] = `'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' AS org_id`
+					}
+				}
+			}
+		}
 		tr, err := migrateOneTable(ctx, src, pool, mt)
 		if err != nil {
 			return report, fmt.Errorf("migrate %s: %w", mt.name, err)
@@ -208,6 +259,33 @@ func MigrateSQLiteToPostgres(ctx context.Context, sqlitePath, dsn string) (*Migr
 		}
 	}
 	return report, nil
+}
+
+func sqliteHasTable(src *sql.DB, name string) (bool, error) {
+	var n int
+	err := src.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&n)
+	return n > 0, err
+}
+
+func sqliteHasColumn(src *sql.DB, table, column string) (bool, error) {
+	rows, err := src.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func migrateOneTable(ctx context.Context, src *sql.DB, pool *pgxpool.Pool, mt migrateTable) (MigrateTableReport, error) {

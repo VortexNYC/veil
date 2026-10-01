@@ -1883,10 +1883,14 @@ func (a *App) AddGrant(agentID, itemID string, level protocol.GrantLevel) (proto
 // lives in the item's org; a grantee outside it is not a grantee, and an
 // agent owned by a different human is not the actor's to delegate.
 func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level protocol.GrantLevel, expires *time.Time) (protocol.Grant, error) {
+	return a.grantUntil(actor, grantee, itemID, level, expires, false)
+}
+
+func (a *App) grantUntil(actor protocol.Principal, grantee, itemID string, level protocol.GrantLevel, expires *time.Time, allowDeny bool) (protocol.Grant, error) {
 	if !id.Principal(grantee) || !id.Valid(itemID) {
 		return protocol.Grant{}, fmt.Errorf("app: invalid agent or item")
 	}
-	if level != protocol.Level1 && level != protocol.Level2 {
+	if level != protocol.Level1 && level != protocol.Level2 && !(allowDeny && level == protocol.LevelDeny) {
 		return protocol.Grant{}, fmt.Errorf("app: level must be level1 or level2")
 	}
 	item, err := a.Store.Item(itemID)
@@ -1912,9 +1916,11 @@ func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level
 	if !own {
 		return protocol.Grant{}, ErrForbidden
 	}
+	kind := protocol.SubjectHuman
 	agent, err := a.Store.Agent(grantee)
 	switch {
 	case err == nil:
+		kind = protocol.SubjectAgent
 		if agent.RevokedAt != nil {
 			return protocol.Grant{}, ErrAgentRevoked
 		}
@@ -1939,18 +1945,235 @@ func (a *App) GrantUntil(actor protocol.Principal, grantee, itemID string, level
 		return protocol.Grant{}, err
 	}
 	g := protocol.Grant{
-		ID:        id.Grant(grantee, itemID),
-		OrgID:     org,
-		AgentID:   grantee,
-		ItemID:    itemID,
-		Level:     level,
-		Actions:   []protocol.ActionKind{protocol.ActionFetch},
-		ExpiresAt: expires,
+		ID:          id.Grant(grantee, itemID),
+		OrgID:       org,
+		AgentID:     grantee,
+		SubjectKind: kind,
+		ItemID:      itemID,
+		Level:       level,
+		Actions:     []protocol.ActionKind{protocol.ActionFetch},
+		ExpiresAt:   expires,
 	}
 	if err := a.Store.PutGrant(g, adminEvent(actor.ID, org, itemID, protocol.ActionGrantGranted, fmt.Sprintf("agent=%s level=%s", grantee, level))); err != nil {
 		return protocol.Grant{}, err
 	}
 	return g, nil
+}
+
+// groupByName resolves an org's group by name — the CLI handle.
+func (a *App) groupByName(orgID, name string) (protocol.Group, error) {
+	groups, err := a.Store.ListGroups()
+	if err != nil {
+		return protocol.Group{}, err
+	}
+	for _, g := range groups {
+		if g.OrgID == orgID && g.Name == name {
+			return g, nil
+		}
+	}
+	return protocol.Group{}, store.ErrNotFound
+}
+
+// GrantSubject is GrantUntil widened to a subject kind (VEIL-20): an agent
+// or human is the same direct grant; a group subject makes an org-owned
+// item plus this grant the shared vault — one row instead of one grant per
+// member. level=deny writes the explicit block that beats inherited allows.
+func (a *App) GrantSubject(actor protocol.Principal, kind protocol.SubjectKind, subject, itemID string, level protocol.GrantLevel, expires *time.Time) (protocol.Grant, error) {
+	if kind == protocol.SubjectGroup {
+		if !id.Valid(subject) || !id.Valid(itemID) {
+			return protocol.Grant{}, fmt.Errorf("app: invalid group or item")
+		}
+		if level != protocol.Level1 && level != protocol.Level2 && level != protocol.LevelDeny {
+			return protocol.Grant{}, fmt.Errorf("app: level must be level1, level2, or deny")
+		}
+		item, err := a.Store.Item(itemID)
+		if err != nil {
+			return protocol.Grant{}, err
+		}
+		if item.Archived {
+			return protocol.Grant{}, fmt.Errorf("app: item archived")
+		}
+		org := item.OrgID
+		if actor.OrgID == "" || org != actor.OrgID {
+			return protocol.Grant{}, fmt.Errorf("app: unknown item")
+		}
+		own, err := a.ownsVault(actor)
+		if err != nil {
+			return protocol.Grant{}, err
+		}
+		if !own {
+			return protocol.Grant{}, ErrForbidden
+		}
+		g, err := a.groupByName(org, subject)
+		if err != nil {
+			return protocol.Grant{}, err
+		}
+		grant := protocol.Grant{
+			ID:          id.Grant("group:"+g.ID, itemID),
+			OrgID:       org,
+			AgentID:     g.ID,
+			SubjectKind: protocol.SubjectGroup,
+			ItemID:      itemID,
+			Level:       level,
+			Actions:     []protocol.ActionKind{protocol.ActionFetch},
+			ExpiresAt:   expires,
+		}
+		if err := a.Store.PutGrant(grant, adminEvent(actor.ID, org, itemID, protocol.ActionGrantGranted, fmt.Sprintf("group=%s level=%s", g.Name, level))); err != nil {
+			return protocol.Grant{}, err
+		}
+		return grant, nil
+	}
+	if level == protocol.LevelDeny {
+		// deny is reachable on direct grants through this path only — the
+		// HTTP surface keeps its level1|level2 contract on GrantUntil.
+		return a.grantUntil(actor, subject, itemID, level, expires, true)
+	}
+	return a.GrantUntil(actor, subject, itemID, level, expires)
+}
+
+// AddGroup creates an org group — owner-administered like grants.
+func (a *App) AddGroup(actor protocol.Principal, name string) (protocol.Group, error) {
+	if !id.Valid(name) {
+		return protocol.Group{}, fmt.Errorf("app: invalid group name")
+	}
+	if actor.OrgID == "" {
+		return protocol.Group{}, ErrForbidden
+	}
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return protocol.Group{}, err
+	}
+	if !own {
+		return protocol.Group{}, ErrForbidden
+	}
+	if _, err := a.groupByName(actor.OrgID, name); err == nil {
+		return protocol.Group{}, fmt.Errorf("app: group exists")
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return protocol.Group{}, err
+	}
+	gid, err := id.NewGroup()
+	if err != nil {
+		return protocol.Group{}, err
+	}
+	g := protocol.Group{ID: gid, OrgID: actor.OrgID, Name: name}
+	if err := a.Store.PutGroup(g, adminEvent(actor.ID, actor.OrgID, "", protocol.ActionGroupCreated, "group="+name)); err != nil {
+		return protocol.Group{}, err
+	}
+	return g, nil
+}
+
+// Groups returns the org's groups — owner-administered surface.
+func (a *App) Groups(actor protocol.Principal) ([]protocol.Group, error) {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return nil, err
+	}
+	if !own {
+		return nil, ErrForbidden
+	}
+	groups, err := a.Store.ListGroups()
+	if err != nil {
+		return nil, err
+	}
+	var out []protocol.Group
+	for _, g := range groups {
+		if g.OrgID == actor.OrgID {
+			out = append(out, g)
+		}
+	}
+	if out == nil {
+		out = []protocol.Group{}
+	}
+	return out, nil
+}
+
+// checkGroupMember validates a member edge target: agents need a live row
+// in the org; humans need a humans row or org membership via Keto.
+func (a *App) checkGroupMember(orgID string, kind protocol.PrincipalKind, memberID string) error {
+	switch kind {
+	case protocol.PrincipalAgent:
+		agent, err := a.Store.Agent(memberID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("app: unknown member")
+			}
+			return err
+		}
+		if agent.OrgID != orgID {
+			return fmt.Errorf("app: unknown member")
+		}
+		if agent.RevokedAt != nil {
+			return ErrAgentRevoked
+		}
+		return nil
+	case protocol.PrincipalHuman:
+		if h, err := a.Store.Human(memberID); err == nil {
+			if h.OrgID != orgID {
+				return fmt.Errorf("app: unknown member")
+			}
+			return nil
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		if a.Members == nil {
+			return fmt.Errorf("app: unknown member")
+		}
+		ok, err := a.Members.IsMember(context.Background(), orgID, memberID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("app: unknown member")
+		}
+		return nil
+	default:
+		return fmt.Errorf("app: member kind must be agent or human")
+	}
+}
+
+// groupOp resolves actor + group for a membership mutation.
+func (a *App) groupOp(actor protocol.Principal, groupName string) (protocol.Group, error) {
+	if actor.OrgID == "" {
+		return protocol.Group{}, ErrForbidden
+	}
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return protocol.Group{}, err
+	}
+	if !own {
+		return protocol.Group{}, ErrForbidden
+	}
+	return a.groupByName(actor.OrgID, groupName)
+}
+
+func (a *App) GroupAddMember(actor protocol.Principal, groupName string, kind protocol.PrincipalKind, memberID string) error {
+	g, err := a.groupOp(actor, groupName)
+	if err != nil {
+		return err
+	}
+	if err := a.checkGroupMember(g.OrgID, kind, memberID); err != nil {
+		return err
+	}
+	m := protocol.GroupMember{GroupID: g.ID, MemberKind: kind, MemberID: memberID}
+	return a.Store.AddGroupMember(g.ID, m, adminEvent(actor.ID, g.OrgID, "", protocol.ActionGroupMemberAdded, fmt.Sprintf("group=%s member=%s:%s", g.Name, kind, memberID)))
+}
+
+func (a *App) GroupRemoveMember(actor protocol.Principal, groupName string, kind protocol.PrincipalKind, memberID string) error {
+	g, err := a.groupOp(actor, groupName)
+	if err != nil {
+		return err
+	}
+	m := protocol.GroupMember{GroupID: g.ID, MemberKind: kind, MemberID: memberID}
+	return a.Store.RemoveGroupMember(g.ID, m, adminEvent(actor.ID, g.OrgID, "", protocol.ActionGroupMemberRemoved, fmt.Sprintf("group=%s member=%s:%s", g.Name, kind, memberID)))
+}
+
+// GroupMemberList returns a group's members — owner-administered.
+func (a *App) GroupMemberList(actor protocol.Principal, groupName string) ([]protocol.GroupMember, error) {
+	g, err := a.groupOp(actor, groupName)
+	if err != nil {
+		return nil, err
+	}
+	return a.Store.GroupMembers(g.ID)
 }
 
 func (a *App) Use(ctx context.Context, agentID, itemID, method, rawURL string) (protocol.UseResult, error) {
@@ -2160,12 +2383,29 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
-	var out []protocol.Item
-	for _, g := range grants {
-		if g.AgentID != agentID {
-			continue
+	// The grantee's effective grants are its direct rows plus every grant to
+	// a group it holds — its own memberships, and for a user-owned agent the
+	// owner's (VEIL-20). Per item, Select applies the precedence: direct
+	// beats group, deny beats allow.
+	var memberKeys []protocol.GroupMember
+	if granteeKnown {
+		if agentFound {
+			memberKeys = agent.MemberKeys()
+		} else {
+			memberKeys = protocol.Principal{Kind: protocol.PrincipalHuman, ID: agentID}.MemberKeys()
 		}
+	}
+	groupIDs, err := a.Store.GroupIDsFor(memberKeys)
+	if err != nil {
+		return nil, err
+	}
+	groups := make(map[string]struct{}, len(groupIDs))
+	for _, id := range groupIDs {
+		groups[id] = struct{}{}
+	}
+	now := time.Now()
+	byItem := map[string][]protocol.Grant{}
+	for _, g := range grants {
 		// Unknown grantee: fail closed. Known grantees match the grant's org
 		// exactly — migration backfills legacy rows to LocalOrgID, so an
 		// empty org can never legitimately match a stamped row.
@@ -2175,7 +2415,26 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 		if g.ExpiresAt != nil && !now.Before(*g.ExpiresAt) {
 			continue
 		}
-		item, err := a.Store.Item(g.ItemID)
+		if g.Subject() == protocol.SubjectGroup {
+			if _, ok := groups[g.AgentID]; ok {
+				byItem[g.ItemID] = append(byItem[g.ItemID], g)
+			}
+		} else if g.AgentID == agentID {
+			byItem[g.ItemID] = append(byItem[g.ItemID], g)
+		}
+	}
+	itemIDs := make([]string, 0, len(byItem))
+	for id := range byItem {
+		itemIDs = append(itemIDs, id)
+	}
+	sort.Strings(itemIDs)
+	var out []protocol.Item
+	for _, itemID := range itemIDs {
+		g := grant.Select(byItem[itemID], now, nil)
+		if g == nil || g.Level == protocol.LevelDeny {
+			continue
+		}
+		item, err := a.Store.Item(itemID)
 		if err != nil {
 			return nil, err
 		}

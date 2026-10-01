@@ -2426,3 +2426,153 @@ func TestCLIOriginAuditFeed(t *testing.T) {
 		t.Fatalf("feed %s", out)
 	}
 }
+
+// VEIL-20 end-to-end on the CLI surface: group create, member ops, group
+// grant, member add expands Use, member remove contracts it, deny level.
+func TestCLIGroupGrantFlow(t *testing.T) {
+	home := t.TempDir()
+	if _, err := run(t, home, "", "init"); err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok:"+r.Header.Get("Authorization"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	secFile := filepath.Join(home, "sec")
+	if err := os.WriteFile(secFile, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "item", "add", "stripe", "--uri", upstream.URL, "--secret-file", secFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "agent", "add", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := run(t, home, "", "group", "add", "eng")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grp struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(out), &grp); err != nil {
+		t.Fatal(err, out)
+	}
+	if grp.ID == "" || grp.Name != "eng" {
+		t.Fatalf("group add: %s", out)
+	}
+	if _, err := run(t, home, "", "grant", "add", "--group", "eng", "--item", "stripe", "--level", "level2"); err != nil {
+		t.Fatal(err)
+	}
+	// Not yet a member: use denies.
+	out, err = run(t, home, "", "use", "--agent", "claude", "--item", "stripe", "--url", upstream.URL+"/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got useDTO
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err, out)
+	}
+	if got.Decision != protocol.DecisionDeny {
+		t.Fatalf("pre-membership decision=%s", got.Decision)
+	}
+	if _, err := run(t, home, "", "group", "member", "add", "eng", "--agent", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	out, err = run(t, home, "", "group", "member", "list", "eng")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var members []struct {
+		MemberKind string `json:"member_kind"`
+		MemberID   string `json:"member_id"`
+	}
+	if err := json.Unmarshal([]byte(out), &members); err != nil {
+		t.Fatal(err, out)
+	}
+	if len(members) != 1 || members[0].MemberID != "claude" {
+		t.Fatalf("member list: %s", out)
+	}
+	out, err = run(t, home, "", "use", "--agent", "claude", "--item", "stripe", "--url", upstream.URL+"/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err, out)
+	}
+	if got.Decision != protocol.DecisionAllow || !strings.Contains(got.Body, "ok:") {
+		t.Fatalf("group grant use: %+v %s", got, out)
+	}
+	if scrub.Contains([]byte(out), []byte(secret)) {
+		t.Fatalf("cli printed secret: %s", out)
+	}
+	out, err = run(t, home, "", "group", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"eng"`) {
+		t.Fatalf("group list: %s", out)
+	}
+	// Remove the member — access contracts.
+	if _, err := run(t, home, "", "group", "member", "remove", "eng", "--agent", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	out, err = run(t, home, "", "use", "--agent", "claude", "--item", "stripe", "--url", upstream.URL+"/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err, out)
+	}
+	if got.Decision != protocol.DecisionDeny {
+		t.Fatalf("post-remove decision=%s", got.Decision)
+	}
+}
+
+// deny is a first-class level: an explicit block beats an inherited allow.
+func TestCLIGrantDenyLevel(t *testing.T) {
+	home := t.TempDir()
+	if _, err := run(t, home, "", "init"); err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok:"+r.Header.Get("Authorization"))
+	}))
+	t.Cleanup(upstream.Close)
+	secFile := filepath.Join(home, "sec")
+	if err := os.WriteFile(secFile, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "item", "add", "stripe", "--uri", upstream.URL, "--secret-file", secFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "agent", "add", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "group", "add", "eng"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "group", "member", "add", "eng", "--agent", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, home, "", "grant", "add", "--group", "eng", "--item", "stripe", "--level", "level2"); err != nil {
+		t.Fatal(err)
+	}
+	// The direct deny shadows the inherited allow.
+	if _, err := run(t, home, "", "grant", "add", "--agent", "claude", "--item", "stripe", "--level", "deny"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := run(t, home, "", "use", "--agent", "claude", "--item", "stripe", "--url", upstream.URL+"/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got useDTO
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err, out)
+	}
+	if got.Decision != protocol.DecisionDeny {
+		t.Fatalf("deny level: %+v", got)
+	}
+}

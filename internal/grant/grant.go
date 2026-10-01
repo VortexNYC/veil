@@ -22,6 +22,10 @@ type Input struct {
 	Principal protocol.Principal
 	Item      protocol.Item
 	Grant     *protocol.Grant
+	// Groups is the principal's resolved group set — a group-subject grant
+	// matches only when its id is in it. The store resolves membership at
+	// read time; a nil set means group grants never match.
+	Groups    map[string]struct{}
 	Action    protocol.ActionKind
 	TargetURL string
 	Approval  *protocol.Approval
@@ -45,7 +49,11 @@ func Evaluate(in Input) protocol.UseResult {
 	if g.OrgID != in.Principal.OrgID || g.OrgID != in.Item.OrgID {
 		return deny("wrong_org")
 	}
-	if g.AgentID != in.Principal.ID {
+	if g.Subject() == protocol.SubjectGroup {
+		if _, ok := in.Groups[g.AgentID]; !ok {
+			return deny("wrong_group")
+		}
+	} else if g.AgentID != in.Principal.ID {
 		return deny("wrong_agent")
 	}
 	if g.ItemID != in.Item.ID {
@@ -53,6 +61,9 @@ func Evaluate(in Input) protocol.UseResult {
 	}
 	if g.ExpiresAt != nil && !in.Now.Before(*g.ExpiresAt) {
 		return deny("grant_expired")
+	}
+	if g.Level == protocol.LevelDeny {
+		return deny("grant_denied")
 	}
 	if !actionAllowed(g.Actions, in.Action) {
 		return deny("action_not_allowed")
@@ -79,6 +90,45 @@ func Evaluate(in Input) protocol.UseResult {
 	default:
 		return deny("unknown_level")
 	}
+}
+
+// Select picks the one grant that governs (principal, item) among
+// candidates already filtered to the item and to matching subjects. The
+// order is the documented precedence: an expired edge is dead weight and
+// ranks last; then direct shadows group; then deny beats allow; and among
+// allows a grant that resolves immediately (level2, or level1 with a live
+// approval) beats a bare level1 — "any allow wins" made deterministic.
+func Select(candidates []protocol.Grant, now time.Time, approved map[string]bool) *protocol.Grant {
+	if len(candidates) == 0 {
+		return nil
+	}
+	rank := func(g protocol.Grant) (int, int, int) {
+		expired := g.ExpiresAt != nil && !now.Before(*g.ExpiresAt)
+		exp := 0
+		if expired {
+			exp = 1
+		}
+		tier := 0
+		if g.Subject() == protocol.SubjectGroup {
+			tier = 1
+		}
+		res := 2
+		if g.Level == protocol.LevelDeny {
+			res = 0
+		} else if g.Level == protocol.Level2 || approved[g.ID] {
+			res = 1
+		}
+		return exp, tier, res
+	}
+	best := &candidates[0]
+	be, bt, br := rank(*best)
+	for i := 1; i < len(candidates); i++ {
+		e, t, r := rank(candidates[i])
+		if e < be || (e == be && (t < bt || (t == bt && (r < br || (r == br && candidates[i].ID < best.ID))))) {
+			best, be, bt, br = &candidates[i], e, t, r
+		}
+	}
+	return best
 }
 
 func actionAllowed(actions []protocol.ActionKind, want protocol.ActionKind) bool {
