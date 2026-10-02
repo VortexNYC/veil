@@ -1341,9 +1341,6 @@ func grantCmd(home *string) *cobra.Command {
 			if n != 1 {
 				return fmt.Errorf("grant add: one of --agent, --human, --group")
 			}
-			if groupName != "" && originBase() != "" {
-				return fmt.Errorf("grant add --group: not on the origin API — run against the vault")
-			}
 			grantee := agentName
 			asHuman := humanName != ""
 			if asHuman {
@@ -1354,7 +1351,7 @@ func grantCmd(home *string) *cobra.Command {
 				grantee = got
 			}
 			if originBase() != "" {
-				return originGrantAdd(cmd, grantee, itemName, level, expires, asHuman)
+				return originGrantAdd(cmd, grantee, itemName, level, expires, asHuman, groupName)
 			}
 			a, err := openApp(*home)
 			if err != nil {
@@ -1417,8 +1414,8 @@ func grantCmd(home *string) *cobra.Command {
 }
 
 // groupCmd is the VEIL-20 surface: org-scoped principal sets, and the grant
-// to one is the shared vault. Vault-local only this slice — no publicapi
-// route, no SPA card.
+// to one is the shared vault. On origin the same commands ride the HTTP
+// routes — owner-gated like grants.
 func groupCmd(home *string) *cobra.Command {
 	c := &cobra.Command{Use: "group", Short: "Org groups. A grant to a group is the shared vault."}
 	add := &cobra.Command{
@@ -1426,6 +1423,9 @@ func groupCmd(home *string) *cobra.Command {
 		Short: "Create a group in the org",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originGroupAdd(cmd, args[0])
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err
@@ -1444,6 +1444,9 @@ func groupCmd(home *string) *cobra.Command {
 		Short: "List the org's groups",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originGroupList(cmd)
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err
@@ -1459,7 +1462,9 @@ func groupCmd(home *string) *cobra.Command {
 	}
 	member := &cobra.Command{Use: "member", Short: "Group membership — the team model"}
 	var mAgent, mHuman string
-	memberOp := func(fn func(*app.App, protocol.Principal, string, protocol.PrincipalKind, string) error) func(*cobra.Command, []string) error {
+	// memberOp resolves --agent/--human to kind+id once; the closure picks
+	// the transport (origin HTTP vs local vault).
+	memberOp := func(fn func(cmd *cobra.Command, g string, k protocol.PrincipalKind, id string) error) func(*cobra.Command, []string) error {
 		return func(cmd *cobra.Command, args []string) error {
 			if (mAgent == "") == (mHuman == "") {
 				return fmt.Errorf("one of --agent, --human")
@@ -1473,29 +1478,42 @@ func groupCmd(home *string) *cobra.Command {
 				}
 				kind, memberID = protocol.PrincipalHuman, got
 			}
-			a, err := openApp(*home)
-			if err != nil {
-				return err
-			}
-			defer a.Close()
-			self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
-			return fn(a, self, args[0], kind, memberID)
+			return fn(cmd, args[0], kind, memberID)
 		}
+	}
+	memberVault := func(g string, k protocol.PrincipalKind, id string, fn func(*app.App, protocol.Principal, string, protocol.PrincipalKind, string) error) error {
+		a, err := openApp(*home)
+		if err != nil {
+			return err
+		}
+		defer a.Close()
+		self := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+		return fn(a, self, g, k, id)
 	}
 	madd := &cobra.Command{
 		Use:   "add GROUP",
 		Short: "Add an agent or human to the group",
 		Args:  cobra.ExactArgs(1),
-		RunE: memberOp(func(a *app.App, self protocol.Principal, g string, k protocol.PrincipalKind, id string) error {
-			return a.GroupAddMember(self, g, k, id)
+		RunE: memberOp(func(cmd *cobra.Command, g string, k protocol.PrincipalKind, id string) error {
+			if originBase() != "" {
+				return originGroupMemberAdd(cmd, g, k, id)
+			}
+			return memberVault(g, k, id, func(a *app.App, self protocol.Principal, g string, k protocol.PrincipalKind, id string) error {
+				return a.GroupAddMember(self, g, k, id)
+			})
 		}),
 	}
 	mremove := &cobra.Command{
 		Use:   "remove GROUP",
 		Short: "Remove an agent or human from the group",
 		Args:  cobra.ExactArgs(1),
-		RunE: memberOp(func(a *app.App, self protocol.Principal, g string, k protocol.PrincipalKind, id string) error {
-			return a.GroupRemoveMember(self, g, k, id)
+		RunE: memberOp(func(cmd *cobra.Command, g string, k protocol.PrincipalKind, id string) error {
+			if originBase() != "" {
+				return originGroupMemberRemove(cmd, g, k, id)
+			}
+			return memberVault(g, k, id, func(a *app.App, self protocol.Principal, g string, k protocol.PrincipalKind, id string) error {
+				return a.GroupRemoveMember(self, g, k, id)
+			})
 		}),
 	}
 	for _, m := range []*cobra.Command{madd, mremove} {
@@ -1507,6 +1525,9 @@ func groupCmd(home *string) *cobra.Command {
 		Short: "List a group's members",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originGroupMemberList(cmd, args[0])
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err

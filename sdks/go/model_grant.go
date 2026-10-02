@@ -28,6 +28,8 @@ type Grant struct {
 	ItemId string `json:"item_id"`
 	Level string `json:"level"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// Subject kind. agent_id holds the subject id — the group id when subject_kind is group.
+	SubjectKind string `json:"subject_kind"`
 }
 
 type _Grant Grant
@@ -36,13 +38,14 @@ type _Grant Grant
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewGrant(id string, orgId string, agentId string, itemId string, level string) *Grant {
+func NewGrant(id string, orgId string, agentId string, itemId string, level string, subjectKind string) *Grant {
 	this := Grant{}
 	this.Id = id
 	this.OrgId = orgId
 	this.AgentId = agentId
 	this.ItemId = itemId
 	this.Level = level
+	this.SubjectKind = subjectKind
 	return &this
 }
 
@@ -206,6 +209,30 @@ func (o *Grant) SetExpiresAt(v time.Time) {
 	o.ExpiresAt = &v
 }
 
+// GetSubjectKind returns the SubjectKind field value
+func (o *Grant) GetSubjectKind() string {
+	if o == nil {
+		var ret string
+		return ret
+	}
+
+	return o.SubjectKind
+}
+
+// GetSubjectKindOk returns a tuple with the SubjectKind field value
+// and a boolean to check if the value has been set.
+func (o *Grant) GetSubjectKindOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.SubjectKind, true
+}
+
+// SetSubjectKind sets field value
+func (o *Grant) SetSubjectKind(v string) {
+	o.SubjectKind = v
+}
+
 func (o Grant) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -224,6 +251,7 @@ func (o Grant) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.ExpiresAt) {
 		toSerialize["expires_at"] = o.ExpiresAt
 	}
+	toSerialize["subject_kind"] = o.SubjectKind
 	return toSerialize, nil
 }
 
@@ -237,6 +265,7 @@ func (o *Grant) UnmarshalJSON(data []byte) (err error) {
 		"agent_id",
 		"item_id",
 		"level",
+		"subject_kind",
 	}
 
 	allProperties := make(map[string]interface{})

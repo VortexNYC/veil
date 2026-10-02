@@ -17,6 +17,7 @@ import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as AppReportRouteImport } from './routes/_app/report'
 import { Route as AppItemsRouteImport } from './routes/_app/items'
 import { Route as AppInvitesRouteImport } from './routes/_app/invites'
+import { Route as AppGroupsRouteImport } from './routes/_app/groups'
 import { Route as AppGrantsRouteImport } from './routes/_app/grants'
 import { Route as AppAuditRouteImport } from './routes/_app/audit'
 import { Route as AppAgentsRouteImport } from './routes/_app/agents'
@@ -60,6 +61,11 @@ const AppInvitesRoute = AppInvitesRouteImport.update({
   path: '/invites',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGroupsRoute = AppGroupsRouteImport.update({
+  id: '/groups',
+  path: '/groups',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGrantsRoute = AppGrantsRouteImport.update({
   id: '/grants',
   path: '/grants',
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AppAgentsRoute
   '/audit': typeof AppAuditRoute
   '/grants': typeof AppGrantsRoute
+  '/groups': typeof AppGroupsRoute
   '/invites': typeof AppInvitesRoute
   '/items': typeof AppItemsRoute
   '/report': typeof AppReportRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/agents': typeof AppAgentsRoute
   '/audit': typeof AppAuditRoute
   '/grants': typeof AppGrantsRoute
+  '/groups': typeof AppGroupsRoute
   '/invites': typeof AppInvitesRoute
   '/items': typeof AppItemsRoute
   '/report': typeof AppReportRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/_app/agents': typeof AppAgentsRoute
   '/_app/audit': typeof AppAuditRoute
   '/_app/grants': typeof AppGrantsRoute
+  '/_app/groups': typeof AppGroupsRoute
   '/_app/invites': typeof AppInvitesRoute
   '/_app/items': typeof AppItemsRoute
   '/_app/report': typeof AppReportRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/audit'
     | '/grants'
+    | '/groups'
     | '/invites'
     | '/items'
     | '/report'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/audit'
     | '/grants'
+    | '/groups'
     | '/invites'
     | '/items'
     | '/report'
@@ -146,6 +157,7 @@ export interface FileRouteTypes {
     | '/_app/agents'
     | '/_app/audit'
     | '/_app/grants'
+    | '/_app/groups'
     | '/_app/invites'
     | '/_app/items'
     | '/_app/report'
@@ -218,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInvitesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/groups': {
+      id: '/_app/groups'
+      path: '/groups'
+      fullPath: '/groups'
+      preLoaderRoute: typeof AppGroupsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/grants': {
       id: '/_app/grants'
       path: '/grants'
@@ -246,6 +265,7 @@ interface AppRouteChildren {
   AppAgentsRoute: typeof AppAgentsRoute
   AppAuditRoute: typeof AppAuditRoute
   AppGrantsRoute: typeof AppGrantsRoute
+  AppGroupsRoute: typeof AppGroupsRoute
   AppInvitesRoute: typeof AppInvitesRoute
   AppItemsRoute: typeof AppItemsRoute
   AppReportRoute: typeof AppReportRoute
@@ -257,6 +277,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAgentsRoute: AppAgentsRoute,
   AppAuditRoute: AppAuditRoute,
   AppGrantsRoute: AppGrantsRoute,
+  AppGroupsRoute: AppGroupsRoute,
   AppInvitesRoute: AppInvitesRoute,
   AppItemsRoute: AppItemsRoute,
   AppReportRoute: AppReportRoute,

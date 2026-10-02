@@ -837,6 +837,39 @@ var createGrant = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var listGroups = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/groups",
+  ...options
+});
+var createGroup = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/groups",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var listGroupMembers = (options) => (options.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/groups/{name}/members",
+  ...options
+});
+var addGroupMember = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/groups/{name}/members",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var removeGroupMember = (options) => (options.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/groups/{name}/members/{kind}/{id}",
+  ...options
+});
 var listAgents = (options) => (options?.client ?? client).get({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/agents",
@@ -976,6 +1009,7 @@ var createBillingCheckout = (options) => (options?.client ?? client).post({
   ...options
 });
 export {
+  addGroupMember,
   approveRequest,
   archiveItem,
   auditFeed,
@@ -984,6 +1018,7 @@ export {
   createBillingCheckout,
   createClient,
   createGrant,
+  createGroup,
   createInvite,
   createItem,
   createSession,
@@ -999,11 +1034,14 @@ export {
   listAgents,
   listEvents,
   listGrants,
+  listGroupMembers,
+  listGroups,
   listItems,
   listRequests,
   listSessions,
   promoteOwner,
   provision,
+  removeGroupMember,
   removeMember,
   revokeAgent,
   streamRequests,

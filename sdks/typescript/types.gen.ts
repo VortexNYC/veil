@@ -144,11 +144,11 @@ export type UpdateItemRequest = {
 
 export type CreateGrantRequest = {
     /**
-     * Agent id. XOR human.
+     * Agent id. XOR human/group.
      */
     agent?: string;
     /**
-     * Kratos identity id. Same Grant.agent_id. Not email. XOR agent.
+     * Kratos identity id. Same Grant.agent_id. Not email. XOR agent/group.
      */
     human?: string;
     item: string;
@@ -157,6 +157,10 @@ export type CreateGrantRequest = {
      * Go duration. Empty is forever.
      */
     expires?: string;
+    /**
+     * Org group name — the shared vault. XOR agent/human.
+     */
+    group?: string;
 };
 
 export type Grant = {
@@ -166,6 +170,10 @@ export type Grant = {
     item_id: string;
     level: string;
     expires_at?: string;
+    /**
+     * Subject kind. agent_id holds the subject id — the group id when subject_kind is group.
+     */
+    subject_kind: 'agent' | 'human' | 'group';
 };
 
 export type GrantsResponse = {
@@ -405,6 +413,38 @@ export type VaultReportFinding = {
     weak?: Array<string>;
     reused?: number;
     pwned: number;
+};
+
+export type Group = {
+    id: string;
+    org_id: string;
+    name: string;
+};
+
+export type CreateGroupRequest = {
+    name: string;
+};
+
+export type GroupsResponse = {
+    groups: Array<Group>;
+};
+
+export type GroupMember = {
+    group_id: string;
+    member_kind: 'agent' | 'human';
+    member_id: string;
+};
+
+export type GroupMembersResponse = {
+    members: Array<GroupMember>;
+};
+
+export type AddGroupMemberRequest = {
+    member_kind: 'agent' | 'human';
+    /**
+     * Agent id, or Kratos identity id for humans.
+     */
+    member_id: string;
 };
 
 export type GetHealthData = {
@@ -683,6 +723,161 @@ export type CreateGrantResponses = {
 };
 
 export type CreateGrantResponse = CreateGrantResponses[keyof CreateGrantResponses];
+
+export type ListGroupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/groups';
+};
+
+export type ListGroupsErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+
+export type ListGroupsResponses = {
+    /**
+     * Groups
+     */
+    200: GroupsResponse;
+};
+
+export type ListGroupsResponse = ListGroupsResponses[keyof ListGroupsResponses];
+
+export type CreateGroupData = {
+    body: CreateGroupRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/groups';
+};
+
+export type CreateGroupErrors = {
+    /**
+     * bad request
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+
+export type CreateGroupResponses = {
+    /**
+     * Group
+     */
+    200: Group;
+};
+
+export type CreateGroupResponse = CreateGroupResponses[keyof CreateGroupResponses];
+
+export type ListGroupMembersData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/groups/{name}/members';
+};
+
+export type ListGroupMembersErrors = {
+    /**
+     * unknown group
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+
+export type ListGroupMembersResponses = {
+    /**
+     * Members
+     */
+    200: GroupMembersResponse;
+};
+
+export type ListGroupMembersResponse = ListGroupMembersResponses[keyof ListGroupMembersResponses];
+
+export type AddGroupMemberData = {
+    body: AddGroupMemberRequest;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/groups/{name}/members';
+};
+
+export type AddGroupMemberErrors = {
+    /**
+     * bad request
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+
+export type AddGroupMemberResponses = {
+    /**
+     * added
+     */
+    200: unknown;
+};
+
+export type RemoveGroupMemberData = {
+    body?: never;
+    path: {
+        name: string;
+        kind: 'agent' | 'human';
+        id: string;
+    };
+    query?: never;
+    url: '/v1/groups/{name}/members/{kind}/{id}';
+};
+
+export type RemoveGroupMemberErrors = {
+    /**
+     * bad request
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * not owner
+     */
+    403: unknown;
+};
+
+export type RemoveGroupMemberResponses = {
+    /**
+     * removed
+     */
+    200: unknown;
+};
 
 export type ListAgentsData = {
     body?: never;

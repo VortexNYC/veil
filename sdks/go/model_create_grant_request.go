@@ -21,14 +21,16 @@ var _ MappedNullable = &CreateGrantRequest{}
 
 // CreateGrantRequest struct for CreateGrantRequest
 type CreateGrantRequest struct {
-	// Agent id. XOR human.
+	// Agent id. XOR human/group.
 	Agent *string `json:"agent,omitempty"`
-	// Kratos identity id. Same Grant.agent_id. Not email. XOR agent.
+	// Kratos identity id. Same Grant.agent_id. Not email. XOR agent/group.
 	Human *string `json:"human,omitempty"`
 	Item string `json:"item"`
 	Level string `json:"level"`
 	// Go duration. Empty is forever.
 	Expires *string `json:"expires,omitempty"`
+	// Org group name — the shared vault. XOR agent/human.
+	Group *string `json:"group,omitempty"`
 }
 
 type _CreateGrantRequest CreateGrantRequest
@@ -196,6 +198,38 @@ func (o *CreateGrantRequest) SetExpires(v string) {
 	o.Expires = &v
 }
 
+// GetGroup returns the Group field value if set, zero value otherwise.
+func (o *CreateGrantRequest) GetGroup() string {
+	if o == nil || IsNil(o.Group) {
+		var ret string
+		return ret
+	}
+	return *o.Group
+}
+
+// GetGroupOk returns a tuple with the Group field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *CreateGrantRequest) GetGroupOk() (*string, bool) {
+	if o == nil || IsNil(o.Group) {
+		return nil, false
+	}
+	return o.Group, true
+}
+
+// HasGroup returns a boolean if a field has been set.
+func (o *CreateGrantRequest) HasGroup() bool {
+	if o != nil && !IsNil(o.Group) {
+		return true
+	}
+
+	return false
+}
+
+// SetGroup gets a reference to the given string and assigns it to the Group field.
+func (o *CreateGrantRequest) SetGroup(v string) {
+	o.Group = &v
+}
+
 func (o CreateGrantRequest) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -216,6 +250,9 @@ func (o CreateGrantRequest) ToMap() (map[string]interface{}, error) {
 	toSerialize["level"] = o.Level
 	if !IsNil(o.Expires) {
 		toSerialize["expires"] = o.Expires
+	}
+	if !IsNil(o.Group) {
+		toSerialize["group"] = o.Group
 	}
 	return toSerialize, nil
 }

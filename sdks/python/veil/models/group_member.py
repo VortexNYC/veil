@@ -17,31 +17,26 @@ import pprint
 import re  # noqa: F401
 import json
 
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
 
-class Grant(BaseModel):
+class GroupMember(BaseModel):
     """
-    Grant
+    GroupMember
     """ # noqa: E501
-    id: StrictStr
-    org_id: StrictStr
-    agent_id: StrictStr
-    item_id: StrictStr
-    level: StrictStr
-    expires_at: Optional[datetime] = None
-    subject_kind: StrictStr = Field(description="Subject kind. agent_id holds the subject id — the group id when subject_kind is group.")
-    __properties: ClassVar[List[str]] = ["id", "org_id", "agent_id", "item_id", "level", "expires_at", "subject_kind"]
+    group_id: StrictStr
+    member_kind: StrictStr
+    member_id: StrictStr
+    __properties: ClassVar[List[str]] = ["group_id", "member_kind", "member_id"]
 
-    @field_validator('subject_kind')
-    def subject_kind_validate_enum(cls, value):
+    @field_validator('member_kind')
+    def member_kind_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(['agent', 'human', 'group']):
-            raise ValueError("must be one of enum values ('agent', 'human', 'group')")
+        if value not in set(['agent', 'human']):
+            raise ValueError("must be one of enum values ('agent', 'human')")
         return value
 
     model_config = ConfigDict(
@@ -62,7 +57,7 @@ class Grant(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of Grant from a JSON string"""
+        """Create an instance of GroupMember from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -87,7 +82,7 @@ class Grant(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of Grant from a dict"""
+        """Create an instance of GroupMember from a dict"""
         if obj is None:
             return None
 
@@ -95,13 +90,9 @@ class Grant(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "id": obj.get("id"),
-            "org_id": obj.get("org_id"),
-            "agent_id": obj.get("agent_id"),
-            "item_id": obj.get("item_id"),
-            "level": obj.get("level"),
-            "expires_at": obj.get("expires_at"),
-            "subject_kind": obj.get("subject_kind")
+            "group_id": obj.get("group_id"),
+            "member_kind": obj.get("member_kind"),
+            "member_id": obj.get("member_id")
         })
         return _obj
 

@@ -32,6 +32,7 @@ __all__ = [
     "ApiKeyError",
     "ApiAttributeError",
     "ApiException",
+    "AddGroupMemberRequest",
     "Agent",
     "AgentsResponse",
     "ApprovalRequest",
@@ -44,6 +45,7 @@ __all__ = [
     "CardFields",
     "CreateAgentRequest",
     "CreateGrantRequest",
+    "CreateGroupRequest",
     "CreateItemRequest",
     "CreateSessionRequest",
     "CreateSessionResponse",
@@ -52,6 +54,10 @@ __all__ = [
     "EventsResponse",
     "Grant",
     "GrantsResponse",
+    "Group",
+    "GroupMember",
+    "GroupMembersResponse",
+    "GroupsResponse",
     "IdentityFields",
     "ImportResponse",
     "InviteRequest",
@@ -91,6 +97,7 @@ from veil.exceptions import ApiAttributeError as ApiAttributeError
 from veil.exceptions import ApiException as ApiException
 
 # import models into sdk package
+from veil.models.add_group_member_request import AddGroupMemberRequest as AddGroupMemberRequest
 from veil.models.agent import Agent as Agent
 from veil.models.agents_response import AgentsResponse as AgentsResponse
 from veil.models.approval_request import ApprovalRequest as ApprovalRequest
@@ -103,6 +110,7 @@ from veil.models.billing_view import BillingView as BillingView
 from veil.models.card_fields import CardFields as CardFields
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest as CreateGrantRequest
+from veil.models.create_group_request import CreateGroupRequest as CreateGroupRequest
 from veil.models.create_item_request import CreateItemRequest as CreateItemRequest
 from veil.models.create_session_request import CreateSessionRequest as CreateSessionRequest
 from veil.models.create_session_response import CreateSessionResponse as CreateSessionResponse
@@ -111,6 +119,10 @@ from veil.models.delete_org200_response import DeleteOrg200Response as DeleteOrg
 from veil.models.events_response import EventsResponse as EventsResponse
 from veil.models.grant import Grant as Grant
 from veil.models.grants_response import GrantsResponse as GrantsResponse
+from veil.models.group import Group as Group
+from veil.models.group_member import GroupMember as GroupMember
+from veil.models.group_members_response import GroupMembersResponse as GroupMembersResponse
+from veil.models.groups_response import GroupsResponse as GroupsResponse
 from veil.models.identity_fields import IdentityFields as IdentityFields
 from veil.models.import_response import ImportResponse as ImportResponse
 from veil.models.invite_request import InviteRequest as InviteRequest

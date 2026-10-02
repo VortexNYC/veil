@@ -249,6 +249,142 @@ paths:
         Not MCP. Not a family vault.
       tags:
       - Owner
+  /v1/groups:
+    get:
+      operationId: listGroups
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupsResponse"
+          description: Groups
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Org groups. A grant to a group is the shared vault. Not MCP.
+      tags:
+      - Owner
+    post:
+      operationId: createGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroupRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+          description: Group
+        "400":
+          description: bad request
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Create an org group. Not MCP.
+      tags:
+      - Owner
+  /v1/groups/{name}/members:
+    get:
+      operationId: listGroupMembers
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMembersResponse"
+          description: Members
+        "400":
+          description: unknown group
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Members of the group — agent or human edges. Not MCP.
+      tags:
+      - Owner
+    post:
+      operationId: addGroupMember
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddGroupMemberRequest"
+        required: true
+      responses:
+        "200":
+          description: added
+        "400":
+          description: bad request
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Add an agent or human to the group. Not MCP.
+      tags:
+      - Owner
+  /v1/groups/{name}/members/{kind}/{id}:
+    delete:
+      operationId: removeGroupMember
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: kind
+        required: true
+        schema:
+          enum:
+          - agent
+          - human
+          type: string
+        style: simple
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          description: removed
+        "400":
+          description: bad request
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: not owner
+      summary: Remove a member from the group. Not MCP.
+      tags:
+      - Owner
   /v1/agents:
     get:
       operationId: listAgents
@@ -1246,12 +1382,13 @@ components:
         item: item
         level: level1
         expires: expires
+        group: group
       properties:
         agent:
-          description: Agent id. XOR human.
+          description: Agent id. XOR human/group.
           type: string
         human:
-          description: Kratos identity id. Same Grant.agent_id. Not email. XOR agent.
+          description: Kratos identity id. Same Grant.agent_id. Not email. XOR agent/group.
           type: string
         item:
           type: string
@@ -1262,6 +1399,9 @@ components:
           type: string
         expires:
           description: Go duration. Empty is forever.
+          type: string
+        group:
+          description: Org group name — the shared vault. XOR agent/human.
           type: string
       required:
       - item
@@ -1275,6 +1415,7 @@ components:
         item_id: item_id
         level: level
         expires_at: 2000-01-23T04:56:07.000+00:00
+        subject_kind: agent
       properties:
         id:
           type: string
@@ -1289,12 +1430,21 @@ components:
         expires_at:
           format: date-time
           type: string
+        subject_kind:
+          description: Subject kind. agent_id holds the subject id — the group id
+            when subject_kind is group.
+          enum:
+          - agent
+          - human
+          - group
+          type: string
       required:
       - agent_id
       - id
       - item_id
       - level
       - org_id
+      - subject_kind
     GrantsResponse:
       additionalProperties: false
       example:
@@ -1305,12 +1455,14 @@ components:
           item_id: item_id
           level: level
           expires_at: 2000-01-23T04:56:07.000+00:00
+          subject_kind: agent
         - id: id
           org_id: org_id
           agent_id: agent_id
           item_id: item_id
           level: level
           expires_at: 2000-01-23T04:56:07.000+00:00
+          subject_kind: agent
       properties:
         grants:
           items:
@@ -1980,6 +2132,105 @@ components:
       - kind
       - name
       - pwned
+    Group:
+      additionalProperties: false
+      example:
+        id: id
+        org_id: org_id
+        name: name
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        name:
+          type: string
+      required:
+      - id
+      - name
+      - org_id
+    CreateGroupRequest:
+      additionalProperties: false
+      example:
+        name: name
+      properties:
+        name:
+          type: string
+      required:
+      - name
+    GroupsResponse:
+      additionalProperties: false
+      example:
+        groups:
+        - id: id
+          org_id: org_id
+          name: name
+        - id: id
+          org_id: org_id
+          name: name
+      properties:
+        groups:
+          items:
+            $ref: "#/components/schemas/Group"
+          type: array
+          default: null
+      required:
+      - groups
+    GroupMember:
+      additionalProperties: false
+      example:
+        group_id: group_id
+        member_kind: agent
+        member_id: member_id
+      properties:
+        group_id:
+          type: string
+        member_kind:
+          enum:
+          - agent
+          - human
+          type: string
+        member_id:
+          type: string
+      required:
+      - group_id
+      - member_id
+      - member_kind
+    GroupMembersResponse:
+      additionalProperties: false
+      example:
+        members:
+        - group_id: group_id
+          member_kind: agent
+          member_id: member_id
+        - group_id: group_id
+          member_kind: agent
+          member_id: member_id
+      properties:
+        members:
+          items:
+            $ref: "#/components/schemas/GroupMember"
+          type: array
+          default: null
+      required:
+      - members
+    AddGroupMemberRequest:
+      additionalProperties: false
+      example:
+        member_kind: agent
+        member_id: member_id
+      properties:
+        member_kind:
+          enum:
+          - agent
+          - human
+          type: string
+        member_id:
+          description: "Agent id, or Kratos identity id for humans."
+          type: string
+      required:
+      - member_id
+      - member_kind
     removeMember_200_response:
       example:
         removed: true

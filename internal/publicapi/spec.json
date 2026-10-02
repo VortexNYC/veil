@@ -375,6 +375,205 @@
         }
       }
     },
+    "/v1/groups": {
+      "get": {
+        "operationId": "listGroups",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Org groups. A grant to a group is the shared vault. Not MCP.",
+        "responses": {
+          "200": {
+            "description": "Groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGroup",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Create an org group. Not MCP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/groups/{name}/members": {
+      "get": {
+        "operationId": "listGroupMembers",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Members of the group \u2014 agent or human edges. Not MCP.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "unknown group"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      },
+      "post": {
+        "operationId": "addGroupMember",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Add an agent or human to the group. Not MCP.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddGroupMemberRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "added"
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
+    "/v1/groups/{name}/members/{kind}/{id}": {
+      "delete": {
+        "operationId": "removeGroupMember",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Remove a member from the group. Not MCP.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "human"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "removed"
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid Bearer"
+          },
+          "403": {
+            "description": "not owner"
+          }
+        }
+      }
+    },
     "/v1/agents": {
       "get": {
         "operationId": "listAgents",
@@ -1617,11 +1816,11 @@
         "properties": {
           "agent": {
             "type": "string",
-            "description": "Agent id. XOR human."
+            "description": "Agent id. XOR human/group."
           },
           "human": {
             "type": "string",
-            "description": "Kratos identity id. Same Grant.agent_id. Not email. XOR agent."
+            "description": "Kratos identity id. Same Grant.agent_id. Not email. XOR agent/group."
           },
           "item": {
             "type": "string"
@@ -1636,6 +1835,10 @@
           "expires": {
             "type": "string",
             "description": "Go duration. Empty is forever."
+          },
+          "group": {
+            "type": "string",
+            "description": "Org group name \u2014 the shared vault. XOR agent/human."
           }
         }
       },
@@ -1647,7 +1850,8 @@
           "org_id",
           "agent_id",
           "item_id",
-          "level"
+          "level",
+          "subject_kind"
         ],
         "properties": {
           "id": {
@@ -1668,6 +1872,15 @@
           "expires_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "subject_kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "human",
+              "group"
+            ],
+            "description": "Subject kind. agent_id holds the subject id \u2014 the group id when subject_kind is group."
           }
         }
       },
@@ -2310,6 +2523,113 @@
           "kind",
           "pwned"
         ]
+      },
+      "Group": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "org_id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "org_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateGroupRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "GroupsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "groups"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            }
+          }
+        }
+      },
+      "GroupMember": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "group_id",
+          "member_kind",
+          "member_id"
+        ],
+        "properties": {
+          "group_id": {
+            "type": "string"
+          },
+          "member_kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "human"
+            ]
+          },
+          "member_id": {
+            "type": "string"
+          }
+        }
+      },
+      "GroupMembersResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "members"
+        ],
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupMember"
+            }
+          }
+        }
+      },
+      "AddGroupMemberRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "member_kind",
+          "member_id"
+        ],
+        "properties": {
+          "member_kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "human"
+            ]
+          },
+          "member_id": {
+            "type": "string",
+            "description": "Agent id, or Kratos identity id for humans."
+          }
+        }
       }
     }
   }

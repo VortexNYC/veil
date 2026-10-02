@@ -11,6 +11,7 @@ Name | Type | Description | Notes
 **item_id** | **str** |  | 
 **level** | **str** |  | 
 **expires_at** | **datetime** |  | [optional] 
+**subject_kind** | **str** | Subject kind. agent_id holds the subject id — the group id when subject_kind is group. | 
 
 ## Example
 

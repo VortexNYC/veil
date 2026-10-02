@@ -5,11 +5,12 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**agent** | **str** | Agent id. XOR human. | [optional] 
-**human** | **str** | Kratos identity id. Same Grant.agent_id. Not email. XOR agent. | [optional] 
+**agent** | **str** | Agent id. XOR human/group. | [optional] 
+**human** | **str** | Kratos identity id. Same Grant.agent_id. Not email. XOR agent/group. | [optional] 
 **item** | **str** |  | 
 **level** | **str** |  | 
 **expires** | **str** | Go duration. Empty is forever. | [optional] 
+**group** | **str** | Org group name — the shared vault. XOR agent/human. | [optional] 
 
 ## Example
 

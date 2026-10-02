@@ -13,6 +13,7 @@
 """  # noqa: E501
 
 # import models into model package
+from veil.models.add_group_member_request import AddGroupMemberRequest
 from veil.models.agent import Agent
 from veil.models.agents_response import AgentsResponse
 from veil.models.approval_request import ApprovalRequest
@@ -25,6 +26,7 @@ from veil.models.billing_view import BillingView
 from veil.models.card_fields import CardFields
 from veil.models.create_agent_request import CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest
+from veil.models.create_group_request import CreateGroupRequest
 from veil.models.create_item_request import CreateItemRequest
 from veil.models.create_session_request import CreateSessionRequest
 from veil.models.create_session_response import CreateSessionResponse
@@ -33,6 +35,10 @@ from veil.models.delete_org200_response import DeleteOrg200Response
 from veil.models.events_response import EventsResponse
 from veil.models.grant import Grant
 from veil.models.grants_response import GrantsResponse
+from veil.models.group import Group
+from veil.models.group_member import GroupMember
+from veil.models.group_members_response import GroupMembersResponse
+from veil.models.groups_response import GroupsResponse
 from veil.models.identity_fields import IdentityFields
 from veil.models.import_response import ImportResponse
 from veil.models.invite_request import InviteRequest

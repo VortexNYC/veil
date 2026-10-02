@@ -17,32 +17,19 @@ import pprint
 import re  # noqa: F401
 import json
 
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict
+from typing import Any, ClassVar, Dict, List
+from veil.models.group import Group
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
 
-class Grant(BaseModel):
+class GroupsResponse(BaseModel):
     """
-    Grant
+    GroupsResponse
     """ # noqa: E501
-    id: StrictStr
-    org_id: StrictStr
-    agent_id: StrictStr
-    item_id: StrictStr
-    level: StrictStr
-    expires_at: Optional[datetime] = None
-    subject_kind: StrictStr = Field(description="Subject kind. agent_id holds the subject id — the group id when subject_kind is group.")
-    __properties: ClassVar[List[str]] = ["id", "org_id", "agent_id", "item_id", "level", "expires_at", "subject_kind"]
-
-    @field_validator('subject_kind')
-    def subject_kind_validate_enum(cls, value):
-        """Validates the enum"""
-        if value not in set(['agent', 'human', 'group']):
-            raise ValueError("must be one of enum values ('agent', 'human', 'group')")
-        return value
+    groups: List[Group]
+    __properties: ClassVar[List[str]] = ["groups"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -62,7 +49,7 @@ class Grant(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of Grant from a JSON string"""
+        """Create an instance of GroupsResponse from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -83,11 +70,18 @@ class Grant(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of each item in groups (list)
+        _items = []
+        if self.groups:
+            for _item_groups in self.groups:
+                if _item_groups:
+                    _items.append(_item_groups.to_dict())
+            _dict['groups'] = _items
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of Grant from a dict"""
+        """Create an instance of GroupsResponse from a dict"""
         if obj is None:
             return None
 
@@ -95,13 +89,7 @@ class Grant(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "id": obj.get("id"),
-            "org_id": obj.get("org_id"),
-            "agent_id": obj.get("agent_id"),
-            "item_id": obj.get("item_id"),
-            "level": obj.get("level"),
-            "expires_at": obj.get("expires_at"),
-            "subject_kind": obj.get("subject_kind")
+            "groups": [Group.from_dict(_item) for _item in obj["groups"]] if obj.get("groups") is not None else None
         })
         return _obj
 

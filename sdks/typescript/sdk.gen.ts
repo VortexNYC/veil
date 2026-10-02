@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses } from './types.gen';
+import type { AddGroupMemberData, AddGroupMemberErrors, AddGroupMemberResponses, ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateGroupData, CreateGroupErrors, CreateGroupResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListGroupMembersData, ListGroupMembersErrors, ListGroupMembersResponses, ListGroupsData, ListGroupsErrors, ListGroupsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveGroupMemberData, RemoveGroupMemberErrors, RemoveGroupMemberResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -115,6 +115,59 @@ export const createGrant = <ThrowOnError extends boolean = false>(options: Optio
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Org groups. A grant to a group is the shared vault. Not MCP.
+ */
+export const listGroups = <ThrowOnError extends boolean = false>(options?: Options<ListGroupsData, ThrowOnError>): RequestResult<ListGroupsResponses, ListGroupsErrors, ThrowOnError> => (options?.client ?? client).get<ListGroupsResponses, ListGroupsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/groups',
+    ...options
+});
+
+/**
+ * Create an org group. Not MCP.
+ */
+export const createGroup = <ThrowOnError extends boolean = false>(options: Options<CreateGroupData, ThrowOnError>): RequestResult<CreateGroupResponses, CreateGroupErrors, ThrowOnError> => (options.client ?? client).post<CreateGroupResponses, CreateGroupErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/groups',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Members of the group — agent or human edges. Not MCP.
+ */
+export const listGroupMembers = <ThrowOnError extends boolean = false>(options: Options<ListGroupMembersData, ThrowOnError>): RequestResult<ListGroupMembersResponses, ListGroupMembersErrors, ThrowOnError> => (options.client ?? client).get<ListGroupMembersResponses, ListGroupMembersErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/groups/{name}/members',
+    ...options
+});
+
+/**
+ * Add an agent or human to the group. Not MCP.
+ */
+export const addGroupMember = <ThrowOnError extends boolean = false>(options: Options<AddGroupMemberData, ThrowOnError>): RequestResult<AddGroupMemberResponses, AddGroupMemberErrors, ThrowOnError> => (options.client ?? client).post<AddGroupMemberResponses, AddGroupMemberErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/groups/{name}/members',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove a member from the group. Not MCP.
+ */
+export const removeGroupMember = <ThrowOnError extends boolean = false>(options: Options<RemoveGroupMemberData, ThrowOnError>): RequestResult<RemoveGroupMemberResponses, RemoveGroupMemberErrors, ThrowOnError> => (options.client ?? client).delete<RemoveGroupMemberResponses, RemoveGroupMemberErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/groups/{name}/members/{kind}/{id}',
+    ...options
 });
 
 /**

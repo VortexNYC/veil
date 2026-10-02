@@ -71,11 +71,13 @@ function Grants() {
                   const item = String(fd.get("item") ?? "");
                   const agent = String(fd.get("agent") ?? "");
                   const human = String(fd.get("human") ?? "");
+                  const group = String(fd.get("group") ?? "");
                   void addGrant({
                     item,
                     level,
                     agent: agent || undefined,
                     human: human || undefined,
+                    group: group || undefined,
                   }).then((res) => {
                     if (res.error) {
                       setError("create failed");
@@ -88,7 +90,7 @@ function Grants() {
                 }}
               >
                 <Dialog.Title>Grant Use</Dialog.Title>
-                <Dialog.Description>XOR agent name or human identity id.</Dialog.Description>
+                <Dialog.Description>XOR agent name, human identity id, or group name.</Dialog.Description>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="item">Item</Label>
                   <Input id="item" name="item" required />
@@ -100,6 +102,10 @@ function Grants() {
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="human">Human id</Label>
                   <Input id="human" name="human" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="group">Group</Label>
+                  <Input id="group" name="group" />
                 </div>
                 <Select
                   value={level}
@@ -141,7 +147,8 @@ function Grants() {
               <Table.Header>
                 <Table.Row>
                   <Table.Head>Item</Table.Head>
-                  <Table.Head>Agent</Table.Head>
+                  <Table.Head>Subject</Table.Head>
+                  <Table.Head>Kind</Table.Head>
                   <Table.Head>Level</Table.Head>
                 </Table.Row>
               </Table.Header>
@@ -150,6 +157,7 @@ function Grants() {
                   <Table.Row key={g.id}>
                     <Table.Cell>{g.item_id}</Table.Cell>
                     <Table.Cell>{g.agent_id}</Table.Cell>
+                    <Table.Cell>{g.subject_kind}</Table.Cell>
                     <Table.Cell>{g.level}</Table.Cell>
                   </Table.Row>
                 ))}

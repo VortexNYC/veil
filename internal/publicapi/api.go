@@ -134,22 +134,41 @@ type UpdateItemRequest struct {
 type CreateGrantRequest struct {
 	Agent   string `json:"agent,omitempty"`
 	Human   string `json:"human,omitempty"`
+	Group   string `json:"group,omitempty"`
 	Item    string `json:"item"`
 	Level   string `json:"level"`
 	Expires string `json:"expires,omitempty"`
 }
 
 type GrantView struct {
-	ID        string     `json:"id"`
-	OrgID     string     `json:"org_id"`
-	AgentID   string     `json:"agent_id"`
-	ItemID    string     `json:"item_id"`
-	Level     string     `json:"level"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	ID          string     `json:"id"`
+	OrgID       string     `json:"org_id"`
+	AgentID     string     `json:"agent_id"`
+	SubjectKind string     `json:"subject_kind"`
+	ItemID      string     `json:"item_id"`
+	Level       string     `json:"level"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
 
 type GrantsResponse struct {
 	Grants []GrantView `json:"grants"`
+}
+
+type CreateGroupRequest struct {
+	Name string `json:"name"`
+}
+
+type GroupsResponse struct {
+	Groups []protocol.Group `json:"groups"`
+}
+
+type AddGroupMemberRequest struct {
+	MemberKind string `json:"member_kind"`
+	MemberID   string `json:"member_id"`
+}
+
+type GroupMembersResponse struct {
+	Members []protocol.GroupMember `json:"members"`
 }
 
 type CreateAgentRequest struct {
@@ -293,6 +312,11 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/items/{name}", s.deleteItem)
 	mux.HandleFunc("GET /v1/grants", s.listGrants)
 	mux.HandleFunc("POST /v1/grants", s.createGrant)
+	mux.HandleFunc("GET /v1/groups", s.listGroups)
+	mux.HandleFunc("POST /v1/groups", s.createGroup)
+	mux.HandleFunc("GET /v1/groups/{name}/members", s.listGroupMembers)
+	mux.HandleFunc("POST /v1/groups/{name}/members", s.addGroupMember)
+	mux.HandleFunc("DELETE /v1/groups/{name}/members/{kind}/{id}", s.removeGroupMember)
 	mux.HandleFunc("GET /v1/agents", s.listAgents)
 	mux.HandleFunc("POST /v1/agents", s.createAgent)
 	mux.HandleFunc("POST /v1/agents/{name}/revoke", s.revokeAgent)
@@ -499,13 +523,14 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 	}
 	grantee := strings.TrimSpace(in.Agent)
 	human := strings.TrimSpace(in.Human)
-	switch {
-	case grantee != "" && human != "":
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	case human != "":
-		grantee = human
-	case grantee == "":
+	group := strings.TrimSpace(in.Group)
+	n := 0
+	for _, s := range []string{grantee, human, group} {
+		if s != "" {
+			n++
+		}
+	}
+	if n != 1 {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -519,12 +544,101 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 		t := time.Now().Add(d)
 		until = &t
 	}
-	g, err := s.App.GrantUntil(owner, grantee, in.Item, protocol.GrantLevel(in.Level), until)
+	var g protocol.Grant
+	var err error
+	if group != "" {
+		g, err = s.App.GrantSubject(owner, protocol.SubjectGroup, group, in.Item, protocol.GrantLevel(in.Level), until)
+	} else {
+		if human != "" {
+			grantee = human
+		}
+		g, err = s.App.GrantUntil(owner, grantee, in.Item, protocol.GrantLevel(in.Level), until)
+	}
 	if err != nil {
 		http.Error(w, "grant failed", http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, grantView(g))
+}
+
+// Groups are the team model: an org-scoped set of principals, and a grant
+// to one is the shared vault. Owner-administered — the same gate as grants.
+func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	groups, err := s.App.Groups(owner)
+	if err != nil {
+		http.Error(w, "list failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, GroupsResponse{Groups: groups})
+}
+
+func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in CreateGroupRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	g, err := s.App.AddGroup(owner, in.Name)
+	if err != nil {
+		http.Error(w, "create failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, g)
+}
+
+func (s *Server) listGroupMembers(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	members, err := s.App.GroupMemberList(owner, r.PathValue("name"))
+	if err != nil {
+		http.Error(w, "list failed", http.StatusBadRequest)
+		return
+	}
+	if members == nil {
+		members = []protocol.GroupMember{}
+	}
+	writeJSON(w, GroupMembersResponse{Members: members})
+}
+
+func (s *Server) addGroupMember(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in AddGroupMemberRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	kind := protocol.PrincipalKind(in.MemberKind)
+	if err := s.App.GroupAddMember(owner, r.PathValue("name"), kind, in.MemberID); err != nil {
+		http.Error(w, "add failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]bool{"added": true})
+}
+
+func (s *Server) removeGroupMember(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	kind := protocol.PrincipalKind(r.PathValue("kind"))
+	if err := s.App.GroupRemoveMember(owner, r.PathValue("name"), kind, r.PathValue("id")); err != nil {
+		http.Error(w, "remove failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]bool{"removed": true})
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
@@ -1471,12 +1585,13 @@ func (s *Server) requireItemWrite(w http.ResponseWriter, r *http.Request) (proto
 
 func grantView(g protocol.Grant) GrantView {
 	return GrantView{
-		ID:        g.ID,
-		OrgID:     g.OrgID,
-		AgentID:   g.AgentID,
-		ItemID:    g.ItemID,
-		Level:     string(g.Level),
-		ExpiresAt: g.ExpiresAt,
+		ID:          g.ID,
+		OrgID:       g.OrgID,
+		AgentID:     g.AgentID,
+		SubjectKind: string(g.Subject()),
+		ItemID:      g.ItemID,
+		Level:       string(g.Level),
+		ExpiresAt:   g.ExpiresAt,
 	}
 }
 

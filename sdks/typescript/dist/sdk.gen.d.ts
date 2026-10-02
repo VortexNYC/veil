@@ -1,5 +1,5 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client/index.js';
-import type { ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, StreamRequestsData, StreamRequestsResponse, StreamRequestsResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses } from './types.gen.js';
+import type { AddGroupMemberData, AddGroupMemberErrors, AddGroupMemberResponses, ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateGroupData, CreateGroupErrors, CreateGroupResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListGroupMembersData, ListGroupMembersErrors, ListGroupMembersResponses, ListGroupsData, ListGroupsErrors, ListGroupsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RemoveGroupMemberData, RemoveGroupMemberErrors, RemoveGroupMemberResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, StreamRequestsData, StreamRequestsResponse, StreamRequestsResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses } from './types.gen.js';
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
      * You can provide a client instance returned by `createClient()` instead of
@@ -53,6 +53,26 @@ export declare const listGrants: <ThrowOnError extends boolean = false>(options?
  * Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.
  */
 export declare const createGrant: <ThrowOnError extends boolean = false>(options: Options<CreateGrantData, ThrowOnError>) => RequestResult<CreateGrantResponses, CreateGrantErrors, ThrowOnError>;
+/**
+ * Org groups. A grant to a group is the shared vault. Not MCP.
+ */
+export declare const listGroups: <ThrowOnError extends boolean = false>(options?: Options<ListGroupsData, ThrowOnError>) => RequestResult<ListGroupsResponses, ListGroupsErrors, ThrowOnError>;
+/**
+ * Create an org group. Not MCP.
+ */
+export declare const createGroup: <ThrowOnError extends boolean = false>(options: Options<CreateGroupData, ThrowOnError>) => RequestResult<CreateGroupResponses, CreateGroupErrors, ThrowOnError>;
+/**
+ * Members of the group — agent or human edges. Not MCP.
+ */
+export declare const listGroupMembers: <ThrowOnError extends boolean = false>(options: Options<ListGroupMembersData, ThrowOnError>) => RequestResult<ListGroupMembersResponses, ListGroupMembersErrors, ThrowOnError>;
+/**
+ * Add an agent or human to the group. Not MCP.
+ */
+export declare const addGroupMember: <ThrowOnError extends boolean = false>(options: Options<AddGroupMemberData, ThrowOnError>) => RequestResult<AddGroupMemberResponses, AddGroupMemberErrors, ThrowOnError>;
+/**
+ * Remove a member from the group. Not MCP.
+ */
+export declare const removeGroupMember: <ThrowOnError extends boolean = false>(options: Options<RemoveGroupMemberData, ThrowOnError>) => RequestResult<RemoveGroupMemberResponses, RemoveGroupMemberErrors, ThrowOnError>;
 /**
  * Agents in this org. Ids only. Never secrets. Not MCP.
  */

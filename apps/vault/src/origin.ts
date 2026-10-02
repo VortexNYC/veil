@@ -1,17 +1,22 @@
 import {
+  addGroupMember,
   approveRequest,
   createAgent,
   createBillingCheckout,
   createClient,
   createGrant,
+  createGroup,
   createItem,
   denyRequest,
   getBilling,
   listAgents,
   listEvents,
   listGrants,
+  listGroupMembers,
+  listGroups,
   listItems,
   listRequests,
+  removeGroupMember,
   vaultReport,
 } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
@@ -84,8 +89,37 @@ export function addGrant(body: {
   level: "level1" | "level2"
   agent?: string
   human?: string
+  group?: string
 }) {
   return createGrant({ client: client(), body })
+}
+
+// Groups are the team model — a grant to a group name is the shared vault.
+export function groups() {
+  return listGroups({ client: client() })
+}
+
+export function addGroup(name: string) {
+  return createGroup({ client: client(), body: { name } })
+}
+
+export function groupMembers(name: string) {
+  return listGroupMembers({ client: client(), path: { name } })
+}
+
+export function addGroupMemberTo(name: string, memberKind: "agent" | "human", memberId: string) {
+  return addGroupMember({
+    client: client(),
+    path: { name },
+    body: { member_kind: memberKind, member_id: memberId },
+  })
+}
+
+export function removeGroupMemberFrom(name: string, memberKind: "agent" | "human", memberId: string) {
+  return removeGroupMember({
+    client: client(),
+    path: { name, kind: memberKind, id: memberId },
+  })
 }
 
 export function agents() {

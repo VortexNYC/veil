@@ -11,6 +11,7 @@ import {
   SignOut,
   Stamp,
   Users,
+  UsersThree,
   type Icon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -30,13 +31,14 @@ export const Route = createFileRoute("/_app")({
 });
 
 const nav: ReadonlyArray<{
-  to: "/items" | "/grants" | "/requests" | "/agents" | "/invites" | "/audit" | "/report" | "/settings";
+  to: "/items" | "/grants" | "/groups" | "/requests" | "/agents" | "/invites" | "/audit" | "/report" | "/settings";
   label: string;
   icon: Icon;
 }> = [
   { to: "/items", label: "Items", icon: Key },
   { to: "/report", label: "Report", icon: Heartbeat },
   { to: "/grants", label: "Grants", icon: Users },
+  { to: "/groups", label: "Groups", icon: UsersThree },
   { to: "/requests", label: "Requests", icon: Stamp },
   { to: "/agents", label: "Agents", icon: Robot },
   { to: "/invites", label: "Invites", icon: EnvelopeSimple },

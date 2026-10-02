@@ -475,15 +475,18 @@ func originItemDelete(cmd *cobra.Command, name string) error {
 	return encode(cmd, out)
 }
 
-func originGrantAdd(cmd *cobra.Command, grantee, item, level string, expires time.Duration, asHuman bool) error {
+func originGrantAdd(cmd *cobra.Command, grantee, item, level string, expires time.Duration, asHuman bool, group string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
 	}
 	in := publicapi.CreateGrantRequest{Item: item, Level: level}
-	if asHuman {
+	switch {
+	case group != "":
+		in.Group = group
+	case asHuman:
 		in.Human = grantee
-	} else {
+	default:
 		in.Agent = grantee
 	}
 	if expires > 0 {
@@ -498,6 +501,95 @@ func originGrantAdd(cmd *cobra.Command, grantee, item, level string, expires tim
 		return err
 	}
 	var out publicapi.GrantView
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
+func originGroupAdd(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(publicapi.CreateGroupRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/groups", tok, payload)
+	if err != nil {
+		return err
+	}
+	var out protocol.Group
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
+func originGroupList(cmd *cobra.Command) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, "/v1/groups", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.GroupsResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out.Groups)
+}
+
+func originGroupMemberList(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, "/v1/groups/"+url.PathEscape(name)+"/members", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.GroupMembersResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out.Members)
+}
+
+func originGroupMemberAdd(cmd *cobra.Command, name string, kind protocol.PrincipalKind, memberID string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(publicapi.AddGroupMemberRequest{MemberKind: string(kind), MemberID: memberID})
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/groups/"+url.PathEscape(name)+"/members", tok, payload)
+	if err != nil {
+		return err
+	}
+	var out map[string]bool
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
+func originGroupMemberRemove(cmd *cobra.Command, name string, kind protocol.PrincipalKind, memberID string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	path := "/v1/groups/" + url.PathEscape(name) + "/members/" + url.PathEscape(string(kind)) + "/" + url.PathEscape(memberID)
+	raw, err := originDo(cmd.Context(), http.MethodDelete, path, tok, nil)
+	if err != nil {
+		return err
+	}
+	var out map[string]bool
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return err
 	}

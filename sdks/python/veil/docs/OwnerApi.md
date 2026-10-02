@@ -4,10 +4,12 @@ All URIs are relative to *https://veil.nyc*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**add_group_member**](OwnerApi.md#add_group_member) | **POST** /v1/groups/{name}/members | Add an agent or human to the group. Not MCP.
 [**approve_request**](OwnerApi.md#approve_request) | **POST** /v1/requests/{id}/approve | Approve an open request — unlocks its level-1 grant for ttl. First write wins.
 [**archive_item**](OwnerApi.md#archive_item) | **POST** /v1/items/{name}/archive | Hide from Use and list. History stays.
 [**create_agent**](OwnerApi.md#create_agent) | **POST** /v1/agents | Register an agent principal. Not a Hydra secret. Not MCP.
 [**create_grant**](OwnerApi.md#create_grant) | **POST** /v1/grants | Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.
+[**create_group**](OwnerApi.md#create_group) | **POST** /v1/groups | Create an org group. Not MCP.
 [**create_item**](OwnerApi.md#create_item) | **POST** /v1/items | Create an item. Secret is in the request over TLS. Never in the response. Not MCP.
 [**create_session**](OwnerApi.md#create_session) | **POST** /v1/sessions | Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.
 [**delete_item**](OwnerApi.md#delete_item) | **DELETE** /v1/items/{name} | Remove the item and its grants. Not MCP.
@@ -15,12 +17,94 @@ Method | HTTP request | Description
 [**import_items**](OwnerApi.md#import_items) | **POST** /v1/import | One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.
 [**list_agents**](OwnerApi.md#list_agents) | **GET** /v1/agents | Agents in this org. Ids only. Never secrets. Not MCP.
 [**list_grants**](OwnerApi.md#list_grants) | **GET** /v1/grants | Grants in this org. No secrets. Not MCP.
+[**list_group_members**](OwnerApi.md#list_group_members) | **GET** /v1/groups/{name}/members | Members of the group — agent or human edges. Not MCP.
+[**list_groups**](OwnerApi.md#list_groups) | **GET** /v1/groups | Org groups. A grant to a group is the shared vault. Not MCP.
 [**list_requests**](OwnerApi.md#list_requests) | **GET** /v1/requests | Approval requests filed by level-1 agents. status&#x3D;open lists only unexpired asks. Not MCP.
 [**list_sessions**](OwnerApi.md#list_sessions) | **GET** /v1/sessions | Active sandbox sessions. Metadata only. Never the token. Not MCP.
+[**remove_group_member**](OwnerApi.md#remove_group_member) | **DELETE** /v1/groups/{name}/members/{kind}/{id} | Remove a member from the group. Not MCP.
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
 [**stream_requests**](OwnerApi.md#stream_requests) | **GET** /v1/requests/stream | Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.
 [**update_item**](OwnerApi.md#update_item) | **PATCH** /v1/items/{name} | Replace URIs, tags, and fill username. No secret.
 
+
+# **add_group_member**
+> add_group_member(name, add_group_member_request)
+
+Add an agent or human to the group. Not MCP.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.add_group_member_request import AddGroupMemberRequest
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+    add_group_member_request = veil.AddGroupMemberRequest() # AddGroupMemberRequest | 
+
+    try:
+        # Add an agent or human to the group. Not MCP.
+        api_instance.add_group_member(name, add_group_member_request)
+    except Exception as e:
+        print("Exception when calling OwnerApi->add_group_member: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+ **add_group_member_request** | [**AddGroupMemberRequest**](AddGroupMemberRequest.md)|  | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | added |  -  |
+**400** | bad request |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **approve_request**
 > ApprovalRequest approve_request(id, approve_request_body=approve_request_body)
@@ -335,6 +419,86 @@ Name | Type | Description  | Notes
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Grant |  -  |
+**400** | bad request |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **create_group**
+> Group create_group(create_group_request)
+
+Create an org group. Not MCP.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.create_group_request import CreateGroupRequest
+from veil.models.group import Group
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    create_group_request = veil.CreateGroupRequest() # CreateGroupRequest | 
+
+    try:
+        # Create an org group. Not MCP.
+        api_response = api_instance.create_group(create_group_request)
+        print("The response of OwnerApi->create_group:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->create_group: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **create_group_request** | [**CreateGroupRequest**](CreateGroupRequest.md)|  | 
+
+### Return type
+
+[**Group**](Group.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Group |  -  |
 **400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
@@ -886,6 +1050,159 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **list_group_members**
+> GroupMembersResponse list_group_members(name)
+
+Members of the group — agent or human edges. Not MCP.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.group_members_response import GroupMembersResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+
+    try:
+        # Members of the group — agent or human edges. Not MCP.
+        api_response = api_instance.list_group_members(name)
+        print("The response of OwnerApi->list_group_members:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_group_members: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+
+### Return type
+
+[**GroupMembersResponse**](GroupMembersResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Members |  -  |
+**400** | unknown group |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **list_groups**
+> GroupsResponse list_groups()
+
+Org groups. A grant to a group is the shared vault. Not MCP.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.groups_response import GroupsResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+
+    try:
+        # Org groups. A grant to a group is the shared vault. Not MCP.
+        api_response = api_instance.list_groups()
+        print("The response of OwnerApi->list_groups:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_groups: %s\n" % e)
+```
+
+
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**GroupsResponse**](GroupsResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Groups |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **list_requests**
 > RequestsResponse list_requests(status=status)
 
@@ -1034,6 +1351,86 @@ This endpoint does not need any parameter.
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Sessions |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **remove_group_member**
+> remove_group_member(name, kind, id)
+
+Remove a member from the group. Not MCP.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+    kind = 'kind_example' # str | 
+    id = 'id_example' # str | 
+
+    try:
+        # Remove a member from the group. Not MCP.
+        api_instance.remove_group_member(name, kind, id)
+    except Exception as e:
+        print("Exception when calling OwnerApi->remove_group_member: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+ **kind** | **str**|  | 
+ **id** | **str**|  | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | removed |  -  |
+**400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
 
