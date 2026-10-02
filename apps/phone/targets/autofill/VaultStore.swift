@@ -100,6 +100,46 @@ final class VaultStore {
         }.resume()
     }
 
+    /// Store a captured sign-in. `existing` is an item name to overwrite
+    /// (PATCH rotates the secret on the same item — never a duplicate);
+    /// nil creates a new login. Returns the item uuid so the caller can
+    /// publish the credential identity for inline fill.
+    static func save(existing: String?, name: String, user: String, password: String,
+                     url: String, _ done: @escaping (Result<String, Error>) -> Void) {
+        guard let h = loadHandoff() else { done(.failure(VaultStoreError.noHandoff)); return }
+        var req: URLRequest
+        var body: [String: Any] = ["login": user, "secret": password, "uri": url]
+        if let existing, !existing.isEmpty {
+            // Overwrite intent must never degrade into a second item —
+            // a bad encoding fails the save rather than POSTing a twin.
+            guard let escaped = existing.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                  let u = URL(string: h.origin + "/v1/items/" + escaped)
+            else { done(.failure(VaultStoreError.badResponse)); return }
+            req = URLRequest(url: u)
+            req.httpMethod = "PATCH"
+        } else if let u = URL(string: h.origin + "/v1/items") {
+            req = URLRequest(url: u)
+            req.httpMethod = "POST"
+            body["name"] = name
+        } else {
+            done(.failure(VaultStoreError.badResponse))
+            return
+        }
+        req.setValue("Bearer \(h.token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = 15
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            if let err { done(.failure(err)); return }
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            guard code == 200, let data,
+                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = body["id"] as? String
+            else { done(.failure(VaultStoreError.origin(code))); return }
+            done(.success(id))
+        }.resume()
+    }
+
     /// WebAuthn ceremony through the origin. The caller passes the RP's
     /// publicKey request object verbatim; the reply is the origin's
     /// `response` payload — a PublicKeyCredential-shaped dict with the

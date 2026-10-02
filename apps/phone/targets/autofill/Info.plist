@@ -20,6 +20,12 @@
           <false/>
           <key>ProvidesOneTimeCodes</key>
           <false/>
+          <key>SupportsSavePasswordCredentials</key>
+          <true/>
+          <key>SupportsGeneratePasswordsCredentials</key>
+          <true/>
+          <key>SupportsGeneratePasswordsCredentialsWithUI</key>
+          <false/>
         </dict>
       </dict>
     </dict>

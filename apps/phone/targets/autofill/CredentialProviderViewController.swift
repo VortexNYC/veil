@@ -33,10 +33,26 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// Set when the system is asking for a passkey — the OS owns
     /// clientDataJSON and hands us its hash to sign.
     private var passkeyParams: ASPasskeyCredentialRequestParameters?
+    /// A save sheet waiting on the user's tap. Extracted fields, not the
+    /// request object — ASSavePasswordRequest is an iOS 26.2 type and
+    /// can't be a stored property on this deployment target.
+    private struct PendingSave {
+        let serviceIdentifier: ASCredentialServiceIdentifier
+        let url: String
+        let user: String
+        let password: String
+        let title: String?
+    }
+    private var pendingSave: PendingSave?
 
     private let table = UITableView(frame: .zero, style: .plain)
     private let status = UILabel()
     private let emptyLabel = UILabel()
+    private let saveButton = UIButton(type: .system)
+    /// `let`, not an outlet set in loadView — the OS can call
+    /// prepareInterface before the view hierarchy exists, and save mode
+    /// relabels this to "Not Now".
+    private let cancel = UIButton(type: .system)
 
     private func vlog(_ msg: String) {
         NSLog("veil-autofill: %@", msg)
@@ -54,6 +70,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
         status.font = .systemFont(ofSize: 13)
         status.textColor = .secondaryLabel
+        status.numberOfLines = 0
         status.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(status)
 
@@ -77,11 +94,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         footer.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(footer)
 
-        let cancel = UIButton(type: .system)
         cancel.setTitle("Cancel", for: .normal)
         cancel.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
         cancel.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(cancel)
+
+        saveButton.setTitle("Save", for: .normal)
+        saveButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
+        saveButton.isHidden = true
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(saveButton)
 
         NSLayoutConstraint.activate([
             brand.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 16),
@@ -99,6 +122,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             footer.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor, constant: -12),
             cancel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
             cancel.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
+            saveButton.trailingAnchor.constraint(equalTo: cancel.leadingAnchor, constant: -16),
+            saveButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
         ])
 
         self.view = root
@@ -250,6 +275,133 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
         vlog("provideCredentialWithoutUserInteraction -> userInteractionRequired")
         cancel(with: .userInteractionRequired)
+    }
+
+    // MARK: - Save / Generate (iOS 26.2)
+
+    /// The OS captured a submitted sign-in. A password our own generate
+    /// request produced lands as a pending account with no UI — Apple
+    /// transmits nothing back to the form anyway. A brand-new login on
+    /// form dismissal also saves quietly; an overwrite there, and every
+    /// express save, asks first (fill.md: accept required).
+    @available(iOS 26.2, *)
+    override func performWithoutUserInteractionIfPossible(savePasswordRequest req: ASSavePasswordRequest) {
+        vlog("saveIfPossible event=\(req.event.rawValue)")
+        switch req.event {
+        case .generatedPasswordFilled:
+            saveCredential(req, requireNew: false)
+        case .formDidDisappear:
+            saveCredential(req, requireNew: true)
+        default:
+            cancel(with: .userInteractionRequired)
+        }
+    }
+
+    /// The interactive save path — express saves, plus silent paths that
+    /// answered userInteractionRequired. A tap on Save is the accept.
+    @available(iOS 26.2, *)
+    override func prepareInterface(for savePasswordRequest: ASSavePasswordRequest) {
+        let req = savePasswordRequest
+        vlog("prepareInterface save event=\(req.event.rawValue)")
+        let url = Self.url(for: req.serviceIdentifier)
+        status.text = "Save \(req.credential.user)\non \(Self.host(url))?"
+        pendingSave = PendingSave(serviceIdentifier: req.serviceIdentifier, url: url,
+                                  user: req.credential.user, password: req.credential.password,
+                                  title: req.title)
+        table.isHidden = true
+        emptyLabel.isHidden = true
+        saveButton.isHidden = false
+        cancel.setTitle("Not Now", for: .normal)
+    }
+
+    /// Silent password mint — no UI, no network, just CSPRNG output shaped
+    /// by the site's passwordrules. SupportsGeneratePasswordsCredentials-
+    /// WithUI is false in the plist, so the OS renders the result itself
+    /// and this is the only generate path that runs.
+    @available(iOS 26.2, *)
+    override func performWithoutUserInteraction(generatePasswordsRequest req: ASGeneratePasswordsRequest) {
+        vlog("generateIfPossible")
+        let rules = req.passwordFieldPasswordRules ?? req.passwordRulesFromQuirks
+        let primary = PasswordGen.generate(rules: rules)
+        var results = [ASGeneratedPassword(kind: primary.alphanumeric ? .alphanumeric : .strong,
+                                           value: primary.value)]
+        if !primary.alphanumeric {
+            let alt = PasswordGen.generate(rules: "allowed: [a-zA-Z0-9]")
+            results.append(ASGeneratedPassword(kind: .alphanumeric, value: alt.value))
+        }
+        extensionContext.completeGeneratePasswordRequest(results: results) { _ in }
+    }
+
+    /// Write a captured sign-in to origin. An item matching host+login is
+    /// overwritten via PATCH — the uuid survives and no duplicate is made;
+    /// `requireNew` upgrades that overwrite to the interactive sheet per
+    /// Apple's form-dismissal contract. An empty login can never match,
+    /// so it always creates.
+    @available(iOS 26.2, *)
+    private func saveCredential(_ req: ASSavePasswordRequest, requireNew: Bool) {
+        let url = Self.url(for: req.serviceIdentifier)
+        VaultStore.items { [weak self] all in
+            guard let self else { return }
+            let existing = Self.savedItem(all, url: url, user: req.credential.user)
+            if requireNew, existing != nil {
+                DispatchQueue.main.async { self.cancel(with: .userInteractionRequired) }
+                return
+            }
+            self.persistSave(url: url, user: req.credential.user,
+                             password: req.credential.password, title: req.title,
+                             overwrite: existing?.name,
+                             serviceIdentifier: req.serviceIdentifier)
+        }
+    }
+
+    /// The item that already covers this host+login — an empty login can
+    /// never match, so unknown users always create rather than overwrite.
+    private static func savedItem(_ all: [HandoffItem], url: String, user: String) -> HandoffItem? {
+        let urlHost = host(url)
+        return all.first { item in
+            !item.login.isEmpty && item.login == user
+                && item.uris.contains { host($0) == urlHost }
+        }
+    }
+
+    /// POST or PATCH the item, publish its credential identity so inline
+    /// fill sees it immediately, then complete the OS request.
+    @available(iOS 26.2, *)
+    private func persistSave(url: String, user: String, password: String, title: String?,
+                             overwrite: String?,
+                             serviceIdentifier: ASCredentialServiceIdentifier) {
+        let host = Self.host(url)
+        let name = (title?.isEmpty == false ? title : nil) ?? host
+        VaultStore.save(existing: overwrite, name: name.isEmpty ? user : name,
+                        user: user, password: password, url: url) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let uuid):
+                let id = ASPasswordCredentialIdentity(serviceIdentifier: serviceIdentifier,
+                                                      user: user, recordIdentifier: uuid)
+                ASCredentialIdentityStore.shared.saveCredentialIdentities([id]) { _, _ in }
+                self.vlog("save ok")
+                DispatchQueue.main.async {
+                    self.extensionContext.completeSavePasswordRequest { _ in }
+                }
+            case .failure(let err):
+                self.vlog("save failed \(err.localizedDescription)")
+                DispatchQueue.main.async { self.cancel(with: .failed) }
+            }
+        }
+    }
+
+    @objc private func saveTapped() {
+        guard #available(iOS 26.2, *), let s = pendingSave else { return }
+        pendingSave = nil
+        status.text = "Saving…"
+        VaultStore.items { [weak self] all in
+            guard let self else { return }
+            let existing = Self.savedItem(all, url: s.url, user: s.user)
+            self.persistSave(url: s.url, user: s.user, password: s.password,
+                             title: s.title, overwrite: existing?.name,
+                             serviceIdentifier: s.serviceIdentifier)
+        }
     }
 
     // MARK: - Fill
