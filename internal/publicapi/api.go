@@ -208,6 +208,20 @@ type FillLoginsResponse struct {
 	Entries []FillLogin `json:"entries"`
 }
 
+// FillEvent is one client-reported disclosure — the host served the secret
+// from its sealed replica, so the release is attested here instead of
+// implied by a /v1/fill/logins call. TS is the client's fill time.
+type FillEvent struct {
+	UUID     string `json:"uuid"`
+	Kind     string `json:"kind,omitempty"`
+	MintTOTP bool   `json:"mint_totp,omitempty"`
+	TS       string `json:"ts,omitempty"`
+}
+
+type FillEventsRequest struct {
+	Events []FillEvent `json:"events"`
+}
+
 type FillTOTPRequest struct {
 	UUID string `json:"uuid"`
 }
@@ -304,6 +318,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
 	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
+	mux.HandleFunc("POST /v1/fill/events", s.fillEvents)
 	mux.HandleFunc("POST /v1/fill/totp", s.fillTOTP)
 	mux.HandleFunc("POST /v1/fill/totp/enroll", s.fillTOTPEnroll)
 	mux.HandleFunc("POST /v1/fill/passkeys/register", s.fillPasskeyRegister)
@@ -1229,6 +1244,40 @@ func (s *Server) fillLogins(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, FillLogin{Login: e.Login, Name: e.Name, Password: e.Password, UUID: e.UUID, TOTP: e.TOTP})
 	}
 	writeJSON(w, FillLoginsResponse{Entries: entries})
+}
+
+// fillEvents ingests client-reported disclosures (replica-served fills).
+// Human bearer only. Malformed rows are skipped, not rejected — the client's
+// queue drains or a poisoned line would wedge every event behind it.
+func (s *Server) fillEvents(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var in FillEventsRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if len(in.Events) > 256 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	evs := make([]app.FillEventReport, 0, len(in.Events))
+	for _, e := range in.Events {
+		rep := app.FillEventReport{UUID: e.UUID, Kind: e.Kind, MintTOTP: e.MintTOTP}
+		if e.TS != "" {
+			if ts, err := time.Parse(time.RFC3339Nano, e.TS); err == nil {
+				rep.At = ts
+			}
+		}
+		evs = append(evs, rep)
+	}
+	if err := s.App.RecordFillEvents(p, evs); err != nil {
+		http.Error(w, "audit failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 func (s *Server) fillTOTP(w http.ResponseWriter, r *http.Request) {

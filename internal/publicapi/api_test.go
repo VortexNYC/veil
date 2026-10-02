@@ -1923,3 +1923,102 @@ func TestVaultReportAgentDenied(t *testing.T) {
 		t.Fatalf("anon: %d", code)
 	}
 }
+
+// Replica-served fills arrive as client-reported events. The rows match what
+// an online fill writes: ActionFill (and ActionTOTPMint when the host minted
+// locally), stamped with the client's fill time, not the flush time.
+func TestFillEventsRecordsClientReportedDisclosures(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+		Name: "github", URI: "https://github.com", Secret: secret, Login: "ada@example.com",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	fillAt := time.Date(2026, 10, 1, 19, 42, 56, 0, time.UTC)
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/fill/events", "human", FillEventsRequest{Events: []FillEvent{
+		{UUID: "github", Kind: "login", MintTOTP: true, TS: fillAt.Format(time.RFC3339Nano)},
+		{UUID: "gone-item", Kind: "card", TS: fillAt.Format(time.RFC3339Nano)},
+		{UUID: "   "},
+	}})
+	if code != http.StatusOK {
+		t.Fatalf("events %d %s", code, raw)
+	}
+	events, err := a.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fill, mint, gone protocol.AuditEvent
+	var sawFill, sawMint, sawGone bool
+	for _, e := range events {
+		switch {
+		case e.ItemID == "github" && e.Action == protocol.ActionFill:
+			fill, sawFill = e, true
+		case e.ItemID == "github" && e.Action == protocol.ActionTOTPMint:
+			mint, sawMint = e, true
+		case e.ItemID == "gone-item" && e.Action == protocol.ActionFill:
+			gone, sawGone = e, true
+		}
+	}
+	if !sawFill || !sawMint {
+		t.Fatalf("expected fill+totp_mint rows: %+v", events)
+	}
+	if fill.Reason != "login" || !fill.Time.Equal(fillAt) {
+		t.Fatalf("fill row kind/time wrong: %+v", fill)
+	}
+	if mint.Time.Equal(fillAt) == false {
+		t.Fatalf("totp_mint lost the client timestamp: %+v", mint)
+	}
+	// An item that no longer exists still records — under the reporter's org
+	// with the reported kind — because a lost audit is worse than a thin row.
+	if !sawGone || gone.OrgID != protocol.LocalOrgID || gone.Reason != "card" {
+		t.Fatalf("missing-item report %+v", gone)
+	}
+	for _, tok := range []string{"agent", "member"} {
+		code, _ = doJSON(t, srv, http.MethodPost, "/v1/fill/events", tok, FillEventsRequest{Events: []FillEvent{{UUID: "github"}}})
+		if tok == "agent" && code != http.StatusForbidden {
+			t.Fatalf("agent events %d", code)
+		}
+	}
+	big := FillEventsRequest{Events: make([]FillEvent, 257)}
+	if code, _ := doJSON(t, srv, http.MethodPost, "/v1/fill/events", "human", big); code != http.StatusBadRequest {
+		t.Fatalf("oversize batch %d", code)
+	}
+}
+
+// The URL form releases every matching secret — each entry is a disclosure
+// and must leave a fill row. Replica/offline is no excuse at origin.
+func TestFillLoginsURLFormAuditsEveryReveal(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	for _, name := range []string{"stripe-a", "stripe-b"} {
+		code, raw := doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+			Name: name, URI: "https://dashboard.stripe.com", Secret: secret + name, Login: name,
+		})
+		if code != http.StatusOK {
+			t.Fatalf("create %s %d %s", name, code, raw)
+		}
+	}
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/fill/logins", "human", FillLoginsRequest{URL: "https://dashboard.stripe.com/login"})
+	if code != http.StatusOK {
+		t.Fatalf("url fill %d %s", code, raw)
+	}
+	var all FillLoginsResponse
+	if err := json.Unmarshal(raw, &all); err != nil || len(all.Entries) != 2 {
+		t.Fatalf("url fill %+v", all)
+	}
+	events, err := a.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, e := range events {
+		if e.Action == protocol.ActionFill {
+			got[e.ItemID] = true
+		}
+	}
+	if !got["stripe-a"] || !got["stripe-b"] {
+		t.Fatalf("url form audit rows missing: %+v", events)
+	}
+}

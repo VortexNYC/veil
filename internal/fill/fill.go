@@ -94,6 +94,9 @@ type Host struct {
 	pullMu       sync.Mutex
 	pullRunning  bool
 	pullDirty    bool
+	// flushWg tracks async disclosure-report flushers (fillAuditQueueDir)
+	// so tests can drain before mutating host fields.
+	flushWg sync.WaitGroup
 }
 
 type session struct {

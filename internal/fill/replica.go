@@ -19,6 +19,8 @@ func (h *Host) PullReplica() error {
 	if h.Replica == nil || h.Origin == "" {
 		return nil
 	}
+	// Origin is reachable — drain queued disclosure reports before pulling.
+	h.flushFillEvents()
 	raw, err := h.originPOST("/v1/fill/sync", []byte("{}"))
 	if err != nil {
 		return err

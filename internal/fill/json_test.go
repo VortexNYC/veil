@@ -275,6 +275,7 @@ func TestJSONReplicaFillDoesNotCallOriginAndHidesDisk(t *testing.T) {
 	if err := json.Unmarshal(got, &out); err != nil || len(out.Entries) != 1 || out.Entries[0].Password != secret || out.Entries[0].Login != login {
 		t.Fatalf("airplane fill %s", got)
 	}
+	h.waitFlushes()
 	if fills.Load() != 0 {
 		t.Fatalf("fill used origin %d", fills.Load())
 	}

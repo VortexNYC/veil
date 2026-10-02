@@ -260,6 +260,10 @@ func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
 		if err := h.confirm("Veil wants to fill a card", scope, env.CVV == ""); err != nil {
 			return empty
 		}
+		if err := h.recordFillEvent(item.ID, "card", false); err != nil {
+			fillDebug("fill audit queue " + err.Error())
+			return empty
+		}
 		return []jsonFillEntry{{
 			Kind:      "card",
 			UUID:      item.ID,
@@ -276,6 +280,10 @@ func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
 			return empty
 		}
 		if err := h.confirm("Veil wants to fill an identity", scope, true); err != nil {
+			return empty
+		}
+		if err := h.recordFillEvent(item.ID, "identity", false); err != nil {
+			fillDebug("fill audit queue " + err.Error())
 			return empty
 		}
 		return []jsonFillEntry{{
@@ -300,6 +308,14 @@ func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
 func (h *Host) unlockJSONFill(uuid string, mintTotp bool) (app.FillEntry, bool) {
 	if h.replicaWarm() {
 		if got, ok := h.replicaFill(uuid, mintTotp); ok {
+			// The secret came off the sealed replica — origin never sees the
+			// fill. Attest the disclosure before returning it; a failed queue
+			// append denies the reveal, same contract as origin's audit.
+			minted := mintTotp && got.TOTP != "" && got.TOTP != totpPresent
+			if err := h.recordFillEvent(uuid, "login", minted); err != nil {
+				fillDebug("fill audit queue " + err.Error())
+				return app.FillEntry{}, false
+			}
 			return got, true
 		}
 	}

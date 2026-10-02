@@ -1569,6 +1569,7 @@ func (a *App) FillLogins(p protocol.Principal, rawURL string) ([]FillEntry, erro
 		return nil, err
 	}
 	var out []FillEntry
+	var served []protocol.Item
 	for _, item := range items {
 		if !grant.HostAllowed(item, rawURL) {
 			continue
@@ -1578,6 +1579,14 @@ func (a *App) FillLogins(p protocol.Principal, rawURL string) ([]FillEntry, erro
 			continue
 		}
 		out = append(out, e)
+		served = append(served, item)
+	}
+	// The URL form releases one secret per entry — each is a disclosure and
+	// gets its own row, fail-closed like FillLogin.
+	for _, item := range served {
+		if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionFill, "login")); err != nil {
+			return nil, fmt.Errorf("app: audit fill: %w", err)
+		}
 	}
 	if out == nil {
 		out = []FillEntry{}
@@ -1630,6 +1639,67 @@ func (a *App) FillLogin(p protocol.Principal, uuid string, mintTotp bool) (FillE
 	}
 	e.TOTP = code
 	return e, nil
+}
+
+// FillEventReport is a client-reported disclosure. When the fill host serves
+// a secret from the sealed replica instead of calling origin, it attests the
+// release here so the audit feed sees the same row an online fill writes.
+// At is the client's fill time — a queued report can land long after it
+// happened. Kind is the client's claim; for a known item the store's kind
+// wins. Unknown or cross-org uuids still record, under the reporter's org —
+// a lost audit is worse than a row that cannot name its item's true kind.
+type FillEventReport struct {
+	UUID     string
+	Kind     string
+	MintTOTP bool
+	At       time.Time
+}
+
+func fillReportKind(kind string, item protocol.Item, found bool) string {
+	if found {
+		if item.Kind == protocol.ItemAPIKey {
+			return "login"
+		}
+		return string(item.Kind)
+	}
+	switch kind {
+	case "login", "card", "identity", "passkey":
+		return kind
+	}
+	return "login"
+}
+
+func (a *App) RecordFillEvents(p protocol.Principal, evs []FillEventReport) error {
+	if p.Kind != protocol.PrincipalHuman {
+		return fmt.Errorf("app: fill is human")
+	}
+	for _, ev := range evs {
+		uuid := strings.TrimSpace(ev.UUID)
+		if uuid == "" {
+			continue
+		}
+		orgID := p.OrgID
+		item, err := a.Store.Item(uuid)
+		found := err == nil && item.OrgID == p.OrgID
+		kind := fillReportKind(ev.Kind, item, found)
+		at := ev.At.UTC()
+		if at.IsZero() {
+			at = time.Now().UTC()
+		}
+		e := adminEvent(p.ID, orgID, uuid, protocol.ActionFill, kind)
+		e.Time = at
+		if err := a.auditAdmin(e); err != nil {
+			return fmt.Errorf("app: audit fill: %w", err)
+		}
+		if ev.MintTOTP {
+			m := adminEvent(p.ID, orgID, uuid, protocol.ActionTOTPMint, "")
+			m.Time = at
+			if err := a.auditAdmin(m); err != nil {
+				return fmt.Errorf("app: audit totp: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // FillSyncRow is one replica pull record. Material is the envelope JSON.
