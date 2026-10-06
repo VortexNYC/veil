@@ -58,8 +58,24 @@ export async function storedToken(): Promise<string | null> {
  * Sign-in is the same PKCE authorize flow the SPA runs — the browser page is
  * Ory's own UI at login.veil.nyc, so the app never handles the password or
  * TOTP. It only receives the code on the veil:// callback.
+ *
+ * Do not force prompt=login/max_age here: a live session skips the form and the
+ * aal2 assertion below is the real gate. Forcing re-auth makes Kratos build a
+ * refresh login flow that can render zero methods — a dead-end for users.
  */
 export async function signIn(): Promise<void> {
+  const idToken = await runAuth(false);
+  if (!amrOf(idToken).includes("totp")) {
+    // aal1 session got reused; redo the dance forcing fresh factors
+    const fresh = await runAuth(true);
+    if (!amrOf(fresh).includes("totp")) throw new Error("aal2 required — complete TOTP");
+    await SecureStore.setItemAsync(tokenKey, fresh);
+    return;
+  }
+  await SecureStore.setItemAsync(tokenKey, idToken);
+}
+
+async function runAuth(forceLogin: boolean): Promise<string> {
   const verifier = randomB64(32);
   const state = randomB64(16);
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier, {
@@ -74,10 +90,16 @@ export async function signIn(): Promise<void> {
   u.searchParams.set("state", state);
   u.searchParams.set("code_challenge", challenge);
   u.searchParams.set("code_challenge_method", "S256");
-  u.searchParams.set("max_age", "0");
-  u.searchParams.set("prompt", "login");
+  if (forceLogin) {
+    u.searchParams.set("max_age", "0");
+    u.searchParams.set("prompt", "login");
+  }
 
-  const result = await WebBrowser.openAuthSessionAsync(u.toString(), redirectURI);
+  const result = await WebBrowser.openAuthSessionAsync(u.toString(), redirectURI, {
+    // Ephemeral jar: no shared Safari cookies/cache — every sign-in is a clean
+    // dance and a stale session can never wedge the login UI.
+    preferEphemeralSession: true,
+  });
   if (result.type !== "success" || !result.url) {
     throw new Error("sign-in canceled");
   }
@@ -105,8 +127,7 @@ export async function signIn(): Promise<void> {
   const idToken =
     typeof parsed === "object" && parsed !== null && "id_token" in parsed ? parsed.id_token : null;
   if (typeof idToken !== "string" || idToken === "") throw new Error("token exchange failed");
-  if (!amrOf(idToken).includes("totp")) throw new Error("aal2 required — complete TOTP");
-  await SecureStore.setItemAsync(tokenKey, idToken);
+  return idToken;
 }
 
 export async function signOut(): Promise<void> {
