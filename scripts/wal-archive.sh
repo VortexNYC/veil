@@ -21,6 +21,14 @@ WALDIR="${WAL_DIR:-/wal}"
 SLOT="${WAL_SLOT:-wal_archive}"
 INGEST="${WAL_INGEST_URL:-https://backup-ingest.veil.nyc}/v1"
 INTERVAL="${WAL_PUSH_INTERVAL:-15}"
+# The .partial is the only mutable object — every push re-uploads the whole
+# file (pg_receivewal preallocates 16MB), so its cadence is the egress bill.
+# Push it at most once per WAL_PARTIAL_INTERVAL (the RPO tail), or sooner
+# when it has grown WAL_PARTIAL_MIN_GROWTH bytes since the last push — real
+# write bursts still ship on the next loop. Completed segments, .history,
+# and .backup labels are new objects: pushed once each, immediately.
+PARTIAL_INTERVAL="${WAL_PARTIAL_INTERVAL:-300}"
+PARTIAL_MIN_GROWTH="${WAL_PARTIAL_MIN_GROWTH:-1048576}"
 
 mkdir -p "$WALDIR"
 
@@ -89,10 +97,11 @@ pg_receivewal -D "$WALDIR" -S "$SLOT" --create-slot --if-not-exists \
 
 # Shipper: complete segments, .history timelines, and .backup labels push
 # once then delete — the slot retains server-side WAL, so the local copy
-# only exists until R2 has it. The open .partial pushes whenever its content
-# changed — pg_receivewal preallocates the full 16MB, so size and mtime are
-# unreliable change signals; a sha256 per loop catches every flush. On
-# restore the newest .partial renames to its segment name.
+# only exists until R2 has it. The open .partial pushes only on the bounded
+# cadence above — a sha256 change alone is not enough, because heartbeat
+# beats and checkpoint churn change it every loop and each push is a full
+# re-upload. The mark records "sha:size:epoch" of the last pushed state.
+# On restore the newest .partial renames to its segment name.
 while :; do
 	ok=1
 	for f in "$WALDIR"/*; do
@@ -101,9 +110,18 @@ while :; do
 		case "$b" in
 			*.partial)
 				sum=$(sha256sum "$f" | cut -d' ' -f1)
-				mark="$WALDIR/.$b.sum"
-				if [ "$(cat "$mark" 2>/dev/null)" != "$sum" ]; then
-					push "$f" "wal-$b" && echo "$sum" >"$mark" || ok=0
+				size=$(wc -c <"$f" | tr -d ' ')
+				now=$(date +%s)
+				mark="$WALDIR/.$b.mark"
+				prev=$(cat "$mark" 2>/dev/null)
+				osha=${prev%%:*}
+				osize=${prev#*:}; osize=${osize%%:*}
+				otime=${prev##*:}
+				: "${osize:=0}" "${otime:=0}"
+				if [ "$sum" != "$osha" ] &&
+					{ [ $((now - otime)) -ge "$PARTIAL_INTERVAL" ] ||
+					  [ $((size - osize)) -ge "$PARTIAL_MIN_GROWTH" ]; }; then
+					push "$f" "wal-$b" && echo "$sum:$size:$now" >"$mark" || ok=0
 				fi
 				;;
 			*.history | *.backup)
@@ -111,7 +129,7 @@ while :; do
 				;;
 			*)
 				if is_seg "$b"; then
-					push "$f" "wal-$b" && rm -f "$f" "$WALDIR/.$b.partial.sum" || ok=0
+					push "$f" "wal-$b" && rm -f "$f" "$WALDIR/.$b.partial.mark" "$WALDIR/.$b.partial.sum" || ok=0
 				fi
 				;;
 		esac

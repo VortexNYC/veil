@@ -45,6 +45,16 @@ not in the script.
    and retries. A partial can only grow. The real RPO bound is this lag,
    proven in the 2026-10-01 drill: ~15s behind the live tail.
 
+   **Push cadence is the egress budget.** A `.partial` PUT re-uploads the
+   whole in-flight file (preallocated 16MB), so pushing on every content
+   change billed ~250MB/hr per archiver on an idle database — the 15s
+   heartbeat write alone was enough churn to re-trigger it. Since
+   2026-10-06 the shipper pushes `.partial` at most once per
+   `WAL_PARTIAL_INTERVAL` (default 300s) or when it has grown
+   `WAL_PARTIAL_MIN_GROWTH` (default 1MB) since the last push; completed
+   segments are unaffected and ship on sight. RPO tail: ≤5min idle,
+   ~15s under write load.
+
 ## Slot ownership
 
 - `pg_receivewal --create-slot --if-not-exists` — the slot is pinned to the
@@ -64,7 +74,7 @@ not in the script.
 |---|---|---|
 | One archiver host dies | Its slot retains WAL server-side; the other archiver keeps the archive current. Beat gap pages on the per-slot beat (`wal-archive:<slot>`). | none |
 | Both archivers die, Postgres alive | Slots retain WAL up to `max_slot_wal_keep_size`; archive stalls, both beats + `no active slot` page. Catch-up on restart streams retained WAL. | none while slots hold; overflow → `lost` pages |
-| Postgres dies | WAL is already offsite to the last push (~15s). Both archivers die with it. Restore = last base + archived WAL. | ≤ push interval |
+| Postgres dies | WAL is already offsite to the last `.partial` push. Both archivers die with it. Restore = last base + archived WAL. | ≤ `WAL_PARTIAL_INTERVAL` (300s idle; growth-bounded under load) |
 | Cluster rebuilt (new sysid) | Archivers reconnect, read the new sysid, write under a new `arc-` namespace. Old archive untouched; restore picks the correct namespace per base backup. | pre-rebuild data is the old namespace's archive |
 | Replica promoted (same sysid, new timeline) | Timeline digit in the WAL name changes; `.history` objects are archived too; recovery follows the timeline history. No name collisions across timelines. | ≤ push interval |
 | Archiver behind (slow region) | Its `.partial` PUTs lose the CAS (409) and are skipped; its complete segments are identical bytes. A slow writer can only ever be ignored. | none |
