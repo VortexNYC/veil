@@ -17,14 +17,14 @@
           <key>ProvidesPasskeys</key>
           <true/>
           <key>ProvidesTextToInsert</key>
-          <false/>
-          <key>ProvidesOneTimeCodes</key>
-          <false/>
+          <true/>
           <key>SupportsSavePasswordCredentials</key>
           <true/>
           <key>SupportsGeneratePasswordsCredentials</key>
           <true/>
           <key>SupportsGeneratePasswordsCredentialsWithUI</key>
+          <false/>
+          <key>ProvidesOneTimeCodes</key>
           <false/>
         </dict>
       </dict>

@@ -25,10 +25,17 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         case password(uuid: String)
         case passkeyAssert(rpID: String, credID: Data, userHandle: Data, clientDataHash: Data)
         case passkeyRegister(request: ASPasskeyCredentialRequest, userName: String)
+        /// Context-menu AutoFill path (iOS 18+): the OS wants one string
+        /// for the focused field — a username or a password, still behind
+        /// the Face ID gate.
+        case textInsert(uuid: String, password: Bool)
     }
 
     private var entries: [HandoffItem] = []
     private var serviceURL = ""
+    /// Set by prepareInterfaceForUserChoosingTextToInsert — the table then
+    /// shows username/password rows per item instead of a single pick.
+    private var textInsert = false
     private var pending: PendingOp?
     /// Set when the system is asking for a passkey — the OS owns
     /// clientDataJSON and hands us its hash to sign.
@@ -277,6 +284,25 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         cancel(with: .userInteractionRequired)
     }
 
+    /// Context-menu "AutoFill → Passwords" on iOS 18+ dispatches a
+    /// text-insert request, not prepareCredentialList — without this
+    /// override the OS shows "developer needs to update it". No service
+    /// identifiers arrive here, so every login item is listed, two rows
+    /// each (username, password); the pick completes with that one string.
+    override func prepareInterfaceForUserChoosingTextToInsert() {
+        vlog("prepareInterfaceForUserChoosingTextToInsert")
+        textInsert = true
+        status.text = "Choose what to fill"
+        VaultStore.items { [weak self] all in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.entries = all.filter { ["api_key", "login"].contains($0.kind) }
+                self.emptyLabel.isHidden = !self.entries.isEmpty
+                self.table.reloadData()
+            }
+        }
+    }
+
     // MARK: - Save / Generate (iOS 26.2)
 
     /// The OS captured a submitted sign-in. A password our own generate
@@ -415,6 +441,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             reason = "Veil needs Face ID before this passkey signs you in"
         case .passkeyRegister:
             reason = "Veil needs Face ID to create this passkey"
+        case .textInsert(_, let password):
+            reason = password
+                ? "Veil needs Face ID before this password fills"
+                : "Veil needs Face ID before this username fills"
         }
         let ctx = LAContext()
         ctx.evaluatePolicy(.deviceOwnerAuthentication,
@@ -441,6 +471,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                                            userHandle: userHandle, clientDataHash: clientDataHash)
             case .passkeyRegister(let req, let userName):
                 self.completePasskeyRegister(request: req, userName: userName)
+            case .textInsert(let uuid, let password):
+                self.completeTextInsert(uuid: uuid, password: password)
             }
         }
     }
@@ -455,6 +487,23 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 }
             case .failure(let err):
                 self.vlog("fill failed \(err.localizedDescription)")
+                DispatchQueue.main.async { self.cancel(with: .failed) }
+            }
+        }
+    }
+
+    /// Text-insert release — the credential fetch is identical to a fill;
+    /// only the completion API differs (one string, not a credential).
+    private func completeTextInsert(uuid: String, password: Bool) {
+        VaultStore.fill(uuid: uuid, url: serviceURL) { result in
+            switch result {
+            case .success(let c):
+                let text = password ? c.password : c.user
+                DispatchQueue.main.async {
+                    self.extensionContext.completeRequest(withTextToInsert: text) { _ in }
+                }
+            case .failure(let err):
+                self.vlog("text insert failed \(err.localizedDescription)")
                 DispatchQueue.main.async { self.cancel(with: .failed) }
             }
         }
@@ -614,19 +663,31 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
 extension CredentialProviderViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        entries.count
+        entries.count * (textInsert ? 2 : 1)
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "c", for: indexPath) as! HandoffCell
-        let e = entries[indexPath.row]
-        cell.configure(name: e.name, login: e.login)
+        let e = entries[indexPath.row / (textInsert ? 2 : 1)]
+        if textInsert {
+            cell.configure(name: indexPath.row % 2 == 0 ? e.name : "Password",
+                           login: indexPath.row % 2 == 0
+                               ? "Username: \(e.login)"
+                               : (e.login.isEmpty ? e.name : e.login))
+        } else {
+            cell.configure(name: e.name, login: e.login)
+        }
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: false)
-        let e = entries[indexPath.row]
+        let e = entries[indexPath.row / (textInsert ? 2 : 1)]
+        if textInsert {
+            status.text = "Confirming…"
+            deferPending(.textInsert(uuid: e.uuid, password: indexPath.row % 2 == 1))
+            return
+        }
         // Passkey list pick: sign with the row's credential over the OS's
         // clientDataHash — same Face ID gate as an inline identity pick.
         if let params = passkeyParams, e.kind == "passkey",

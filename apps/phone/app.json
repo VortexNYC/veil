@@ -3,7 +3,7 @@
     "name": "Veil",
     "slug": "veil-phone",
     "version": "0.0.1",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "veil",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -14,7 +14,7 @@
       "backgroundColor": "#141210"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "nyc.veil.phone",
       "appleTeamId": "VFWGNKKT4G",
       "infoPlist": {
@@ -22,7 +22,9 @@
         "NSFaceIDUsageDescription": "Veil uses Face ID before a password leaves the vault."
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.nyc.veil.phone"],
+        "com.apple.security.application-groups": [
+          "group.nyc.veil.phone"
+        ],
         "com.apple.developer.authentication-services.autofill-credential-provider": true
       }
     },
@@ -33,7 +35,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#141210"
       },
-      "permissions": ["android.permission.USE_BIOMETRIC"]
+      "permissions": [
+        "android.permission.USE_BIOMETRIC"
+      ]
     },
     "plugins": [
       "expo-router",
