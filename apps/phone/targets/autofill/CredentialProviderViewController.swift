@@ -95,7 +95,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         root.addSubview(emptyLabel)
 
         let footer = UILabel()
-        footer.text = "Face ID required to fill"
+        footer.text = "\(Self.biometricName) required to fill"
         footer.font = .systemFont(ofSize: 12)
         footer.textColor = .secondaryLabel
         footer.translatesAutoresizingMaskIntoConstraints = false
@@ -432,19 +432,33 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     // MARK: - Fill
 
+    /// What `deviceOwnerAuthentication` will actually ask for on this
+    /// hardware — Face ID, Touch ID, Optic ID, or the passcode when no
+    /// biometry is enrolled. `biometryType` reads the device capability,
+    /// not which method the user prefers.
+    private static var biometricName: String {
+        switch LAContext().biometryType {
+        case .faceID: return "Face ID"
+        case .touchID: return "Touch ID"
+        case .opticID: return "Optic ID"
+        default: return "Passcode"
+        }
+    }
+
     private func release(_ op: PendingOp, retryNotForeground: Bool = true) {
+        let bio = Self.biometricName
         let reason: String
         switch op {
         case .password:
-            reason = "Veil needs Face ID before this password fills"
+            reason = "Veil needs \(bio) before this password fills"
         case .passkeyAssert:
-            reason = "Veil needs Face ID before this passkey signs you in"
+            reason = "Veil needs \(bio) before this passkey signs you in"
         case .passkeyRegister:
-            reason = "Veil needs Face ID to create this passkey"
+            reason = "Veil needs \(bio) to create this passkey"
         case .textInsert(_, let password):
             reason = password
-                ? "Veil needs Face ID before this password fills"
-                : "Veil needs Face ID before this username fills"
+                ? "Veil needs \(bio) before this password fills"
+                : "Veil needs \(bio) before this username fills"
         }
         let ctx = LAContext()
         ctx.evaluatePolicy(.deviceOwnerAuthentication,
