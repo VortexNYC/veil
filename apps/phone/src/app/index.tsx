@@ -4,7 +4,7 @@ import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 
 import { syncAutofill } from "../../modules/identity-sync";
 import { listItems, type Item } from "../lib/api";
-import { originAPI, signOut, storedToken } from "../lib/auth";
+import { issuer, originAPI, signOut, storedRefresh, storedToken } from "../lib/auth";
 
 function hostOf(uri?: string): string {
   if (!uri) return "";
@@ -35,7 +35,9 @@ export default function Items() {
       // origin for the actual secret behind Face ID.
       void syncAutofill(
         tok,
+        await storedRefresh(),
         originAPI,
+        issuer,
         got.map((i) => ({
           uuid: i.id,
           name: i.name,

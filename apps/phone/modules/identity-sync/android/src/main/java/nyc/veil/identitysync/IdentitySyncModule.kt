@@ -16,7 +16,8 @@ private const val HANDOFF = "veil-autofill.json"
 internal fun handoffFile(ctx: android.content.Context): File =
     File(ctx.applicationContext.filesDir, HANDOFF)
 
-internal fun writeHandoff(ctx: android.content.Context, token: String, origin: String, items: List<Map<String, Any?>>) {
+internal fun writeHandoff(ctx: android.content.Context, token: String, refresh: String,
+                          origin: String, issuer: String, items: List<Map<String, Any?>>) {
     val arr = JSONArray()
     for (raw in items) {
         val o = JSONObject()
@@ -34,7 +35,9 @@ internal fun writeHandoff(ctx: android.content.Context, token: String, origin: S
     }
     val h = JSONObject()
     h.put("token", token)
+    h.put("refresh", refresh)
     h.put("origin", origin)
+    h.put("issuer", issuer)
     h.put("items", arr)
     handoffFile(ctx).writeText(h.toString())
 }
@@ -43,8 +46,31 @@ class IdentitySyncModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("IdentitySync")
 
-        AsyncFunction("syncAutofill") { token: String, origin: String, items: List<Map<String, Any?>> ->
-            writeHandoff(appContext.reactContext!!, token, origin, items)
+        AsyncFunction("syncAutofill") { token: String, refresh: String, origin: String,
+                                        issuer: String, items: List<Map<String, Any?>> ->
+            writeHandoff(appContext.reactContext!!, token, refresh, origin, issuer, items)
+        }
+
+        // Remint landed in JS — rotate the auth pair in place without
+        // touching the item list the service renders.
+        AsyncFunction("refreshAutofill") { token: String, refresh: String ->
+            val f = handoffFile(appContext.reactContext!!)
+            if (f.exists()) {
+                val h = JSONObject(f.readText())
+                h.put("token", token)
+                h.put("refresh", refresh)
+                f.writeText(h.toString())
+            }
+        }
+
+        // The auth pair the service last knew — the app retries with it
+        // when its own refresh token rotated out from under it.
+        AsyncFunction("autofillAuth") {
+            val h = VaultStore.handoff(appContext.reactContext!!)
+            if (h == null) null else mapOf(
+                "token" to h.optString("token", ""),
+                "refresh" to h.optString("refresh", ""),
+            )
         }
 
         AsyncFunction("clearAutofill") {

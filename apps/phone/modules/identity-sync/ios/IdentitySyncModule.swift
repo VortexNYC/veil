@@ -26,17 +26,18 @@ public class IdentitySyncModule: Module {
     public func definition() -> ModuleDefinition {
         Name("IdentitySync")
 
-        AsyncFunction("syncAutofill") { (token: String, origin: String, items: [[String: Any]]) in
-            guard let dir = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup)
-            else {
+        AsyncFunction("syncAutofill") { (token: String, refresh: String,
+                                        origin: String, issuer: String,
+                                        items: [[String: Any]]) in
+            guard let url = Self.handoffURL() else {
                 throw NSError(domain: "nyc.veil.identity-sync", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "app group container unavailable"])
             }
-            let handoff: [String: Any] = ["token": token, "origin": origin, "items": items]
-            let data = try JSONSerialization.data(withJSONObject: handoff)
-            try data.write(to: dir.appendingPathComponent(Self.handoffName),
-                           options: [.atomic, .completeFileProtection])
+            let handoff: [String: Any] = [
+                "token": token, "refresh": refresh,
+                "origin": origin, "issuer": issuer, "items": items,
+            ]
+            try Self.write(handoff, to: url)
 
             let passwords: [ASPasswordCredentialIdentity] = items.compactMap { raw in
                 // The vault's password kind is "api_key" (ItemAPIKey — login
@@ -56,12 +57,47 @@ public class IdentitySyncModule: Module {
             Self.replaceIdentities(passwords: passwords, items: items)
         }
 
+        /// Remint landed in JS — rotate the auth pair in place without
+        /// touching the item list the appex is rendering.
+        AsyncFunction("refreshAutofill") { (token: String, refresh: String) in
+            guard let url = Self.handoffURL(),
+                  let data = try? Data(contentsOf: url),
+                  var handoff = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return }
+            handoff["token"] = token
+            handoff["refresh"] = refresh
+            try? Self.write(handoff, to: url)
+        }
+
+        /// The auth pair the appex last knew — the app retries with it when
+        /// its own refresh token rotated out from under it.
+        AsyncFunction("autofillAuth") { () -> [String: String]? in
+            guard let url = Self.handoffURL(),
+                  let data = try? Data(contentsOf: url),
+                  let handoff = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let token = handoff["token"] as? String,
+                  let refresh = handoff["refresh"] as? String
+            else { return nil }
+            return ["token": token, "refresh": refresh]
+        }
+
         AsyncFunction("clearAutofill") {
             if let url = Self.handoffURL() {
                 try? FileManager.default.removeItem(at: url)
             }
             Self.replaceIdentities(passwords: [], items: [])
         }
+    }
+
+    /// completeUntilFirstUserAuthentication — the appex may be invoked in
+    /// a locked-adjacent state (screen just woke, Spotlight AutoFill);
+    /// completeFileProtection made the handoff unreadable there and wedged
+    /// the provider. Still device-encrypted at rest; the appex only runs
+    /// interactively regardless.
+    private static func write(_ handoff: [String: Any], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: handoff)
+        try data.write(to: url,
+                       options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     /// replaceCredentialIdentities is iOS 17+ — it takes the widened

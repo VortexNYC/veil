@@ -157,7 +157,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             // which the items list carries for human principals.
             serviceURL = "https://" + params.relyingPartyIdentifier
             status.text = "Choose a passkey for \(params.relyingPartyIdentifier)"
-            VaultStore.items { [weak self] all in
+            VaultStore.items { [weak self] all, authErr in
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.entries = all.filter { item in
@@ -170,8 +170,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                         if params.allowedCredentials.isEmpty { return true }
                         return params.allowedCredentials.contains(credID)
                     }
+                    if let authErr { self.status.text = Self.authErrorText(authErr) }
                     if self.entries.isEmpty {
-                        self.status.text = "No passkeys for \(params.relyingPartyIdentifier)"
+                        self.status.text = authErr.map(Self.authErrorText)
+                            ?? "No passkeys for \(params.relyingPartyIdentifier)"
                         self.emptyLabel.text = self.status.text
                     }
                     self.emptyLabel.isHidden = !self.entries.isEmpty
@@ -183,7 +185,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         serviceURL = serviceIdentifiers.first.map(Self.url(for:)) ?? ""
         let host = Self.host(serviceURL)
         status.text = host.isEmpty ? "Choose a sign-in" : "Fill for \(host)"
-        VaultStore.items { [weak self] all in
+        VaultStore.items { [weak self] all, authErr in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.entries = all.filter { item in
@@ -193,8 +195,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     return item.uris.contains { Self.host($0) == host }
                         || item.name.localizedCaseInsensitiveContains(host)
                 }
+                if let authErr { self.status.text = Self.authErrorText(authErr) }
                 if self.entries.isEmpty {
-                    self.status.text = host.isEmpty ? "No saved logins" : "No logins for \(host)"
+                    self.status.text = authErr.map(Self.authErrorText)
+                        ?? (host.isEmpty ? "No saved logins" : "No logins for \(host)")
                     self.emptyLabel.text = self.status.text
                 }
                 self.emptyLabel.isHidden = !self.entries.isEmpty
@@ -293,10 +297,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         vlog("prepareInterfaceForUserChoosingTextToInsert")
         textInsert = true
         status.text = "Choose what to fill"
-        VaultStore.items { [weak self] all in
+        VaultStore.items { [weak self] all, authErr in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.entries = all.filter { ["api_key", "login"].contains($0.kind) }
+                if let authErr {
+                    self.status.text = Self.authErrorText(authErr)
+                    self.emptyLabel.text = self.status.text
+                }
                 self.emptyLabel.isHidden = !self.entries.isEmpty
                 self.table.reloadData()
             }
@@ -366,7 +374,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     @available(iOS 26.2, *)
     private func saveCredential(_ req: ASSavePasswordRequest, requireNew: Bool) {
         let url = Self.url(for: req.serviceIdentifier)
-        VaultStore.items { [weak self] all in
+        VaultStore.items { [weak self] all, _ in
             guard let self else { return }
             let existing = Self.savedItem(all, url: url, user: req.credential.user)
             if requireNew, existing != nil {
@@ -411,8 +419,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     self.extensionContext.completeSavePasswordRequest { _ in }
                 }
             case .failure(let err):
-                self.vlog("save failed \(err.localizedDescription)")
-                DispatchQueue.main.async { self.cancel(with: .failed) }
+                self.fail(err, "save")
             }
         }
     }
@@ -421,7 +428,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         guard #available(iOS 26.2, *), let s = pendingSave else { return }
         pendingSave = nil
         status.text = "Saving…"
-        VaultStore.items { [weak self] all in
+        VaultStore.items { [weak self] all, _ in
             guard let self else { return }
             let existing = Self.savedItem(all, url: s.url, user: s.user)
             self.persistSave(url: s.url, user: s.user, password: s.password,
@@ -491,6 +498,33 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
+    /// What a store error means to the person holding the phone — terse,
+    /// actionable, no internals.
+    private static func authErrorText(_ err: Error) -> String {
+        guard let e = err as? VaultStoreError else { return "Couldn't reach Veil — try again" }
+        switch e {
+        case .noHandoff, .sessionExpired, .origin(401), .origin(403):
+            return "Open Veil to sign in again"
+        case .origin(let code):
+            return "Veil is unreachable (\(code))"
+        case .badResponse:
+            return "Unexpected response from Veil"
+        }
+    }
+
+    /// Failures name themselves on the status line, hold a beat, then
+    /// dismiss — a silent close taught nobody anything.
+    private func fail(_ err: Error, _ what: String) {
+        vlog("\(what) failed \(err.localizedDescription)")
+        DispatchQueue.main.async {
+            self.status.text = Self.authErrorText(err)
+            self.table.isUserInteractionEnabled = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.cancel(with: .failed)
+            }
+        }
+    }
+
     private func completePassword(uuid: String) {
         VaultStore.fill(uuid: uuid, url: serviceURL) { result in
             switch result {
@@ -500,8 +534,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     self.extensionContext.completeRequest(withSelectedCredential: cred)
                 }
             case .failure(let err):
-                self.vlog("fill failed \(err.localizedDescription)")
-                DispatchQueue.main.async { self.cancel(with: .failed) }
+                self.fail(err, "fill")
             }
         }
     }
@@ -517,8 +550,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     self.extensionContext.completeRequest(withTextToInsert: text) { _ in }
                 }
             case .failure(let err):
-                self.vlog("text insert failed \(err.localizedDescription)")
-                DispatchQueue.main.async { self.cancel(with: .failed) }
+                self.fail(err, "text insert")
             }
         }
     }
@@ -558,8 +590,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     self.extensionContext.completeAssertionRequest(using: assertion)
                 }
             case .failure(let err):
-                self.vlog("passkeyGet failed \(err.localizedDescription)")
-                DispatchQueue.main.async { self.cancel(with: .failed) }
+                self.fail(err, "passkeyGet")
             }
         }
     }
@@ -623,8 +654,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                     self.extensionContext.completeRegistrationRequest(using: registration)
                 }
             case .failure(let err):
-                self.vlog("passkeyRegister failed \(err.localizedDescription)")
-                DispatchQueue.main.async { self.cancel(with: .failed) }
+                self.fail(err, "passkeyRegister")
             }
         }
     }

@@ -8,6 +8,7 @@ export const originAPI = "https://veil.nyc";
 export const redirectURI = "veil://oidc/callback";
 
 const tokenKey = "veil.id_token";
+const refreshKey = "veil.refresh_token";
 
 function b64url(bytes: Uint8Array): string {
   let s = "";
@@ -46,12 +47,77 @@ function expired(raw: string): boolean {
 
 export async function storedToken(): Promise<string | null> {
   const raw = await SecureStore.getItemAsync(tokenKey);
-  if (!raw) return null;
-  if (expired(raw)) {
-    await SecureStore.deleteItemAsync(tokenKey);
+  if (raw && !expired(raw)) return raw;
+  const minted = await refreshSession();
+  if (!minted) await SecureStore.deleteItemAsync(tokenKey);
+  return minted;
+}
+
+export async function storedRefresh(): Promise<string> {
+  return (await SecureStore.getItemAsync(refreshKey)) ?? "";
+}
+
+let refreshing: Promise<string | null> | null = null;
+
+/**
+ * id_token expired — remint from the refresh token instead of dropping the
+ * user to sign-in. The AutoFill appex can refresh first and write its new
+ * pair back into the shared handoff, so on an invalid_grant we retry once
+ * with the handoff's newer copy before giving up.
+ */
+export function refreshSession(): Promise<string | null> {
+  refreshing ??= refreshSessionOnce().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+async function refreshSessionOnce(): Promise<string | null> {
+  const mod = await import("../../modules/identity-sync");
+  for (const rt of await refreshCandidates()) {
+    const pair = await refreshGrant(rt);
+    if (!pair) continue;
+    await SecureStore.setItemAsync(tokenKey, pair.id);
+    await SecureStore.setItemAsync(refreshKey, pair.refresh);
+    await mod.refreshAutofill(pair.id, pair.refresh).catch(() => {});
+    return pair.id;
+  }
+  await SecureStore.deleteItemAsync(refreshKey);
+  return null;
+}
+
+async function refreshCandidates(): Promise<string[]> {
+  const mod = await import("../../modules/identity-sync");
+  const own = await SecureStore.getItemAsync(refreshKey);
+  const theirs = await mod.autofillAuth().catch(() => null);
+  return [own, theirs?.refresh].filter(
+    (v): v is string => typeof v === "string" && v !== "",
+  );
+}
+
+async function refreshGrant(
+  rt: string,
+): Promise<{ id: string; refresh: string } | null> {
+  const res = await fetch(new URL("/oauth2/token", issuer).toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: clientID,
+      refresh_token: rt,
+      scope: "openid offline_access",
+    }),
+  }).catch(() => null);
+  if (!res || res.status === 400 || res.status === 401) return null;
+  if (!res.ok) return null;
+  const parsed: unknown = await res.json().catch(() => null);
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const id = "id_token" in parsed ? parsed.id_token : null;
+  const refresh = "refresh_token" in parsed ? parsed.refresh_token : null;
+  if (typeof id !== "string" || id === "" || typeof refresh !== "string" || refresh === "") {
     return null;
   }
-  return raw;
+  return { id, refresh };
 }
 
 /**
@@ -64,18 +130,23 @@ export async function storedToken(): Promise<string | null> {
  * refresh login flow that can render zero methods — a dead-end for users.
  */
 export async function signIn(): Promise<void> {
-  const idToken = await runAuth(false);
-  if (!amrOf(idToken).includes("totp")) {
+  const first = await runAuth(false);
+  if (!amrOf(first.id).includes("totp")) {
     // aal1 session got reused; redo the dance forcing fresh factors
     const fresh = await runAuth(true);
-    if (!amrOf(fresh).includes("totp")) throw new Error("aal2 required — complete TOTP");
-    await SecureStore.setItemAsync(tokenKey, fresh);
+    if (!amrOf(fresh.id).includes("totp")) throw new Error("aal2 required — complete TOTP");
+    await storeTokens(fresh);
     return;
   }
-  await SecureStore.setItemAsync(tokenKey, idToken);
+  await storeTokens(first);
 }
 
-async function runAuth(forceLogin: boolean): Promise<string> {
+async function storeTokens(pair: { id: string; refresh: string | null }): Promise<void> {
+  await SecureStore.setItemAsync(tokenKey, pair.id);
+  if (pair.refresh) await SecureStore.setItemAsync(refreshKey, pair.refresh);
+}
+
+async function runAuth(forceLogin: boolean): Promise<{ id: string; refresh: string | null }> {
   const verifier = randomB64(32);
   const state = randomB64(16);
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier, {
@@ -85,7 +156,7 @@ async function runAuth(forceLogin: boolean): Promise<string> {
   const u = new URL("/oauth2/auth", issuer);
   u.searchParams.set("client_id", clientID);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", "openid");
+  u.searchParams.set("scope", "openid offline_access");
   u.searchParams.set("redirect_uri", redirectURI);
   u.searchParams.set("state", state);
   u.searchParams.set("code_challenge", challenge);
@@ -127,11 +198,16 @@ async function runAuth(forceLogin: boolean): Promise<string> {
   const idToken =
     typeof parsed === "object" && parsed !== null && "id_token" in parsed ? parsed.id_token : null;
   if (typeof idToken !== "string" || idToken === "") throw new Error("token exchange failed");
-  return idToken;
+  const refresh =
+    typeof parsed === "object" && parsed !== null && "refresh_token" in parsed
+      ? parsed.refresh_token
+      : null;
+  return { id: idToken, refresh: typeof refresh === "string" ? refresh : null };
 }
 
 export async function signOut(): Promise<void> {
   const { clearAutofill } = await import("../../modules/identity-sync");
   await clearAutofill().catch(() => {});
   await SecureStore.deleteItemAsync(tokenKey);
+  await SecureStore.deleteItemAsync(refreshKey);
 }

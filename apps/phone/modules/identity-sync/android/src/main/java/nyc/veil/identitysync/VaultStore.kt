@@ -21,6 +21,54 @@ internal object VaultStore {
         if (f.exists()) JSONObject(f.readText()) else null
     } catch (_: Exception) { null }
 
+    private fun expired(jwt: String): Boolean {
+        val parts = jwt.split(".")
+        if (parts.size < 2) return true
+        return try {
+            val pad = parts[1].let { it + "=".repeat((4 - it.length % 4) % 4) }
+            val claims = JSONObject(
+                String(android.util.Base64.decode(pad, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))
+            )
+            claims.optLong("exp", 0) <= System.currentTimeMillis() / 1000 + 15
+        } catch (_: Exception) { true }
+    }
+
+    /// The handoff with a live bearer: an expired id_token remints through
+    /// the refresh grant, and the rotated pair is written back so the app
+    /// converges on it. Null means sign in again.
+    private fun freshened(ctx: Context): JSONObject? {
+        val h = handoff(ctx) ?: return null
+        if (!expired(h.optString("token"))) return h
+        val rt = h.optString("refresh")
+        val iss = h.optString("issuer")
+        if (rt.isEmpty() || iss.isEmpty()) { log("session expired, no refresh"); return null }
+        return try {
+            val conn = (URL("$iss/oauth2/token").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                doOutput = true
+            }
+            val form = "grant_type=refresh_token&client_id=veil&scope=openid+offline_access" +
+                "&refresh_token=${java.net.URLEncoder.encode(rt, "UTF-8")}"
+            conn.outputStream.use { it.write(form.toByteArray()) }
+            if (conn.responseCode != 200) { log("refresh http ${conn.responseCode}"); return null }
+            val body = JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
+            val id = body.optString("id_token")
+            val refresh = body.optString("refresh_token")
+            if (id.isEmpty() || refresh.isEmpty()) { log("refresh bad body"); return null }
+            h.put("token", id)
+            h.put("refresh", refresh)
+            handoffFile(ctx).writeText(h.toString())
+            log("session reminted")
+            h
+        } catch (e: Exception) {
+            log("refresh error ${e.javaClass.simpleName}")
+            null
+        }
+    }
+
     /// Vault items whose URI list contains `host`. Password kinds only —
     /// passkeys go through Credential Manager, not form autofill.
     internal fun matching(ctx: Context, host: String): List<JSONObject> {
@@ -76,7 +124,7 @@ internal object VaultStore {
     /// must already have passed BiometricPrompt; the audit row lands
     /// server-side. Returns (login, password) or null on any failure.
     internal fun fill(ctx: Context, uuid: String, url: String): Pair<String, String>? {
-        val h = handoff(ctx) ?: run { log("no handoff"); return null }
+        val h = freshened(ctx) ?: run { log("no session"); return null }
         val body = JSONObject().apply {
             put("uuid", uuid)
             put("url", url)
@@ -111,7 +159,7 @@ internal object VaultStore {
     /// `response` is a PublicKeyCredential-shaped JSON ready to hand to
     /// Credential Manager. The biometric gate precedes this call.
     internal fun passkeys(ctx: Context, register: Boolean, origin: String, publicKey: JSONObject): String? {
-        val h = handoff(ctx) ?: run { log("no handoff"); return null }
+        val h = freshened(ctx) ?: run { log("no session"); return null }
         val path = if (register) "/v1/fill/passkeys/register" else "/v1/fill/passkeys/get"
         val body = JSONObject().apply {
             put("origin", origin)

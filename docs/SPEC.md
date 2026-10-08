@@ -208,12 +208,21 @@ The next slices, in this order, and nothing else until each is proven:
                          apps. Choose mode via the OS bar. Same jobs as
                          docs/fill.md. not Chrome. not the Safari
                          Web Extension (that is 37).
-33 iOS app                proven 2026-09-28 (iPhone 16 Pro sim). apps/phone
-                         (Expo + Uniwind). add + reveal only: PKCE sign-in
-                         via system browser at id.veil.nyc proven to items
-                         list; Face ID gate proven both ways (match reveals,
-                         reject/cancel reveals nothing). OS AutoFill is
-                         choose — not yet wired. not grants/agents/audit.
+33 iOS app                proven 2026-09-28 (iPhone 16 Pro sim); AutoFill
+                         wired+proven 2026-10-08 on iPad 10th gen (18.7.8).
+                         apps/phone (Expo + Uniwind). add + reveal + fill:
+                         PKCE sign-in via system browser at id.veil.nyc
+                         proven to items list; biometric gate proven both
+                         ways (match reveals, reject/cancel reveals
+                         nothing). ASCredentialIdentityStore push →
+                         QuickType inline fill; iOS 18 context-menu
+                         text-insert (username row + password row) behind
+                         deviceOwnerAuthentication, named per-device via
+                         biometryType. offline_access → refresh token rides
+                         the handoff; appex and app remint expired
+                         id_tokens, latest pair wins. Handoff file is
+                         FUA-protected so the provider survives lock.
+                         not grants/agents/audit.
 34 Android app            written. same apps/phone tree (scheme veil,
                          USE_BIOMETRIC). AutofillService / Credential
                          Manager not yet wired. not grants/agents/audit.
