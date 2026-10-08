@@ -226,9 +226,20 @@ The next slices, in this order, and nothing else until each is proven:
                          register → attestation → assert; silent fetch
                          correctly demands interaction. Session remint
                          fired on-device mid-flow. not grants/agents/audit.
-34 Android app            written. same apps/phone tree (scheme veil,
-                         USE_BIOMETRIC). AutofillService / Credential
-                         Manager not yet wired. not grants/agents/audit.
+34 Android app            written+proven 2026-10-08 (Galaxy Tab A9+,
+                         Android 16). same apps/phone tree (scheme veil,
+                         USE_BIOMETRIC). AutofillService wired+proven:
+                         native form → PIN gate → username+password fill.
+                         Credential Manager wired+proven: preferred
+                         provider, passkey register + assert through
+                         Chrome/webauthn.io, iPad-registered credential
+                         asserted cross-device. Provider meta-data:
+                         credential-provider root, unnamespaced
+                         capability name, androidx passkey type string.
+                         Assertion/create JSON needs clientDataJSON +
+                         clientExtensionResults for Chrome's parser.
+                         Session remint shared with iOS. not
+                         grants/agents/audit.
 35 Windows helper         not written. tray. Chrome still the Veil
                          extension (37, both fill modes).
                          Revisit then: WebAuthn plugin (passkeys, Win11),

@@ -53,6 +53,7 @@ class FillAuthActivity : FragmentActivity() {
         mode = intent.getIntExtra(EXTRA_MODE, MODE_AUTOFILL)
         uuid = intent.getStringExtra(EXTRA_UUID) ?: ""
         url = intent.getStringExtra(EXTRA_URL) ?: ""
+        VaultStore.log("auth: launch mode=$mode")
         val userId = intent.getParcelableExtra<AutofillId>(EXTRA_USER_ID)
         val passId = intent.getParcelableExtra<AutofillId>(EXTRA_PASS_ID)
 
@@ -154,10 +155,11 @@ class FillAuthActivity : FragmentActivity() {
             val json = body?.let { VaultStore.passkeys(this, register = false, origin, it) }
             runOnUiThread {
                 if (json == null) { finishCancel(); return@runOnUiThread }
+                val merged = webAuthnJson(json, "webauthn.get", body?.optString("challenge") ?: "", origin)
                 val result = Intent()
                 PendingIntentHandler.setGetCredentialResponse(
                     result,
-                    GetCredentialResponse(PublicKeyCredential(json)),
+                    GetCredentialResponse(PublicKeyCredential(merged)),
                 )
                 VaultStore.log("credman passkey ok uuid=${uuid.take(8)}")
                 setResult(Activity.RESULT_OK, result)
@@ -169,17 +171,22 @@ class FillAuthActivity : FragmentActivity() {
     private fun releasePasskeyCreate() {
         val req = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
         val create = req?.callingRequest as? androidx.credentials.CreatePublicKeyCredentialRequest
+        val body = try { JSONObject(create?.requestJson ?: "") } catch (_: Exception) { null }
         val origin = VeilCredentialProviderService.callingOrigin(req?.callingAppInfo)
-        if (create == null || origin.isNullOrEmpty()) { finishCancel(); return }
+            ?: body?.optJSONObject("rp")?.optString("id")?.let { "https://$it" }
+        if (create == null || body == null || origin.isNullOrEmpty()) {
+            VaultStore.log("credman register bail create=${create != null} body=${body != null} origin=$origin")
+            finishCancel(); return
+        }
         thread {
-            val body = try { JSONObject(create.requestJson) } catch (_: Exception) { null }
-            val json = body?.let { VaultStore.passkeys(this, register = true, origin, it) }
+            val json = VaultStore.passkeys(this, register = true, origin, body)
             runOnUiThread {
                 if (json == null) { finishCancel(); return@runOnUiThread }
+                val merged = webAuthnJson(json, "webauthn.create", body.optString("challenge"), origin)
                 val result = Intent()
                 PendingIntentHandler.setCreateCredentialResponse(
                     result,
-                    CreatePublicKeyCredentialResponse(json),
+                    CreatePublicKeyCredentialResponse(merged),
                 )
                 VaultStore.log("credman register ok")
                 setResult(Activity.RESULT_OK, result)
@@ -187,6 +194,27 @@ class FillAuthActivity : FragmentActivity() {
             }
         }
     }
+
+    // The framework validates the credential JSON against the WebAuthn
+    // schema — clientDataJSON and clientExtensionResults must be present.
+    // clientDataHash in the request was over the standard clientData
+    // string, so reconstruct exactly that and hand it back.
+    private fun webAuthnJson(json: String, type: String, challenge: String, origin: String): String = try {
+        val clientData = JSONObject().apply {
+            put("type", type)
+            put("challenge", challenge)
+            put("origin", origin)
+            put("crossOrigin", false)
+        }.toString().toByteArray(Charsets.UTF_8)
+        val b64 = android.util.Base64.encodeToString(
+            clientData,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+        )
+        JSONObject(json).apply {
+            optJSONObject("response")?.put("clientDataJSON", b64)
+            if (!has("clientExtensionResults")) put("clientExtensionResults", JSONObject())
+        }.toString()
+    } catch (_: Exception) { json }
 
     private fun finishCancel() {
         setResult(Activity.RESULT_CANCELED)
