@@ -222,7 +222,10 @@ The next slices, in this order, and nothing else until each is proven:
                          the handoff; appex and app remint expired
                          id_tokens, latest pair wins. Handoff file is
                          FUA-protected so the provider survives lock.
-                         not grants/agents/audit.
+                         Passkeys proven 2026-10-08 (webauthn.io on iPad):
+                         register → attestation → assert; silent fetch
+                         correctly demands interaction. Session remint
+                         fired on-device mid-flow. not grants/agents/audit.
 34 Android app            written. same apps/phone tree (scheme veil,
                          USE_BIOMETRIC). AutofillService / Credential
                          Manager not yet wired. not grants/agents/audit.
