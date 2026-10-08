@@ -238,8 +238,14 @@ The next slices, in this order, and nothing else until each is proven:
                          capability name, androidx passkey type string.
                          Assertion/create JSON needs clientDataJSON +
                          clientExtensionResults for Chrome's parser.
-                         Session remint shared with iOS. not
-                         grants/agents/audit.
+                         Session remint shared with iOS. Save wired+
+                         proven: SaveInfo offer → system dialog →
+                         onSaveRequest → POST/PATCH /v1/items on a
+                         worker (remint fires off-main), saved item
+                         hot-cached into the handoff so it fills
+                         immediately. Credential Manager password
+                         creates ride the same biometric gate.
+                         not grants/agents/audit.
 35 Windows helper         not written. tray. Chrome still the Veil
                          extension (37, both fill modes).
                          Revisit then: WebAuthn plugin (passkeys, Win11),
