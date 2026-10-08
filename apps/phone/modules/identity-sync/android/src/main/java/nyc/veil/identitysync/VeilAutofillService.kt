@@ -4,12 +4,15 @@ import android.app.PendingIntent
 import android.app.assist.AssistStructure
 import android.content.Intent
 import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
 import android.service.autofill.AutofillService
 import android.service.autofill.Dataset
 import android.service.autofill.FillCallback
 import android.service.autofill.FillRequest
 import android.service.autofill.FillResponse
 import android.service.autofill.SaveCallback
+import android.service.autofill.SaveInfo
 import android.service.autofill.SaveRequest
 import android.view.View
 import android.view.autofill.AutofillId
@@ -78,57 +81,107 @@ class VeilAutofillService : AutofillService() {
             builder.addDataset(ds.build())
         }
         VaultStore.log("fillRequest host=$host matches=${matches.size}")
+        // Tell the OS we take saves — without SaveInfo it never calls
+        // onSaveRequest and the post-submit offer never happens.
+        builder.setSaveInfo(
+            SaveInfo.Builder(
+                SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD,
+                listOfNotNull(form.userId, form.passId).toTypedArray(),
+            ).build()
+        )
         callback.onSuccess(builder.build())
     }
 
-    /// Save requests write nothing — adding items stays in the app. Returning
-    /// success without a SaveInfo is "we heard you, nothing to do".
+    /// The OS captured a submitted sign-in — the values the user typed ride
+    /// the fillContexts' autofillValues. Match host+login against the vault:
+    /// an existing item is overwritten via PATCH (uuid survives), anything
+    /// else creates. Fail closed like the fill path.
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
-        callback.onSuccess()
+        val structure = request.fillContexts.lastOrNull()?.structure
+        val creds = credentials(structure)
+        if (creds.password.isEmpty()) {
+            VaultStore.log("saveRequest: no password captured")
+            callback.onSuccess(); return
+        }
+        val pkg = structure?.activityComponent?.packageName ?: "unknown"
+        val uri = creds.host?.let { "https://$it" } ?: "androidapp://$pkg"
+        val name = creds.host ?: pkg
+        // freshened() may hit the network to remint — the callback lands on
+        // the main looper, so the whole save goes to a worker.
+        kotlin.concurrent.thread {
+            val existing = VaultStore.savedItem(this, creds.host ?: "", creds.user)
+            val uuid = VaultStore.save(this, existing?.optString("name"),
+                name, creds.user, creds.password, uri)
+            Handler(Looper.getMainLooper()).post {
+                if (uuid != null) {
+                    VaultStore.log("saveRequest ok host=$name overwrite=${existing != null}")
+                    callback.onSuccess()
+                } else {
+                    VaultStore.log("saveRequest failed")
+                    callback.onFailure("Veil couldn't save")
+                }
+            }
+        }
     }
 
-    /// Walk the view tree for a username + password pair and the page host.
-    /// Browsers set webDomain/webScheme on the structure's window; native
-    /// forms expose autofillHints or htmlInfo type=password.
-    private fun parse(structure: AssistStructure?): Form? {
-        if (structure == null) return null
-        var user: AutofillId? = null
-        var pass: AutofillId? = null
-        var host: String? = null
+    /// Field roles a credential form can hold. Chrome forwards
+    /// autocomplete= as autofillHints; sites without it only expose
+    /// htmlInfo (type/name/id), so check both.
+    private class Roles(var user: AssistStructure.ViewNode? = null,
+                        var pass: AssistStructure.ViewNode? = null,
+                        var host: String? = null)
 
+    private fun classify(node: AssistStructure.ViewNode): Int {
+        val hints = node.autofillHints?.toList() ?: emptyList()
+        val attrs = node.htmlInfo?.attributes ?: emptyList()
+        val attr = { k: String -> attrs.firstOrNull { it.first == k }?.second ?: "" }
+        val ident = (attr("type") + " " + attr("name") + " " + attr("id") + " " +
+            (node.idEntry ?: "")).lowercase()
+        if (View.AUTOFILL_HINT_PASSWORD in hints || "password" in ident) return 2
+        if (View.AUTOFILL_HINT_USERNAME in hints ||
+            View.AUTOFILL_HINT_EMAIL_ADDRESS in hints ||
+            attr("type") == "email" ||
+            ident.contains("email") || ident.contains("user") || ident.contains("login")) return 1
+        return 0
+    }
+
+    private fun walk(structure: AssistStructure?): Roles? {
+        if (structure == null) return null
+        val r = Roles()
         fun visit(node: AssistStructure.ViewNode) {
-            if (host == null) {
+            if (r.host == null) {
                 val d = node.webDomain
-                if (!d.isNullOrEmpty()) host = d
+                if (!d.isNullOrEmpty()) r.host = d
             }
-            if (node.autofillType == android.view.View.AUTOFILL_TYPE_TEXT) {
-                VaultStore.log("node id=${node.idEntry} hints=${node.autofillHints?.joinToString(",")} " +
-                    "domain=${node.webDomain} isAutofillable=${node.autofillType}")
-            }
-            val hints = node.autofillHints?.toList() ?: emptyList()
-            // Chrome forwards autocomplete= as autofillHints; sites without
-            // it only expose htmlInfo (type/name/id), so check both.
-            val attrs = node.htmlInfo?.attributes ?: emptyList()
-            val attr = { k: String -> attrs.firstOrNull { it.first == k }?.second ?: "" }
-            val ident = (attr("type") + " " + attr("name") + " " + attr("id") + " " +
-                (node.idEntry ?: "")).lowercase()
-            if (pass == null && (View.AUTOFILL_HINT_PASSWORD in hints || "password" in ident)) {
-                pass = node.autofillId
-            }
-            if (user == null && (View.AUTOFILL_HINT_USERNAME in hints ||
-                    View.AUTOFILL_HINT_EMAIL_ADDRESS in hints ||
-                    attr("type") == "email" ||
-                    ident.contains("email") || ident.contains("user") || ident.contains("login"))) {
-                user = node.autofillId
+            when (classify(node)) {
+                2 -> if (r.pass == null) r.pass = node
+                1 -> if (r.user == null) r.user = node
             }
             for (i in 0 until node.childCount) visit(node.getChildAt(i))
         }
-
         for (i in 0 until structure.windowNodeCount) {
             visit(structure.getWindowNodeAt(i).rootViewNode)
         }
-        // Two-step forms show only one field — either half alone still fills.
-        if (user != null || pass != null) return Form(user, pass, host)
-        return null
+        // Two-step forms show only one field — either half alone still counts.
+        return if (r.user != null || r.pass != null) r else null
+    }
+
+    /// Walk the view tree for a username + password pair and the page host.
+    private fun parse(structure: AssistStructure?): Form? {
+        val r = walk(structure) ?: return null
+        return Form(r.user?.autofillId, r.pass?.autofillId, r.host)
+    }
+
+    private class Captured(val user: String, val password: String, val host: String?)
+
+    /// The values the user typed — save requests ride the same structure
+    /// but carry autofillValue text where fill only needed the ids.
+    private fun credentials(structure: AssistStructure?): Captured {
+        val r = walk(structure) ?: return Captured("", "", null)
+        return Captured(
+            r.user?.autofillValue?.textValue?.toString() ?: "",
+            r.pass?.autofillValue?.textValue?.toString() ?: "",
+            r.host,
+        )
     }
 }

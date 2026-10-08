@@ -41,6 +41,7 @@ class FillAuthActivity : FragmentActivity() {
         const val MODE_GET_PASSWORD = 1
         const val MODE_GET_PASSKEY = 2
         const val MODE_CREATE_PASSKEY = 3
+        const val MODE_CREATE_PASSWORD = 4
     }
 
     private var mode = MODE_AUTOFILL
@@ -64,7 +65,7 @@ class FillAuthActivity : FragmentActivity() {
             MODE_GET_PASSKEY ->
                 uuid.isNotEmpty() &&
                     PendingIntentHandler.retrieveProviderGetCredentialRequest(intent) != null
-            MODE_CREATE_PASSKEY ->
+            MODE_CREATE_PASSKEY, MODE_CREATE_PASSWORD ->
                 PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent) != null
             else -> false
         }
@@ -87,9 +88,15 @@ class FillAuthActivity : FragmentActivity() {
                 }
             })
 
+        val action = when (mode) {
+            MODE_CREATE_PASSKEY -> "create this passkey"
+            MODE_CREATE_PASSWORD -> "save this password"
+            MODE_GET_PASSKEY -> "use this passkey"
+            else -> "fill this credential"
+        }
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Veil")
-            .setSubtitle("Unlock to fill this credential")
+            .setSubtitle("Unlock to $action")
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
                     BiometricManager.Authenticators.DEVICE_CREDENTIAL)
@@ -103,6 +110,7 @@ class FillAuthActivity : FragmentActivity() {
             MODE_GET_PASSWORD -> releasePassword()
             MODE_GET_PASSKEY -> releasePasskeyGet()
             MODE_CREATE_PASSKEY -> releasePasskeyCreate()
+            MODE_CREATE_PASSWORD -> releasePasswordCreate()
             else -> finishCancel()
         }
     }
@@ -189,6 +197,38 @@ class FillAuthActivity : FragmentActivity() {
                     CreatePublicKeyCredentialResponse(merged),
                 )
                 VaultStore.log("credman register ok")
+                setResult(Activity.RESULT_OK, result)
+                finish()
+            }
+        }
+    }
+
+    /// A password create carries the credential up front — no origin
+    /// ceremony, just the biometric accept and a save. Overwrite matches
+    /// host+login like the save-request path.
+    private fun releasePasswordCreate() {
+        val req = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
+        val create = req?.callingRequest as? androidx.credentials.CreatePasswordRequest
+        if (create == null || create.password.isEmpty()) {
+            VaultStore.log("credman save bail create=${create != null}")
+            finishCancel(); return
+        }
+        val info = req?.callingAppInfo
+        val uri = VeilCredentialProviderService.callingOrigin(info)
+            ?: "androidapp://${info?.packageName ?: "unknown"}"
+        thread {
+            val host = VaultStore.hostOf(uri)
+            val existing = VaultStore.savedItem(this, host ?: "", create.id)
+            val uuid = VaultStore.save(this, existing?.optString("name"),
+                host ?: info?.packageName ?: "Veil", create.id, create.password, uri)
+            runOnUiThread {
+                if (uuid == null) { finishCancel(); return@runOnUiThread }
+                val result = Intent()
+                PendingIntentHandler.setCreateCredentialResponse(
+                    result,
+                    androidx.credentials.CreatePasswordResponse(),
+                )
+                VaultStore.log("credman save ok")
                 setResult(Activity.RESULT_OK, result)
                 finish()
             }

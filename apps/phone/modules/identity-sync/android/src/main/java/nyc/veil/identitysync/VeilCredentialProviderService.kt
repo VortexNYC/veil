@@ -10,6 +10,7 @@ import androidx.credentials.exceptions.CreateCredentialException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.provider.BeginCreateCredentialRequest
 import androidx.credentials.provider.BeginCreateCredentialResponse
+import androidx.credentials.provider.BeginCreatePasswordCredentialRequest
 import androidx.credentials.provider.BeginCreatePublicKeyCredentialRequest
 import androidx.credentials.provider.BeginGetCredentialRequest
 import androidx.credentials.provider.BeginGetCredentialResponse
@@ -83,12 +84,18 @@ class VeilCredentialProviderService : CredentialProviderService() {
         callback: OutcomeReceiver<BeginCreateCredentialResponse, CreateCredentialException>,
     ) {
         VaultStore.log("beginCreate type=${request.type}")
-        if (request !is BeginCreatePublicKeyCredentialRequest) {
-            callback.onResult(BeginCreateCredentialResponse())
-            return
+        val (mode, label) = when (request) {
+            is BeginCreatePublicKeyCredentialRequest ->
+                FillAuthActivity.MODE_CREATE_PASSKEY to "Save passkey in Veil"
+            is BeginCreatePasswordCredentialRequest ->
+                FillAuthActivity.MODE_CREATE_PASSWORD to "Save password in Veil"
+            else -> {
+                callback.onResult(BeginCreateCredentialResponse())
+                return
+            }
         }
         val intent = Intent(this, FillAuthActivity::class.java).apply {
-            putExtra(FillAuthActivity.EXTRA_MODE, FillAuthActivity.MODE_CREATE_PASSKEY)
+            putExtra(FillAuthActivity.EXTRA_MODE, mode)
         }
         val pi = PendingIntent.getActivity(
             this, 1, intent,
@@ -96,7 +103,7 @@ class VeilCredentialProviderService : CredentialProviderService() {
         )
         callback.onResult(
             BeginCreateCredentialResponse.Builder().apply {
-                addCreateEntry(CreateEntry.Builder("Save passkey in Veil", pi).build())
+                addCreateEntry(CreateEntry.Builder(label, pi).build())
             }.build()
         )
     }

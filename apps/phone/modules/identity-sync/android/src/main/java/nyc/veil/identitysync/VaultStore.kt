@@ -154,6 +154,71 @@ internal object VaultStore {
         }
     }
 
+    /// The item that already covers host+login — an empty login can never
+    /// match, so unknown users always create rather than overwrite.
+    internal fun savedItem(ctx: Context, host: String, user: String): JSONObject? {
+        if (user.isEmpty()) return null
+        return matching(ctx, host).firstOrNull { it.optString("login") == user }
+    }
+
+    /// POST /v1/items or PATCH /v1/items/{name} — the same contract iOS
+    /// uses. `existing` is an item name to overwrite: PATCH rotates the
+    /// secret on the same row so no duplicate is made. Returns the item
+    /// uuid or null on failure. Callers must be past the biometric gate
+    /// or acting on a system-save request the user just confirmed.
+    internal fun save(ctx: Context, existing: String?, name: String,
+                      user: String, password: String, uri: String): String? {
+        val h = freshened(ctx) ?: run { log("no session"); return null }
+        val create = existing.isNullOrEmpty()
+        val body = JSONObject().apply {
+            put("login", user)
+            put("secret", password)
+            put("uri", uri)
+            if (create) put("name", name)
+        }
+        val path = if (create) "/v1/items" else
+            "/v1/items/" + java.net.URLEncoder.encode(existing, "UTF-8").replace("+", "%20")
+        return try {
+            val conn = (URL(h.getString("origin") + path).openConnection() as HttpURLConnection).apply {
+                requestMethod = if (create) "POST" else "PATCH"
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                setRequestProperty("Authorization", "Bearer ${h.getString("token")}")
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+            }
+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
+            if (conn.responseCode != 200) {
+                log("save http ${conn.responseCode}")
+                return null
+            }
+            val id = JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
+                .optString("id").takeIf { it.isNotEmpty() } ?: return null
+            // Reflect the save in the handoff's item cache — otherwise the
+            // just-saved credential can't fill until the app syncs again.
+            val items = h.optJSONArray("items") ?: org.json.JSONArray().also { h.put("items", it) }
+            if (existing.isNullOrEmpty()) {
+                items.put(JSONObject().apply {
+                    put("uuid", id)
+                    put("name", name)
+                    put("login", user)
+                    put("kind", "login")
+                    put("uris", org.json.JSONArray().put(uri))
+                })
+            } else {
+                for (i in 0 until items.length()) {
+                    val it = items.optJSONObject(i) ?: continue
+                    if (it.optString("name") == existing) { it.put("login", user); break }
+                }
+            }
+            handoffFile(ctx).writeText(h.toString())
+            id
+        } catch (e: Exception) {
+            log("save error ${e.javaClass.simpleName}")
+            null
+        }
+    }
+
     /// WebAuthn ceremony through the origin — same contract as iOS. The
     /// caller passes the RP's publicKey request object verbatim; the reply's
     /// `response` is a PublicKeyCredential-shaped JSON ready to hand to
