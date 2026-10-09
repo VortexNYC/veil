@@ -111,7 +111,7 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "unlock":
 		// The app's vault gate — the same Touch ID confirm fills use, one
 		// auth path for every surface.
-		err := h.confirm("Veil needs to confirm it's you", "", false)
+		err := h.confirm("unlock the vault", "", false)
 		out := struct {
 			OK    bool   `json:"ok"`
 			Error string `json:"error,omitempty"`

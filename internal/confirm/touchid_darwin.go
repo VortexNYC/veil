@@ -107,7 +107,9 @@ static int veil_access(const char *action, const char *account, const char *reas
 		veil_confirm_log(@"eval run enter");
 		[NSApplication sharedApplication];
 		veil_confirm_log(@"sharedApplication done");
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		// Prohibited keeps the helper off the Dock — the LA dialog is
+		// presented by the system on our behalf, not by app chrome.
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
 		veil_confirm_log(@"activationPolicy done");
 		// finishLaunching makes this plist-less helper a managed app —
 		// without the opt-out, efficiency termination can kill it mid-eval
@@ -127,7 +129,8 @@ static int veil_access(const char *action, const char *account, const char *reas
 		// continuation of "Veil is trying to …": action, the calling app
 		// when one resolves, and the vault account.
 		NSString *why = what;
-		if (appName.length) {
+		// "for Veil" adds nothing when Veil itself is the asking app.
+		if (appName.length && ![appName isEqualToString:@"Veil"]) {
 			why = [NSString stringWithFormat:@"%@ for %@", why, appName];
 		}
 		if (who.length) {
