@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "nyc.veil.app",
   "build": {
-    "frontendDist": "https://app.veil.nyc"
+    "frontendDist": "../public"
   },
   "app": {
     "windows": [
