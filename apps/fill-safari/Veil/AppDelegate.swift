@@ -70,10 +70,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "lock.shield",
-                accessibilityDescription: "Veil",
-            )
+            // The app icon's small variant is the brand mark — the generic
+            // SF Symbol read as a random icon nobody recognized.
+            if let icon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage {
+                let small = NSImage(size: NSSize(width: 18, height: 18))
+                small.lockFocus()
+                icon.draw(
+                    in: NSRect(origin: .zero, size: small.size),
+                    from: .zero, operation: .sourceOver, fraction: 1,
+                )
+                small.unlockFocus()
+                button.image = small
+            }
         }
         let menu = NSMenu()
         menu.autoenablesItems = false
