@@ -108,6 +108,18 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 		return jsonBytes(out)
 	case "login":
 		return h.jsonLogin()
+	case "unlock":
+		// The app's vault gate — the same Touch ID confirm fills use, one
+		// auth path for every surface.
+		err := h.confirm("Veil needs to confirm it's you", "", false)
+		out := struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error,omitempty"`
+		}{OK: err == nil}
+		if err != nil {
+			out.Error = "denied"
+		}
+		return jsonBytes(out)
 	case "match":
 		return jsonBytes(struct {
 			Entries []jsonMatchEntry `json:"entries"`

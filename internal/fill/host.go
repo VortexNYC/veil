@@ -48,9 +48,17 @@ func NativeHostArgs(args []string) []string {
 		return args
 	}
 	if filepath.Base(args[0]) == HostFile || (len(args) > 1 && nativeMessagingOrigin(args[1])) {
+		// VEIL_HOME is the binary's directory when it is a standalone host
+		// (a fill.json sits next to it). Inside an app bundle the vault home
+		// is still the user's ~/.veil — the bundle holds no state.
 		dir := filepath.Dir(args[0])
 		if abs, err := filepath.Abs(dir); err == nil {
 			dir = abs
+		}
+		if _, err := os.Stat(filepath.Join(dir, "fill.json")); err != nil {
+			if user, err := os.UserHomeDir(); err == nil {
+				dir = filepath.Join(user, ".veil")
+			}
 		}
 		_ = os.Setenv("VEIL_HOME", dir)
 		// Chrome inherits the launching shell. fill.json is the only switch.

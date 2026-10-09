@@ -204,7 +204,7 @@ func (h *Host) Handle(raw []byte) []byte {
 	}
 	if peek.Nonce == "" && peek.Message == "" {
 		switch peek.Action {
-		case "ping", "match", "fill", "generate", "save", "enrollTotp", "passkeyCreate", "passkeyGet":
+		case "ping", "match", "fill", "generate", "save", "enrollTotp", "passkeyCreate", "passkeyGet", "unlock":
 			fillDebug("action=" + peek.Action + " nonce=")
 			defer debugMark("done "+peek.Action, 0)()
 			return h.handleJSON(raw)

@@ -24,6 +24,12 @@ func TestNativeHostArgsRewritesChromeLaunch(t *testing.T) {
 func TestNativeHostArgsBindsHomeToBinaryDir(t *testing.T) {
 	t.Setenv("VEIL_HOME", "/Users/someone/.veil")
 	dir := t.TempDir()
+	// Standalone host: a fill.json beside the binary is what makes its
+	// directory the vault home. Bundled in an app there is none and the
+	// home stays the user's ~/.veil.
+	if err := os.WriteFile(filepath.Join(dir, "fill.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	bin := filepath.Join(dir, HostFile)
 	got := NativeHostArgs([]string{bin, JSONChromeOrigin()})
 	if len(got) != 2 || got[1] != "fill" {
@@ -31,6 +37,18 @@ func TestNativeHostArgsBindsHomeToBinaryDir(t *testing.T) {
 	}
 	if os.Getenv("VEIL_HOME") != dir {
 		t.Fatalf("VEIL_HOME=%s want %s", os.Getenv("VEIL_HOME"), dir)
+	}
+}
+
+func TestNativeHostArgsBundledBinaryKeepsUserHome(t *testing.T) {
+	t.Setenv("VEIL_HOME", "/Users/someone/.veil")
+	dir := t.TempDir()
+	bin := filepath.Join(dir, HostFile)
+	NativeHostArgs([]string{bin, JSONChromeOrigin()})
+	user, _ := os.UserHomeDir()
+	want := filepath.Join(user, ".veil")
+	if os.Getenv("VEIL_HOME") != want {
+		t.Fatalf("VEIL_HOME=%s want %s", os.Getenv("VEIL_HOME"), want)
 	}
 }
 

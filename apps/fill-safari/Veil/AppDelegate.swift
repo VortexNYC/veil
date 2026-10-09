@@ -29,13 +29,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        // One application: Dock icon + menu bar + vault window + fill.
+        // The app stays running when windows close — the helper is the
+        // always-on part; the window is the face.
+        NSApp.setActivationPolicy(.regular)
         // A windowless accessory gets reaped by Automatic Termination —
         // the helper must survive idle to keep its hotkey live.
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
         installStatusItem()
         UniversalFill.shared.install()
         IdentitySync.shared.start()
+        BridgeDaemon.shared.ensure()
         // Screen lock drops the host's confirm reuse window — a
         // session-mode grant must not outlive the lock.
         DistributedNotificationCenter.default().addObserver(
@@ -46,6 +50,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Menu-bar helper should outlive the session — relaunch at login.
         try? SMAppService.mainApp.register()
+        // State restoration can resurrect a vault window already past the
+        // gate — close anything we did not create before deciding what to
+        // show. isRestorable=false on the window stops it being saved.
+        DispatchQueue.main.async {
+            // Nothing we own can legitimately exist yet — anything here is
+            // a restored window that skipped the gate.
+            for w in NSApp.windows {
+                w.close()
+            }
+            // A manual launch (double-click, Spotlight, `open`) activates
+            // the app; the login-item relaunch does not.
+            if NSApp.isActive {
+                VaultWindowController.shared.open()
+            }
+        }
     }
 
     private func installStatusItem() {
@@ -60,7 +79,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
 
         let fill = NSMenuItem(
-            title: "Fill",
+            title: "Fill with Veil",
             action: #selector(fillNow),
             keyEquivalent: "\\",
         )
@@ -141,9 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     #endif
 
     @objc private func openVault() {
-        if let url = URL(string: "https://app.veil.nyc") {
-            NSWorkspace.shared.open(url)
-        }
+        VaultWindowController.shared.open()
     }
 
     @objc private func quit() {
@@ -152,6 +169,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    // Clicking the app while it runs — Dock, Launchpad, Finder — opens the
+    // vault. The accessory has no dock icon of its own, so reopen is the
+    // only "launch it again" signal we get.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            VaultWindowController.shared.open()
+        }
+        return true
     }
 
     // MARK: - otpauth:// handler

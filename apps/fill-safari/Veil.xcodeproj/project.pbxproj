@@ -26,6 +26,8 @@
 		E133AF62306B28A7009E9FC3 /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = E133AF56306B28A7009E9FC3 /* icon-128.png */; };
 		E133AF66306B28A7009E9FC3 /* FillBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF65306B28A7009E9FC3 /* FillBridge.swift */; };
 		E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF67306B28A7009E9FC3 /* UniversalFill.swift */; };
+		E1AB1000000000000000A1 /* VaultWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AB1000000000000000A2 /* VaultWindow.swift */; };
+		E1AB1000000000000000A3 /* BridgeDaemon.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AB1000000000000000A4 /* BridgeDaemon.swift */; };
 		E3AB00000000000000001B /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AB00000000000000001A /* CredentialProviderViewController.swift */; };
 		E3AB00000000000000001C /* FillBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF65306B28A7009E9FC3 /* FillBridge.swift */; };
 		E3AB00000000000000001E /* IdentitySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AB00000000000000001D /* IdentitySync.swift */; };
@@ -89,6 +91,8 @@
 		E133AF67306B28A7009E9FC3 /* UniversalFill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniversalFill.swift; sourceTree = "<group>"; };
 		E3AB00000000000000001A /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
 		E3AB00000000000000001D /* IdentitySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentitySync.swift; sourceTree = "<group>"; };
+		E1AB1000000000000000A2 /* VaultWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultWindow.swift; sourceTree = "<group>"; };
+		E1AB1000000000000000A4 /* BridgeDaemon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDaemon.swift; sourceTree = "<group>"; };
 		E3AB00000000000000001F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E3AB000000000000000020 /* Veil AutoFill.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Veil AutoFill.entitlements"; sourceTree = "<group>"; };
 		E3AB000000000000000021 /* Veil AutoFill.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Veil AutoFill.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -147,6 +151,8 @@
 				E133AF65306B28A7009E9FC3 /* FillBridge.swift */,
 				E133AF67306B28A7009E9FC3 /* UniversalFill.swift */,
 				E3AB00000000000000001D /* IdentitySync.swift */,
+				E1AB1000000000000000A2 /* VaultWindow.swift */,
+				E1AB1000000000000000A4 /* BridgeDaemon.swift */,
 				E133AF32306B28A6009E9FC3 /* Assets.xcassets */,
 				E133AF34306B28A6009E9FC3 /* Info.plist */,
 				E3AB00000000000000002D /* Veil.entitlements */,
@@ -205,6 +211,7 @@
 				E133AF1A306B28A6009E9FC3 /* Sources */,
 				E133AF1B306B28A6009E9FC3 /* Frameworks */,
 				E133AF1C306B28A6009E9FC3 /* Resources */,
+				E1AB1000000000000000B1 /* Bundle veil-bin */,
 				E133AF46306B28A7009E9FC3 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -338,6 +345,23 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+		E1AB1000000000000000B1 /* Bundle veil-bin */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle veil-bin";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Contents/MacOS/veil-bin",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin\"\ncd \"$SRCROOT/../..\" && go build -o \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/MacOS/veil-bin\" ./cmd/veil\n";
+		};
+
 /* Begin PBXSourcesBuildPhase section */
 		E133AF1A306B28A6009E9FC3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -347,6 +371,8 @@
 				E133AF66306B28A7009E9FC3 /* FillBridge.swift in Sources */,
 				E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */,
 				E3AB00000000000000001E /* IdentitySync.swift in Sources */,
+				E1AB1000000000000000A1 /* VaultWindow.swift in Sources */,
+				E1AB1000000000000000A3 /* BridgeDaemon.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
