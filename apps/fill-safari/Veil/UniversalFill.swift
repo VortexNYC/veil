@@ -247,25 +247,27 @@ final class UniversalFill: NSObject {
     }
 }
 
-/// Floating match picker — the 1Password palette shape. A nonactivating
-/// panel never takes key status, so the target app's field keeps focus.
-/// Arrows/Enter/Esc arrive through a CGEvent tap while the panel is up —
-/// the tap needs the same Accessibility trust the AX field read needed.
-/// Mouse rows still pick on click — clicks on a nonactivating panel land.
-final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+/// Floating match picker — the 1Password Quick Access shape. Centered on
+/// the active screen with a real search field; when a credential field is
+/// focused in the target app the card anchors under it instead. The panel
+/// is keyable but never activates the app — typing goes to the search,
+/// arrows/Enter/Esc are forwarded from the field's command selector.
+/// Mouse rows still pick on click.
+final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
     private let panel: NSPanel
     private let table = NSTableView()
-    private let entries: [[String: Any]]
+    private let allEntries: [[String: Any]]
+    private var shown: [[String: Any]]
+    private let search = NSSearchField()
     private let onPick: (String) -> Void
-    private var eventTap: CFMachPort?
-    private var tapSource: CFRunLoopSource?
     private var globalMonitor: Any?
 
     init(entries: [[String: Any]], at field: AXUIElement?, onPick: @escaping (String) -> Void) {
-        self.entries = entries
+        self.allEntries = entries
+        self.shown = entries
         self.onPick = onPick
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 100),
             styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
             backing: .buffered, defer: false,
         )
@@ -277,13 +279,19 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
+        // Keyable without activating — the search field takes real typing
+        // while the target app stays front.
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.isFloatingPanel = true
 
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
         table.addTableColumn(col)
         table.headerView = nil
-        table.rowHeight = 26
+        table.rowHeight = 44
         table.intercellSpacing = NSSize(width: 0, height: 2)
         table.backgroundColor = .clear
+        table.style = .plain
+        table.selectionHighlightStyle = .regular
         table.dataSource = self
         table.delegate = self
         table.target = self
@@ -294,15 +302,52 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
-        let height = min(CGFloat(entries.count) * 28 + 8, 232)
-        scroll.frame = NSRect(x: 0, y: 0, width: 300, height: height)
-        panel.contentView = scroll
-        panel.setContentSize(NSSize(width: 300, height: height))
+        scroll.scrollerStyle = .overlay
 
-        // mouseLocation is already AppKit bottom-up; anchor under it.
-        var origin = NSPoint(
-            x: NSEvent.mouseLocation.x, y: NSEvent.mouseLocation.y - height - 8,
-        )
+        // Vibrancy card: search up top, rounded rows, a thin key-hint
+        // footer — the Quick Access shape.
+        let searchH: CGFloat = 34
+        let listH = min(CGFloat(entries.count) * 46 + 8, 276)
+        let hintH: CGFloat = 24
+        let height = searchH + listH + hintH
+        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
+        card.material = .popover
+        card.blendingMode = .behindWindow
+        card.state = .active
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 12
+        card.layer?.masksToBounds = true
+        card.layer?.borderWidth = 1
+        card.layer?.borderColor = NSColor.separatorColor.cgColor
+
+        search.placeholderString = "Search items"
+        search.font = .systemFont(ofSize: 14)
+        search.focusRingType = .none
+        search.isBezeled = true
+        search.bezelStyle = .roundedBezel
+        search.delegate = self
+        search.sendsSearchStringImmediately = true
+        search.sendsWholeSearchString = false
+        search.frame = NSRect(x: 10, y: height - searchH - 2, width: 320, height: searchH - 4)
+        card.addSubview(search)
+
+        scroll.frame = NSRect(x: 4, y: hintH, width: 332, height: listH)
+        card.addSubview(scroll)
+
+        let hint = NSTextField(labelWithString: "↑↓ pick    ⏎ fill    esc")
+        hint.font = .systemFont(ofSize: 10, weight: .regular)
+        hint.textColor = .tertiaryLabelColor
+        hint.alignment = .center
+        hint.frame = NSRect(x: 0, y: 3, width: 340, height: 16)
+        card.addSubview(hint)
+
+        panel.contentView = card
+        panel.setContentSize(NSSize(width: 340, height: height))
+
+        // Anchor under the focused field when one's on screen — the UI is
+        // tied to the field like the browser extensions. Otherwise center
+        // the card on the display that owns the frontmost app.
+        var origin: NSPoint?
         if let field {
             var posRef: CFTypeRef?
             var sizeRef: CFTypeRef?
@@ -312,7 +357,10 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             var size = CGSize.zero
             if let v = posRef { AXValueGetValue(v as! AXValue, .cgPoint, &pos) }
             if let v = sizeRef { AXValueGetValue(v as! AXValue, .cgSize, &size) }
-            if pos != .zero {
+            // Skip window-sized elements — a full-window textArea is not a
+            // credential field, and pinning under it just looks random.
+            let credentialish = size.width > 0 && size.width < 900 && size.height < 120
+            if pos != .zero, credentialish {
                 // AX y is top-down in Quartz space; AppKit frame origins are
                 // bottom-up against the primary display's height.
                 let ph = NSScreen.screens.first?.frame.height ?? 0
@@ -321,7 +369,18 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
                 )
             }
         }
-        panel.setFrameOrigin(origin)
+        if origin == nil {
+            let screen = NSScreen.screens.first {
+                $0.visibleFrame.contains(NSEvent.mouseLocation)
+            } ?? NSScreen.main ?? NSScreen.screens.first
+            if let screen {
+                origin = NSPoint(
+                    x: screen.visibleFrame.midX - 170,
+                    y: screen.visibleFrame.midY + height * 0.25,
+                )
+            }
+        }
+        if let origin { panel.setFrameOrigin(origin) }
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -329,38 +388,12 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     func show() {
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        panel.orderFront(nil)
+        // makeKey takes the keyboard for the search field without
+        // activating Veil — the target app stays front.
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(search)
         NSLog("veil: picker shown frame=%@", NSStringFromRect(panel.frame))
 
-        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-        let me = Unmanaged.passUnretained(self).toOpaque()
-        eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap, place: .headInsertEventTap,
-            options: .defaultTap, eventsOfInterest: mask,
-            callback: { _, type, event, ctx -> Unmanaged<CGEvent>? in
-                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                    if let ctx {
-                        let panel = Unmanaged<FillPanel>.fromOpaque(ctx).takeUnretainedValue()
-                        if let tap = panel.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-                    }
-                    return Unmanaged.passUnretained(event)
-                }
-                guard type == .keyDown, let ctx else {
-                    return Unmanaged.passUnretained(event)
-                }
-                let panel = Unmanaged<FillPanel>.fromOpaque(ctx).takeUnretainedValue()
-                return panel.handleKey(event) ? Unmanaged.passUnretained(event) : nil
-            },
-            userInfo: me,
-        )
-        if let eventTap {
-            tapSource = CFMachPortCreateRunLoopSource(nil, eventTap, 0)
-            CFRunLoopAddSource(CFRunLoopGetMain(), tapSource, .commonModes)
-            CGEvent.tapEnable(tap: eventTap, enable: true)
-            NSLog("veil: key tap armed")
-        } else {
-            NSLog("veil: key tap refused — Input Monitoring not granted")
-        }
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
             [weak self] _ in
             guard let self, self.panel.isVisible else { return }
@@ -371,22 +404,35 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
-    /// Consume only the picker's keys while it's up; everything else passes.
-    /// true = event proceeds to the target app, false = the picker ate it.
-    private func handleKey(_ ev: CGEvent) -> Bool {
-        guard panel.isVisible else { return true }
-        switch ev.getIntegerValueField(.keyboardEventKeycode) {
-        case 125: move(1)               // down
-        case 126: move(-1)              // up
-        case 36, 76: confirm()          // return / keypad enter
-        case 53: dismiss()              // esc
-        default: return true
+    /// Filter as the search text changes — name, login, and URI all match.
+    func controlTextDidChange(_ obj: Notification) {
+        let q = search.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
+        shown = q.isEmpty ? allEntries : allEntries.filter { e in
+            let name = (e["name"] as? String ?? "").lowercased()
+            let login = (e["login"] as? String ?? "").lowercased()
+            let uris = (e["uris"] as? [String] ?? []).joined(separator: " ").lowercased()
+            return name.contains(q) || login.contains(q) || uris.contains(q)
         }
-        return false
+        table.reloadData()
+        if !shown.isEmpty {
+            table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        }
+    }
+
+    /// Arrows/Enter/Esc typed into the search field forward to the table —
+    /// everything else stays normal editing keys.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        switch sel {
+        case #selector(NSResponder.moveDown(_:)): move(1); return true
+        case #selector(NSResponder.moveUp(_:)): move(-1); return true
+        case #selector(NSResponder.insertNewline(_:)): confirm(); return true
+        case #selector(NSResponder.cancelOperation(_:)): dismiss(); return true
+        default: return false
+        }
     }
 
     private func move(_ delta: Int) {
-        let next = max(0, min(entries.count - 1, table.selectedRow + delta))
+        let next = max(0, min(shown.count - 1, table.selectedRow + delta))
         table.selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false)
         table.scrollRowToVisible(next)
     }
@@ -397,8 +443,8 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func confirm() {
         let row = table.selectedRow
-        guard row >= 0, row < entries.count,
-              let uuid = entries[row]["uuid"] as? String, !uuid.isEmpty
+        guard row >= 0, row < shown.count,
+              let uuid = shown[row]["uuid"] as? String, !uuid.isEmpty
         else { return }
         let pick = onPick
         dismiss()
@@ -406,15 +452,6 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func dismiss() {
-        if let tapSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes)
-            self.tapSource = nil
-        }
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-            CFMachPortInvalidate(eventTap)
-            self.eventTap = nil
-        }
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         globalMonitor = nil
         panel.orderOut(nil)
@@ -424,29 +461,74 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         dismiss()
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+
+    /// Rounded accent fill under the picked row — the default selection
+    /// is a full-bleed rectangle, which reads as a bug on a floating card.
+    private final class RoundRow: NSTableRowView {
+        override func drawSelection(in dirtyRect: NSRect) {
+            let r = bounds.insetBy(dx: 6, dy: 1.5)
+            let path = NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8)
+            NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
+            path.fill()
+            NSColor.controlAccentColor.withAlphaComponent(0.5).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        RoundRow()
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let e = entries[row]
+        let e = shown[row]
         let name = e["name"] as? String ?? "item"
         let login = e["login"] as? String ?? ""
         let id = NSUserInterfaceItemIdentifier("cell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView ?? {
             let v = NSTableCellView()
-            let tf = NSTextField(labelWithString: "")
-            tf.translatesAutoresizingMaskIntoConstraints = false
-            v.addSubview(tf)
-            v.textField = tf
+            let icon = NSImageView()
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+            icon.contentTintColor = .secondaryLabelColor
+            let title = NSTextField(labelWithString: "")
+            title.translatesAutoresizingMaskIntoConstraints = false
+            title.font = .systemFont(ofSize: 13, weight: .medium)
+            title.lineBreakMode = .byTruncatingTail
+            let sub = NSTextField(labelWithString: "")
+            sub.translatesAutoresizingMaskIntoConstraints = false
+            sub.font = .systemFont(ofSize: 11, weight: .regular)
+            sub.textColor = .secondaryLabelColor
+            sub.lineBreakMode = .byTruncatingTail
+            sub.identifier = NSUserInterfaceItemIdentifier("sub")
+            v.addSubview(icon)
+            v.addSubview(title)
+            v.addSubview(sub)
+            v.imageView = icon
+            v.textField = title
             NSLayoutConstraint.activate([
-                tf.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 10),
-                tf.centerYAnchor.constraint(equalTo: v.centerYAnchor),
-                tf.trailingAnchor.constraint(lessThanOrEqualTo: v.trailingAnchor, constant: -8),
+                icon.leadingAnchor.constraint(equalTo: v.leadingAnchor, constant: 16),
+                icon.centerYAnchor.constraint(equalTo: v.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 16),
+                title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
+                title.bottomAnchor.constraint(equalTo: v.centerYAnchor, constant: -1),
+                title.trailingAnchor.constraint(lessThanOrEqualTo: v.trailingAnchor, constant: -12),
+                sub.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+                sub.topAnchor.constraint(equalTo: v.centerYAnchor, constant: 1),
+                sub.trailingAnchor.constraint(lessThanOrEqualTo: v.trailingAnchor, constant: -12),
             ])
             v.identifier = id
             return v
         }()
-        cell.textField?.stringValue = login.isEmpty ? name : "\(name) — \(login)"
-        cell.textField?.lineBreakMode = .byTruncatingTail
+        cell.imageView?.image = NSImage(
+            systemSymbolName: "key.fill",
+            accessibilityDescription: nil,
+        )
+        cell.textField?.stringValue = name
+        if let sub = cell.subviews.first(where: { $0.identifier?.rawValue == "sub" }) as? NSTextField {
+            sub.stringValue = login
+        }
         return cell
     }
 }
