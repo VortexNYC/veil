@@ -11,6 +11,7 @@
       mobile: true,
       fax: true,
       pager: true,
+      webauthn: true,
     };
     const parts = String(s || "")
       .toLowerCase()

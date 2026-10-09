@@ -52,19 +52,40 @@ func InstallOrigin(env InstallEnv) error {
 	if err := WriteHostConfig(env.VaultHome, cfg); err != nil {
 		return err
 	}
-	chromeDir := filepath.Join(env.UserHome, "Library/Application Support/Google/Chrome/NativeMessagingHosts")
-	ffDir := filepath.Join(env.UserHome, "Library/Application Support/Mozilla/NativeMessagingHosts")
-	if err := os.MkdirAll(chromeDir, 0o755); err != nil {
-		return err
+	// Every Chromium build keeps its own host-manifest dir keyed by its
+	// product channel — stable Chrome, for Testing, and unbranded
+	// Chromium do not share a lookup path.
+	chromeDirs := []string{
+		"Google/Chrome",
+		"Google/Chrome for Testing",
+		"Google/ChromeForTesting",
+		"Chromium",
+		"Microsoft Edge",
+		"BraveSoftware/Brave-Browser",
+		"Arc/User Data",
+		"Vivaldi",
+		"com.operasoftware.Opera",
 	}
+	var chromePath []string
+	for _, d := range chromeDirs {
+		dir := filepath.Join(env.UserHome, "Library/Application Support", d, "NativeMessagingHosts")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, NativeHostName+".json"))
+		if err := os.WriteFile(filepath.Join(dir, JSONHostName+".json"), ManifestJSONChrome(host), 0o644); err != nil {
+			return err
+		}
+		chromePath = append(chromePath, dir)
+	}
+	if len(chromePath) == 0 {
+		return fmt.Errorf("fill: no writable native-messaging dir")
+	}
+	ffDir := filepath.Join(env.UserHome, "Library/Application Support/Mozilla/NativeMessagingHosts")
 	if err := os.MkdirAll(ffDir, 0o755); err != nil {
 		return err
 	}
-	_ = os.Remove(filepath.Join(chromeDir, NativeHostName+".json"))
 	_ = os.Remove(filepath.Join(ffDir, NativeHostName+".json"))
-	if err := os.WriteFile(filepath.Join(chromeDir, JSONHostName+".json"), ManifestJSONChrome(host), 0o644); err != nil {
-		return err
-	}
 	if err := os.WriteFile(filepath.Join(ffDir, JSONHostName+".json"), ManifestJSONFirefox(host), 0o644); err != nil {
 		return err
 	}
