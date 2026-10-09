@@ -36,6 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // A windowless accessory gets reaped by Automatic Termination —
         // the helper must survive idle to keep its hotkey live.
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
+        installMainMenu()
         installStatusItem()
         UniversalFill.shared.install()
         IdentitySync.shared.start()
@@ -135,6 +136,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
 
         statusItem.menu = menu
+    }
+
+    // The standard app menu set — the process is created in code so the
+    // menu bar is ours to build. Edit exists because the vault window's
+    // WKWebView fields need copy/paste through the responder chain.
+    private func installMainMenu() {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Veil")
+        let items: [(String, Selector?, String)] = [
+            ("About Veil", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+            ("", nil, ""),
+            ("Fill with Veil", #selector(fillNow), "\\"),
+            ("Open Veil", #selector(openVault), "o"),
+            ("", nil, ""),
+            ("Hide Veil", #selector(NSApplication.hide(_:)), "h"),
+            ("Quit Veil", #selector(quit), "q"),
+        ]
+        for (title, sel, key) in items {
+            if title.isEmpty {
+                appMenu.addItem(.separator())
+                continue
+            }
+            let item = appMenu.addItem(withTitle: title, action: sel, keyEquivalent: key)
+            item.target = sel == #selector(fillNow) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
+        }
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        editItem.title = "Edit"
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: Selector(("cut:")), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: Selector(("copy:")), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: Selector(("paste:")), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a")
+        editItem.submenu = editMenu
+        main.addItem(editItem)
+
+        let winItem = NSMenuItem()
+        winItem.title = "Window"
+        let winMenu = NSMenu(title: "Window")
+        winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        let open = winMenu.addItem(withTitle: "Open Veil", action: #selector(openVault), keyEquivalent: "")
+        open.target = self
+        winItem.submenu = winMenu
+        main.addItem(winItem)
+        NSApp.windowsMenu = winMenu
+
+        NSApp.mainMenu = main
     }
 
     @objc private func fillNow() {
