@@ -126,7 +126,11 @@ final class UniversalFill: NSObject {
         if let last = lastFocus, last == cur { return }
         lastFocus = cur
 
-        let credentialish = role == "AXSecureTextField" || role == "AXTextField"
+        // Secure fields always qualify. A plain text field only qualifies
+        // when its own metadata reads credential-ish — an omnibox, a find
+        // bar, or a notes field does not get a password dropdown.
+        let credentialish = role == "AXSecureTextField" ||
+            (role == "AXTextField" && credentialHint(field))
         NSLog("veil: focusEvent role=%@ in %@", role, bundleID)
         guard credentialish else {
             if picker?.mode == .anchored { picker?.dismiss(); picker = nil }
@@ -155,6 +159,30 @@ final class UniversalFill: NSObject {
                 panel.show()
             }
         }
+    }
+
+    /// Reads the field's own identity strings — identifier, description,
+    /// placeholder, title — and answers whether it looks like a credential
+    /// input. Secure fields skip this entirely; this gates plain text fields.
+    private func credentialHint(_ field: AXUIElement) -> Bool {
+        let names = [
+            kAXIdentifierAttribute,
+            kAXDescriptionAttribute,
+            kAXTitleAttribute,
+            kAXPlaceholderValueAttribute,
+            "AXDOMIdentifier",
+            "AXAutocompleteValue",
+        ]
+        var any = ""
+        for name in names {
+            var v: CFTypeRef?
+            if AXUIElementCopyAttributeValue(field, name as CFString, &v) == .success,
+               let s = v as? String {
+                any += s.lowercased() + " "
+            }
+        }
+        if any.isEmpty { return false }
+        return any.range(of: #"(user|email|login|passwd|password|sign ?in|cred)"#, options: .regularExpression) != nil
     }
 
     func trigger() {

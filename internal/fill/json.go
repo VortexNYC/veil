@@ -166,12 +166,18 @@ func (h *Host) jsonMatch(rawURL string) []jsonMatchEntry {
 	if u, err := grant.ParseDest(rawURL); err == nil {
 		pageHost = grant.CanonicalHost(u)
 	}
+	appCtx := strings.HasPrefix(rawURL, "app://")
 	matched := []protocol.Item{}
 	for _, item := range items {
 		if item.Archived || !item.Kind.Fillable() {
 			continue
 		}
-		unbound := (item.Kind == protocol.ItemCard || item.Kind == protocol.ItemIdentity) && len(item.URIs) == 0
+		// An app context is a bundle-ID binding, not a web host — items with
+		// no URIs carry no signal about which app they belong to, so nothing
+		// unbound may surface there (a card must not ride the Chrome omnibox).
+		unbound := !appCtx &&
+			(item.Kind == protocol.ItemCard || item.Kind == protocol.ItemIdentity) &&
+			len(item.URIs) == 0
 		if !unbound && !grant.HostAllowed(item, rawURL) {
 			continue
 		}
