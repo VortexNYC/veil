@@ -1,6 +1,7 @@
 packages:
   - "identity/login"
   - "apps/backup-ingest"
+  - "apps/desktop"
   - "apps/docs"
   - "apps/mail"
   - "apps/phone"

@@ -31,3 +31,6 @@ apps/fill-safari/**/xcuserdata/
 apps/fill-safari/build/
 apps/phone/build/
 apps/phone/**/xcuserdata/
+
+# tauri
+apps/desktop/src-tauri/target/
