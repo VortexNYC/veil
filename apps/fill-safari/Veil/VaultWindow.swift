@@ -86,12 +86,42 @@ final class VaultWindowController: NSObject {
         win.makeKeyAndOrderFront(nil)
     }
 
+    /// The SPA authenticates on a sessionStorage bearer — inject the
+    /// broker's human token before page JS runs and the vault lands
+    /// signed in. One auth event (the gate), not a second Ory login.
+    private func injectToken(_ token: String) -> WKUserScript? {
+        let src = "try{sessionStorage.setItem('veil.id_token',\"\(token)\");}catch(e){}"
+        return WKUserScript(
+            source: src,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true,
+        )
+    }
+
+    private func token() -> String {
+        do {
+            let reply = try FillBridge.shared.roundTrip(["action": "token"], timeout: 30)
+            return reply["token"] as? String ?? ""
+        } catch {
+            return ""
+        }
+    }
+
     private func loadVault() {
         guard let window else { return }
-        let view = WKWebView(frame: window.contentView!.bounds)
-        view.autoresizingMask = [.width, .height]
-        window.contentView = view
-        web = view
-        view.load(URLRequest(url: URL(string: "https://app.veil.nyc")!))
+        DispatchQueue.global().async {
+            let tok = self.token()
+            DispatchQueue.main.async {
+                let cfg = WKWebViewConfiguration()
+                if !tok.isEmpty, let script = self.injectToken(tok) {
+                    cfg.userContentController.addUserScript(script)
+                }
+                let view = WKWebView(frame: window.contentView!.bounds, configuration: cfg)
+                view.autoresizingMask = [.width, .height]
+                window.contentView = view
+                self.web = view
+                view.load(URLRequest(url: URL(string: "https://app.veil.nyc")!))
+            }
+        }
     }
 }

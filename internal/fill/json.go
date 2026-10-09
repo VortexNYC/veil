@@ -120,6 +120,21 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 			out.Error = "denied"
 		}
 		return jsonBytes(out)
+	case "token":
+		// Post-unlock the app wants the human's ID token to inject into the
+		// vault webview — same bearer the SPA would mint itself. Local
+		// transport only; never an agent surface.
+		tok, err := h.bearer()
+		out := struct {
+			Token string `json:"token,omitempty"`
+			Error string `json:"error,omitempty"`
+		}{}
+		if err != nil {
+			out.Error = "need_login"
+		} else {
+			out.Token = tok
+		}
+		return jsonBytes(out)
 	case "match":
 		return jsonBytes(struct {
 			Entries []jsonMatchEntry `json:"entries"`
