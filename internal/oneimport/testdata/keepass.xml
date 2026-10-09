@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<KeePassFile>
+  <Root>
+    <Group>
+      <Name>Root</Name>
+      <Entry>
+        <String><Key>Title</Key><Value>Bank Login</Value></String>
+        <String><Key>UserName</Key><Value>jdoe</Value></String>
+        <String><Key>Password</Key><Value>kp-pass-1</Value></String>
+        <String><Key>URL</Key><Value>https://bank.example.com</Value></String>
+        <String><Key>TOTP</Key><Value>JBSWY3DPEHPK3PXP</Value></String>
+      </Entry>
+      <Entry>
+        <String><Key>Title</Key><Value>No Password</Value></String>
+        <String><Key>UserName</Key><Value>x</Value></String>
+        <String><Key>Password</Key><Value></Value></String>
+      </Entry>
+    </Group>
+  </Root>
+</KeePassFile>

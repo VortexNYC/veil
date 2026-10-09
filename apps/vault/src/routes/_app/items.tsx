@@ -26,6 +26,7 @@ function isKind(value: string): value is Kind {
 function Items() {
   const [rows, setRows] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("api_key");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -54,7 +55,7 @@ function Items() {
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,.1pux,text/csv,application/zip"
+            accept=".csv,.1pux,.xml,.json,.zip,text/csv,application/zip"
             className="sr-only"
             onChange={(e) => {
               const file = e.currentTarget.files?.[0];
@@ -67,7 +68,15 @@ function Items() {
                   setError("import failed");
                   return;
                 }
+                const body = (await res.json().catch(() => null)) as {
+                  count?: number;
+                } | null;
                 setError(null);
+                setNotice(
+                  body?.count != null
+                    ? `Imported ${body.count} item${body.count === 1 ? "" : "s"} — try filling one to verify`
+                    : "Import complete",
+                );
                 await reload();
               });
             }}
@@ -269,6 +278,11 @@ function Items() {
       {error ? (
         <Text as="p" variant="error">
           {error}
+        </Text>
+      ) : null}
+      {notice ? (
+        <Text as="p" variant="secondary">
+          {notice}
         </Text>
       ) : null}
       <LayerCard>

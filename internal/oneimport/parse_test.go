@@ -421,3 +421,47 @@ func zipBytes(t *testing.T, name string, data []byte) []byte {
 	}
 	return buf.Bytes()
 }
+
+func TestParseKeePassXML(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "keepass.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := Parse("export.xml", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows", len(rows))
+	}
+	if rows[0].Name != "Bank Login" || rows[0].Login != "jdoe" ||
+		string(rows[0].Token) != "kp-pass-1" ||
+		string(rows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" ||
+		rows[0].URIs[0] != "https://bank.example.com" {
+		t.Fatalf("%+v", rows[0])
+	}
+}
+
+func TestParseProtonPassZip(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "protonpass.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := Parse("proton_export.zip", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows", len(rows))
+	}
+	byName := map[string]Row{}
+	for _, r := range rows {
+		byName[r.Name] = r
+	}
+	if string(byName["PP Bank"].Token) != "pp-pass" || byName["PP Bank"].Login != "ppuser" {
+		t.Fatalf("%+v", byName["PP Bank"])
+	}
+	if string(byName["PP Work"].Token) != "work-pass" {
+		t.Fatalf("%+v", byName["PP Work"])
+	}
+}

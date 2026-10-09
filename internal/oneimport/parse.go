@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/url"
@@ -41,10 +42,18 @@ func Parse(name string, raw []byte) ([]Row, error) {
 		return nil, fmt.Errorf("import: file too large")
 	}
 	lower := strings.ToLower(name)
-	if bytes.HasPrefix(raw, []byte("PK")) || strings.HasSuffix(lower, ".1pux") {
-		return parse1pux(raw)
+	if bytes.HasPrefix(raw, []byte("PK")) {
+		// 1pux carries export.data; Proton Pass zips CSVs or vaults.json.
+		if rows, err := parse1pux(raw); err == nil {
+			return rows, nil
+		}
+		return parseProtonPass(raw)
 	}
 	sniff := bytes.TrimSpace(bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}))
+	if bytes.HasPrefix(bytes.ToLower(sniff), []byte("<?xml")) ||
+		strings.HasSuffix(lower, ".xml") || strings.HasSuffix(lower, ".kdbx-export") {
+		return parseKeePassXML(raw)
+	}
 	if len(sniff) > 0 && sniff[0] == '{' || strings.HasSuffix(lower, ".json") {
 		return parseBitwardenJSON(raw)
 	}
@@ -433,11 +442,11 @@ func csvKey(h string) string {
 	switch h {
 	case "title", "name":
 		return "name"
-	case "url", "uri", "loginuri", "login_uri":
+	case "url", "uri", "loginuri", "login_uri", "websiteaddress":
 		return "url"
 	case "username", "loginusername", "login":
 		return "username"
-	case "password", "loginpassword":
+	case "password", "loginpassword", "pwd":
 		return "password"
 	case "otpauth", "totp", "logintotp", "otpsecret":
 		return "totp"
@@ -675,4 +684,158 @@ func otpSeed(v string) string {
 		return strings.ToUpper(strings.TrimSpace(u.Query().Get("secret")))
 	}
 	return strings.ToUpper(v)
+}
+
+// Proton Pass exports a zip of per-vault CSVs, or a single JSON shaped
+// {vaults: {id: {name, items: [{data:{type,metadata,content}}]}}}.
+func parseProtonPass(raw []byte) ([]Row, error) {
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("import: not a proton pass zip")
+	}
+	var out []Row
+	for _, f := range zr.File {
+		name := strings.ToLower(f.Name)
+		if !strings.HasSuffix(name, ".csv") && !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(io.LimitReader(rc, maxFile))
+		_ = rc.Close()
+		if err != nil {
+			continue
+		}
+		var rows []Row
+		if strings.HasSuffix(name, ".csv") {
+			rows, _ = parseCSV(data)
+		} else {
+			rows, _ = parseProtonJSON(data)
+		}
+		out = append(out, rows...)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("import: proton pass zip has no items")
+	}
+	return out, nil
+}
+
+func parseProtonJSON(raw []byte) ([]Row, error) {
+	var dump struct {
+		Vaults map[string]struct {
+			Items []struct {
+				Data struct {
+					Type     string `json:"type"`
+					Metadata struct {
+						Name string `json:"name"`
+					} `json:"metadata"`
+					Content struct {
+						Title    string   `json:"title"`
+						Username string   `json:"itemUsername"`
+						Password string   `json:"password"`
+						URLs     []string `json:"urls"`
+						TOTP     string   `json:"totpUri"`
+					} `json:"content"`
+				} `json:"data"`
+			} `json:"items"`
+		} `json:"vaults"`
+	}
+	if json.Unmarshal(raw, &dump) != nil || len(dump.Vaults) == 0 {
+		return nil, fmt.Errorf("import: not a proton pass json")
+	}
+	var out []Row
+	for _, v := range dump.Vaults {
+		for _, it := range v.Items {
+			d := it.Data
+			if d.Type != "login" {
+				continue
+			}
+			name := d.Metadata.Name
+			if name == "" {
+				name = d.Content.Title
+			}
+			if name == "" || d.Content.Password == "" {
+				continue
+			}
+			out = append(out, Row{
+				Name:     name,
+				Kind:     protocol.ItemAPIKey,
+				URIs:     d.Content.URLs,
+				Login:    d.Content.Username,
+				Token:    []byte(d.Content.Password),
+				TOTPSeed: []byte(otpSeed(d.Content.TOTP)),
+			})
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("import: proton pass json has no logins")
+	}
+	return out, nil
+}
+
+// KeePass XML — the <KeePassFile> export every KeePass/KeePassXC build
+// writes. Entries are flat String key/value pairs; groups just recurse.
+func parseKeePassXML(raw []byte) ([]Row, error) {
+	type kv struct {
+		Key   string `xml:"Key"`
+		Value string `xml:"Value"`
+	}
+	type entry struct {
+		Strings []kv `xml:"String"`
+	}
+	type group struct {
+		Entries []entry `xml:"Entry"`
+		Groups  []group `xml:"Group"`
+	}
+	var doc struct {
+		Root group `xml:"Root"`
+	}
+	if err := xml.Unmarshal(raw, &doc); err != nil || len(doc.Root.Groups)+len(doc.Root.Entries) == 0 {
+		return nil, fmt.Errorf("import: not keepass xml")
+	}
+	var out []Row
+	var walk func(g group)
+	walk = func(g group) {
+		for _, e := range g.Entries {
+			m := map[string]string{}
+			for _, kv := range e.Strings {
+				m[strings.ToLower(kv.Key)] = kv.Value
+			}
+			name := m["title"]
+			if name == "" || m["password"] == "" {
+				continue
+			}
+			var uris []string
+			if m["url"] != "" {
+				uris = []string{m["url"]}
+			}
+			// TOTP lives in a custom string — `totp` or the KeePassXC
+			// `TOTP Seed`/`otp` variants.
+			totp := m["totp"]
+			if totp == "" {
+				totp = m["totp seed"]
+			}
+			if totp == "" {
+				totp = m["otp"]
+			}
+			out = append(out, Row{
+				Name:     name,
+				Kind:     protocol.ItemAPIKey,
+				URIs:     uris,
+				Login:    m["username"],
+				Token:    []byte(m["password"]),
+				TOTPSeed: []byte(otpSeed(totp)),
+			})
+		}
+		for _, sub := range g.Groups {
+			walk(sub)
+		}
+	}
+	walk(doc.Root)
+	if len(out) == 0 {
+		return nil, fmt.Errorf("import: keepass xml has no entries")
+	}
+	return out, nil
 }

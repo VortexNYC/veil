@@ -561,6 +561,9 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 type ImportResult struct {
 	Names []string `json:"names"`
 	Count int      `json:"count"`
+	// Kind breakdown of what actually imported — "login":47 reads better
+	// than a bare count after a 400-row export.
+	Kinds map[string]int `json:"kinds,omitempty"`
 	// Skipped names already in the vault. Local CLI shows them; the origin
 	// ImportResponse schema is names+count only (spec is SDK-locked).
 	Skipped []string `json:"skipped,omitempty"`
@@ -612,6 +615,7 @@ func (a *App) ImportItems(p protocol.Principal, rows []oneimport.Row) (ImportRes
 		seen[importKey(it.Kind, it.Name, it.Login, it.URIs)] = struct{}{}
 	}
 	names := make([]string, 0, len(rows))
+	kinds := map[string]int{}
 	var skipped []string
 	for _, row := range rows {
 		key := importKey(rowKind(row), strings.TrimSpace(row.Name), strings.TrimSpace(row.Login), row.URIs)
@@ -640,8 +644,9 @@ func (a *App) ImportItems(p protocol.Principal, rows []oneimport.Row) (ImportRes
 		}
 		seen[key] = struct{}{}
 		names = append(names, item.Name)
+		kinds[string(item.Kind)]++
 	}
-	return ImportResult{Names: names, Count: len(names), Skipped: skipped}, nil
+	return ImportResult{Names: names, Count: len(names), Kinds: kinds, Skipped: skipped}, nil
 }
 
 func unionURIs(have, add []string) []string {
