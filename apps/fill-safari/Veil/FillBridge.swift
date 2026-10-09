@@ -19,7 +19,13 @@ final class FillBridge {
             return override
         }
         // Sandboxed: the daemon binds fill.sock inside this app's own
-        // container — same pattern as the Safari appex socket.
+        // container. Unsandboxed the home resolves to the real $HOME —
+        // reach the vault-home socket first, container path as fallback.
+        let vault = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".veil/fill.sock").path
+        if FileManager.default.fileExists(atPath: vault) {
+            return vault
+        }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("fill.sock").path
     }

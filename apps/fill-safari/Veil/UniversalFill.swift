@@ -22,6 +22,15 @@ final class UniversalFill: NSObject {
     private var targetApp: NSRunningApplication?
     private var picker: FillPanel?
     private var generation = 0
+    /// Field-focus watcher. AXObserver notifications do not reach a
+    /// sandboxed process for other apps — this polls the front app's
+    /// focused element at 300ms instead. Three AX reads a second, nothing
+    /// else: the cheap path to the browser-extension behavior.
+    private var focusTimer: Timer?
+    private var lastFocus: (pid: pid_t, role: String, pos: CGPoint)?
+    /// Suppresses the auto dropdown while a pick's eval is in flight —
+    /// the Touch ID prompt pulls focus and would kill itself.
+    private var fillInFlight = false
 
     /// Cmd-\ via a session event tap — consumes the keystroke before the
     /// target app sees it. Carbon hotkeys miss synthetic and quiesced
@@ -39,13 +48,20 @@ final class UniversalFill: NSObject {
                     }
                     return Unmanaged.passUnretained(event)
                 }
-                guard type == .keyDown,
-                      event.getIntegerValueField(.keyboardEventKeycode) == 42,
-                      event.flags.contains(.maskCommand),
-                      event.flags.intersection([.maskShift, .maskControl, .maskAlternate]).isEmpty
-                else { return Unmanaged.passUnretained(event) }
+                guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+                let code = event.getIntegerValueField(.keyboardEventKeycode)
+                let flags = event.flags
+                // 1Password parity: ⌘\ and ⌘⇧Space both open Quick Access.
+                let backslash = code == 42
+                    && flags.contains(.maskCommand)
+                    && flags.intersection([.maskShift, .maskControl, .maskAlternate]).isEmpty
+                let cmdShiftSpace = code == 49
+                    && flags.contains(.maskCommand)
+                    && flags.contains(.maskShift)
+                    && flags.intersection([.maskControl, .maskAlternate]).isEmpty
+                guard backslash || cmdShiftSpace else { return Unmanaged.passUnretained(event) }
                 DispatchQueue.main.async { UniversalFill.shared.trigger() }
-                return nil // Cmd-\ is ours — the field never sees it
+                return nil // the gesture is ours — the field never sees it
             },
             userInfo: nil,
         )
@@ -56,6 +72,88 @@ final class UniversalFill: NSObject {
             NSLog("veil: key tap installed")
         } else {
             NSLog("veil: key tap refused — Input Monitoring not granted")
+        }
+        if !AXIsProcessTrusted() {
+            NSLog("veil: ax untrusted — prompting")
+            AXIsProcessTrustedWithOptions(
+                [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
+        }
+        focusTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            self?.pollFocus()
+        }
+        NSLog("veil: focus watch polling 300ms (trusted=%d)", AXIsProcessTrusted() ? 1 : 0)
+    }
+
+    /// Front app's focused element, ~3x a second. Only transitions do work:
+    /// the same field under the same app is free. Credential fields get the
+    /// anchored dropdown; everything else closes it.
+    private func pollFocus() {
+        guard AXIsProcessTrusted(), !fillInFlight else { return }
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              let bundleID = front.bundleIdentifier,
+              bundleID != Bundle.main.bundleIdentifier
+        else { if picker?.mode == .anchored { picker?.dismiss(); picker = nil }; lastFocus = nil; return }
+
+        let app = AXUIElementCreateApplication(front.processIdentifier)
+        var ref: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &ref)
+        guard let el = ref else {
+            if err == .apiDisabled {
+                // Electron/Chromium apps keep their AX tree off until a
+                // client asks — flip it once per app switch.
+                AXUIElementSetAttributeValue(
+                    app, "AXEnhancedUserInterface" as CFString,
+                    kCFBooleanTrue)
+                AXUIElementSetAttributeValue(
+                    app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            } else if err != .success, err != .noValue {
+                NSLog("veil: focus read err=%d in %@", err.rawValue, bundleID)
+            }
+            if picker?.mode == .anchored { picker?.dismiss(); picker = nil }
+            lastFocus = nil
+            return
+        }
+        let field = el as! AXUIElement
+        var roleRef: CFTypeRef?
+        var posRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(field, kAXRoleAttribute as CFString, &roleRef)
+        AXUIElementCopyAttributeValue(field, kAXPositionAttribute as CFString, &posRef)
+        let role = roleRef as? String ?? ""
+        var pos = CGPoint.zero
+        if let p = posRef { AXValueGetValue(p as! AXValue, .cgPoint, &pos) }
+
+        let cur = (pid: front.processIdentifier, role: role, pos: pos)
+        if let last = lastFocus, last == cur { return }
+        lastFocus = cur
+
+        let credentialish = role == "AXSecureTextField" || role == "AXTextField"
+        NSLog("veil: focusEvent role=%@ in %@", role, bundleID)
+        guard credentialish else {
+            if picker?.mode == .anchored { picker?.dismiss(); picker = nil }
+            return
+        }
+        targetApp = front
+        let gen = { self.generation += 1; return self.generation }()
+        DispatchQueue.global().async { [self] in
+            let entries: [[String: Any]]
+            do {
+                entries = try FillBridge.shared.match(app: bundleID)
+            } catch {
+                NSLog("veil: focus match err %@", error.localizedDescription)
+                return
+            }
+            NSLog("veil: focus match=%d", entries.count)
+            DispatchQueue.main.async { [self] in
+                guard gen == generation, !fillInFlight else { return }
+                picker?.dismiss()
+                picker = nil
+                if entries.isEmpty { return }
+                let panel = FillPanel(entries: entries, at: field, mode: .anchored) { [weak self] uuid in
+                    self?.fillAndType(uuid: uuid, passwordOnly: role == "AXSecureTextField", panel: nil)
+                }
+                picker = panel
+                panel.show()
+            }
         }
     }
 
@@ -128,7 +226,7 @@ final class UniversalFill: NSObject {
                 }
                 // One match is still offered, not silently filled — the row
                 // stays up naming the credential while Touch ID gates it.
-                let panel = FillPanel(entries: entries, at: field) { [weak self] uuid in
+                let panel = FillPanel(entries: entries, at: field, mode: .palette) { [weak self] uuid in
                     self?.fillAndType(uuid: uuid, passwordOnly: passwordOnly, panel: nil)
                 }
                 picker = panel
@@ -148,9 +246,11 @@ final class UniversalFill: NSObject {
               let bundleID = front.bundleIdentifier
         else { return }
         let gen = generation
+        fillInFlight = true
         // The app regains focus before typing — the picker menu borrowed it.
         front.activate()
         DispatchQueue.global().async {
+            defer { DispatchQueue.main.async { self.fillInFlight = false } }
             do {
                 let (entries, _) = try FillBridge.shared.fill(app: bundleID, uuid: uuid)
                 guard let first = entries.first else { return }
@@ -254,6 +354,12 @@ final class UniversalFill: NSObject {
 /// arrows/Enter/Esc are forwarded from the field's command selector.
 /// Mouse rows still pick on click.
 final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
+    /// palette — Cmd-\ quick access: centered card, real search, keyable.
+    /// anchored — field-focus dropdown: slim card under the field, never
+    /// takes key (typing belongs to the field), nav via a session tap.
+    enum Mode { case anchored, palette }
+
+    let mode: Mode
     private let panel: NSPanel
     private let table = NSTableView()
     private let allEntries: [[String: Any]]
@@ -261,10 +367,14 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
     private let search = NSSearchField()
     private let onPick: (String) -> Void
     private var globalMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var tapSource: CFRunLoopSource?
 
-    init(entries: [[String: Any]], at field: AXUIElement?, onPick: @escaping (String) -> Void) {
+    init(entries: [[String: Any]], at field: AXUIElement?, mode: Mode,
+         onPick: @escaping (String) -> Void) {
         self.allEntries = entries
         self.shown = entries
+        self.mode = mode
         self.onPick = onPick
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 100),
@@ -279,9 +389,10 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        // Keyable without activating — the search field takes real typing
-        // while the target app stays front.
-        panel.becomesKeyOnlyIfNeeded = false
+        // Palette is keyable without activating — the search field takes
+        // real typing while the target app stays front. Anchored never
+        // becomes key — the field owns the keyboard.
+        panel.becomesKeyOnlyIfNeeded = (mode == .anchored)
         panel.isFloatingPanel = true
 
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
@@ -304,13 +415,14 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         scroll.drawsBackground = false
         scroll.scrollerStyle = .overlay
 
-        // Vibrancy card: search up top, rounded rows, a thin key-hint
-        // footer — the Quick Access shape.
-        let searchH: CGFloat = 34
-        let listH = min(CGFloat(entries.count) * 46 + 8, 276)
+        // Vibrancy card — palette carries a search bar; anchored is just
+        // the list and the hint line under the field.
+        let searchH: CGFloat = mode == .palette ? 34 : 0
+        let width: CGFloat = mode == .palette ? 340 : 300
+        let listH = min(CGFloat(entries.count) * 46 + 8, mode == .palette ? 276 : 240)
         let hintH: CGFloat = 24
         let height = searchH + listH + hintH
-        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
+        let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         card.material = .popover
         card.blendingMode = .behindWindow
         card.state = .active
@@ -320,29 +432,31 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         card.layer?.borderWidth = 1
         card.layer?.borderColor = NSColor.separatorColor.cgColor
 
-        search.placeholderString = "Search items"
-        search.font = .systemFont(ofSize: 14)
-        search.focusRingType = .none
-        search.isBezeled = true
-        search.bezelStyle = .roundedBezel
-        search.delegate = self
-        search.sendsSearchStringImmediately = true
-        search.sendsWholeSearchString = false
-        search.frame = NSRect(x: 10, y: height - searchH - 2, width: 320, height: searchH - 4)
-        card.addSubview(search)
+        if mode == .palette {
+            search.placeholderString = "Search items"
+            search.font = .systemFont(ofSize: 14)
+            search.focusRingType = .none
+            search.isBezeled = true
+            search.bezelStyle = .roundedBezel
+            search.delegate = self
+            search.sendsSearchStringImmediately = true
+            search.sendsWholeSearchString = false
+            search.frame = NSRect(x: 10, y: height - searchH - 2, width: width - 20, height: searchH - 4)
+            card.addSubview(search)
+        }
 
-        scroll.frame = NSRect(x: 4, y: hintH, width: 332, height: listH)
+        scroll.frame = NSRect(x: 4, y: hintH, width: width - 8, height: listH)
         card.addSubview(scroll)
 
         let hint = NSTextField(labelWithString: "↑↓ pick    ⏎ fill    esc")
         hint.font = .systemFont(ofSize: 10, weight: .regular)
         hint.textColor = .tertiaryLabelColor
         hint.alignment = .center
-        hint.frame = NSRect(x: 0, y: 3, width: 340, height: 16)
+        hint.frame = NSRect(x: 0, y: 3, width: width, height: 16)
         card.addSubview(hint)
 
         panel.contentView = card
-        panel.setContentSize(NSSize(width: 340, height: height))
+        panel.setContentSize(NSSize(width: width, height: height))
 
         // Anchor under the focused field when one's on screen — the UI is
         // tied to the field like the browser extensions. Otherwise center
@@ -388,11 +502,42 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
     func show() {
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        // makeKey takes the keyboard for the search field without
-        // activating Veil — the target app stays front.
-        panel.makeKeyAndOrderFront(nil)
-        panel.makeFirstResponder(search)
-        NSLog("veil: picker shown frame=%@", NSStringFromRect(panel.frame))
+        if mode == .palette {
+            // makeKey takes the keyboard for the search field without
+            // activating Veil — the target app stays front.
+            panel.makeKeyAndOrderFront(nil)
+            panel.makeFirstResponder(search)
+        } else {
+            // Anchored never takes key — arrows/Enter/Esc ride a session
+            // tap while the panel's up so the field keeps the keyboard.
+            panel.orderFront(nil)
+            let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+            let me = Unmanaged.passUnretained(self).toOpaque()
+            eventTap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap, place: .headInsertEventTap,
+                options: .defaultTap, eventsOfInterest: mask,
+                callback: { _, type, event, ctx -> Unmanaged<CGEvent>? in
+                    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                        if let ctx {
+                            let p = Unmanaged<FillPanel>.fromOpaque(ctx).takeUnretainedValue()
+                            if let tap = p.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+                        }
+                        return Unmanaged.passUnretained(event)
+                    }
+                    guard type == .keyDown, let ctx else { return Unmanaged.passUnretained(event) }
+                    let p = Unmanaged<FillPanel>.fromOpaque(ctx).takeUnretainedValue()
+                    return p.handleKey(event) ? Unmanaged.passUnretained(event) : nil
+                },
+                userInfo: me,
+            )
+            if let eventTap {
+                tapSource = CFMachPortCreateRunLoopSource(nil, eventTap, 0)
+                CFRunLoopAddSource(CFRunLoopGetMain(), tapSource, .commonModes)
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+        }
+        NSLog("veil: picker shown mode=%@ frame=%@", mode == .palette ? "palette" : "anchored",
+              NSStringFromRect(panel.frame))
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
             [weak self] _ in
@@ -417,6 +562,20 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         if !shown.isEmpty {
             table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         }
+    }
+
+    /// Anchored mode's nav keys — eaten only while the panel is visible.
+    /// true = the event proceeds to the field, false = the picker took it.
+    private func handleKey(_ ev: CGEvent) -> Bool {
+        guard panel.isVisible else { return true }
+        switch ev.getIntegerValueField(.keyboardEventKeycode) {
+        case 125: move(1)               // down
+        case 126: move(-1)              // up
+        case 36, 76: confirm()          // return / keypad enter
+        case 53: dismiss()              // esc
+        default: return true
+        }
+        return false
     }
 
     /// Arrows/Enter/Esc typed into the search field forward to the table —
@@ -452,6 +611,15 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
     }
 
     func dismiss() {
+        if let tapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes)
+            self.tapSource = nil
+        }
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: false)
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
+        }
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         globalMonitor = nil
         panel.orderOut(nil)
