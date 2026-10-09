@@ -50,17 +50,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Menu-bar helper should outlive the session — relaunch at login.
         try? SMAppService.mainApp.register()
-        // State restoration can resurrect a vault window already past the
-        // gate — close anything we did not create before deciding what to
-        // show. isRestorable=false on the window stops it being saved.
+        // A manual launch (double-click, Spotlight, `open`) activates the
+        // app; the login-item relaunch does not. Opening the vault on an
+        // active launch is what a tapped app icon should do.
         DispatchQueue.main.async {
-            // Nothing we own can legitimately exist yet — anything here is
-            // a restored window that skipped the gate.
-            for w in NSApp.windows {
-                w.close()
-            }
-            // A manual launch (double-click, Spotlight, `open`) activates
-            // the app; the login-item relaunch does not.
             if NSApp.isActive {
                 VaultWindowController.shared.open()
             }

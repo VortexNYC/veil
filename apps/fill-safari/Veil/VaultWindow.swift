@@ -31,7 +31,10 @@ final class VaultWindowController: NSObject {
                     self.unlocked = true
                     self.loadVault()
                 } else {
-                    self.window?.close()
+                    // close() releases the window mid-animation and AppKit
+                    // crashes in _NSWindowTransformAnimation — hide it
+                    // instead; a denied vault simply never exists.
+                    self.window?.orderOut(nil)
                     self.window = nil
                 }
             }
