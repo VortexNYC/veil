@@ -812,7 +812,7 @@ func itemCmd(home *string) *cobra.Command {
 	add.Flags().StringVar(&holder, "holder", "", "card holder name")
 	imp := &cobra.Command{
 		Use:   "import FILE",
-		Short: "One-shot 1Password .1pux, Apple Passwords/Bitwarden CSV, or Bitwarden JSON onto this vault or origin. Not MCP.",
+		Short: "One-shot import onto this vault or origin: 1Password .1pux, Bitwarden CSV/JSON, Apple Passwords, LastPass, Dashlane, or Google Passwords CSV. Not MCP.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if originBase() != "" {

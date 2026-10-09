@@ -439,8 +439,10 @@ func csvKey(h string) string {
 		return "username"
 	case "password", "loginpassword":
 		return "password"
-	case "otpauth", "totp", "logintotp":
+	case "otpauth", "totp", "logintotp", "otpsecret":
 		return "totp"
+	case "note", "notes", "extra":
+		return "notes"
 	case "archived":
 		return "archived"
 	default:
