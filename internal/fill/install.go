@@ -85,6 +85,12 @@ func InstallBridgeAgent(env InstallEnv) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	// The bundled broker inside Veil.app owns the socket when the app is
+	// installed; a bare vault-home host covers CLI-only installs.
+	bin := bundledBinary()
+	if bin == "" {
+		bin = HostPath(env.VaultHome)
+	}
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -94,6 +100,7 @@ func InstallBridgeAgent(env InstallEnv) error {
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
+		<string>fill</string>
 		<string>--bridge</string>
 	</array>
 	<key>RunAtLoad</key>
@@ -113,9 +120,19 @@ func InstallBridgeAgent(env InstallEnv) error {
 	<string>%s</string>
 </dict>
 </plist>
-`, BridgeLabel, HostPath(env.VaultHome), filepath.Join(env.VaultHome, "fill-bridge.log"), filepath.Join(env.VaultHome, "fill-bridge.log"))
+`, BridgeLabel, bin, filepath.Join(env.VaultHome, "fill-bridge.log"), filepath.Join(env.VaultHome, "fill-bridge.log"))
 	path := filepath.Join(dir, BridgeLabel+".plist")
 	return os.WriteFile(path, []byte(plist), 0o644)
+}
+
+// bundledBinary is the broker inside the installed Veil.app — one app
+// owns the fill socket when the bundle is present.
+func bundledBinary() string {
+	const bundled = "/Applications/Veil.app/Contents/MacOS/veil-bin"
+	if _, err := os.Stat(bundled); err == nil {
+		return bundled
+	}
+	return ""
 }
 
 // BootstrapBridgeAgent (re)starts the LaunchAgent written by
