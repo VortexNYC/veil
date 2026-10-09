@@ -47,7 +47,7 @@ func NativeHostArgs(args []string) []string {
 	if len(args) == 0 {
 		return args
 	}
-	if filepath.Base(args[0]) == HostFile || (len(args) > 1 && nativeMessagingOrigin(args[1])) {
+	if filepath.Base(args[0]) == HostFile || (len(args) > 1 && (nativeMessagingOrigin(args[1]) || nativeManifestLaunch(args))) {
 		// VEIL_HOME is the binary's directory when it is a standalone host
 		// (a fill.json sits next to it). Inside an app bundle the vault home
 		// is still the user's ~/.veil — the bundle holds no state.
@@ -77,6 +77,14 @@ func NativeHostArgs(args []string) []string {
 
 func nativeMessagingOrigin(s string) bool {
 	return strings.HasPrefix(s, "chrome-extension://") || strings.HasPrefix(s, "moz-extension://")
+}
+
+// Firefox spawns the host as `binary <manifest-path> <extension-id>` —
+// argv[1] is the host manifest on disk, not an origin URL.
+func nativeManifestLaunch(args []string) bool {
+	return len(args) > 2 &&
+		strings.HasSuffix(strings.ToLower(args[1]), ".json") &&
+		strings.Contains(args[2], "@")
 }
 
 func HostPath(vaultHome string) string {
