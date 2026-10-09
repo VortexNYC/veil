@@ -163,6 +163,14 @@ func hostAllowed(item protocol.Item, rawURL string) string {
 		if CanonicalHost(iu) == want {
 			return ""
 		}
+		// Login-style URIs match on the registrable domain — a credential
+		// saved for capitalone.com fills www.capitalone.com, the 1Password
+		// default. Scoped to http(s) so app:// and other bindings stay exact.
+		if (iu.Scheme == "https" || iu.Scheme == "http") &&
+			(u.Scheme == "https" || u.Scheme == "http") &&
+			Registrable(raw) == Registrable(rawURL) {
+			return ""
+		}
 	}
 	return "host_not_allowed"
 }

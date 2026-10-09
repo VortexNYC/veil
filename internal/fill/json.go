@@ -180,9 +180,20 @@ func (h *Host) jsonMatch(rawURL string) []jsonMatchEntry {
 	// Host-bound items outrank unbound ones — a card or identity with no URI
 	// matches everywhere, so the login saved for this exact host leads.
 	// Stable: vault order breaks ties.
+	pageReg := grant.Registrable(rawURL)
 	exact := func(it protocol.Item) bool {
 		for _, raw := range it.URIs {
-			if u, err := grant.ParseDest(raw); err == nil && grant.CanonicalHost(u) == pageHost {
+			u, err := grant.ParseDest(raw)
+			if err != nil {
+				continue
+			}
+			if grant.CanonicalHost(u) == pageHost {
+				return true
+			}
+			// A URI bound to the same registrable domain still outranks
+			// unbound cards and identities — it was saved *for* this site.
+			if (u.Scheme == "https" || u.Scheme == "http") &&
+				grant.Registrable(raw) == pageReg {
 				return true
 			}
 		}
