@@ -18,6 +18,23 @@ import ApplicationServices
 final class UniversalFill: NSObject {
     static let shared = UniversalFill()
 
+    // Native-app fill must not teach an item that it "belongs" to a
+    // browser — pages inside it are the extension's match context.
+    private static let browsers: Set<String> = [
+        "com.apple.Safari",
+        "com.google.Chrome",
+        "com.google.Chrome.beta",
+        "com.google.Chrome.dev",
+        "com.google.Chrome.canary",
+        "org.mozilla.firefox",
+        "com.microsoft.edgemac",
+        "com.brave.Browser",
+        "company.thebrowser.Browser",
+        "com.operasoftware.Opera",
+        "com.vivaldi.Vivaldi",
+        "net.imput.helium",
+    ]
+
     private var keyTap: CFMachPort?
     private var targetApp: NSRunningApplication?
     private var picker: FillPanel?
@@ -281,6 +298,17 @@ final class UniversalFill: NSObject {
             defer { DispatchQueue.main.async { self.fillInFlight = false } }
             do {
                 let (entries, _) = try FillBridge.shared.fill(app: bundleID, uuid: uuid)
+                // The fill itself is the vote — the picked item learns this
+                // app's bundle ID so the dropdown anchors on focus next
+                // time, no palette pass needed. Browsers are excluded —
+                // an item bound to com.apple.Safari would surface on every
+                // web page's field, which is the extension's job.
+                if !Self.browsers.contains(bundleID) {
+                    _ = try? FillBridge.shared.roundTrip(
+                        ["action": "bind", "url": "app://" + bundleID, "uuid": uuid],
+                        timeout: 10,
+                    )
+                }
                 guard let first = entries.first else { return }
                 let login = first["login"] as? String ?? ""
                 let password = first["password"] as? String ?? ""

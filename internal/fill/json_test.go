@@ -1379,3 +1379,64 @@ func TestJSONEchoesReqID(t *testing.T) {
 		t.Fatalf("reqId appeared unrequested: %s", raw)
 	}
 }
+
+func TestJSONBindAttachesAppURI(t *testing.T) {
+	// A fill into a native app teaches the item the bundle ID — after bind,
+	// the app-context match that returned nothing returns the item.
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "app-login", Secret: secret, Login: "axuser",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("item %d %s", code, raw)
+	}
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	h.Confirm = func(string) error { return nil }
+
+	var matched struct {
+		Entries []jsonMatchEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(jsonHandle(t, h, map[string]string{
+		"action": "match", "url": "app://com.apple.Notes",
+	}), &matched); err != nil {
+		t.Fatal(err)
+	}
+	if len(matched.Entries) != 0 {
+		t.Fatalf("unbound item matched app %+v", matched.Entries)
+	}
+	uuid := ""
+	items, _ := a.ItemsForPrincipal(protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID})
+	for _, it := range items {
+		if it.Name == "app-login" {
+			uuid = it.ID
+		}
+	}
+	if uuid == "" {
+		t.Fatal("item not in app")
+	}
+	var bound struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(jsonHandle(t, h, map[string]string{
+		"action": "bind", "url": "app://com.apple.Notes", "uuid": uuid,
+	}), &bound); err != nil {
+		t.Fatal(err)
+	}
+	if !bound.OK {
+		t.Fatal("bind refused")
+	}
+	h.invalidateIndex()
+	if err := json.Unmarshal(jsonHandle(t, h, map[string]string{
+		"action": "match", "url": "app://com.apple.Notes",
+	}), &matched); err != nil {
+		t.Fatal(err)
+	}
+	if len(matched.Entries) != 1 || matched.Entries[0].Name != "app-login" {
+		t.Fatalf("post-bind match %+v", matched.Entries)
+	}
+}

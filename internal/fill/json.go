@@ -18,6 +18,7 @@ import (
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/passgen"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/publicapi"
 )
 
 // indexTTL bounds how long a cached item index may serve match/fill before a
@@ -139,6 +140,10 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 		return jsonBytes(struct {
 			Entries []jsonMatchEntry `json:"entries"`
 		}{Entries: h.jsonMatch(in.URL)})
+	case "bind":
+		// After a fill into a native app the picked item learns the app's
+		// bundle ID — the anchored dropdown needs no palette next time.
+		return h.jsonBind(in.URL, in.UUID)
 	case "list":
 		return jsonBytes(struct {
 			Entries []jsonMatchEntry `json:"entries"`
@@ -239,6 +244,59 @@ func (h *Host) jsonMatch(rawURL string) []jsonMatchEntry {
 		out = append(out, matchEntry(item))
 	}
 	return out
+}
+
+// jsonBind attaches `app://<bundleID>` to an item the human just filled
+// into a native app. App-context match requires an explicit binding, so
+// one palette pick teaches every later anchored dropdown.
+func (h *Host) jsonBind(rawURL, uuid string) []byte {
+	out := struct {
+		OK bool `json:"ok"`
+	}{}
+	rawURL = strings.TrimSpace(rawURL)
+	if !strings.HasPrefix(rawURL, "app://") || uuid == "" {
+		return jsonBytes(out)
+	}
+	h.ensureIndex()
+	h.mu.Lock()
+	items := append([]protocol.Item(nil), h.index...)
+	h.mu.Unlock()
+	var item protocol.Item
+	found := false
+	for _, it := range items {
+		if it.ID == uuid && !it.Archived {
+			item, found = it, true
+			break
+		}
+	}
+	if !found {
+		return jsonBytes(out)
+	}
+	for _, uri := range item.URIs {
+		if uri == rawURL {
+			out.OK = true
+			return jsonBytes(out)
+		}
+	}
+	var err error
+	if h.Origin != "" {
+		payload, merr := json.Marshal(publicapi.UpdateItemRequest{URI: rawURL})
+		if merr != nil {
+			return jsonBytes(out)
+		}
+		_, err = h.originCall(http.MethodPatch, "/v1/items/"+url.PathEscape(uuid), payload)
+	} else if h.App != nil {
+		_, err = h.App.UpdateItem(uuid, nil, []string{rawURL}, nil, "", nil)
+	} else {
+		return jsonBytes(out)
+	}
+	if err != nil {
+		return jsonBytes(out)
+	}
+	h.invalidateIndex()
+	h.replicaSyncSoon()
+	out.OK = true
+	return jsonBytes(out)
 }
 
 func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
