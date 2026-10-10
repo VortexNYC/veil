@@ -123,3 +123,9 @@ loadtest:
 	@test -n "$$VEIL_AGENT_TOKEN" || { echo "VEIL_AGENT_TOKEN is required"; exit 1; }
 	@test -n "$$VEIL_ITEM_ID" || { echo "VEIL_ITEM_ID is required"; exit 1; }
 	k6 run tests/load/k6/use.js
+
+# Veil.app release: Release archive -> Developer ID export -> notarize ->
+# staple -> /tmp/Veil.dmg. Needs ~/.veil/keys/AuthKey_X4CUX6F3L4.p8 and an
+# in-effect Developer Program agreement on the VFWGNKKT4G account.
+release:
+	./scripts/release-macos.sh
