@@ -12,7 +12,6 @@ final class App: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false)
         win.title = "TestLogin"
-        win.level = .floating
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 220))
 
         let user = NSTextField(frame: NSRect(x: 40, y: 130, width: 300, height: 28))
