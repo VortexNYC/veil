@@ -21,7 +21,11 @@ import (
 
 // iconsDir is vault-home/icons when the host knows its dir, else
 // ~/.veil/icons — the same place the installed app keeps its extension.
+// IconsOff (strict posture) means no directory and no fetches ever.
 func (h *Host) iconsDir() string {
+	if h.IconsOff {
+		return ""
+	}
 	if h.Dir != "" {
 		return filepath.Join(h.Dir, "icons")
 	}

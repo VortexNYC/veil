@@ -32,6 +32,13 @@ type HostConfig struct {
 	Confirm string `json:"confirm,omitempty"`
 	// ConfirmTTL is the reuse window in seconds (default 30).
 	ConfirmTTL int `json:"confirm_ttl_seconds,omitempty"`
+	// Policy is the posture preset: "strict" (prompt every release, no
+	// network egress for icons), "relaxed" (session reuse, 5-minute
+	// window), "standard"/"" for the defaults. Individual keys override.
+	Policy string `json:"policy,omitempty"`
+	// Icons toggles favicon fetching — "false" keeps the host from ever
+	// touching the network for site art.
+	Icons *bool `json:"icons,omitempty"`
 }
 
 type InstallEnv struct {

@@ -68,6 +68,9 @@ type Host struct {
 	ConfirmMode string
 	// ConfirmTTL overrides the 30s reuse window when positive.
 	ConfirmTTL time.Duration
+	// IconsOff disables favicon fetching — the strict posture keeps the
+	// host from touching the network for site art.
+	IconsOff bool
 	// Replica is the sealed local cache. Key is Keychain, not a file.
 	Replica *replica.Vault
 	// Issuer, ClientID, Redirect configure the extension browser sign-in

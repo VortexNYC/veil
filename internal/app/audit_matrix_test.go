@@ -346,3 +346,35 @@ func TestAuditMatrix_PasskeyAssert(t *testing.T) {
 		t.Fatal("passkey_assert event leaked credential material")
 	}
 }
+
+// veil:never-fill strips the item from every replica pull — the strictest
+// per-item posture means no device ever holds its material.
+func TestFillSyncNeverFillTag(t *testing.T) {
+	a, _, _, _, owner := matrixApp(t)
+
+	live, err := a.PutItemFor(owner, ItemOpts{Name: "sync-live", Token: []byte(secret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.PutItemFor(owner, ItemOpts{Name: "sync-nope", Token: []byte(secret), Tags: []string{protocol.TagNeverFill}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err := a.FillSync(owner, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Item.Name == "sync-nope" {
+			t.Fatal("never-fill item reached the replica")
+		}
+	}
+	seen := false
+	for _, row := range rows {
+		if row.Item.ID == live.ID {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatal("untagged item missing from sync")
+	}
+}

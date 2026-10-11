@@ -6,6 +6,7 @@ package protocol
 
 import (
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -84,6 +85,16 @@ func (k ItemKind) Fillable() bool {
 	default:
 		return false
 	}
+}
+
+// TagNeverFill is the one reserved tag: the origin strips a tagged item
+// from every device sync, so no laptop, phone, or extension replica ever
+// holds its material — origin use only.
+const TagNeverFill = "veil:never-fill"
+
+// NeverFill reports whether the item carries the reserved never-fill tag.
+func (i Item) NeverFill() bool {
+	return slices.Contains(i.Tags, TagNeverFill)
 }
 
 type ActionKind string

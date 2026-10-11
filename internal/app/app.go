@@ -1741,7 +1741,8 @@ func (a *App) FillSync(p protocol.Principal, since string) ([]FillSyncRow, strin
 	}
 	out := make([]FillSyncRow, 0, len(items))
 	for _, item := range items {
-		if item.Archived {
+		// NeverFill never leaves the origin — no device replica may hold it.
+		if item.Archived || item.NeverFill() {
 			continue
 		}
 		switch item.Kind {

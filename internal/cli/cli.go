@@ -2085,6 +2085,43 @@ func fillCmd(home *string) *cobra.Command {
 	c.Flags().BoolVar(&confirmPrompt, "confirm-prompt", false, "run one access sheet + Touch ID eval then exit (internal: spawned by the bridge daemon)")
 	c.Flags().BoolVar(&confirmServer, "confirm-server", false, "serve access sheets over stdio until stdin closes (internal: the bridge daemon's warm confirm helper)")
 	c.AddCommand(&cobra.Command{
+		Use:   "policy <strict|standard|relaxed>",
+		Short: "Set the fill posture: strict prompts every release + no icon egress; relaxed reuses Touch ID across sites for 5m.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			policy := args[0]
+			switch policy {
+			case "strict", "standard", "relaxed":
+			default:
+				return fmt.Errorf("fill policy: %q (want strict|standard|relaxed)", policy)
+			}
+			user, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			dir := filepath.Join(user, ".veil")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return err
+			}
+			cfg, _ := fill.ReadHostConfig(dir)
+			cfg.Policy = policy
+			// The preset owns the defaults — drop overrides so it applies
+			// cleanly. Explicit settings can be re-added by hand.
+			cfg.Confirm = ""
+			cfg.ConfirmTTL = 0
+			raw, err := json.MarshalIndent(cfg, "", "  ")
+			if err != nil {
+				return err
+			}
+			p := filepath.Join(dir, fill.HostConfigFile)
+			if err := os.WriteFile(p, raw, 0o600); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "policy=%s (%s)\n", policy, p)
+			return nil
+		},
+	})
+	c.AddCommand(&cobra.Command{
 		Use:   "install",
 		Short: "Install the nyc.veil.fill native messaging host. Does not copy the extension.",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -2435,12 +2472,26 @@ func attachFillConfirm(h *fill.Host) {
 			cfg, read = c, true
 		}
 	}
+	// The preset names the posture; individual keys override it.
+	switch cfg.Policy {
+	case "strict":
+		h.ConfirmMode = "strict"
+		h.IconsOff = true
+	case "relaxed":
+		h.ConfirmMode = "session"
+		if h.ConfirmTTL <= 0 {
+			h.ConfirmTTL = 5 * time.Minute
+		}
+	}
 	switch cfg.Confirm {
 	case "", "origin", "strict", "session":
 		h.ConfirmMode = cfg.Confirm
 	}
 	if cfg.ConfirmTTL > 0 {
 		h.ConfirmTTL = time.Duration(cfg.ConfirmTTL) * time.Second
+	}
+	if cfg.Icons != nil && !*cfg.Icons {
+		h.IconsOff = true
 	}
 	if confirm.Enabled() {
 		h.Confirm = confirm.TouchID
