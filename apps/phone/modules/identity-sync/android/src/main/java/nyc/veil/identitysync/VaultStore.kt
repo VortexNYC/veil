@@ -2,6 +2,7 @@ package nyc.veil.identitysync
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -67,6 +68,14 @@ internal object VaultStore {
             log("refresh error ${e.javaClass.simpleName}")
             null
         }
+    }
+
+    /// Handoff freshness — older than 5 minutes counts as stale. The app
+    /// rewrites it on sign-in, sync pulls it otherwise; a hard clock on
+    /// the file mtime keeps a long-idle cache honest.
+    internal fun stale(ctx: Context): Boolean {
+        val f = handoffFile(ctx)
+        return !f.exists() || System.currentTimeMillis() - f.lastModified() > 5 * 60_000L
     }
 
     /// Vault items whose URI list contains `host`. Password kinds only —
@@ -219,6 +228,44 @@ internal object VaultStore {
         }
     }
 
+    /// Pull the item catalog into the handoff — the provider's read
+    /// surface is the handoff file, and only the app writes it today. A
+    /// sync here self-heals: fresh registrations appear on the next
+    /// CredMan query without the app needing to run.
+    internal fun sync(ctx: Context) {
+        val h = freshened(ctx) ?: run { log("sync no session"); return }
+        try {
+            val conn = (URL(h.getString("origin") + "/v1/items").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8_000
+                readTimeout = 12_000
+                setRequestProperty("Authorization", "Bearer ${h.getString("token")}")
+            }
+            if (conn.responseCode != 200) { log("sync http ${conn.responseCode}"); return }
+            val out = JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
+            val items = out.optJSONArray("items") ?: JSONArray()
+            val slim = JSONArray()
+            for (i in 0 until items.length()) {
+                val it = items.optJSONObject(i) ?: continue
+                slim.put(JSONObject().apply {
+                    put("uuid", it.optString("id"))
+                    put("name", it.optString("name"))
+                    put("login", it.optString("login"))
+                    put("kind", it.optString("kind"))
+                    put("uris", it.optJSONArray("uris") ?: JSONArray())
+                    if (it.has("cred_id")) put("credId", it.optString("cred_id"))
+                    if (it.has("rp_id")) put("rpId", it.optString("rp_id"))
+                    if (it.has("user_handle")) put("userHandle", it.optString("user_handle"))
+                })
+            }
+            h.put("items", slim)
+            handoffFile(ctx).writeText(h.toString())
+            log("sync items=${slim.length()}")
+        } catch (e: Exception) {
+            log("sync error ${e.javaClass.simpleName}")
+        }
+    }
+
     /// WebAuthn ceremony through the origin — same contract as iOS. The
     /// caller passes the RP's publicKey request object verbatim; the reply's
     /// `response` is a PublicKeyCredential-shaped JSON ready to hand to
@@ -244,8 +291,17 @@ internal object VaultStore {
                 log("passkeys http ${conn.responseCode}")
                 return null
             }
-            JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
-                .optJSONObject("response")?.toString()
+            val resp = JSONObject(conn.inputStream.use { s -> s.readBytes().decodeToString() })
+                .optJSONObject("response") ?: return null
+            // The origin reports ceremony failures inside `response` as
+            // {"errorCode": N} — an excluded cred, a cancelled ceremony, a
+            // bad rpId. Forwarding that as a credential produces garbage
+            // CredMan can't parse. Fail closed instead.
+            if (resp.has("errorCode")) {
+                log("passkeys errorCode=${resp.optInt("errorCode")}")
+                return null
+            }
+            resp.toString()
         } catch (e: Exception) {
             log("passkeys error ${e.javaClass.simpleName}")
             null

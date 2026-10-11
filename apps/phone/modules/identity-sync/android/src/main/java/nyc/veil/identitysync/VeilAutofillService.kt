@@ -32,6 +32,11 @@ class VeilAutofillService : AutofillService() {
 
     override fun onFillRequest(request: FillRequest, signal: CancellationSignal, callback: FillCallback) {
         VaultStore.log("onFillRequest contexts=${request.fillContexts.size}")
+        // Serve the current cache now, refresh in the background — same
+        // self-heal as the CredMan service.
+        if (VaultStore.stale(this)) {
+            Thread { VaultStore.sync(this) }.start()
+        }
         val structure = request.fillContexts.lastOrNull()?.structure
         val form = parse(structure) ?: run {
             VaultStore.log("fillRequest: no credential fields")

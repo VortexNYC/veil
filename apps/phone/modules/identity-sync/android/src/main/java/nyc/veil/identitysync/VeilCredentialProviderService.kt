@@ -43,6 +43,12 @@ class VeilCredentialProviderService : CredentialProviderService() {
     ) {
         val info = request.callingAppInfo
         val host = VaultStore.hostOf(callingOrigin(info) ?: "")
+        // Self-heal the handoff — a stale cache means a fresh passkey or
+        // a new login never surfaces. Serve the current entries now and
+        // refresh in the background for the next query.
+        if (VaultStore.stale(this)) {
+            Thread { VaultStore.sync(this) }.start()
+        }
         VaultStore.log("beginGet pkg=${info?.packageName} populated=${info?.isOriginPopulated()}")
         for (opt in request.beginGetCredentialOptions) {
             val entries = mutableListOf<CredentialEntry>()
