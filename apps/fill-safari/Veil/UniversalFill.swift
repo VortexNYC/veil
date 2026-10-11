@@ -77,6 +77,8 @@ final class UniversalFill: NSObject {
                     && flags.contains(.maskShift)
                     && flags.intersection([.maskControl, .maskAlternate]).isEmpty
                 guard backslash || cmdShiftSpace else { return Unmanaged.passUnretained(event) }
+                let tline = "\(Date()) tap-hit code=\(code)\n"
+                try? tline.write(toFile: "/tmp/veil-tap-hit.log", atomically: false, encoding: .utf8)
                 DispatchQueue.main.async { UniversalFill.shared.trigger() }
                 return nil // the gesture is ours — the field never sees it
             },
@@ -204,6 +206,10 @@ final class UniversalFill: NSObject {
 
     func trigger() {
         NSLog("veil: trigger")
+        let tline = "\(Date()) front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")\n"
+        if let fh = FileHandle(forWritingAtPath: "/tmp/veil-trigger.log") ?? (FileManager.default.createFile(atPath: "/tmp/veil-trigger.log", contents: nil) ? FileHandle(forWritingAtPath: "/tmp/veil-trigger.log") : nil) {
+            fh.seekToEndOfFile(); fh.write(tline.data(using: .utf8)!); fh.closeFile()
+        }
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.bundleIdentifier != Bundle.main.bundleIdentifier,
               let bundleID = front.bundleIdentifier
@@ -253,9 +259,15 @@ final class UniversalFill: NSObject {
 
         // The socket round-trip blocks — never on main.
         DispatchQueue.global().async { [self] in
-            let entries: [[String: Any]]
+            var entries: [[String: Any]] = []
             do {
                 entries = try FillBridge.shared.match(app: bundleID)
+                if entries.isEmpty {
+                    // First fill into this app — nothing bound yet. Offer the
+                    // whole vault; the pick writes app://<bundleID> so the next
+                    // field focus gets the anchored dropdown instead.
+                    entries = try FillBridge.shared.list()
+                }
             } catch {
                 NSLog("veil: match error %@", error.localizedDescription)
                 DispatchQueue.main.async { self.showNote("Veil fill host unreachable — run `veil fill install`") }
@@ -489,7 +501,7 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         card.layer?.borderColor = NSColor.separatorColor.cgColor
 
         if mode == .palette {
-            search.placeholderString = "Search items"
+            search.placeholderString = "Search Veil"
             search.font = .systemFont(ofSize: 14)
             search.focusRingType = .none
             search.isBezeled = true
@@ -499,16 +511,21 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
             search.sendsWholeSearchString = false
             search.frame = NSRect(x: 10, y: height - searchH - 2, width: width - 20, height: searchH - 4)
             card.addSubview(search)
+            let brand = NSImageView(image: NSImage(
+                systemSymbolName: "lock.fill", accessibilityDescription: nil)!)
+            brand.contentTintColor = .tertiaryLabelColor
+            brand.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+            brand.frame = NSRect(x: width - 30, y: height - searchH + 3, width: 16, height: 16)
+            card.addSubview(brand)
         }
 
         scroll.frame = NSRect(x: 4, y: hintH, width: width - 8, height: listH)
         card.addSubview(scroll)
 
-        let hint = NSTextField(labelWithString: "↑↓ pick    ⏎ fill    esc")
-        hint.font = .systemFont(ofSize: 10, weight: .regular)
-        hint.textColor = .tertiaryLabelColor
-        hint.alignment = .center
-        hint.frame = NSRect(x: 0, y: 3, width: width, height: 16)
+        let hint = KeycapHint(items: [
+            ("↑↓", "pick"), ("⏎", "fill"), ("esc", "dismiss"),
+        ])
+        hint.frame = NSRect(x: 0, y: 4, width: width, height: 16)
         card.addSubview(hint)
 
         panel.contentView = card
@@ -705,6 +722,53 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         RoundRow()
     }
 
+    /// Draws 1Password-style key-cap chips — bordered rounded glyphs with
+    /// a label after each. Plain text hints read cheap next to it.
+    private final class KeycapHint: NSView {
+        let items: [(String, String)]
+        init(items: [(String, String)]) {
+            self.items = items
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { nil }
+
+        override func draw(_ dirtyRect: NSRect) {
+            let capFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium)
+            let labelFont = NSFont.systemFont(ofSize: 10, weight: .regular)
+            let capFg = NSColor.tertiaryLabelColor
+            let labelFg = NSColor.tertiaryLabelColor
+            let capH: CGFloat = 14
+            var x = bounds.minX
+            // center the whole row
+            var widths: [CGFloat] = []
+            for (cap, label) in items {
+                let capW = cap.size(withAttributes: [.font: capFont]).width + 10
+                let labW = label.size(withAttributes: [.font: labelFont]).width
+                widths.append(capW + 6 + labW + 14)
+            }
+            x = max(0, (bounds.width - widths.reduce(0, +) + 14) / 2)
+            let y = (bounds.height - capH) / 2
+            for (i, (cap, label)) in items.enumerated() {
+                let capW = cap.size(withAttributes: [.font: capFont]).width + 10
+                let r = NSRect(x: x, y: y, width: capW, height: capH)
+                let path = NSBezierPath(roundedRect: r, xRadius: 4, yRadius: 4)
+                NSColor.separatorColor.withAlphaComponent(0.6).setStroke()
+                path.lineWidth = 0.8
+                path.stroke()
+                NSColor.tertiaryLabelColor.withAlphaComponent(0.06).setFill()
+                path.fill()
+                cap.draw(at: NSPoint(x: x + 5, y: y + 1.5), withAttributes: [
+                    .font: capFont, .foregroundColor: capFg,
+                ])
+                let labW = label.size(withAttributes: [.font: labelFont]).width
+                label.draw(at: NSPoint(x: x + capW + 6, y: y + 0.5), withAttributes: [
+                    .font: labelFont, .foregroundColor: labelFg,
+                ])
+                x += capW + 6 + labW + 14
+            }
+        }
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let e = shown[row]
         let name = e["name"] as? String ?? "item"
@@ -745,8 +809,14 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
             v.identifier = id
             return v
         }()
+        let kind = e["kind"] as? String ?? "login"
+        let glyph = kind == "identity" ? "person.crop.rectangle"
+            : kind == "card" ? "creditcard"
+            : kind == "note" ? "doc.text"
+            : kind == "apiKey" ? "key"
+            : "lock"
         cell.imageView?.image = NSImage(
-            systemSymbolName: "key.fill",
+            systemSymbolName: glyph,
             accessibilityDescription: nil,
         )
         cell.textField?.stringValue = name
