@@ -82,6 +82,28 @@ final class VaultStore {
                         options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
+    /// Replace the handoff's item cache with a freshly fetched catalog —
+    /// same shape the containing app writes, so the app reads a current
+    /// cache too.
+    private static func storeItems(_ items: [HandoffItem], into h: Handoff) {
+        guard let url = handoffURL else { return }
+        var raw: [String: Any] = ["token": h.token, "origin": h.origin]
+        if let refresh = h.refresh { raw["refresh"] = refresh }
+        if let issuer = h.issuer { raw["issuer"] = issuer }
+        let arr = items.map { it -> [String: Any] in
+            var e: [String: Any] = ["uuid": it.uuid, "name": it.name,
+                                    "login": it.login, "kind": it.kind, "uris": it.uris]
+            if let v = it.credId { e["credId"] = v }
+            if let v = it.rpId { e["rpId"] = v }
+            if let v = it.userHandle { e["userHandle"] = v }
+            return e
+        }
+        raw["items"] = arr
+        guard let data = try? JSONSerialization.data(withJSONObject: raw) else { return }
+        try? data.write(to: url,
+                        options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
     /// exp claim on a JWT payload — no signature check needed here; the
     /// token is ours, we only need to know whether origin will 401 it.
     private static func expired(_ jwt: String) -> Bool {
@@ -157,11 +179,16 @@ final class VaultStore {
                     done(h.items, authErr)
                     return
                 }
-                done(body.items.map {
+                let live = body.items.map {
                     HandoffItem(uuid: $0.id, name: $0.name, login: $0.login ?? "",
                                 uris: $0.uris ?? [], kind: $0.kind ?? "login",
                                 credId: $0.cred_id, rpId: $0.rp_id, userHandle: $0.user_handle)
-                }, nil)
+                }
+                // Self-heal the offline cache — a fresh catalog lands in
+                // the handoff so a later network-down query still sees
+                // today's items, not sign-in-day's.
+                storeItems(live, into: h)
+                done(live, nil)
             }.resume()
         }
     }
