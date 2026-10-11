@@ -343,12 +343,20 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 		}
 	}
 	scope := grant.Registrable(rawURL)
+	// Remote-approve posture: the gate is another device's human, not a
+	// local eval — file the ask, poll for the resolution, then release.
+	gate := func(reason string, reuse bool) error {
+		if item, ok := h.indexItem(hit.UUID); ok && h.remoteGate(item) {
+			return h.remoteApprove(item, scope, peer)
+		}
+		return h.confirm(reason, scope, reuse, peer)
+	}
 	switch hit.Kind {
 	case "login":
 		if hit.Affiliated {
 			return empty
 		}
-		if err := h.confirm("Veil wants to fill a saved sign-in", scope, true, peer); err != nil {
+		if err := gate("Veil wants to fill a saved sign-in", true); err != nil {
 			return empty
 		}
 		got, ok := h.unlockJSONFill(hit.UUID, hit.HasTOTP)
@@ -375,7 +383,7 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 			fillDebug("fill empty card")
 			return empty
 		}
-		if err := h.confirm("Veil wants to fill a card", scope, env.CVV == "", peer); err != nil {
+		if err := gate("Veil wants to fill a card", env.CVV == ""); err != nil {
 			return empty
 		}
 		if err := h.recordFillEvent(item.ID, "card", false); err != nil {
@@ -397,7 +405,7 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 		if !ok {
 			return empty
 		}
-		if err := h.confirm("Veil wants to fill an identity", scope, true, peer); err != nil {
+		if err := gate("Veil wants to fill an identity", true); err != nil {
 			return empty
 		}
 		if err := h.recordFillEvent(item.ID, "identity", false); err != nil {
@@ -520,6 +528,19 @@ func (h *Host) reloadIndex() {
 	h.indexOK = true
 	h.indexAt = time.Now()
 	h.mu.Unlock()
+}
+
+// indexItem returns the cached item row by uuid — the remote-approve
+// gate needs tags the match entries don't carry.
+func (h *Host) indexItem(uuid string) (protocol.Item, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, it := range h.index {
+		if it.ID == uuid {
+			return it, true
+		}
+	}
+	return protocol.Item{}, false
 }
 
 func matchEntry(item protocol.Item) jsonMatchEntry {

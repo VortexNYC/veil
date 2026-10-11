@@ -92,9 +92,18 @@ func (k ItemKind) Fillable() bool {
 // holds its material — origin use only.
 const TagNeverFill = "veil:never-fill"
 
+// TagRemoteApprove marks an item whose fills require an approval from
+// another device — the 1Password "approve sign-in elsewhere" posture.
+const TagRemoteApprove = "veil:remote-approve"
+
 // NeverFill reports whether the item carries the reserved never-fill tag.
 func (i Item) NeverFill() bool {
 	return slices.Contains(i.Tags, TagNeverFill)
+}
+
+// RemoteApprove reports whether the item carries the remote-approve tag.
+func (i Item) RemoteApprove() bool {
+	return slices.Contains(i.Tags, TagRemoteApprove)
 }
 
 type ActionKind string

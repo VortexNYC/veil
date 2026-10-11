@@ -2084,7 +2084,8 @@ func fillCmd(home *string) *cobra.Command {
 	c.Flags().BoolVar(&bridge, "bridge", false, "serve fill frames on <home>/fill.sock instead of stdio (Safari appex)")
 	c.Flags().BoolVar(&confirmPrompt, "confirm-prompt", false, "run one access sheet + Touch ID eval then exit (internal: spawned by the bridge daemon)")
 	c.Flags().BoolVar(&confirmServer, "confirm-server", false, "serve access sheets over stdio until stdin closes (internal: the bridge daemon's warm confirm helper)")
-	c.AddCommand(&cobra.Command{
+	var remoteApprove string
+	pol := &cobra.Command{
 		Use:   "policy <strict|standard|relaxed>",
 		Short: "Set the fill posture: strict prompts every release + no icon egress; relaxed reuses Touch ID across sites for 5m.",
 		Args:  cobra.ExactArgs(1),
@@ -2109,6 +2110,13 @@ func fillCmd(home *string) *cobra.Command {
 			// cleanly. Explicit settings can be re-added by hand.
 			cfg.Confirm = ""
 			cfg.ConfirmTTL = 0
+			switch remoteApprove {
+			case "all", "tagged", "off":
+				cfg.RemoteApprove = remoteApprove
+			case "":
+			default:
+				return fmt.Errorf("--remote %q (want all|tagged|off)", remoteApprove)
+			}
 			raw, err := json.MarshalIndent(cfg, "", "  ")
 			if err != nil {
 				return err
@@ -2120,7 +2128,9 @@ func fillCmd(home *string) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "policy=%s (%s)\n", policy, p)
 			return nil
 		},
-	})
+	}
+	pol.Flags().StringVar(&remoteApprove, "remote", "", "gate fills behind another device's approval: all|tagged|off")
+	c.AddCommand(pol)
 	c.AddCommand(&cobra.Command{
 		Use:   "install",
 		Short: "Install the nyc.veil.fill native messaging host. Does not copy the extension.",
@@ -2492,6 +2502,15 @@ func attachFillConfirm(h *fill.Host) {
 	}
 	if cfg.Icons != nil && !*cfg.Icons {
 		h.IconsOff = true
+	}
+	switch cfg.RemoteApprove {
+	case "all", "tagged":
+		h.RemoteApproveMode = cfg.RemoteApprove
+	}
+	if cfg.Device != "" {
+		h.Device = cfg.Device
+	} else if host, err := os.Hostname(); err == nil {
+		h.Device = host
 	}
 	if confirm.Enabled() {
 		h.Confirm = confirm.TouchID

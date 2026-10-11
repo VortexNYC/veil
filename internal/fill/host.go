@@ -39,6 +39,11 @@ type HostConfig struct {
 	// Icons toggles favicon fetching — "false" keeps the host from ever
 	// touching the network for site art.
 	Icons *bool `json:"icons,omitempty"`
+	// RemoteApprove gates fills behind another device's approval:
+	// "all" (every release), "tagged" (veil:remote-approve items), ""|"off".
+	RemoteApprove string `json:"remote_approve,omitempty"`
+	// Device is the name other devices see in the approval ask.
+	Device string `json:"device,omitempty"`
 }
 
 type InstallEnv struct {

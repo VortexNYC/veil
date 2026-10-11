@@ -71,6 +71,12 @@ type Host struct {
 	// IconsOff disables favicon fetching — the strict posture keeps the
 	// host from touching the network for site art.
 	IconsOff bool
+	// RemoteApproveMode gates fills behind another device's approval:
+	// "all" every release, "tagged" only `veil:remote-approve` items.
+	RemoteApproveMode string
+	// Device is this host's name in the approval ask — the approver sees
+	// "MacBook wants to fill X", not a bare uuid.
+	Device string
 	// Replica is the sealed local cache. Key is Keychain, not a file.
 	Replica *replica.Vault
 	// Issuer, ClientID, Redirect configure the extension browser sign-in

@@ -2022,3 +2022,51 @@ func TestFillLoginsURLFormAuditsEveryReveal(t *testing.T) {
 		t.Fatalf("url form audit rows missing: %+v", events)
 	}
 }
+
+// Fill approval requests: a device files the ask, an owner resolves it on
+// the generic requests surface, the device polls for the decision. Fill
+// requests carry no grant — resolve is direct, no approval mint.
+func TestFillRequestLifecycle(t *testing.T) {
+	a := testApp(t)
+	item, err := a.AddItem("github", "https://github.com", []byte(secret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := apiServer(t, a)
+
+	// Agents cannot file — fill approval is a human device surface.
+	code, _ := doJSON(t, srv, http.MethodPost, "/v1/fill/request", "agent", FillRequestIn{ItemID: item.ID, Device: "mini"})
+	if code != http.StatusForbidden {
+		t.Fatalf("agent file %d", code)
+	}
+
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/fill/request", "human", FillRequestIn{ItemID: item.ID, Device: "mini"})
+	if code != http.StatusOK {
+		t.Fatalf("file %d %s", code, raw)
+	}
+	var filed FillRequestOut
+	if json.Unmarshal(raw, &filed) != nil || filed.Status != protocol.RequestOpen {
+		t.Fatalf("filed %s", raw)
+	}
+
+	// The generic requests surface carries the ask — same card the vault shows.
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/requests", "human", nil)
+	if code != http.StatusOK || !strings.Contains(string(raw), filed.RequestID) {
+		t.Fatalf("requests %d %s", code, raw)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/requests/"+filed.RequestID+"/approve", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("approve %d %s", code, raw)
+	}
+
+	// The device polls its own ask and sees the resolution.
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/fill/request/"+filed.RequestID, "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("status %d %s", code, raw)
+	}
+	var st FillRequestOut
+	if json.Unmarshal(raw, &st) != nil || st.Status != protocol.RequestApproved {
+		t.Fatalf("status %s", raw)
+	}
+}

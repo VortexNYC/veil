@@ -25,6 +25,7 @@ import (
 	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/health"
+	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/oneimport"
 	"github.com/VortexNYC/veil/internal/protocol"
@@ -348,6 +349,8 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/fill/passkeys/register", s.fillPasskeyRegister)
 	mux.HandleFunc("POST /v1/fill/passkeys/get", s.fillPasskeyGet)
 	mux.HandleFunc("POST /v1/fill/sync", s.fillSync)
+	mux.HandleFunc("POST /v1/fill/request", s.fillRequest)
+	mux.HandleFunc("GET /v1/fill/request/{id}", s.fillRequestStatus)
 }
 
 func (s *Server) listItems(w http.ResponseWriter, r *http.Request) {
@@ -1077,6 +1080,21 @@ func (s *Server) approveRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "already resolved", http.StatusConflict)
 		return
 	}
+	if req.Action == protocol.ActionFill {
+		// Device fill asks carry no grant — the resolution itself is the
+		// gate the requesting device polls for.
+		resolved, won, err := s.App.Store.ResolveRequest(req.ID, protocol.RequestApproved, owner.ID, "", time.Now())
+		if err != nil {
+			http.Error(w, "approve failed", http.StatusBadRequest)
+			return
+		}
+		if !won {
+			http.Error(w, "already resolved", http.StatusConflict)
+			return
+		}
+		writeJSON(w, requestView(resolved))
+		return
+	}
 	var in struct {
 		TTL string `json:"ttl"`
 	}
@@ -1611,4 +1629,77 @@ func writeJSON(w http.ResponseWriter, v any) {
 func spec(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(Spec)
+}
+
+// FillRequest files a fill-approval ask: this device wants this item and a
+// human must answer on another device — 1Password's "approve sign-in"
+// posture. grant_id is synthetic ("fill:<item>") so open asks dedupe per
+// item; approval resolves the row directly (no minted approval — the
+// device polls for the decision, nothing else consumes it).
+type FillRequestIn struct {
+	ItemID string `json:"item_id"`
+	Device string `json:"device"`
+}
+
+type FillRequestOut struct {
+	RequestID string                 `json:"request_id"`
+	Status    protocol.RequestStatus `json:"status"`
+	ExpiresAt time.Time              `json:"expires_at"`
+}
+
+func (s *Server) fillRequest(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var in FillRequestIn
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	item, err := s.App.Store.Item(in.ItemID)
+	if err != nil || item.OrgID != p.OrgID || item.Archived {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	now := time.Now()
+	reqID, err := id.NewRequest()
+	if err != nil {
+		http.Error(w, "request failed", http.StatusBadRequest)
+		return
+	}
+	device := strings.TrimSpace(in.Device)
+	if device == "" {
+		device = p.ID
+	}
+	out, err := s.App.Store.FileRequest(protocol.ApprovalRequest{
+		ID:        reqID,
+		OrgID:     p.OrgID,
+		AgentID:   device,
+		ItemID:    item.ID,
+		GrantID:   "fill:" + item.ID,
+		Action:    protocol.ActionFill,
+		CreatedAt: now,
+		ExpiresAt: now.Add(2 * time.Minute),
+	})
+	if err != nil {
+		http.Error(w, "request failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, FillRequestOut{RequestID: out.Request.ID, Status: out.Request.Status, ExpiresAt: out.Request.ExpiresAt})
+}
+
+// fillRequestStatus lets the requesting device poll for the decision. The
+// requester reads its own ask — same human identity check as filing.
+func (s *Server) fillRequestStatus(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	req, err := s.App.Store.Request(r.PathValue("id"))
+	if err != nil || req.OrgID != p.OrgID {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, FillRequestOut{RequestID: req.ID, Status: req.Status, ExpiresAt: req.ExpiresAt})
 }
