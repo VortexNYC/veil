@@ -238,6 +238,13 @@ func (h *Host) handlePeer(raw []byte, peer *Peer) []byte {
 	}
 	fillDebug("action=" + env.Action + " nonce=" + env.Nonce)
 	defer debugMark("done "+env.Action, 0)()
+	// The nacl envelope is for native-messaging clients (keepassxc-browser
+	// over stdio). On the socket it has no attestation value — deny it to
+	// unattested peers so an agent cannot open assoc sessions and spam
+	// confirmation evals.
+	if !peer.Attested {
+		return []byte(`{"success":"false","error":"untrusted client"}`)
+	}
 	switch env.Action {
 	case "change-public-keys":
 		return h.changeKeys(env)

@@ -35,6 +35,27 @@ final class UniversalFill: NSObject {
         "net.imput.helium",
     ]
 
+    /// Which chords the tap fires on — cached from ~/.veil/fill.json and
+    /// refreshed when Settings writes it. Absent the key every chord is on.
+    private static var chordsCache: Set<String>?
+    static func enabledChords() -> Set<String> {
+        if let c = chordsCache { return c }
+        return reloadChords()
+    }
+    @discardableResult
+    static func reloadChords() -> Set<String> {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".veil/fill.json").path
+        var chords = Set(["cmd+\\", "cmd+shift+space", "ctrl+opt+space"])
+        if let data = FileManager.default.contents(atPath: path),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let list = obj["chords"] as? [String] {
+            chords = Set(list)
+        }
+        chordsCache = chords
+        return chords
+    }
+
     private var keyTap: CFMachPort?
     private var targetApp: NSRunningApplication?
     private var picker: FillPanel?
@@ -68,18 +89,19 @@ final class UniversalFill: NSObject {
                 guard type == .keyDown else { return Unmanaged.passUnretained(event) }
                 let code = event.getIntegerValueField(.keyboardEventKeycode)
                 let flags = event.flags
-                // Quick Access chords. ⌘\ and ⌘⇧Space are 1Password parity —
-                // kept for machines where 1Password isn't installed. ⌃⌥Space
-                // is Veil's own — no system or 1Password binding, so it works
+                // Quick Access chords — which are live is a fill.json
+                // setting. ⌘\ and ⌘⇧Space are 1Password parity; ⌃⌥Space is
+                // Veil's own — no system or 1Password binding, so it works
                 // on machines where both products coexist.
-                let backslash = code == 42
+                let chords = UniversalFill.enabledChords()
+                let backslash = chords.contains("cmd+\\") && code == 42
                     && flags.contains(.maskCommand)
                     && flags.intersection([.maskShift, .maskControl, .maskAlternate]).isEmpty
-                let cmdShiftSpace = code == 49
+                let cmdShiftSpace = chords.contains("cmd+shift+space") && code == 49
                     && flags.contains(.maskCommand)
                     && flags.contains(.maskShift)
                     && flags.intersection([.maskControl, .maskAlternate]).isEmpty
-                let ctrlOptSpace = code == 49
+                let ctrlOptSpace = chords.contains("ctrl+opt+space") && code == 49
                     && flags.contains(.maskControl)
                     && flags.contains(.maskAlternate)
                     && flags.intersection([.maskCommand, .maskShift]).isEmpty

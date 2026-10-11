@@ -41,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UniversalFill.shared.install()
         IdentitySync.shared.start()
         BridgeDaemon.shared.ensure()
+        RequestWatcher.shared.start()
         // Screen lock drops the host's confirm reuse window — a
         // session-mode grant must not outlive the lock.
         DistributedNotificationCenter.default().addObserver(
@@ -49,6 +50,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { _ in
             FillBridge.shared.relock()
         }
+        // Settings writes fill.json — the tap's chord set reloads.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(settingsChanged),
+            name: .veilSettingsChanged, object: nil)
         // Menu-bar helper should outlive the session — relaunch at login.
         try? SMAppService.mainApp.register()
         // A manual launch (double-click, Spotlight, `open`) activates the
@@ -114,6 +119,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         vault.target = self
         menu.addItem(vault)
+
+        let settings = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openSettings),
+            keyEquivalent: ",",
+        )
+        settings.target = self
+        menu.addItem(settings)
 
         #if DEBUG
         let probe = NSMenuItem(
@@ -217,6 +230,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openVault() {
         VaultWindowController.shared.open()
+    }
+
+    @objc private func openSettings() {
+        SettingsWindowController.shared.open()
+    }
+
+    @objc private func settingsChanged() {
+        UniversalFill.reloadChords()
     }
 
     @objc private func quit() {

@@ -1,6 +1,7 @@
 package fill
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -74,5 +75,19 @@ func TestSessionModeStillPeerScoped(t *testing.T) {
 	_ = h.confirm("pw", "amazon.com", true, b)
 	if calls != 2 {
 		t.Fatalf("session must not cover a different peer, got %d", calls)
+	}
+}
+
+// The nacl envelope on the socket: unattested peers cannot open assoc
+// sessions — the prompt-spam path is closed.
+func TestUnattestedPeerDeniedEnvelope(t *testing.T) {
+	h := &Host{}
+	untrusted := &Peer{PID: 4242, Path: "/usr/bin/python3"}
+	raw, _ := json.Marshal(map[string]any{
+		"action": "change-public-keys", "clientID": "x", "publicKey": "AA", "nonce": "BB",
+	})
+	out := string(h.handlePeer(raw, untrusted))
+	if !strings.Contains(out, "untrusted client") {
+		t.Fatalf("envelope should be denied, got %s", out)
 	}
 }
