@@ -41,6 +41,13 @@ xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
   -exportOptionsPlist /tmp/exportopts.plist | tail -2
 
 APP="$EXPORT/Veil.app"
+# The bundled Go binary is script-injected — Xcode's export signs it but
+# never applies -o runtime. Notarization rejects any executable without it.
+codesign --force --options runtime \
+  --sign "Developer ID Application: Plasma POS, Inc. ($TEAM)" \
+  "$APP/Contents/MacOS/veil-bin"
+codesign --force --deep --options runtime \
+  --sign "Developer ID Application: Plasma POS, Inc. ($TEAM)" "$APP"
 codesign --verify --deep --strict "$APP"
 echo "signature: $(codesign -dvv "$APP" 2>&1 | grep 'Authority=Developer ID' | head -1)"
 
