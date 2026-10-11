@@ -68,7 +68,10 @@ final class UniversalFill: NSObject {
                 guard type == .keyDown else { return Unmanaged.passUnretained(event) }
                 let code = event.getIntegerValueField(.keyboardEventKeycode)
                 let flags = event.flags
-                // 1Password parity: ⌘\ and ⌘⇧Space both open Quick Access.
+                // Quick Access chords. ⌘\ and ⌘⇧Space are 1Password parity —
+                // kept for machines where 1Password isn't installed. ⌃⌥Space
+                // is Veil's own — no system or 1Password binding, so it works
+                // on machines where both products coexist.
                 let backslash = code == 42
                     && flags.contains(.maskCommand)
                     && flags.intersection([.maskShift, .maskControl, .maskAlternate]).isEmpty
@@ -76,9 +79,11 @@ final class UniversalFill: NSObject {
                     && flags.contains(.maskCommand)
                     && flags.contains(.maskShift)
                     && flags.intersection([.maskControl, .maskAlternate]).isEmpty
-                guard backslash || cmdShiftSpace else { return Unmanaged.passUnretained(event) }
-                let tline = "\(Date()) tap-hit code=\(code)\n"
-                try? tline.write(toFile: "/tmp/veil-tap-hit.log", atomically: false, encoding: .utf8)
+                let ctrlOptSpace = code == 49
+                    && flags.contains(.maskControl)
+                    && flags.contains(.maskAlternate)
+                    && flags.intersection([.maskCommand, .maskShift]).isEmpty
+                guard backslash || cmdShiftSpace || ctrlOptSpace else { return Unmanaged.passUnretained(event) }
                 DispatchQueue.main.async { UniversalFill.shared.trigger() }
                 return nil // the gesture is ours — the field never sees it
             },
@@ -206,10 +211,6 @@ final class UniversalFill: NSObject {
 
     func trigger() {
         NSLog("veil: trigger")
-        let tline = "\(Date()) front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")\n"
-        if let fh = FileHandle(forWritingAtPath: "/tmp/veil-trigger.log") ?? (FileManager.default.createFile(atPath: "/tmp/veil-trigger.log", contents: nil) ? FileHandle(forWritingAtPath: "/tmp/veil-trigger.log") : nil) {
-            fh.seekToEndOfFile(); fh.write(tline.data(using: .utf8)!); fh.closeFile()
-        }
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.bundleIdentifier != Bundle.main.bundleIdentifier,
               let bundleID = front.bundleIdentifier

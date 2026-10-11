@@ -2455,6 +2455,12 @@ func fillConfigDirs() []string {
 	if dir := strings.TrimSpace(os.Getenv("VEIL_HOME")); dir != "" {
 		dirs = append(dirs, dir)
 	}
+	// ~/.veil is the default vault home — bundled-app daemons and
+	// browser-launched hosts carry no VEIL_HOME, so their fill.json lives
+	// here by convention.
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".veil"))
+	}
 	return dirs
 }
 

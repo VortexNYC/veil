@@ -31,6 +31,10 @@ final class BridgeDaemon {
         let p = Process()
         p.executableURL = bin
         p.arguments = ["fill", "--bridge"]
+        var env = ProcessInfo.processInfo.environment
+        env["VEIL_HOME"] = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".veil").path
+        p.environment = env
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         do {
