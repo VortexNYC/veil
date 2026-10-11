@@ -11,7 +11,7 @@ import (
 
 func TestConfirmMissingFailsClosed(t *testing.T) {
 	h := &Host{}
-	if err := h.confirm("Veil wants to fill a password", "github.com", true); err == nil {
+	if err := h.confirm("Veil wants to fill a password", "github.com", true, TrustedPeer); err == nil {
 		t.Fatal("nil Confirm must fail closed")
 	}
 }
@@ -23,25 +23,25 @@ func TestConfirmScopeReuseWindowAndCVV(t *testing.T) {
 			n.Add(1)
 			return nil
 		}}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 1 {
 			t.Fatalf("same scope %d", n.Load())
 		}
-		if err := h.confirm("pw", "amazon.com", true); err != nil {
+		if err := h.confirm("pw", "amazon.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 2 {
 			t.Fatalf("cross scope %d", n.Load())
 		}
-		if err := h.confirm("cvv", "amazon.com", false); err != nil {
+		if err := h.confirm("cvv", "amazon.com", false, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.confirm("cvv", "amazon.com", false); err != nil {
+		if err := h.confirm("cvv", "amazon.com", false, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 4 {
@@ -53,11 +53,11 @@ func TestConfirmScopeReuseWindowAndCVV(t *testing.T) {
 			n.Add(1)
 			return nil
 		}}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(confirmReuse)
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 2 {
@@ -73,18 +73,18 @@ func TestConfirmDeniedClearsReuse(t *testing.T) {
 			n.Add(1)
 			return nil
 		}}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		h.Confirm = func(string) error { return errors.New("no") }
-		if err := h.confirm("pw", "amazon.com", true); err == nil {
+		if err := h.confirm("pw", "amazon.com", true, TrustedPeer); err == nil {
 			t.Fatal("denied")
 		}
 		h.Confirm = func(string) error {
 			n.Add(1)
 			return nil
 		}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 2 {
@@ -104,7 +104,7 @@ func TestConfirmStrictNeverReuses(t *testing.T) {
 			},
 		}
 		for range 3 {
-			if err := h.confirm("pw", "github.com", true); err != nil {
+			if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -124,17 +124,17 @@ func TestConfirmSessionCrossesOrigins(t *testing.T) {
 				return nil
 			},
 		}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.confirm("pw", "amazon.com", true); err != nil {
+		if err := h.confirm("pw", "amazon.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 1 {
 			t.Fatalf("session must reuse across origins, got %d", n.Load())
 		}
 		// reuse=false callsites (CVV) still prompt even in session mode
-		if err := h.confirm("cvv", "amazon.com", false); err != nil {
+		if err := h.confirm("cvv", "amazon.com", false, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 2 {
@@ -153,18 +153,18 @@ func TestConfirmTTLConfig(t *testing.T) {
 				return nil
 			},
 		}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(confirmReuse + time.Second)
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 1 {
 			t.Fatalf("custom TTL must outlive the default window, got %d", n.Load())
 		}
 		time.Sleep(h.ConfirmTTL)
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 2 {
@@ -184,11 +184,11 @@ func TestInvalidateConfirmDropsReuse(t *testing.T) {
 				return nil
 			},
 		}
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		h.InvalidateConfirm()
-		if err := h.confirm("pw", "github.com", true); err != nil {
+		if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 			t.Fatal(err)
 		}
 		if n.Load() != 2 {
@@ -207,11 +207,11 @@ func TestRelockActionInvalidates(t *testing.T) {
 			return nil
 		},
 	}
-	if err := h.confirm("pw", "github.com", true); err != nil {
+	if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 		t.Fatal(err)
 	}
-	out := h.handleJSON([]byte(`{"action":"relock"}`))
-	if err := h.confirm("pw", "github.com", true); err != nil {
+	out := h.handleJSON([]byte(`{"action":"relock"}`), TrustedPeer)
+	if err := h.confirm("pw", "github.com", true, TrustedPeer); err != nil {
 		t.Fatal(err)
 	}
 	if n.Load() != 2 {

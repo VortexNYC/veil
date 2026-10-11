@@ -87,6 +87,7 @@ type Host struct {
 	confirmMu    sync.Mutex
 	confirmUntil time.Time
 	confirmScope string
+	confirmPeer  string
 	needLogin    bool
 	lastScope    string
 	lastUUID     string
@@ -126,6 +127,13 @@ func NewOrigin(dir, origin, token string) *Host {
 }
 
 func (h *Host) Serve(in io.Reader, out io.Writer) error {
+	return h.ServePeer(in, out, TrustedPeer)
+}
+
+// ServePeer is Serve with the connected client's identity attached — the
+// bridge socket authenticates callers by peer, so a local agent cannot
+// ride the human's Touch ID window or enumerate the vault.
+func (h *Host) ServePeer(in io.Reader, out io.Writer, p *Peer) error {
 	for {
 		raw, err := Read(in)
 		if err != nil {
@@ -134,7 +142,7 @@ func (h *Host) Serve(in io.Reader, out io.Writer) error {
 			}
 			return err
 		}
-		if err := Write(out, h.Handle(raw)); err != nil {
+		if err := Write(out, h.handlePeer(raw, p)); err != nil {
 			return err
 		}
 	}
@@ -193,6 +201,10 @@ func debugMark(label string, threshold time.Duration) func() {
 }
 
 func (h *Host) Handle(raw []byte) []byte {
+	return h.handlePeer(raw, TrustedPeer)
+}
+
+func (h *Host) handlePeer(raw []byte, peer *Peer) []byte {
 	var peek struct {
 		Action  string `json:"action"`
 		Nonce   string `json:"nonce"`
@@ -207,7 +219,7 @@ func (h *Host) Handle(raw []byte) []byte {
 		case "ping", "match", "fill", "generate", "save", "enrollTotp", "passkeyCreate", "passkeyGet", "unlock", "token", "bind":
 			fillDebug("action=" + peek.Action + " nonce=")
 			defer debugMark("done "+peek.Action, 0)()
-			return h.handleJSON(raw)
+			return h.handleJSON(raw, peer)
 		}
 	}
 	var env envelope
@@ -222,9 +234,9 @@ func (h *Host) Handle(raw []byte) []byte {
 		return h.changeKeys(env)
 	default:
 		if env.Nonce == "" && env.Message == "" {
-			return h.handleJSON(raw)
+			return h.handleJSON(raw, peer)
 		}
-		return h.encrypted(env)
+		return h.encryptedPeer(env, peer)
 	}
 }
 
@@ -261,7 +273,7 @@ func (h *Host) changeKeys(env envelope) []byte {
 	return raw
 }
 
-func (h *Host) encrypted(env envelope) []byte {
+func (h *Host) encryptedPeer(env envelope, peer *Peer) []byte {
 	h.mu.Lock()
 	s := h.sessions[env.ClientID]
 	h.mu.Unlock()
@@ -314,7 +326,7 @@ func (h *Host) encrypted(env envelope) []byte {
 		}
 		got := h.logins(inner.URL)
 		if len(got.Entries) > 0 {
-			if err := h.confirm("Veil wants to fill a password", grant.Registrable(inner.URL), true); err != nil {
+			if err := h.confirm("Veil wants to fill a password", grant.Registrable(inner.URL), true, peer); err != nil {
 				got = loginReply{Count: "0", Entries: []loginEntry{}, Success: "false", Hash: h.hash(), Version: Version}
 			}
 		}
@@ -322,7 +334,7 @@ func (h *Host) encrypted(env envelope) []byte {
 	case "get-totp":
 		body = h.totp(inner.UUID)
 		if body["success"] == "true" {
-			if err := h.confirm("Veil wants to fill a verification code", h.lastConfirmScope(), true); err != nil {
+			if err := h.confirm("Veil wants to fill a verification code", h.lastConfirmScope(), true, peer); err != nil {
 				body = failMap("canceled")
 			}
 		}
@@ -330,7 +342,7 @@ func (h *Host) encrypted(env envelope) []byte {
 		if !h.knownKey(inner.Keys) {
 			return h.reply(s, nonce, action, mustJSON(failMap("not associated")))
 		}
-		if err := h.confirm("Veil wants to save a passkey", grant.Registrable(inner.Origin), true); err != nil {
+		if err := h.confirm("Veil wants to save a passkey", grant.Registrable(inner.Origin), true, peer); err != nil {
 			return h.reply(s, nonce, action, h.passkeyErr(passkeysCanceled))
 		}
 		raw := h.passkeysRegister(inner.Origin, inner.PublicKey, inner.RelatedOrigins)
@@ -342,7 +354,7 @@ func (h *Host) encrypted(env envelope) []byte {
 		}
 		raw := h.passkeysGet(inner.Origin, inner.PublicKey)
 		if !passkeyIsError(raw) {
-			if err := h.confirm("Veil wants to use a passkey", grant.Registrable(inner.Origin), true); err != nil {
+			if err := h.confirm("Veil wants to use a passkey", grant.Registrable(inner.Origin), true, peer); err != nil {
 				raw = h.passkeyErr(passkeysCanceled)
 			}
 		}
@@ -727,7 +739,10 @@ func (h *Host) lastConfirmScope() string {
 	return h.confirmScope
 }
 
-func (h *Host) confirm(reason, scope string, reuse bool) error {
+// confirm gates a secret release behind the human. Reuse is keyed to the
+// connecting peer — a Touch ID that covered the Veil app does not cover
+// whatever else opens the bridge socket inside the window.
+func (h *Host) confirm(reason, scope string, reuse bool, peer *Peer) error {
 	if h.Confirm == nil {
 		fillDebug("confirm missing")
 		return fmt.Errorf("fill: confirm not attached")
@@ -740,13 +755,14 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 	h.mu.Lock()
 	until := h.confirmUntil
 	prev := h.confirmScope
+	prevPeer := h.confirmPeer
 	mode := h.ConfirmMode
 	ttl := h.ConfirmTTL
 	h.mu.Unlock()
 	if ttl <= 0 {
 		ttl = confirmReuse
 	}
-	armed := reuse && scope != "" && now.Before(until)
+	armed := reuse && scope != "" && now.Before(until) && prevPeer == peer.key()
 	switch mode {
 	case "strict":
 		armed = false
@@ -771,9 +787,11 @@ func (h *Host) confirm(reason, scope string, reuse bool) error {
 	if reuse && scope != "" {
 		h.confirmUntil = now.Add(ttl)
 		h.confirmScope = scope
+		h.confirmPeer = peer.key()
 	} else {
 		h.confirmUntil = time.Time{}
 		h.confirmScope = ""
+		h.confirmPeer = ""
 	}
 	h.mu.Unlock()
 	fillDebug("confirm ok")
@@ -787,6 +805,7 @@ func (h *Host) InvalidateConfirm() {
 	h.mu.Lock()
 	h.confirmUntil = time.Time{}
 	h.confirmScope = ""
+	h.confirmPeer = ""
 	h.mu.Unlock()
 }
 

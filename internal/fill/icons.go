@@ -83,8 +83,9 @@ func (h *Host) fetchIcon(host string) {
 		return
 	}
 	cli := &http.Client{Timeout: 4 * time.Second}
+	// Direct to the site — no icon aggregator, so no third party learns
+	// which domains the vault holds.
 	for _, u := range []string{
-		"https://icons.duckduckgo.com/ip3/" + host + ".ico",
 		"https://" + host + "/favicon.ico",
 	} {
 		resp, err := cli.Get(u)

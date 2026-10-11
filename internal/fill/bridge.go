@@ -86,9 +86,10 @@ func ServeBridge(ctx context.Context, h *Host, sockPaths ...string) error {
 				if err != nil {
 					return
 				}
+				peer := peerFromConn(conn)
 				go func() {
 					defer conn.Close()
-					_ = h.Serve(conn, conn)
+					_ = h.ServePeer(conn, conn, peer)
 				}()
 			}
 		}(ln)

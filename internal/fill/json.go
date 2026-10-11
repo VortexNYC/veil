@@ -85,13 +85,25 @@ type jsonRequest struct {
 	// reply must never resolve a newer request. Optional: native clients
 	// read synchronously and leave it empty.
 	ReqID string `json:"reqId"`
+	// peer is the connecting client on a bridge socket — set by the
+	// transport, never read from the wire.
+	peer *Peer
 }
 
-func (h *Host) handleJSON(raw []byte) []byte {
+func (h *Host) handleJSON(raw []byte, peer *Peer) []byte {
 	var in jsonRequest
 	if json.Unmarshal(raw, &in) != nil {
 		return jsonFillReply(nil, "")
 	}
+	// The bridge socket is reachable by any same-uid process — only our
+	// own signed clients get anything but ping. This gate sits inside
+	// handleJSON so every action — not just the peek-listed ones — is
+	// covered.
+	if !peer.Attested && in.Action != "ping" {
+		fillDebug("unattested peer denied " + in.Action)
+		return []byte(`{"success":"false","error":"untrusted client"}`)
+	}
+	in.peer = peer
 	return jsonEcho(in.ReqID, h.dispatchJSON(in))
 }
 
@@ -115,7 +127,7 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "unlock":
 		// The app's vault gate — the same Touch ID confirm fills use, one
 		// auth path for every surface.
-		err := h.confirm("unlock the vault", "", false)
+		err := h.confirm("unlock the vault", "", false, in.peer)
 		out := struct {
 			OK    bool   `json:"ok"`
 			Error string `json:"error,omitempty"`
@@ -152,22 +164,22 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 			Entries []jsonMatchEntry `json:"entries"`
 		}{Entries: h.jsonList()})
 	case "fill":
-		entries := h.jsonFill(in.URL, in.UUID)
+		entries := h.jsonFill(in.URL, in.UUID, in.peer)
 		err := ""
 		if len(entries) == 0 && h.loginNeeded() {
 			err = "need_login"
 		}
 		return jsonFillReply(entries, err)
 	case "generate":
-		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules, in.UUID)
+		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules, in.UUID, in.peer)
 	case "save":
-		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID, in.Create)
+		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID, in.Create, in.peer)
 	case "enrollTotp":
-		return h.jsonEnrollTotp(in.URL, in.OTPAuth, in.UUID)
+		return h.jsonEnrollTotp(in.URL, in.OTPAuth, in.UUID, in.peer)
 	case "passkeyCreate":
-		return h.jsonPasskeyCreate(in.Origin, in.PublicKey, in.RelatedOrigins)
+		return h.jsonPasskeyCreate(in.Origin, in.PublicKey, in.RelatedOrigins, in.peer)
 	case "passkeyGet":
-		return h.jsonPasskeyGet(in.Origin, in.PublicKey)
+		return h.jsonPasskeyGet(in.Origin, in.PublicKey, in.peer)
 	case "relock":
 		h.InvalidateConfirm()
 		return jsonBytes(struct {
@@ -303,7 +315,7 @@ func (h *Host) jsonBind(rawURL, uuid string) []byte {
 	return jsonBytes(out)
 }
 
-func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
+func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 	empty := []jsonFillEntry{}
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -336,7 +348,7 @@ func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
 		if hit.Affiliated {
 			return empty
 		}
-		if err := h.confirm("Veil wants to fill a saved sign-in", scope, true); err != nil {
+		if err := h.confirm("Veil wants to fill a saved sign-in", scope, true, peer); err != nil {
 			return empty
 		}
 		got, ok := h.unlockJSONFill(hit.UUID, hit.HasTOTP)
@@ -363,7 +375,7 @@ func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
 			fillDebug("fill empty card")
 			return empty
 		}
-		if err := h.confirm("Veil wants to fill a card", scope, env.CVV == ""); err != nil {
+		if err := h.confirm("Veil wants to fill a card", scope, env.CVV == "", peer); err != nil {
 			return empty
 		}
 		if err := h.recordFillEvent(item.ID, "card", false); err != nil {
@@ -385,7 +397,7 @@ func (h *Host) jsonFill(rawURL, uuid string) []jsonFillEntry {
 		if !ok {
 			return empty
 		}
-		if err := h.confirm("Veil wants to fill an identity", scope, true); err != nil {
+		if err := h.confirm("Veil wants to fill an identity", scope, true, peer); err != nil {
 			return empty
 		}
 		if err := h.recordFillEvent(item.ID, "identity", false); err != nil {
@@ -565,7 +577,7 @@ func (h *Host) jsonList() []jsonMatchEntry {
 	return out
 }
 
-func (h *Host) jsonGenerate(rawURL, login, rules, uuid string) []byte {
+func (h *Host) jsonGenerate(rawURL, login, rules, uuid string, peer *Peer) []byte {
 	rawURL = strings.TrimSpace(rawURL)
 	login = strings.TrimSpace(login)
 	uuid = strings.TrimSpace(uuid)
@@ -581,14 +593,14 @@ func (h *Host) jsonGenerate(rawURL, login, rules, uuid string) []byte {
 		return jsonGenerateErr("need_login")
 	}
 	if uuid != "" {
-		return h.jsonRotate(rawURL, uuid, login, rules, matches)
+		return h.jsonRotate(rawURL, uuid, login, rules, matches, peer)
 	}
 	for _, e := range matches {
 		if e.Kind == "login" {
 			return jsonGenerateErr("choose")
 		}
 	}
-	if err := h.confirm("Veil wants to save a new password", grant.Registrable(rawURL), true); err != nil {
+	if err := h.confirm("Veil wants to save a new password", grant.Registrable(rawURL), true, peer); err != nil {
 		return jsonGenerateErr("canceled")
 	}
 	secret, err := passgen.FromRules(rules)
@@ -616,7 +628,7 @@ func (h *Host) jsonGenerate(rawURL, login, rules, uuid string) []byte {
 
 // jsonRotate is change-password: the chooser sent an existing login's uuid.
 // Mint a new secret and PATCH that item — never a second item on the host.
-func (h *Host) jsonRotate(rawURL, uuid, login, rules string, matches []jsonMatchEntry) []byte {
+func (h *Host) jsonRotate(rawURL, uuid, login, rules string, matches []jsonMatchEntry, peer *Peer) []byte {
 	var hit *jsonMatchEntry
 	for i := range matches {
 		if matches[i].UUID == uuid && matches[i].Kind == "login" && !matches[i].Affiliated {
@@ -627,7 +639,7 @@ func (h *Host) jsonRotate(rawURL, uuid, login, rules string, matches []jsonMatch
 	if hit == nil {
 		return jsonGenerateErr("choose")
 	}
-	if err := h.confirm("Veil wants to update a saved password", grant.Registrable(rawURL), true); err != nil {
+	if err := h.confirm("Veil wants to update a saved password", grant.Registrable(rawURL), true, peer); err != nil {
 		return jsonGenerateErr("canceled")
 	}
 	secret, err := passgen.FromRules(rules)
@@ -676,7 +688,7 @@ func (h *Host) rotateLogin(uuid, login, secret string) error {
 // the save prompt matched the login to an existing item and sent its uuid.
 // Same rules as jsonRotate — a real match on this URL, confirm, then PATCH;
 // a uuid that does not match here is "choose", never an unrelated write.
-func (h *Host) jsonTypedRotate(rawURL, uuid, login, password string, matches []jsonMatchEntry) []byte {
+func (h *Host) jsonTypedRotate(rawURL, uuid, login, password string, matches []jsonMatchEntry, peer *Peer) []byte {
 	var hit *jsonMatchEntry
 	for i := range matches {
 		if matches[i].UUID == uuid && matches[i].Kind == "login" && !matches[i].Affiliated {
@@ -687,7 +699,7 @@ func (h *Host) jsonTypedRotate(rawURL, uuid, login, password string, matches []j
 	if hit == nil {
 		return jsonGenerateErr("choose")
 	}
-	if err := h.confirm("Veil wants to update a saved password", grant.Registrable(rawURL), true); err != nil {
+	if err := h.confirm("Veil wants to update a saved password", grant.Registrable(rawURL), true, peer); err != nil {
 		return jsonGenerateErr("canceled")
 	}
 	if err := h.rotateLogin(uuid, login, password); err != nil {
@@ -717,7 +729,7 @@ func loginMatch(entries []jsonMatchEntry) bool {
 	return false
 }
 
-func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool) []byte {
+func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool, peer *Peer) []byte {
 	rawURL = strings.TrimSpace(rawURL)
 	login = strings.TrimSpace(login)
 	password = strings.TrimSpace(password)
@@ -733,7 +745,7 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool) []byt
 		return jsonGenerateErr("need_login")
 	}
 	if uuid != "" {
-		return h.jsonTypedRotate(rawURL, uuid, login, password, matches)
+		return h.jsonTypedRotate(rawURL, uuid, login, password, matches, peer)
 	}
 	// Existing logins make a bare save ambiguous — rotate or new item? The
 	// chooser must say so: uuid rotates, create:true mints a new login.
@@ -741,7 +753,7 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool) []byt
 	if loginMatch(matches) && !create {
 		return jsonGenerateErr("choose")
 	}
-	if err := h.confirm("Veil wants to save this sign-in", grant.Registrable(rawURL), false); err != nil {
+	if err := h.confirm("Veil wants to save this sign-in", grant.Registrable(rawURL), false, peer); err != nil {
 		return jsonGenerateErr("canceled")
 	}
 	item, err := h.createGeneratedLogin(host, uri, login, password)
@@ -761,7 +773,7 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool) []byt
 	}{UUID: item.ID, Name: item.Name, Login: login})
 }
 
-func (h *Host) jsonEnrollTotp(rawURL, otpauth, uuid string) []byte {
+func (h *Host) jsonEnrollTotp(rawURL, otpauth, uuid string, peer *Peer) []byte {
 	seed := parseOTPAuth(otpauth)
 	if seed == "" {
 		return jsonGenerateErr("failed")
@@ -785,7 +797,7 @@ func (h *Host) jsonEnrollTotp(rawURL, otpauth, uuid string) []byte {
 	if !ok {
 		return jsonGenerateErr("choose")
 	}
-	if err := h.confirm("Veil wants to save this authenticator", grant.Registrable(rawURL), false); err != nil {
+	if err := h.confirm("Veil wants to save this authenticator", grant.Registrable(rawURL), false, peer); err != nil {
 		return jsonGenerateErr("canceled")
 	}
 	if err := h.attachTOTP(item.ID, seed); err != nil {
@@ -949,12 +961,12 @@ func jsonGenerateErr(err string) []byte {
 
 var errGenerateCreate = errors.New("generate create failed")
 
-func (h *Host) jsonPasskeyCreate(origin string, publicKey json.RawMessage, extra []string) []byte {
+func (h *Host) jsonPasskeyCreate(origin string, publicKey json.RawMessage, extra []string, peer *Peer) []byte {
 	origin = strings.TrimSpace(origin)
 	if origin == "" || len(publicKey) == 0 {
 		return jsonPasskeyErr("failed")
 	}
-	if err := h.confirm("Veil wants to save a passkey", grant.Registrable(origin), true); err != nil {
+	if err := h.confirm("Veil wants to save a passkey", grant.Registrable(origin), true, peer); err != nil {
 		return jsonPasskeyErr("canceled")
 	}
 	out := jsonPasskeyFromHost(h.passkeysRegister(origin, publicKey, extra))
@@ -962,12 +974,12 @@ func (h *Host) jsonPasskeyCreate(origin string, publicKey json.RawMessage, extra
 	return out
 }
 
-func (h *Host) jsonPasskeyGet(origin string, publicKey json.RawMessage) []byte {
+func (h *Host) jsonPasskeyGet(origin string, publicKey json.RawMessage, peer *Peer) []byte {
 	origin = strings.TrimSpace(origin)
 	if origin == "" || len(publicKey) == 0 {
 		return jsonPasskeyErr("failed")
 	}
-	if err := h.confirm("Veil wants to use a passkey", grant.Registrable(origin), true); err != nil {
+	if err := h.confirm("Veil wants to use a passkey", grant.Registrable(origin), true, peer); err != nil {
 		return jsonPasskeyErr("canceled")
 	}
 	return jsonPasskeyFromHost(h.passkeysGet(origin, publicKey))
