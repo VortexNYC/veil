@@ -195,7 +195,7 @@
         badges.push("passkey");
       }
       const row = menuRow(
-        { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind, slim: true, badges: badges },
+        { name: e.name || "item", sub: e.login || (e.kind !== "login" ? e.kind : ""), kind: e.kind, slim: true, badges: badges, icon: e.icon },
         function () {
           pickEntry(e);
         },

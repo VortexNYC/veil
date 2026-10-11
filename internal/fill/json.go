@@ -36,6 +36,9 @@ type jsonMatchEntry struct {
 	HasPasskey bool     `json:"hasPasskey,omitempty"`
 	SavedFor   string   `json:"savedFor,omitempty"`
 	Affiliated bool     `json:"affiliated,omitempty"`
+	// Icon is the site's favicon as a data URL — resolved and cached by the
+	// host so panels and extensions draw the brand, not a generic glyph.
+	Icon string `json:"icon,omitempty"`
 	// Passkey identity fields — `list` only, for the AutoFill appex building
 	// ASPasskeyCredentialIdentity. Metadata, never the private key.
 	CredID     string `json:"credId,omitempty"`
@@ -243,6 +246,7 @@ func (h *Host) jsonMatch(rawURL string) []jsonMatchEntry {
 	for _, item := range matched {
 		out = append(out, matchEntry(item))
 	}
+	h.attachIcons(out)
 	return out
 }
 
@@ -557,6 +561,7 @@ func (h *Host) jsonList() []jsonMatchEntry {
 		}
 		out = append(out, e)
 	}
+	h.attachIcons(out)
 	return out
 }
 

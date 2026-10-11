@@ -809,16 +809,25 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
             v.identifier = id
             return v
         }()
-        let kind = e["kind"] as? String ?? "login"
-        let glyph = kind == "identity" ? "person.crop.rectangle"
-            : kind == "card" ? "creditcard"
-            : kind == "note" ? "doc.text"
-            : kind == "apiKey" ? "key"
-            : "lock"
-        cell.imageView?.image = NSImage(
-            systemSymbolName: glyph,
-            accessibilityDescription: nil,
-        )
+        // Host-resolved favicon when one's cached — the same per-site art
+        // 1Password's rich icons draw. Falls back to a kind glyph.
+        var rowIcon: NSImage?
+        if let dataURL = e["icon"] as? String,
+           let b64 = dataURL.range(of: "base64,").map({ String(dataURL[$0.upperBound...]) }),
+           let data = Data(base64Encoded: b64) {
+            rowIcon = NSImage(data: data)
+        }
+        if rowIcon == nil {
+            let kind = e["kind"] as? String ?? "login"
+            let glyph = kind == "identity" ? "person.crop.rectangle"
+                : kind == "card" ? "creditcard"
+                : kind == "note" ? "doc.text"
+                : kind == "apiKey" ? "key"
+                : "lock"
+            rowIcon = NSImage(systemSymbolName: glyph, accessibilityDescription: nil)
+        }
+        cell.imageView?.image = rowIcon
+        cell.imageView?.contentTintColor = e["icon"] != nil ? nil : .secondaryLabelColor
         cell.textField?.stringValue = name
         if let sub = cell.subviews.first(where: { $0.identifier?.rawValue == "sub" }) as? NSTextField {
             sub.stringValue = login

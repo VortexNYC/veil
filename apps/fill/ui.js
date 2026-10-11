@@ -99,6 +99,7 @@ button.v-row {
   justify-content: center;
   color: var(--v-subtle);
 }
+.v-tile img { width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
 .v-row[data-kind="generate"] .v-tile { color: var(--v-brand); }
 .v-badges {
   display: flex;
@@ -230,7 +231,16 @@ button.v-row {
       row.dataset.kind = opts.kind;
     }
     const tile = el("div", "v-tile");
-    tile.innerHTML = glyphs[opts.kind] || glyphs.login;
+    if (opts.icon) {
+      // Host-resolved site icon (data URL) — the brand art 1Password's
+      // rich icons give a row. Falls back to the kind glyph.
+      const img = document.createElement("img");
+      img.src = opts.icon;
+      img.alt = "";
+      tile.appendChild(img);
+    } else {
+      tile.innerHTML = glyphs[opts.kind] || glyphs.login;
+    }
     row.appendChild(tile);
     const txt = el("div", "v-txt");
     txt.appendChild(el("div", "v-name", opts.name || "item"));

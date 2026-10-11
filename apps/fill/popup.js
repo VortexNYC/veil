@@ -110,7 +110,7 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
   }
   entries.forEach(function (e) {
     const b = veilUI.entryRow(
-      { name: e.name || e.uuid || "item", sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""), kind: e.kind },
+      { name: e.name || e.uuid || "item", sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""), kind: e.kind, icon: e.icon },
       "button",
     );
     b.addEventListener("click", function () {
