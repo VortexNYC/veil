@@ -65,14 +65,22 @@ func (a *App) flushUsageReports(ctx context.Context) {
 	if c == nil || c.MeterID == "" {
 		return
 	}
-	// The liveness beat precedes the work so a wedged drain still tells the
-	// monitor when it was last alive; unmetered callers never mark.
-	if err := a.Store.MarkHeartbeat("usage-report"); err != nil {
-		slog.Warn("usage report: heartbeat unwritten", "err", err)
-	}
+	// The beat means "sends are landing," not "the loop is alive" — a 401
+	// loop that beats fresh is the failure class that sat invisible. A
+	// wedged drain still pages: a flush that never finishes never writes.
+	failed := false
+	defer func() {
+		if failed {
+			return
+		}
+		if err := a.Store.MarkHeartbeat("usage-report"); err != nil {
+			slog.Warn("usage report: heartbeat unwritten", "err", err)
+		}
+	}()
 	rows, err := a.Store.UsageReportPending(usageReportBatch)
 	if err != nil {
 		slog.Warn("usage report: pending read failed", "err", err)
+		failed = true
 		return
 	}
 	for _, r := range rows {
@@ -80,6 +88,7 @@ func (a *App) flushUsageReports(ctx context.Context) {
 			ob, err := a.ensureBillingLink(ctx, r.OrgID)
 			if err != nil || ob.BillingAccountID == "" || ob.CustomerID == "" {
 				slog.Warn("usage report: billing link failed", "org", r.OrgID, "err", err)
+				failed = true
 				continue
 			}
 			r.CustomerID, r.BillingAccountID = ob.CustomerID, ob.BillingAccountID
@@ -96,10 +105,12 @@ func (a *App) flushUsageReports(ctx context.Context) {
 			IdempotencyKey:   key,
 		}); err != nil {
 			slog.Warn("usage report: send failed", "org", r.OrgID, "err", err)
+			failed = true
 			continue
 		}
 		if err := a.Store.MarkUsageReported(r.OrgID, r.WindowStart, delta); err != nil {
 			slog.Warn("usage report: mark failed", "org", r.OrgID, "err", err)
 		}
 	}
+	// A clean flush with nothing to send still beats — empty backlog is healthy.
 }
