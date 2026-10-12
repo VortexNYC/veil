@@ -16,6 +16,7 @@ package push
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"log/slog"
 	"os"
@@ -130,16 +131,19 @@ func (p *Pusher) pruneOnDead(ctx context.Context, d protocol.PushDevice, err err
 
 // Config is the APNs token-auth setup. Zero-value is a disabled sender.
 type Config struct {
-	KeyPath  string // path to the .p8 private key
+	Key      string // .p8 PEM contents — the Railway-able shape
+	KeyPath  string // or a path to the .p8 file (local dev)
 	KeyID    string
 	TeamID   string
 	BundleID string // e.g. nyc.veil.phone
 	Prod     bool   // production APNs host; false = sandbox
 }
 
-// ConfigFromEnv reads the APNS wiring. All five fields set = configured.
+// ConfigFromEnv reads the APNS wiring. Key or KeyPath plus the ids set =
+// configured.
 func ConfigFromEnv() Config {
 	return Config{
+		Key:      os.Getenv("VEIL_APNS_KEY"),
 		KeyPath:  os.Getenv("VEIL_APNS_KEY_PATH"),
 		KeyID:    os.Getenv("VEIL_APNS_KEY_ID"),
 		TeamID:   os.Getenv("VEIL_APNS_TEAM_ID"),
@@ -150,7 +154,23 @@ func ConfigFromEnv() Config {
 
 // Enabled reports whether the env carries a complete APNs setup.
 func (c Config) Enabled() bool {
-	return c.KeyPath != "" && c.KeyID != "" && c.TeamID != "" && c.BundleID != ""
+	return (c.Key != "" || c.KeyPath != "") && c.KeyID != "" && c.TeamID != "" && c.BundleID != ""
+}
+
+// authToken resolves the signing key — PEM bytes from the env when set,
+// else the .p8 file path.
+func authToken(c Config) (*token.Token, error) {
+	var key *ecdsa.PrivateKey
+	var err error
+	if c.Key != "" {
+		key, err = token.AuthKeyFromBytes([]byte(c.Key))
+	} else {
+		key, err = token.AuthKeyFromFile(c.KeyPath)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("apns auth key: %w", err)
+	}
+	return &token.Token{AuthKey: key, KeyID: c.KeyID, TeamID: c.TeamID}, nil
 }
 
 // NewAPNSSender builds the APNs sender from the config — nil when
@@ -159,11 +179,10 @@ func NewAPNSSender(c Config) (Sender, error) {
 	if !c.Enabled() {
 		return nil, nil
 	}
-	key, err := token.AuthKeyFromFile(c.KeyPath)
+	tok, err := authToken(c)
 	if err != nil {
-		return nil, fmt.Errorf("apns auth key: %w", err)
+		return nil, err
 	}
-	tok := &token.Token{AuthKey: key, KeyID: c.KeyID, TeamID: c.TeamID}
 	cli := apns2.NewTokenClient(tok)
 	if c.Prod {
 		cli = cli.Production()
