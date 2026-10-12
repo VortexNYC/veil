@@ -9,19 +9,11 @@ if (typeof importScripts === "function") {
 const HOST = "nyc.veil.fill";
 const LOGIN = "https://login.veil.nyc";
 
-// A stable anonymous install id ties one browser's error reports together
-// without any account data — the vault never leaks to analytics.
-if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-  chrome.storage.local.get("installId").then((got) => {
-    let id = got.installId;
-    if (!id) {
-      id = "ext-" + crypto.randomUUID();
-      chrome.storage.local.set({ installId: id });
-    }
-    if (typeof self !== "undefined" && self.veilReport) {
-      self.veilReport.setInstallId(id);
-    }
-  });
+// An anonymous session id ties one worker's error reports together — the
+// seed guard bans durable storage outright, and a per-boot id groups a
+// crash session fine without ever writing to it.
+if (typeof self !== "undefined" && self.veilReport) {
+  self.veilReport.setInstallId("ext-" + crypto.randomUUID());
 }
 
 let port = null;
