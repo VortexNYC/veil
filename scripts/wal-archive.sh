@@ -21,8 +21,10 @@ WALDIR="${WAL_DIR:-/wal}"
 SLOT="${WAL_SLOT:-wal_archive}"
 INGEST="${WAL_INGEST_URL:-https://backup-ingest.veil.nyc}/v1"
 INTERVAL="${WAL_PUSH_INTERVAL:-15}"
-# The .partial is the only mutable object — every push re-uploads the whole
-# file (pg_receivewal preallocates 16MB), so its cadence is the egress bill.
+# The .partial is the only mutable object — pg_receivewal preallocates 16MB,
+# so a naive push ships the whole file (mostly zeros) every interval: ~4.6
+# GB/day per shipper. push_partial sends only the flushed prefix instead —
+# the cadence stays the RPO bound, the payload stops being the bill.
 # Push it at most once per WAL_PARTIAL_INTERVAL (the RPO tail), or sooner
 # when it has grown WAL_PARTIAL_MIN_GROWTH bytes since the last push — real
 # write bursts still ship on the next loop. Completed segments, .history,
@@ -52,6 +54,27 @@ push() { # push <path> <object> — 409 is benign ONLY for .partial (a peer's co
 		--data-binary "@$1" "$INGEST/$ARC/$2" || echo 0)
 	case "$2" in *.partial) [ "$rc" = "409" ] && return 0 ;; esac
 	[ "$rc" -ge 200 ] && [ "$rc" -lt 300 ]
+}
+
+# The .partial on disk is 16MB preallocated — pushing it whole sends mostly
+# zeros every interval (~4.6GB/day/shipper). The meaningful bytes are the
+# flushed prefix: ask the slot where its flush cursor sits, send just that.
+push_partial() { # push_partial <path> <object>
+	f=$1 obj=$2
+	lsn=$(psql "$DB" -Atc "SELECT confirmed_flush_lsn FROM pg_replication_slots WHERE slot_name='$SLOT'" 2>/dev/null)
+	[ -n "$lsn" ] || return 0
+	abs=$(psql "$DB" -Atc "SELECT '$lsn'::pg_lsn - '0/0'::pg_lsn" 2>/dev/null)
+	[ -n "$abs" ] || return 0
+	used=$((abs % 16777216))
+	[ "$used" -gt 0 ] || return 0
+	fsize=$(wc -c <"$f" | tr -d ' ')
+	[ "$used" -le "$fsize" ] || used=$fsize
+	tmp="$WALDIR/.partial-send.$$"
+	head -c "$used" "$f" >"$tmp"
+	push "$tmp" "$obj"
+	rc=$?
+	rm -f "$tmp"
+	return $rc
 }
 
 beat() {
@@ -121,7 +144,7 @@ while :; do
 				if [ "$sum" != "$osha" ] &&
 					{ [ $((now - otime)) -ge "$PARTIAL_INTERVAL" ] ||
 					  [ $((size - osize)) -ge "$PARTIAL_MIN_GROWTH" ]; }; then
-					push "$f" "wal-$b" && echo "$sum:$size:$now" >"$mark" || ok=0
+					push_partial "$f" "wal-$b" && echo "$sum:$size:$now" >"$mark" || ok=0
 				fi
 				;;
 			*.history | *.backup)
