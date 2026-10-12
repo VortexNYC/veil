@@ -18,6 +18,8 @@ interface Env {
 // Flat wal-*/base-*/<db>-*.dump names are grandfathered for GET/HEAD/DELETE
 // (pre-namespace objects still readable); new writes must be namespaced so a
 // rebuilt cluster can never overwrite the archive of the cluster it replaced.
+import { reportWorkerError } from "./report.ts";
+
 const NAME = /^(arc-\d{1,20}\/)?([a-z0-9]+-\d{4}-\d{2}-\d{2}-\d{4}\.dump|audit-\d{8}-\d{6}-\d+-\d+\.jsonl|base-\d{4}-\d{2}-\d{2}-\d{4}\.(tar\.gz|manifest)|wal-[0-9A-F]{24}(?:\.partial|\.[0-9A-F]{8}\.backup)?|wal-[0-9A-F]{8}\.history)$/;
 
 function authorized(req: Request, token: string | undefined): boolean {
@@ -53,7 +55,16 @@ async function fencedPartialPut(bucket: R2Bucket, key: string, body: ArrayBuffer
 }
 
 export default {
-	async fetch(req: Request, env: Env): Promise<Response> {
+	async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		try {
+			return await this.handle(req, env);
+		} catch (err) {
+			reportWorkerError("backup-ingest", err, ctx, { path: new URL(req.url).pathname });
+			throw err;
+		}
+	},
+
+	async handle(req: Request, env: Env): Promise<Response> {
 		const url = new URL(req.url);
 		// Unauthenticated liveness for deploy smoke + the monitor — proves
 		// the route AND the bucket binding are alive (list() exercises the
