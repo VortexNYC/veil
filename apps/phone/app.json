@@ -44,7 +44,8 @@
       "expo-secure-store",
       "expo-local-authentication",
       "expo-web-browser",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "expo-notifications"
     ]
   }
 }

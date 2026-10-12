@@ -14,26 +14,27 @@ import (
 )
 
 type Memory struct {
-	mu        sync.Mutex
-	reqBus    *requestBus
-	agents    map[string]protocol.Principal
-	humans    map[string]protocol.Principal
-	items     map[string]protocol.Item
-	secrets   map[string]Secret
-	grants    map[string]protocol.Grant // key: subjectID+"\x00"+itemID
-	groups    map[string]protocol.Group
-	members   map[string]protocol.GroupMember // key: groupID+"\x00"+kind+"\x00"+id
-	approvals map[string]protocol.Approval
-	requests  map[string]protocol.ApprovalRequest
-	audit     []protocol.AuditEvent
-	workloads map[string]protocol.Workload // key: issuer+"\x00"+subject
-	sessions  map[string]protocol.Session  // key: hex(secret_hash)
-	versions  []protocol.ItemVersion
-	verSecret map[int64]Secret
-	nextVer   int64
-	billing   map[string]OrgBilling   // key: org_id
-	usage     map[string]usageCounter // key: org_id+"\x00"+window unix
-	beats     map[string]time.Time    // key: job name — ops liveness
+	mu          sync.Mutex
+	reqBus      *requestBus
+	agents      map[string]protocol.Principal
+	humans      map[string]protocol.Principal
+	items       map[string]protocol.Item
+	secrets     map[string]Secret
+	grants      map[string]protocol.Grant // key: subjectID+"\x00"+itemID
+	groups      map[string]protocol.Group
+	members     map[string]protocol.GroupMember // key: groupID+"\x00"+kind+"\x00"+id
+	approvals   map[string]protocol.Approval
+	requests    map[string]protocol.ApprovalRequest
+	audit       []protocol.AuditEvent
+	workloads   map[string]protocol.Workload // key: issuer+"\x00"+subject
+	sessions    map[string]protocol.Session  // key: hex(secret_hash)
+	versions    []protocol.ItemVersion
+	verSecret   map[int64]Secret
+	nextVer     int64
+	billing     map[string]OrgBilling            // key: org_id
+	usage       map[string]usageCounter          // key: org_id+"\x00"+window unix
+	beats       map[string]time.Time             // key: job name — ops liveness
+	pushDevices map[string][]protocol.PushDevice // key: org_id
 }
 
 func NewMemory() *Memory {
@@ -1221,4 +1222,46 @@ func (m *Memory) Sweep(olderThan time.Time) (SweepReport, error) {
 	}
 	m.reqBus.notifyOrgs(orgs)
 	return rep, nil
+}
+
+// Push devices — in-memory rows for tests and the embedded store.
+func (m *Memory) PutPushDevice(d protocol.PushDevice) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pushDevices == nil {
+		m.pushDevices = map[string][]protocol.PushDevice{}
+	}
+	list := m.pushDevices[d.OrgID]
+	for i, e := range list {
+		if e.Token == d.Token {
+			d.UpdatedAt = time.Now().UTC()
+			list[i] = d
+			m.pushDevices[d.OrgID] = list
+			return nil
+		}
+	}
+	d.UpdatedAt = time.Now().UTC()
+	m.pushDevices[d.OrgID] = append(list, d)
+	return nil
+}
+
+func (m *Memory) PushDevices(orgID string) ([]protocol.PushDevice, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]protocol.PushDevice, len(m.pushDevices[orgID]))
+	copy(out, m.pushDevices[orgID])
+	return out, nil
+}
+
+func (m *Memory) DeletePushDevice(orgID, token string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := m.pushDevices[orgID]
+	for i, e := range list {
+		if e.Token == token {
+			m.pushDevices[orgID] = append(list[:i], list[i+1:]...)
+			return nil
+		}
+	}
+	return nil
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/VortexNYC/veil/internal/broker"
+	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/push"
 	"github.com/VortexNYC/veil/internal/store"
 )
 
@@ -126,6 +128,10 @@ func monitorCmd() *cobra.Command {
 			// dashboard sees dead-beats and route-deaths, not just product
 			// bugs. The pager stays email+ntfy; this is the record.
 			reportOpsFindings(ctx, findings)
+			// Registered phones get the page natively too — the Veil app
+			// is the product's own pager once APNs is wired; ntfy remains
+			// the fallback while it is unconfigured.
+			pushOpsPage(ctx, pool, findings)
 
 			for _, f := range findings {
 				fmt.Fprintf(cmd.OutOrStdout(), "FINDING %s\n", f)
@@ -330,6 +336,21 @@ func reportOpsFindings(ctx context.Context, findings []string) {
 			res.Body.Close()
 		}
 	}()
+}
+
+// pushOpsPage fans monitor findings to registered phone devices — the
+// product's own pager. APNS envs unset = no-op; ntfy stays the fallback
+// until the native channel is proven.
+func pushOpsPage(ctx context.Context, pool *pgxpool.Pool, findings []string) {
+	if len(findings) == 0 || pool == nil {
+		return
+	}
+	sender, err := push.NewAPNSSender(push.ConfigFromEnv())
+	if err != nil || sender == nil {
+		return
+	}
+	p := push.New(push.PoolDevices{Pool: pool}, sender)
+	_ = p.NotifyOps(ctx, protocol.LocalOrgID, findings)
 }
 
 func alert(ctx context.Context, cmd *cobra.Command, mailURL, mailToken, to, ntfyTopic string, findings []string) error {

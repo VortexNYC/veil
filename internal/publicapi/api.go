@@ -340,6 +340,10 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/audit/events", s.auditFeed)
 	mux.HandleFunc("GET /v1/billing", s.getBilling)
 	mux.HandleFunc("POST /v1/billing/checkout", s.postBillingCheckout)
+	// Phone push endpoints — the app registers its OS push token so
+	// approval asks and ops pages reach the lock screen.
+	mux.HandleFunc("POST /v1/devices", s.registerDevice)
+	mux.HandleFunc("DELETE /v1/devices", s.unregisterDevice)
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
 	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -1702,4 +1706,59 @@ func (s *Server) fillRequestStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, FillRequestOut{RequestID: req.ID, Status: req.Status, ExpiresAt: req.ExpiresAt})
+}
+
+type registerDeviceRequest struct {
+	Platform string `json:"platform"`
+	Token    string `json:"token"`
+	Label    string `json:"label"`
+}
+
+// registerDevice upserts the caller's push endpoint — the phone app POSTs
+// its APNs/FCM token on sign-in and refresh. Humans only: a device is a
+// person's phone, and an agent must never mint a wake channel for asks
+// meant to reach a human.
+func (s *Server) registerDevice(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var in registerDeviceRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if in.Token == "" || (in.Platform != "apns" && in.Platform != "fcm") {
+		http.Error(w, "platform must be apns or fcm and token is required", http.StatusBadRequest)
+		return
+	}
+	if err := s.App.Store.PutPushDevice(protocol.PushDevice{
+		OrgID:    p.OrgID,
+		Platform: in.Platform,
+		Token:    in.Token,
+		Label:    in.Label,
+	}); err != nil {
+		http.Error(w, "register failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// unregisterDevice drops a push token — sign-out and token rotation both
+// land here. Idempotent: an absent token is already unregistered.
+func (s *Server) unregisterDevice(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "token required", http.StatusBadRequest)
+		return
+	}
+	if err := s.App.Store.DeletePushDevice(p.OrgID, token); err != nil {
+		http.Error(w, "unregister failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

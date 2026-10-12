@@ -390,3 +390,15 @@ type Session struct {
 	MaxUses   int        `json:"max_uses"` // 0 = unlimited
 	Uses      int        `json:"uses"`     // Use calls that passed authorization and reached upstream consumption
 }
+
+// PushDevice is a phone's push endpoint: the OS hands the app a token,
+// the app registers it here, and the origin pushes approval wake-ups
+// and ops pages over APNs/FCM. The token is a routing handle, not a
+// credential — it authorizes nothing.
+type PushDevice struct {
+	OrgID     string    `json:"org_id"`
+	Platform  string    `json:"platform"` // "apns" | "fcm"
+	Token     string    `json:"token"`
+	Label     string    `json:"label"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

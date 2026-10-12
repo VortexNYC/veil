@@ -1725,3 +1725,42 @@ func (p *Postgres) MarkUsageReported(orgID string, window time.Time, amount int6
 func (p *Postgres) MarkHeartbeat(name string) error {
 	return MarkHeartbeat(context.Background(), p.pool, name)
 }
+
+// PutPushDevice upserts a registered push endpoint — tokens rotate, so
+// re-registration overwrites platform/label/stamp in place.
+func (p *Postgres) PutPushDevice(d protocol.PushDevice) error {
+	_, err := p.pool.Exec(context.Background(),
+		`INSERT INTO push_devices(org_id, token, platform, label, updated_at)
+		 VALUES($1,$2,$3,$4,now())
+		 ON CONFLICT (org_id, token) DO UPDATE SET
+		   platform = EXCLUDED.platform,
+		   label = EXCLUDED.label,
+		   updated_at = now()`,
+		d.OrgID, d.Token, d.Platform, d.Label)
+	return err
+}
+
+func (p *Postgres) PushDevices(orgID string) ([]protocol.PushDevice, error) {
+	rows, err := p.pool.Query(context.Background(),
+		`SELECT org_id, token, platform, label, updated_at FROM push_devices
+		 WHERE org_id = $1`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.PushDevice
+	for rows.Next() {
+		var d protocol.PushDevice
+		if err := rows.Scan(&d.OrgID, &d.Token, &d.Platform, &d.Label, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) DeletePushDevice(orgID, token string) error {
+	_, err := p.pool.Exec(context.Background(),
+		`DELETE FROM push_devices WHERE org_id = $1 AND token = $2`, orgID, token)
+	return err
+}
