@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,10 +32,25 @@ func (w *recWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// A 5xx bleed must not become a capture egress storm: at most one report
+// per path per minute. The event still lands; the volume collapses.
+var (
+	reportMu   sync.Mutex
+	reportLast = map[string]time.Time{}
+)
+
 func reportException(surface, path string, code int, errText string) {
 	if captureKey == "" {
 		return
 	}
+	reportMu.Lock()
+	if now := time.Now(); now.Sub(reportLast[path]) < time.Minute {
+		reportMu.Unlock()
+		return
+	} else {
+		reportLast[path] = now
+	}
+	reportMu.Unlock()
 	body, _ := json.Marshal(map[string]any{
 		"api_key": captureKey,
 		"event":   "$exception",

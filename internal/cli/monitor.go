@@ -121,6 +121,12 @@ func monitorCmd() *cobra.Command {
 				}
 			}
 
+			// The ops plane lands on the PostHog board too — one
+			// ops_finding event per tick carrying the findings so the same
+			// dashboard sees dead-beats and route-deaths, not just product
+			// bugs. The pager stays email+ntfy; this is the record.
+			reportOpsFindings(ctx, findings)
+
 			for _, f := range findings {
 				fmt.Fprintf(cmd.OutOrStdout(), "FINDING %s\n", f)
 			}
@@ -221,7 +227,10 @@ var surfaces = []struct {
 	{"mail", "https://mail.veil.nyc/", 405},
 }
 
-func probeSurface(ctx context.Context, s struct{ name, url string; want int }) error {
+func probeSurface(ctx context.Context, s struct {
+	name, url string
+	want      int
+}) error {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
@@ -283,6 +292,44 @@ func probeReady(ctx context.Context, u string) error {
 		}
 	}
 	return nil
+}
+
+// reportOpsFindings emits one ops_finding event per tick (zero findings is
+// still a row — a flat line on the insight means the monitor itself is
+// dead, which is itself a signal). POSTHOG_PROJECT_KEY unset = a no-op.
+func reportOpsFindings(ctx context.Context, findings []string) {
+	key := os.Getenv("POSTHOG_PROJECT_KEY")
+	if key == "" {
+		return
+	}
+	list := findings
+	if len(list) > 8 {
+		list = list[:8]
+	}
+	body, _ := json.Marshal(map[string]any{
+		"api_key": key,
+		"event":   "ops_finding",
+		"properties": map[string]any{
+			"distinct_id": "veil-monitor",
+			"$lib":        "veil-monitor",
+			"count":       len(findings),
+			"findings":    strings.Join(list, "; "),
+		},
+	})
+	go func() {
+		c, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(c, http.MethodPost,
+			"https://us.i.posthog.com/capture/", bytes.NewReader(body))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err == nil {
+			res.Body.Close()
+		}
+	}()
 }
 
 func alert(ctx context.Context, cmd *cobra.Command, mailURL, mailToken, to, ntfyTopic string, findings []string) error {

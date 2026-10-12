@@ -146,7 +146,7 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 		mux.Handle("/.well-known/oauth-protected-resource", wellKnown)
 		mux.Handle("/.well-known/oauth-protected-resource/", wellKnown)
 	}
-	return errs.wrap(publicapi.CORS(otelsetup.Handler(mux)))
+	return errs.wrap(otelsetup.ExceptionCapture(publicapi.CORS(otelsetup.Handler(mux))))
 }
 
 // ready is origin truth: the process can answer agents only if Hydra discovery

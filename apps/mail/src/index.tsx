@@ -1,4 +1,5 @@
 import { EmailMessage } from "cloudflare:email";
+import { reportWorkerError } from "./report";
 import { render } from "@react-email/render";
 import type { ReactElement } from "react";
 import { CodeEmail } from "./emails/code";
@@ -167,7 +168,16 @@ function buildMime(from: string, to: string, subject: string, text: string, html
 }
 
 export default {
-	async fetch(request: Request, env: Env): Promise<Response> {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		try {
+			return await this.handle(request, env);
+		} catch (err) {
+			reportWorkerError("mail", err, ctx, { path: new URL(request.url).pathname });
+			throw err;
+		}
+	},
+
+	async handle(request: Request, env: Env): Promise<Response> {
 		if (request.method !== "POST") {
 			return new Response("method not allowed", { status: 405 });
 		}
