@@ -6,6 +6,7 @@ package grant
 
 import (
 	"errors"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -166,8 +167,12 @@ func hostAllowed(item protocol.Item, rawURL string) string {
 		// Login-style URIs match on the registrable domain — a credential
 		// saved for capitalone.com fills www.capitalone.com, the 1Password
 		// default. Scoped to http(s) so app:// and other bindings stay exact.
+		// IP literals get no registrable match: 127.0.0.1:8080 and
+		// 127.0.0.1:9999 are different apps — eTLD+1 collapses them into
+		// the same "domain" and would authorize the wrong local service.
 		if (iu.Scheme == "https" || iu.Scheme == "http") &&
 			(u.Scheme == "https" || u.Scheme == "http") &&
+			net.ParseIP(u.Hostname()) == nil && net.ParseIP(iu.Hostname()) == nil &&
 			Registrable(raw) == Registrable(rawURL) {
 			return ""
 		}

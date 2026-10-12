@@ -1,0 +1,22 @@
+#!/bin/sh
+# pre-commit — keep obviously-broken commits out of the PR loop.
+# Fast only: gofmt + vet on staged Go files' packages. The full gate
+# is CI; this just stops the embarrassing ones from costing a 5-minute
+# CI round-trip. Bypass once: git commit -n.
+set -u
+files=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$files" ] && exit 0
+go_files=$(echo "$files" | grep '\.go$' || true)
+if [ -n "$go_files" ]; then
+  bad=$(echo "$go_files" | xargs gofmt -l 2>/dev/null || true)
+  if [ -n "$bad" ]; then
+    echo "veil: gofmt would rewrite: $bad — run gofmt -w or commit -n"
+    exit 1
+  fi
+  pkgs=$(echo "$go_files" | xargs -n1 dirname 2>/dev/null | sort -u | sed 's|^|./|')
+  if [ -n "$pkgs" ] && ! go vet $pkgs >/dev/null 2>&1; then
+    echo "veil: go vet failed on touched packages — run it locally or commit -n"
+    exit 1
+  fi
+fi
+exit 0
