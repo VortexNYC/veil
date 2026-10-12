@@ -29,6 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ErrorReport.arm()
         // One application: Dock icon + menu bar + vault window + fill.
         // The app stays running when windows close — the helper is the
         // always-on part; the window is the face.
