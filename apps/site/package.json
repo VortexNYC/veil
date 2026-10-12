@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "postdeploy": "sh ../../scripts/deploy-check.sh"
   },
   "devDependencies": {
     "wrangler": "4.137.0"

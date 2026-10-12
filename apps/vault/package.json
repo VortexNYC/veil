@@ -8,7 +8,8 @@
     "preview": "vite preview --port 4470",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "deploy": "pnpm run build && wrangler deploy"
+    "deploy": "pnpm run build && wrangler deploy",
+    "postdeploy": "sh ../../scripts/deploy-check.sh"
   },
   "dependencies": {
     "@cloudflare/kumo": "2.13.2",

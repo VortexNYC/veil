@@ -55,6 +55,17 @@ async function fencedPartialPut(bucket: R2Bucket, key: string, body: ArrayBuffer
 export default {
 	async fetch(req: Request, env: Env): Promise<Response> {
 		const url = new URL(req.url);
+		// Unauthenticated liveness for deploy smoke + the monitor — proves
+		// the route AND the bucket binding are alive (list() exercises the
+		// R2 binding; a detached binding throws, not 404s).
+		if (url.pathname === "/healthz") {
+			try {
+				await env.BUCKET.list({ limit: 1 });
+				return new Response("ok");
+			} catch {
+				return new Response("bucket unreachable", { status: 503 });
+			}
+		}
 		if (req.method === "GET" && (url.pathname === "/v1" || url.pathname === "/v1/")) {
 			if (!authorized(req, env.OFFSITE_TOKEN)) {
 				return new Response("unauthorized", { status: 401 });
