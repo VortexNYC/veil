@@ -110,6 +110,16 @@ func monitorCmd() *cobra.Command {
 					findings = append(findings, "ready probe: "+err.Error())
 				}
 			}
+			// Every public surface — the same probes deploy-check.sh runs.
+			// Expected codes are honest per-surface: POST-only workers
+			// answer 405, consent answers 400 on a bare GET. A deploy that
+			// kills a route is invisible until a probe lands — that gap is
+			// what hid the backup-ingest manifest outage for 11 days.
+			for _, s := range surfaces {
+				if err := probeSurface(ctx, s); err != nil {
+					findings = append(findings, s.name+": "+err.Error())
+				}
+			}
 
 			for _, f := range findings {
 				fmt.Fprintf(cmd.OutOrStdout(), "FINDING %s\n", f)
@@ -190,6 +200,42 @@ func checkBeat(ctx context.Context, pool *pgxpool.Pool, name string, stale time.
 	}
 	if age > stale {
 		return []string{fmt.Sprintf("%s last reported %s ago", name, age.Round(time.Minute))}
+	}
+	return nil
+}
+
+// The public surfaces the monitor checks — name, URL, the HTTP status a
+// healthy service returns. POST-only and bare-GET-400 services keep their
+// honest codes; changing a surface's contract means updating this list.
+var surfaces = []struct {
+	name, url string
+	want      int
+}{
+	{"origin", "https://veil.nyc/ready", 200},
+	{"backup-ingest", "https://backup-ingest.veil.nyc/healthz", 200},
+	{"login", "https://login.veil.nyc/", 200},
+	{"vault", "https://app.veil.nyc/", 200},
+	{"hydra", "https://id.veil.nyc/.well-known/openid-configuration", 200},
+	{"kratos", "https://accounts.veil.nyc/health/ready", 200},
+	{"consent", "https://consent.veil.nyc/", 400},
+	{"mail", "https://mail.veil.nyc/", 405},
+}
+
+func probeSurface(ctx context.Context, s struct{ name, url string; want int }) error {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
+	if err != nil {
+		return err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(res.Body, 1024))
+	if res.StatusCode != s.want {
+		return fmt.Errorf("%s -> %d", s.url, res.StatusCode)
 	}
 	return nil
 }
