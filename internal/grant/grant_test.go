@@ -216,6 +216,31 @@ func TestRegistrableIsETLDPlusOne(t *testing.T) {
 	}
 }
 
+func TestHostAllowedIPLiteralStaysExact(t *testing.T) {
+	// An IP bound item must not eTLD+1-match across ports — a credential
+	// for 127.0.0.1:8080 is not a grant to 127.0.0.1:9999. Regressions here
+	// let a bound item authorize arbitrary local services.
+	item := protocol.Item{URIs: []string{"http://127.0.0.1:8080"}}
+	for _, target := range []string{
+		"http://127.0.0.1:9999/x",
+		"http://127.0.0.1/x",
+		"http://10.0.0.5:8080/x",
+		"http://[::1]:8080/x",
+	} {
+		if HostAllowed(item, target) {
+			t.Fatalf("ip literal %q matched %q", item.URIs[0], target)
+		}
+	}
+	if !HostAllowed(item, "http://127.0.0.1:8080/x") {
+		t.Fatal("same host:port should match")
+	}
+	// Domains still get the registrable match — the point is IPs don't.
+	dom := protocol.Item{URIs: []string{"https://github.com"}}
+	if !HostAllowed(dom, "https://www.github.com/login") {
+		t.Fatal("eTLD+1 should still match for domains")
+	}
+}
+
 func FuzzRegistrable(f *testing.F) {
 	f.Add("https://dash.cloudflare.com/login")
 	f.Add("https://www.amazon.co.uk/dp/1")
