@@ -28,6 +28,7 @@
 		E133AF68306B28A7009E9FC3 /* UniversalFill.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF67306B28A7009E9FC3 /* UniversalFill.swift */; };
 		E1AB1000000000000000A1 /* VaultWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AB1000000000000000A2 /* VaultWindow.swift */; };
 		E1AC2000000000000000C1 /* FillSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AC2000000000000000C2 /* FillSettings.swift */; };
+		E1AC2000000000000000E1 /* ErrorReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AC2000000000000000E2 /* ErrorReport.swift */; };
 		E1AC2000000000000000D1 /* RequestWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AC2000000000000000D2 /* RequestWatcher.swift */; };
 		E1AB1000000000000000A3 /* BridgeDaemon.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AB1000000000000000A4 /* BridgeDaemon.swift */; };
 		E3AB00000000000000001B /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AB00000000000000001A /* CredentialProviderViewController.swift */; };
@@ -95,6 +96,7 @@
 		E3AB00000000000000001D /* IdentitySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentitySync.swift; sourceTree = "<group>"; };
 		E1AB1000000000000000A2 /* VaultWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultWindow.swift; sourceTree = "<group>"; };
 		E1AC2000000000000000C2 /* FillSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FillSettings.swift; sourceTree = "<group>"; };
+		E1AC2000000000000000E2 /* ErrorReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorReport.swift; sourceTree = "<group>"; };
 		E1AC2000000000000000D2 /* RequestWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestWatcher.swift; sourceTree = "<group>"; };
 		E1AB1000000000000000A4 /* BridgeDaemon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDaemon.swift; sourceTree = "<group>"; };
 		E3AB00000000000000001F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 				E3AB00000000000000001D /* IdentitySync.swift */,
 				E1AB1000000000000000A2 /* VaultWindow.swift */,
 				E1AC2000000000000000C2 /* FillSettings.swift */,
+				E1AC2000000000000000E2 /* ErrorReport.swift */,
 				E1AC2000000000000000D2 /* RequestWatcher.swift */,
 				E1AB1000000000000000A4 /* BridgeDaemon.swift */,
 				E133AF32306B28A6009E9FC3 /* Assets.xcassets */,
@@ -379,6 +382,7 @@
 				E3AB00000000000000001E /* IdentitySync.swift in Sources */,
 				E1AB1000000000000000A1 /* VaultWindow.swift in Sources */,
 				E1AC2000000000000000C1 /* FillSettings.swift in Sources */,
+				E1AC2000000000000000E1 /* ErrorReport.swift in Sources */,
 				E1AC2000000000000000D1 /* RequestWatcher.swift in Sources */,
 				E1AB1000000000000000A3 /* BridgeDaemon.swift in Sources */,
 			);

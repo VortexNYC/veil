@@ -5,8 +5,11 @@ import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { armErrorReporting } from "../lib/report";
 
 export { ErrorBoundary } from "expo-router";
+
+armErrorReporting();
 
 export default function Layout() {
   return (
