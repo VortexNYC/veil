@@ -29,6 +29,7 @@ import (
 	"github.com/VortexNYC/veil/internal/oneimport"
 	"github.com/VortexNYC/veil/internal/passkey"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/push"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/VortexNYC/veil/internal/workload"
 )
@@ -112,6 +113,10 @@ type App struct {
 	Invites   Inviter
 	OrgAdmin  OrgAdmin
 	Notify    RequestNotify
+	// Push wakes registered phone devices on a filed ask — the same
+	// RequestNotify shape as email, fanned out next to it. Nil when the
+	// APNs envs are unset.
+	Push RequestNotify
 	// BillingCustomers is the merchant-scoped Vortex client — nil when the
 	// VEIL_VORTEX_* envs are unset (billing off; dev and tests unaffected).
 	BillingCustomers *billing.Client
@@ -321,6 +326,13 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 		Workload: workload.New(s),
 	}
 	a.Broker.Auditor = auditor
+	// Phone push: registered devices wake on a filed ask. APNs unset =
+	// no-op — push is the wake channel, not the durable part.
+	if sender, err := push.NewAPNSSender(push.ConfigFromEnv()); err != nil {
+		slog.Warn("apns sender failed — pushes off", "err", err)
+	} else if sender != nil {
+		a.Push = push.New(s, sender)
+	}
 	// Free-tier gate (VEIL-60): VEIL_FREE_USE_CAP sets the per-org per-month
 	// use allowance on the free plan. Unset/zero = metering off.
 	if v := os.Getenv("VEIL_FREE_USE_CAP"); v != "" {
@@ -368,6 +380,14 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 			defer cancel()
 			_ = n.NotifyRequest(dctx, req)
 		}()
+		p := a.Push
+		if p != nil {
+			go func() {
+				dctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_ = p.NotifyRequest(dctx, req)
+			}()
+		}
 	}
 	if err := a.attachHydra(); err != nil {
 		_ = s.Close()

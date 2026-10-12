@@ -2070,3 +2070,42 @@ func TestFillRequestLifecycle(t *testing.T) {
 		t.Fatalf("status %s", raw)
 	}
 }
+
+func TestDeviceRegistration(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+
+	// A human registers a push token — lands in the org's device set.
+	code, _ := doJSON(t, srv, http.MethodPost, "/v1/devices", "human",
+		map[string]string{"platform": "apns", "token": "tok-abc", "label": "iphone"})
+	if code != http.StatusNoContent {
+		t.Fatalf("register want 204, got %d", code)
+	}
+	devs, err := a.Store.PushDevices(protocol.LocalOrgID)
+	if err != nil || len(devs) != 1 || devs[0].Token != "tok-abc" {
+		t.Fatalf("device not stored: %v %+v", err, devs)
+	}
+
+	// An agent must not mint a wake channel — registration is a human act.
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/devices", "agent",
+		map[string]string{"platform": "apns", "token": "tok-evil"})
+	if code == http.StatusNoContent {
+		t.Fatal("agent registration accepted — an agent just made a human wake channel")
+	}
+
+	// Bad platform rejected; unknown platform strings are not a device kind.
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/devices", "human",
+		map[string]string{"platform": "sms", "token": "tok-x"})
+	if code == http.StatusNoContent {
+		t.Fatal("bogus platform accepted")
+	}
+
+	code, _ = doJSON(t, srv, http.MethodDelete, "/v1/devices?token=tok-abc", "human", nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("unregister want 204, got %d", code)
+	}
+	devs, _ = a.Store.PushDevices(protocol.LocalOrgID)
+	if len(devs) != 0 {
+		t.Fatalf("unregister left rows: %+v", devs)
+	}
+}

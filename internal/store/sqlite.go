@@ -192,6 +192,14 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			at TEXT NOT NULL,
 			secret BLOB NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS push_devices (
+			org_id TEXT NOT NULL,
+			token TEXT NOT NULL,
+			platform TEXT NOT NULL,
+			label TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (org_id, token)
+		)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,
@@ -2537,3 +2545,43 @@ func (s *SQLite) requestOrgs(where string, args ...any) map[string]struct{} {
 // MarkHeartbeat: sqlite has no ops_heartbeat table — the monitor is a
 // postgres deployment concern.
 func (s *SQLite) MarkHeartbeat(string) error { return nil }
+
+// PutPushDevice upserts a registered push endpoint — tokens rotate, so
+// re-registration overwrites platform/label/stamp in place.
+func (s *SQLite) PutPushDevice(d protocol.PushDevice) error {
+	_, err := s.db.Exec(
+		`INSERT INTO push_devices(org_id, token, platform, label, updated_at)
+		 VALUES(?,?,?,?,?)
+		 ON CONFLICT(org_id, token) DO UPDATE SET
+		   platform = excluded.platform,
+		   label = excluded.label,
+		   updated_at = excluded.updated_at`,
+		d.OrgID, d.Token, d.Platform, d.Label, time.Now().Unix())
+	return err
+}
+
+func (s *SQLite) PushDevices(orgID string) ([]protocol.PushDevice, error) {
+	rows, err := s.db.Query(
+		`SELECT org_id, token, platform, label, updated_at FROM push_devices
+		 WHERE org_id = ?`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.PushDevice
+	for rows.Next() {
+		var d protocol.PushDevice
+		var ts int64
+		if err := rows.Scan(&d.OrgID, &d.Token, &d.Platform, &d.Label, &ts); err != nil {
+			return nil, err
+		}
+		d.UpdatedAt = time.Unix(ts, 0)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) DeletePushDevice(orgID, token string) error {
+	_, err := s.db.Exec(`DELETE FROM push_devices WHERE org_id = ? AND token = ?`, orgID, token)
+	return err
+}

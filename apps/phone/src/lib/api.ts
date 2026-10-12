@@ -69,3 +69,10 @@ export const addLogin = (input: { name: string; uri?: string; login?: string; se
 
 /** Signup/invite acceptance: plants the humans row the broker keys on. */
 export const provision = () => call<unknown>("/v1/provision", { method: "POST" });
+
+/** Register the OS push token so asks and ops pages reach the lock screen. */
+export const registerDevice = (platform: "apns" | "fcm", token: string, label: string) =>
+  call<unknown>("/v1/devices", {
+    method: "POST",
+    body: JSON.stringify({ platform, token, label }),
+  });

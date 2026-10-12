@@ -292,6 +292,13 @@ type Store interface {
 	// table no-op.
 	MarkHeartbeat(name string) error
 
+	// Push devices — the registered phone endpoints for approval wake-ups
+	// and ops pages. Upsert on Put (re-registration is routine; tokens
+	// rotate); a send that returns "token dead" prunes via Delete.
+	PutPushDevice(d protocol.PushDevice) error
+	PushDevices(orgID string) ([]protocol.PushDevice, error)
+	DeletePushDevice(orgID, token string) error
+
 	// Sweep deletes terminally-expired rows (sessions past expiry or revoked,
 	// grants and approvals past expiry) older than the cutoff. It keeps the
 	// hot-path indexes bounded; expiry semantics are unaffected because

@@ -5,13 +5,20 @@ import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useEffect } from "react";
 import { armErrorReporting } from "../lib/report";
+import { registerForPush } from "../lib/push";
 
 export { ErrorBoundary } from "expo-router";
 
 armErrorReporting();
 
 export default function Layout() {
+  // Push registration is best-effort and checks the session itself —
+  // a signed-out app asks nothing.
+  useEffect(() => {
+    void registerForPush();
+  }, []);
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />

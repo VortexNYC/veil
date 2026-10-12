@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/VortexNYC/veil/internal/protocol"
 )
 
 // ops_heartbeat is the dead-man's switch table: periodic jobs (backup,
@@ -226,6 +228,27 @@ func ExportableAudits(ctx context.Context, pool *pgxpool.Pool, afterID int64, li
 			return nil, err
 		}
 		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// PushDevicesFromPool lists registered phone endpoints for an org —
+// the monitor runs at pool level (no full Store) but still needs the
+// same device list to send ops pages.
+func PushDevicesFromPool(ctx context.Context, pool *pgxpool.Pool, orgID string) ([]protocol.PushDevice, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT org_id, token, platform, label, updated_at FROM push_devices WHERE org_id = $1`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.PushDevice
+	for rows.Next() {
+		var d protocol.PushDevice
+		if err := rows.Scan(&d.OrgID, &d.Token, &d.Platform, &d.Label, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
 	return out, rows.Err()
 }

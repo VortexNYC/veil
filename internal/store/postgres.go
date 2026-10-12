@@ -843,6 +843,14 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			at TIMESTAMPTZ NOT NULL,
 			secret BYTEA NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS push_devices (
+			org_id TEXT NOT NULL,
+			token TEXT NOT NULL,
+			platform TEXT NOT NULL,
+			label TEXT NOT NULL DEFAULT '',
+			updated_at TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (org_id, token)
+		)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,
