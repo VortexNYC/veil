@@ -109,6 +109,7 @@ test("PUT requires the arc-<sysid>/ namespace", async () => {
 		`arc-7583066194673548362/${SEG}`,
 		`arc-123/${SEG}.partial`,
 		`arc-9/base-2026-10-01-0517.tar.gz`,
+		`arc-9/base-2026-10-01-0517.manifest`,
 		`arc-9/veil-2026-10-01-0517.dump`,
 		`arc-9/audit-20261001-051700-1-100.jsonl`,
 		`arc-9/wal-00000001.history`,

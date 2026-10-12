@@ -18,7 +18,7 @@ interface Env {
 // Flat wal-*/base-*/<db>-*.dump names are grandfathered for GET/HEAD/DELETE
 // (pre-namespace objects still readable); new writes must be namespaced so a
 // rebuilt cluster can never overwrite the archive of the cluster it replaced.
-const NAME = /^(arc-\d{1,20}\/)?([a-z0-9]+-\d{4}-\d{2}-\d{2}-\d{4}\.dump|audit-\d{8}-\d{6}-\d+-\d+\.jsonl|base-\d{4}-\d{2}-\d{2}-\d{4}\.tar\.gz|wal-[0-9A-F]{24}(?:\.partial|\.[0-9A-F]{8}\.backup)?|wal-[0-9A-F]{8}\.history)$/;
+const NAME = /^(arc-\d{1,20}\/)?([a-z0-9]+-\d{4}-\d{2}-\d{2}-\d{4}\.dump|audit-\d{8}-\d{6}-\d+-\d+\.jsonl|base-\d{4}-\d{2}-\d{2}-\d{4}\.(tar\.gz|manifest)|wal-[0-9A-F]{24}(?:\.partial|\.[0-9A-F]{8}\.backup)?|wal-[0-9A-F]{8}\.history)$/;
 
 function authorized(req: Request, token: string | undefined): boolean {
 	if (!token) return false;
