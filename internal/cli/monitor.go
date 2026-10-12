@@ -24,7 +24,7 @@ import (
 // stale. It alerts at most once per --alert-cooldown so a stuck job pages
 // once, not every tick.
 func monitorCmd() *cobra.Command {
-	var dsn, mailURL, mailToken, alertTo, readyURL string
+	var dsn, mailURL, mailToken, alertTo, readyURL, ntfyTopic string
 	var backupStale, sweepStale, alertCooldown, usageStale, auditExportStale, walStale time.Duration
 	var usagePending int64
 	c := &cobra.Command{
@@ -124,11 +124,11 @@ func monitorCmd() *cobra.Command {
 			}
 			if pool == nil {
 				// DB is down — dedup state lives there; send unconditionally.
-				return alert(ctx, cmd, mailURL, mailToken, alertTo, findings)
+				return alert(ctx, cmd, mailURL, mailToken, alertTo, ntfyTopic, findings)
 			}
 			age, ok, err := store.HeartbeatAge(ctx, pool, "alert")
 			if err == nil && (!ok || age > alertCooldown) {
-				if err := alert(ctx, cmd, mailURL, mailToken, alertTo, findings); err != nil {
+				if err := alert(ctx, cmd, mailURL, mailToken, alertTo, ntfyTopic, findings); err != nil {
 					return err
 				}
 				if err := store.MarkHeartbeat(ctx, pool, "alert"); err != nil {
@@ -145,6 +145,7 @@ func monitorCmd() *cobra.Command {
 	c.Flags().StringVar(&mailToken, "mail-token", "", "mail worker bearer (default env VEIL_MAIL_TOKEN)")
 	c.Flags().StringVar(&alertTo, "alert-to", "", "alert recipient (default env VEIL_ALERT_TO)")
 	c.Flags().StringVar(&readyURL, "ready-url", "", "public readiness URL (default env VEIL_READY_URL)")
+	c.Flags().StringVar(&ntfyTopic, "ntfy-topic", "", "ntfy.sh topic for a phone push (default env VEIL_NTFY_TOPIC) — email is archival, this is the page")
 	c.Flags().DurationVar(&backupStale, "backup-stale", 26*time.Hour, "backup beat older than this is a finding")
 	c.Flags().DurationVar(&sweepStale, "sweep-stale", 100*time.Minute, "sweep beat older than this is a finding")
 	c.Flags().DurationVar(&usageStale, "usage-stale", 10*time.Minute, "usage-report beat older than this is a finding (absent beat = unmetered deploy, skipped)")
@@ -167,6 +168,9 @@ func monitorCmd() *cobra.Command {
 		}
 		if readyURL == "" {
 			readyURL = os.Getenv("VEIL_READY_URL")
+		}
+		if ntfyTopic == "" {
+			ntfyTopic = os.Getenv("VEIL_NTFY_TOPIC")
 		}
 		if dsn == "" {
 			return fmt.Errorf("monitor: --dsn or VEIL_POSTGRES_DSN required")
@@ -235,11 +239,24 @@ func probeReady(ctx context.Context, u string) error {
 	return nil
 }
 
-func alert(ctx context.Context, cmd *cobra.Command, mailURL, mailToken, to string, findings []string) error {
+func alert(ctx context.Context, cmd *cobra.Command, mailURL, mailToken, to, ntfyTopic string, findings []string) error {
 	text := "veil monitor findings:\n\n" + joinLines(findings)
+	subject := fmt.Sprintf("[veil ops] %d finding(s): %s", len(findings), findings[0])
+	if ntfyTopic != "" {
+		// The email is the record; this is the page. ntfy is one POST —
+		// Priority=high so a do-not-disturb phone still buzzes.
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+			"https://ntfy.sh/"+ntfyTopic, strings.NewReader(text))
+		req.Header.Set("Title", subject)
+		req.Header.Set("Priority", "high")
+		req.Header.Set("Tags", "rotating_light")
+		if _, err := http.DefaultClient.Do(req); err != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "ntfy push failed: %v\n", err)
+		}
+	}
 	body, err := json.Marshal(map[string]any{
 		"to":      to,
-		"subject": fmt.Sprintf("[veil ops] %d finding(s): %s", len(findings), findings[0]),
+		"subject": subject,
 		"text":    text,
 		"html":    "<pre>" + htmlEscape(text) + "</pre>",
 	})

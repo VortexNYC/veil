@@ -99,6 +99,11 @@ export default defineRailway(() => {
   // worker (backup-ingest.veil.nyc) — the offsite copy that survives a
   // Railway-account loss. The KEK is escrowed separately; a dump plus
   // its KEK is a plaintext export, keep them apart.
+  // WARNING: every name this PUTs must match the worker's NAME allowlist
+  // (apps/backup-ingest/src/index.ts) — an unlisted suffix 404s, rc=1
+  // kills the run before the heartbeat, and the monitor pages a silent
+  // cron. The test at apps/backup-ingest/test/worker.test.ts enumerates
+  // the accepted shapes; add yours there too.
   const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
   const veilBackup = service("veil-backup", {
     source: github("VortexNYC/veil", { branch: "main" }),
@@ -181,6 +186,10 @@ export default defineRailway(() => {
       VEIL_MAIL_TOKEN: "${{veil.VEIL_MAIL_TOKEN}}",
       VEIL_ALERT_TO: preserve(),
       VEIL_READY_URL: "https://veil.nyc/ready",
+      // The page, not just the record — ntfy.sh topic the phone subscribes
+      // to. Email is archival; a finding that lands in an unread inbox is
+      // an 11-day outage (see docs/backup-restore.md heartbeat triage).
+      VEIL_NTFY_TOPIC: preserve(),
     },
   });
   const glue = service("glue", {

@@ -1,0 +1,23 @@
+#!/bin/sh
+# Live-path tripwire: pushes to main that touch the production plane
+# (backup-ingest, identity, railway config, the broker's app/api/cmd)
+# must come through a PR merge, not a bare commit. A merge commit or a
+# fast-forward of a PR branch is fine; a direct working-tree commit is
+# not — it skipped CI+review on the paths that page at 3am.
+# Bypass once with: VEIL_ALLOW_LIVE_PATH_PUSH=1 git push ...
+live='apps/backup-ingest/|identity/|\.railway/|internal/app/|internal/publicapi/|cmd/'
+while read local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] || continue
+  [ "$remote_sha" = "0000000000000000000000000000000000000000" ] && continue
+  range="$remote_sha..$local_sha"
+  touched=$(git diff --name-only $range 2>/dev/null | grep -cE "^($live)")
+  [ "$touched" -eq 0 ] && continue
+  merges=$(git rev-list --merges $range | wc -l | tr -d ' ')
+  if [ "$merges" -eq 0 ] && [ -z "${VEIL_ALLOW_LIVE_PATH_PUSH:-}" ]; then
+    echo "veil: push blocked — $touched live-path file(s) with no merge in range."
+    echo "      These paths gate prod (backup-ingest/identity/.railway/internal/app+publicapi/cmd)."
+    echo "      Route through a PR so CI+review see them, or set VEIL_ALLOW_LIVE_PATH_PUSH=1."
+    exit 1
+  fi
+done
+exit 0
