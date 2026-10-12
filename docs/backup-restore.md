@@ -337,6 +337,41 @@ on someone's memory:
   `github` decrypts, wrong-KEK fails closed, audit archive covers
   max(id)=1614).
 
+## Heartbeat triage (when the monitor pages)
+
+`veil monitor` emails `[veil ops] N finding(s)` when a beat goes stale.
+The beats and their owners:
+
+| Beat | Writer | Cadence | Stale means |
+|---|---|---|---|
+| `backup` | `veil-backup` Railway cron | daily 05:17 UTC | the dump+basebackup+R2 run failed |
+| `wal-archive`, `wal-archive:<slot>` | `wal-archive` Railway service | ~1s | the PITR shipper stopped streaming |
+| `sweep` | origin | periodic | the sweep job wedged |
+| `usage-report` | origin app | periodic | the usage loop wedged |
+| `audit-export` | `audit-export` Railway service | periodic | JSONL-to-R2 relay stalled |
+
+A stale `backup` beat — the run to run:
+
+1. `railway service status -s veil-backup` — `CRASHED`/`SUCCESS` is the answer.
+2. `railway logs -s veil-backup` — the script's own `curl`/`pg_dump` errors
+   land in the tail; a non-zero `rc` skips the heartbeat write, so the
+   finding is always "beat silent" even when the dumps themselves worked.
+3. Common cause: **the ingest worker rejected a name**. The PUT loop hits
+   `backup-ingest.veil.nyc/v1/<object>` — `NAME` allowlist in
+   `apps/backup-ingest/src/index.ts` decides; a filename the regex doesn't
+   cover 404s, sets `rc=1`, kills the run. (2026-10-11: `base-*.manifest`
+   shipped in `4ed2bd5` but was never allowlisted — 11 days of CRASHED.)
+4. `railway service restart -s veil-backup` — the run is idempotent; a
+   restart redoes the whole dump+push+beat. `SUCCESS` means the beat wrote.
+   Confirm: `railway ssh -s Postgres -- "psql -U postgres -d veil -Atc
+   \"SELECT name, at FROM ops_heartbeat ORDER BY at DESC LIMIT 3\""`.
+
+Same drill for `wal-archive`: `railway logs -s wal-archive` — `receivewal:`
+reconnect loops are normal churn; a dead slot logs `slot.*lost` or stops
+logging entirely. The slot retains server-side WAL while it's down, so a
+short outage costs nothing; `max_slot_wal_keep_size` is the bound past
+which archived WAL is genuinely lost.
+
 ## The drill tool
 
 `cmd/drillrestore` runs the assertion half against any restored database —
