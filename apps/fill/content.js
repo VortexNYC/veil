@@ -11,6 +11,11 @@
   let focusEl = null;
   let menu = null;
   let icon = null;
+  // Icon click is an explicit ask for the menu — generate-only fields
+  // never auto-open it (a lone "Suggest a password" row reads as a
+  // second field floating over the next input). Entries still auto-open;
+  // that's the standard autofill dropdown.
+  let menuAsked = false;
   let keepalive = null;
 
   // Safari event pages suspend ~30s after load and can silently stop waking
@@ -89,6 +94,7 @@
         hideMenu();
         return;
       }
+      menuAsked = true;
       if (document.activeElement === el) {
         sendFocus(el);
       } else {
@@ -113,6 +119,7 @@
       menu.el.parentNode.removeChild(menu.el);
     }
     menu = null;
+    menuAsked = false;
   }
 
   function placeMenu(el) {
@@ -553,8 +560,16 @@
           hideIcon();
         }
       } else if (el && document.contains(el) && document.activeElement === el) {
-        showMenu(el, msg.entries, { generate: !!msg.generate, rotates: msg.rotates || [], login: msg.login, passwordRules: msg.passwordRules });
-        showIconFor(el);
+        const entries = msg.entries || [];
+        if (entries.length === 0 && msg.generate && !menuAsked) {
+          // Generate-only on focus: quiet icon, no floating row. The row
+          // only exists once the human clicks the glyph.
+          showIconFor(el);
+        } else {
+          showMenu(el, entries, { generate: !!msg.generate, rotates: msg.rotates || [], login: msg.login, passwordRules: msg.passwordRules });
+          showIconFor(el);
+          menuAsked = false;
+        }
       }
       sendResponse({ ok: true });
       return true;
