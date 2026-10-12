@@ -1,10 +1,28 @@
 // tab.js is imported by the service worker on Chromium; Firefox's event-page
 // background loads it via the manifest scripts array instead — no
 // importScripts there, so guard the call.
-if (typeof importScripts === "function") importScripts("tab.js");
+if (typeof importScripts === "function") {
+  importScripts("tab.js");
+  importScripts("report.js");
+}
 
 const HOST = "nyc.veil.fill";
 const LOGIN = "https://login.veil.nyc";
+
+// A stable anonymous install id ties one browser's error reports together
+// without any account data — the vault never leaks to analytics.
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get("installId").then((got) => {
+    let id = got.installId;
+    if (!id) {
+      id = "ext-" + crypto.randomUUID();
+      chrome.storage.local.set({ installId: id });
+    }
+    if (typeof self !== "undefined" && self.veilReport) {
+      self.veilReport.setInstallId(id);
+    }
+  });
+}
 
 let port = null;
 // Host replies are matched to their request by reqId — a reply that lands
