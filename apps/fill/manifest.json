@@ -35,20 +35,20 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["passkeys.js"],
+      "js": ["report.js", "passkeys.js"],
       "run_at": "document_start",
       "all_frames": false
     },
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["passkeys-page.js"],
+      "js": ["report.js", "passkeys-page.js"],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["ui.js", "fields.js", "content.js"],
+      "js": ["ui.js", "fields.js", "report.js", "content.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

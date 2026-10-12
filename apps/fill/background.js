@@ -1,10 +1,20 @@
 // tab.js is imported by the service worker on Chromium; Firefox's event-page
 // background loads it via the manifest scripts array instead — no
 // importScripts there, so guard the call.
-if (typeof importScripts === "function") importScripts("tab.js");
+if (typeof importScripts === "function") {
+  importScripts("tab.js");
+  importScripts("report.js");
+}
 
 const HOST = "nyc.veil.fill";
 const LOGIN = "https://login.veil.nyc";
+
+// An anonymous session id ties one worker's error reports together — the
+// seed guard bans durable storage outright, and a per-boot id groups a
+// crash session fine without ever writing to it.
+if (typeof self !== "undefined" && self.veilReport) {
+  self.veilReport.setInstallId("ext-" + crypto.randomUUID());
+}
 
 let port = null;
 // Host replies are matched to their request by reqId — a reply that lands
