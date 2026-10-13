@@ -276,13 +276,13 @@ Content script holds values only during write, then drops them. Background never
 
 `Host.confirm` reuses 30s globally. KeePassXC-Browser still calls fill, then totp, then passkeys as separate messages — they share that window. `scope` waits for cards. CVV never reuses.
 
-Confirm chrome is **Veil Access Requested**, not Apple's stock LocalAuthentication card and not 1Password. Same Go host. Not a desktop app. Not slice 32.
+Confirm chrome is a borderless Veil card, not Apple's stock LocalAuthentication card and not 1Password. Same Go host. Not a desktop app. Not slice 32.
 
-- Title: Veil Access Requested
-- Requester icon (Chrome, Ghostty, …) — check — Veil mark
+- Borderless vibrant card — no titlebar, hidden traffic lights, Cancel is the only close.
+- Requester icon (Chrome, Ghostty, …) → arrow → Veil mark.
 - **Allow {App} to {fill a sign-in | fill a card | get CLI access | …}**
-- Account row is `VEIL_LOGIN_EMAIL` (one org; chevron is visual)
-- Cancel fail-closed. **Authorize with Touch ID** then device-owner auth.
+- Account pill is `VEIL_LOGIN_EMAIL` (one org).
+- Cancel fail-closed. The Touch ID scan arms when the sheet shows; **Authorize with Touch ID** re-arms it. The system LA card still presents the sensor prompt — our sheet is context, theirs is the auth; the sheet parks below center so both read as one ask.
 - Fill uses this sheet. Interactive human CLI (`item`, `import`, grants) uses **Allow {App} to get CLI access**. Remembered per bundle id in Keychain (`nyc.veil.cli`, WhenUnlockedThisDeviceOnly, no UserPresence). Agents, pipes, and `VEIL_FILL_TOUCHID=0` skip. Fill remint does not go through that CLI gate.
 
 `confirm.Prompt(reason)` until cards. Then `Prompt(reason, scope, reuse)`:
