@@ -1690,6 +1690,13 @@ func (s *Server) fillRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request failed", http.StatusBadRequest)
 		return
 	}
+	// The broker's file path fires OnRequestFiled; this handler files at
+	// the store so the hook must run here or a fill ask never pages the
+	// human's phone. Only a fresh file notifies — a deduped refile is a
+	// poll, not a new ask.
+	if out.Created && s.App.Broker.OnRequestFiled != nil {
+		s.App.Broker.OnRequestFiled(r.Context(), out.Request)
+	}
 	writeJSON(w, FillRequestOut{RequestID: out.Request.ID, Status: out.Request.Status, ExpiresAt: out.Request.ExpiresAt})
 }
 

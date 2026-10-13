@@ -89,6 +89,11 @@ func (p *Pusher) NotifyRequest(ctx context.Context, req protocol.ApprovalRequest
 		}
 		if err := p.sender.Send(ctx, d, "Veil approval request",
 			"An agent is asking to use a credential — open Veil to approve", data); err != nil {
+			// A non-Unregistered failure is a real outage (bad key, APNs
+			// down, topic mismatch) — silent sends mean silent misses.
+			if !IsUnregistered(err) {
+				slog.Warn("push send failed", "request", req.ID, "err", err)
+			}
 			p.pruneOnDead(ctx, d, err)
 		}
 	}
@@ -112,6 +117,9 @@ func (p *Pusher) NotifyOps(ctx context.Context, orgID string, findings []string)
 	data := map[string]string{"type": "ops_finding", "count": fmt.Sprint(len(findings))}
 	for _, d := range devs {
 		if err := p.sender.Send(ctx, d, "Veil ops alert", body, data); err != nil {
+			if !IsUnregistered(err) {
+				slog.Warn("push ops send failed", "org", orgID, "err", err)
+			}
 			p.pruneOnDead(ctx, d, err)
 		}
 	}

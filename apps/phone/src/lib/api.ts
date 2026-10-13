@@ -70,6 +70,31 @@ export const addLogin = (input: { name: string; uri?: string; login?: string; se
 /** Signup/invite acceptance: plants the humans row the broker keys on. */
 export const provision = () => call<unknown>("/v1/provision", { method: "POST" });
 
+export type ApprovalRequest = {
+  id: string;
+  agent_id: string;
+  item_id: string;
+  grant_id: string;
+  action: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  approval_id?: string;
+};
+
+export const listOpenRequests = () =>
+  call<{ requests: ApprovalRequest[] }>("/v1/requests?status=open").then(
+    (r) => r.requests ?? [],
+  );
+
+export const resolveRequest = (id: string, verb: "approve" | "deny") =>
+  call<ApprovalRequest>(`/v1/requests/${encodeURIComponent(id)}/${verb}`, {
+    method: "POST",
+    body: verb === "approve" ? JSON.stringify({ ttl: "10m" }) : undefined,
+  });
+
 /** Register the OS push token so asks and ops pages reach the lock screen. */
 export const registerDevice = (platform: "apns" | "fcm", token: string, label: string) =>
   call<unknown>("/v1/devices", {
