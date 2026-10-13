@@ -1,6 +1,7 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
+import * as LocalAuthentication from "expo-local-authentication";
 
 import {
   listItems,
@@ -63,6 +64,17 @@ export default function Requests() {
   const resolve = useCallback(
     async (id: string, verb: "approve" | "deny") => {
       if (busy) return;
+      // Approve is the grant — gate it on biometrics like the Mac's Touch
+      // ID sheet. Deny isn't a privilege; a stolen-but-locked phone that
+      // can deny is still fail-closed.
+      if (verb === "approve") {
+        const auth = await LocalAuthentication.authenticateAsync({
+          promptMessage: "Approve Veil request",
+          cancelLabel: "Cancel",
+          fallbackLabel: "Use Passcode",
+        });
+        if (!auth.success) return;
+      }
       setBusy(id + verb);
       try {
         await resolveRequest(id, verb);
