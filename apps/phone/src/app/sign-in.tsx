@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { provision } from "../lib/api";
 import { signIn } from "../lib/auth";
+import { registerForPush } from "../lib/push";
 
 export default function SignIn() {
   const [busy, setBusy] = useState(false);
@@ -18,6 +19,9 @@ export default function SignIn() {
       // Provision is the signup half of login: plants the humans row the
       // broker keys on. Invited users pass; strangers 403.
       await provision();
+      // A sign-in that lands after mount needs push registration re-tried —
+      // the layout effect fires once, before the session exists.
+      void registerForPush();
       router.replace("/");
     } catch (e) {
       setError(e instanceof Error ? e.message : "sign-in failed");

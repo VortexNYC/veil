@@ -25,7 +25,8 @@
         "com.apple.security.application-groups": [
           "group.nyc.veil.phone"
         ],
-        "com.apple.developer.authentication-services.autofill-credential-provider": true
+        "com.apple.developer.authentication-services.autofill-credential-provider": true,
+        "aps-environment": "development"
       }
     },
     "android": {
@@ -45,7 +46,14 @@
       "expo-local-authentication",
       "expo-web-browser",
       "@bacons/apple-targets",
-      "expo-notifications"
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ]
     ]
   }
 }
