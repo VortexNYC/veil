@@ -1,5 +1,6 @@
 {
   "name": "veil-docs",
+  "account_id": "953346ce1b4f27fa04a76d83aeccab28",
   "compatibility_date": "2026-08-27",
   "compatibility_flags": ["nodejs_compat"],
   "routes": [

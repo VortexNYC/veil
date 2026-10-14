@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "veil-loadtest-echo",
-  "account_id": "31bfc2c14a28e0a39e8b9e3c556a18be",
+  "account_id": "953346ce1b4f27fa04a76d83aeccab28",
   "compatibility_date": "2026-10-01",
   "main": "src/index.ts",
   "routes": [
