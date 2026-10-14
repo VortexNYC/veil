@@ -9,6 +9,9 @@ import { defineConfig } from "vite"
 const root = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  // Relative base so the same dist serves app.veil.nyc and the Mac app's
+  // bundled vault (loaded via a custom URL scheme, not a web root).
+  base: "./",
   plugins: [
     tanstackRouter({
       routesDirectory: path.join(root, "src/routes"),
