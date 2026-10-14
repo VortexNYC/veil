@@ -328,10 +328,19 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 	a.Broker.Auditor = auditor
 	// Phone push: registered devices wake on a filed ask. APNs unset =
 	// no-op — push is the wake channel, not the durable part.
+	var senders push.MultiSender
 	if sender, err := push.NewAPNSSender(push.ConfigFromEnv()); err != nil {
 		slog.Warn("apns sender failed — pushes off", "err", err)
 	} else if sender != nil {
-		a.Push = push.New(s, sender)
+		senders.APNS = sender
+	}
+	if sender, err := push.NewFCMSender(push.FCMConfigFromEnv()); err != nil {
+		slog.Warn("fcm sender failed — android pushes off", "err", err)
+	} else if sender != nil {
+		senders.FCM = sender
+	}
+	if senders.APNS != nil || senders.FCM != nil {
+		a.Push = push.New(s, &senders)
 	}
 	// Free-tier gate (VEIL-60): VEIL_FREE_USE_CAP sets the per-org per-month
 	// use allowance on the free plan. Unset/zero = metering off.
