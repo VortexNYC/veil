@@ -114,7 +114,10 @@ final class VaultWindowController: NSObject {
     }
 
     private var pendingPath = ""
-    private var vaultOrigin = "https://app.veil.nyc"
+    /// The vault is the React app bundled at Contents/Resources/vault and
+    /// served to the webview over the veil-app scheme — one install, no
+    /// remote fetch for the UI shell. The API still lives at origin.
+    private var vaultOrigin = "veil-app://vault"
 
     private func loadVault() {
         guard let window else { return }
@@ -122,6 +125,7 @@ final class VaultWindowController: NSObject {
             let tok = self.token()
             DispatchQueue.main.async {
                 let cfg = WKWebViewConfiguration()
+                cfg.setURLSchemeHandler(VaultScheme(), forURLScheme: "veil-app")
                 if !tok.isEmpty, let script = self.injectToken(tok) {
                     cfg.userContentController.addUserScript(script)
                 }
@@ -132,5 +136,43 @@ final class VaultWindowController: NSObject {
                 view.load(URLRequest(url: URL(string: self.vaultOrigin + self.pendingPath)!))
             }
         }
+    }
+
+    /// veil-app://vault/<path> → Contents/Resources/vault/<path>; unknown
+    /// paths fall back to index.html so TanStack routes resolve.
+    private final class VaultScheme: NSObject, WKURLSchemeHandler {
+        private let mime: [String: String] = [
+            "html": "text/html", "js": "text/javascript", "mjs": "text/javascript",
+            "css": "text/css", "json": "application/json", "svg": "image/svg+xml",
+            "png": "image/png", "jpg": "image/jpeg", "webp": "image/webp",
+            "woff": "font/woff", "woff2": "font/woff2", "ttf": "font/ttf",
+            "ico": "image/x-icon", "map": "application/json", "txt": "text/plain",
+            "wasm": "application/wasm",
+        ]
+
+        func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+            guard let url = task.request.url, url.scheme == "veil-app" else {
+                task.didFailWithError(URLError(.unsupportedURL)); return
+            }
+            let root = Bundle.main.resourceURL!.appendingPathComponent("vault")
+            var path = url.path.isEmpty ? "/index.html" : url.path
+            var file = root.appendingPathComponent(String(path.dropFirst()))
+            var isDir: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: file.path, isDirectory: &isDir) || isDir.boolValue {
+                file = root.appendingPathComponent("index.html")
+                path = "/index.html"
+            }
+            guard let data = try? Data(contentsOf: file) else {
+                task.didFailWithError(URLError(.fileDoesNotExist)); return
+            }
+            let ext = (path as NSString).pathExtension.lowercased()
+            let res = URLResponse(url: url, mimeType: mime[ext] ?? "application/octet-stream",
+                                  expectedContentLength: data.count, textEncodingName: nil)
+            task.didReceive(res)
+            task.didReceive(data)
+            task.didFinish()
+        }
+
+        func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
     }
 }

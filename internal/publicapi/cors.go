@@ -8,6 +8,8 @@ var VaultOrigins = map[string]struct{}{
 	"https://app.veil.nyc":  {},
 	"http://127.0.0.1:4470": {},
 	"http://localhost:4470": {},
+	// The Mac app's bundled vault — WKWebView on the veil-app scheme.
+	"veil-app://vault": {},
 }
 
 // CORS allows the vault SPA to call origin. OPTIONS is answered here so

@@ -362,13 +362,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Bundle veil-bin";
+			name = "Bundle veil-bin + vault";
 			outputPaths = (
 				"$(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Contents/MacOS/veil-bin",
+				"$(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Contents/Resources/vault",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin\"\ncd \"$SRCROOT/../..\" && go build -o \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/MacOS/veil-bin\" ./cmd/veil\n";
+			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin\"\ncd \"$SRCROOT/../..\" && go build -o \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/MacOS/veil-bin\" ./cmd/veil\ncd \"$SRCROOT/../vault\" 2>/dev/null || cd \"$SRCROOT/../../apps/vault\"\npnpm build \"$PNPM_FLAGS\" >/dev/null\nrm -rf \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault\"\ncp -R dist \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault\"\nrm -f \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault/wrangler.json\"\n";
 		};
 
 /* Begin PBXSourcesBuildPhase section */
