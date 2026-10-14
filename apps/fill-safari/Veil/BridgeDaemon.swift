@@ -19,11 +19,19 @@ final class BridgeDaemon {
     }
 
     /// A live socket means a daemon is already serving — usually one the
-    /// user started by hand. Only spawn when nothing is there.
+    /// user started by hand. Only spawn when nothing is there. The file
+    /// lingers after a daemon dies, so connect-probe, not exists-check.
+    private func alive() -> Bool {
+        FileManager.default.fileExists(atPath: socketPath)
+            && (try? FillBridge.shared.roundTrip(["action": "ping"], timeout: 2)) != nil
+    }
+
     func ensure() {
-        if FileManager.default.fileExists(atPath: socketPath) {
+        if alive() {
             return
         }
+        // Stale socket from a dead daemon — the file masks respawn.
+        try? FileManager.default.removeItem(atPath: socketPath)
         guard let bin = Bundle.main.url(forAuxiliaryExecutable: "veil-bin") else {
             NSLog("veil: no bundled veil-bin — bridge cannot start")
             return

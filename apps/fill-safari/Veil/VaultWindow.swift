@@ -16,11 +16,17 @@ final class VaultWindowController: NSObject {
     private var unlocked = false
 
     /// Gated entry — the broker's confirm first, then the vault loads.
-    /// Repeat opens on an unlocked app just show the window.
-    func open() {
+    /// Repeat opens on an unlocked app just show the window. `path` deep-
+    /// links into the SPA ("/requests" from a notification tap).
+    func open(path: String = "") {
+        if !path.isEmpty { pendingPath = path }
         if unlocked, let window {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
+            if !pendingPath.isEmpty {
+                web?.load(URLRequest(url: URL(string: vaultOrigin + pendingPath)!))
+                pendingPath = ""
+            }
             return
         }
         showSplash()
@@ -107,6 +113,9 @@ final class VaultWindowController: NSObject {
         }
     }
 
+    private var pendingPath = ""
+    private var vaultOrigin = "https://app.veil.nyc"
+
     private func loadVault() {
         guard let window else { return }
         DispatchQueue.global().async {
@@ -120,7 +129,7 @@ final class VaultWindowController: NSObject {
                 view.autoresizingMask = [.width, .height]
                 window.contentView = view
                 self.web = view
-                view.load(URLRequest(url: URL(string: "https://app.veil.nyc")!))
+                view.load(URLRequest(url: URL(string: self.vaultOrigin + self.pendingPath)!))
             }
         }
     }

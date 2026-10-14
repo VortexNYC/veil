@@ -29,7 +29,9 @@ final class RequestWatcher {
     }
 
     func start() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.delegate = Delegate.shared
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.poll()
         }
@@ -71,5 +73,19 @@ final class RequestWatcher {
         let req = UNNotificationRequest(identifier: r["id"] as? String ?? UUID().uuidString,
                                         content: c, trigger: nil)
         UNUserNotificationCenter.current().add(req)
+    }
+
+    /// A banner tap opens the vault at the pending asks, not the home
+    /// page — the notification is a door to the decision, not the app.
+    private final class Delegate: NSObject, UNUserNotificationCenterDelegate {
+        static let shared = Delegate()
+        func userNotificationCenter(
+            _ center: UNUserNotificationCenter,
+            didReceive response: UNNotificationResponse,
+            withCompletionHandler completionHandler: @escaping () -> Void,
+        ) {
+            VaultWindowController.shared.open(path: "/requests")
+            completionHandler()
+        }
     }
 }
