@@ -3,3 +3,4 @@ dist/
 /ios/
 /android/
 *.orig.*
+keystores/
