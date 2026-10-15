@@ -54,7 +54,8 @@
             "deploymentTarget": "16.4"
           }
         }
-      ]
+      ],
+      "./plugins/with-android-signing.js"
     ]
   }
 }
