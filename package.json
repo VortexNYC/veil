@@ -27,5 +27,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite-plus": "0.2.4"
-  }
+  },
+  "author": "Organization 13 Inc.",
+  "license": "UNLICENSED"
 }

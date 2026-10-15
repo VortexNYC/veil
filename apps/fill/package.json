@@ -1,1 +1,6 @@
-{ "type": "commonjs" }
+{
+  "type": "commonjs",
+  "name": "veil-fill",
+  "author": "Organization 13 Inc.",
+  "license": "UNLICENSED"
+}
