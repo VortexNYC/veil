@@ -1994,10 +1994,38 @@ func serveCmd(home *string) *cobra.Command {
 
 func fillCmd(home *string) *cobra.Command {
 	var bridge, confirmPrompt, confirmServer bool
+	var cdpPort int
+	var cdpURL, cdpEntry string
 	c := &cobra.Command{
 		Use:   "fill",
 		Short: "Veil fill native host. Fill writes into the page. Agents never see the secret.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cdpPort > 0 {
+				// VOR-689 — CDP fill for agent-driven headless browsers: no
+				// extension, the host holds the credential and writes it
+				// over DevTools. The agent sees field count, not secret.
+				dir, err := resolveFillHome(*home)
+				if err != nil {
+					return err
+				}
+				if err := fill.ApplyHostConfig(dir); err != nil {
+					return err
+				}
+				h := fill.NewOrigin(dir, originBase(), "")
+				h.TokenFn = func() (string, error) {
+					return originHumanTokenLive(cmd.Context())
+				}
+				h.Refresh = func() (string, error) {
+					out := strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE"))
+					return remintHumanHTTP(cmd.Context(), out)
+				}
+				n, err := h.FillCDP(cmd.Context(), fill.CDPPort(cdpPort), cdpURL, cdpEntry)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "filled %d field(s)\n", n)
+				return nil
+			}
 			runtime.LockOSThread()
 			if confirmServer {
 				// Internal: the bridge daemon's warm confirm helper —
@@ -2081,6 +2109,9 @@ func fillCmd(home *string) *cobra.Command {
 			return h.Serve(os.Stdin, os.Stdout)
 		},
 	}
+	c.Flags().IntVar(&cdpPort, "cdp", 0, "DevTools port of an agent-driven headless Chrome (fill over CDP, no extension)")
+	c.Flags().StringVar(&cdpURL, "cdp-url", "", "required URL substring the page must match before filling")
+	c.Flags().StringVar(&cdpEntry, "cdp-entry", "", "pick a specific entry UUID (default: first match)")
 	c.Flags().BoolVar(&bridge, "bridge", false, "serve fill frames on <home>/fill.sock instead of stdio (Safari appex)")
 	c.Flags().BoolVar(&confirmPrompt, "confirm-prompt", false, "run one access sheet + Touch ID eval then exit (internal: spawned by the bridge daemon)")
 	c.Flags().BoolVar(&confirmServer, "confirm-server", false, "serve access sheets over stdio until stdin closes (internal: the bridge daemon's warm confirm helper)")
