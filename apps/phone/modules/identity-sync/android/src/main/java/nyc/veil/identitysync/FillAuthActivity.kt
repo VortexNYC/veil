@@ -239,6 +239,11 @@ class FillAuthActivity : FragmentActivity() {
     // schema — clientDataJSON and clientExtensionResults must be present.
     // clientDataHash in the request was over the standard clientData
     // string, so reconstruct exactly that and hand it back.
+    // Chrome's CredMan→Mojo conversion is stricter still: it requires
+    // response.transports on create, top-level authenticatorAttachment on
+    // both ceremonies, and response.userHandle on get — and cross-checks
+    // authenticatorData/publicKey/publicKeyAlgorithm against the decoded
+    // attestationObject, so keep every field origin returns.
     private fun webAuthnJson(json: String, type: String, challenge: String, origin: String): String = try {
         val clientData = JSONObject().apply {
             put("type", type)
@@ -251,7 +256,16 @@ class FillAuthActivity : FragmentActivity() {
             android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
         )
         JSONObject(json).apply {
-            optJSONObject("response")?.put("clientDataJSON", b64)
+            optJSONObject("response")?.let { r ->
+                r.put("clientDataJSON", b64)
+                if (type == "webauthn.create" && !r.has("transports")) {
+                    r.put("transports", org.json.JSONArray().put("internal"))
+                }
+                if (type == "webauthn.get" && !r.has("userHandle")) {
+                    r.put("userHandle", "")
+                }
+            }
+            if (!has("authenticatorAttachment")) put("authenticatorAttachment", "platform")
             if (!has("clientExtensionResults")) put("clientExtensionResults", JSONObject())
         }.toString()
     } catch (_: Exception) { json }

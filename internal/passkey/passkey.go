@@ -183,7 +183,6 @@ func Register(origin string, publicKey json.RawMessage, existing []Record, verif
 		return Credential{}, Record{}, ErrUnknown
 	}
 	full := authData(rpID, flagUP|flagUV|flagBE|flagBS|flagAT, credID, cose)
-	short := authData(rpID, flagUP|flagUV|flagBE|flagBS, nil, nil)
 	att, err := encodeAttestation(full)
 	if err != nil {
 		return Credential{}, Record{}, ErrUnknown
@@ -198,8 +197,11 @@ func Register(origin string, publicKey json.RawMessage, existing []Record, verif
 	}
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
 	resp := CredentialResponse{
-		AttestationObject:  b64url(att),
-		AuthenticatorData:  b64url(short),
+		AttestationObject: b64url(att),
+		// Chrome's CredMan→Mojo conversion byte-compares authenticatorData
+		// against the authData inside the attestationObject — the full form
+		// with the attested credential data, not the short signing form.
+		AuthenticatorData:  b64url(full),
 		PublicKey:          b64url(spki),
 		PublicKeyAlgorithm: algES256,
 	}
