@@ -131,7 +131,8 @@
     // an unscrolled page but keeps working when fixed glitches on early rects.
     // 2px off the field and its exact width, like the native autofill line.
     const top = r.bottom + (window.scrollY || 0) + 2;
-    const left = Math.max(8, r.left + (window.scrollX || 0));
+    const pageX = window.scrollX || 0;
+    let left = Math.max(8, r.left + pageX);
     menu.el.style.left = left + "px";
     // Flip above the field when the menu would overflow the viewport bottom.
     const menuH = menu.el.offsetHeight || 0;
@@ -143,6 +144,13 @@
     }
     menu.el.style.width = Math.max(220, r.width) + "px";
     menu.el.style.maxWidth = "400px";
+    // Clamp the right edge — a field flush against the viewport's right side
+    // (card CVCs sit at the row's tail) must not push the menu off-screen.
+    const menuW = menu.el.offsetWidth || 0;
+    const right = pageX + (window.innerWidth || 0) - 8;
+    if (left + menuW > right) {
+      menu.el.style.left = Math.max(8, right - menuW) + "px";
+    }
   }
 
   function pickEntry(e) {

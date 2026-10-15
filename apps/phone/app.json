@@ -31,6 +31,7 @@
     },
     "android": {
       "package": "nyc.veil.phone",
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

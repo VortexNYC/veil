@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "559487040905",
+    "project_id": "veil-nyc",
+    "storage_bucket": "veil-nyc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:559487040905:android:a87a81a97234567a39b558",
+        "android_client_info": {
+          "package_name": "nyc.veil.phone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNf3brR_b9Ef7LgW12uIJR4DTsJuq67Z8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
