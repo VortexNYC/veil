@@ -23,7 +23,13 @@ export const Route = createFileRoute("/login")({
         // A live session plus prompt=login lands here: kratos refuses a plain
         // flow; recreate it as a refresh flow at the session's AAL (below) or
         // Elements renders a dead-end ("no authentication methods available").
+        // A shared cookie jar (Android custom tabs share Chrome's) makes the
+        // plain create fail other ways too — any create error with a live
+        // session gets the same refresh-at-AAL retry.
         if (await isActiveSession(e)) {
+          return frontend.createBrowserLoginFlow(await refreshAtSessionAal(req))
+        }
+        if (await frontend.toSession().catch(() => null)) {
           return frontend.createBrowserLoginFlow(await refreshAtSessionAal(req))
         }
         throw e
@@ -45,8 +51,19 @@ export const Route = createFileRoute("/login")({
       // A persisted ?flow= can also point at a methodless refresh flow —
       // re-run the guarded create path instead of rendering the dead-end.
       async (id) => {
-        const flow = await frontend.getLoginFlow({ id })
-        return hasCredentialNodes(flow) ? flow : createFlow()
+        try {
+          const flow = await frontend.getLoginFlow({ id })
+          if (hasCredentialNodes(flow)) {
+            return flow
+          }
+        } catch (e) {
+          // A carried flow id from a stale cookie jar can refuse the fetch
+          // outright; with a live session the refresh path is the way out.
+          if (!(await frontend.toSession().catch(() => null))) {
+            throw e
+          }
+        }
+        return createFlow()
       },
     )
   },
