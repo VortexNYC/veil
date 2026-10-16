@@ -17,7 +17,7 @@ export const Route = createFileRoute("/login")({
     // Hydra returns here carrying the login_challenge flow. A dead flow id
     // self-heals the same way.
     if (!deps.flow) {
-      const url = new URL("/self-service/login/browser", kratosURL)
+      const url = new URL(`${kratosURL}/self-service/login/browser`)
       if (deps.login_challenge) {
         url.searchParams.set("login_challenge", deps.login_challenge)
       } else {
@@ -46,6 +46,14 @@ export const Route = createFileRoute("/login")({
     window.location.assign(await beginLogin())
     return new Promise<never>(() => {})
   },
+  pendingComponent: () => (
+    <div className="veil-login">
+      <div style={{ color: "#0f172a", fontWeight: 700, fontSize: "1.25rem", letterSpacing: "0.02em" }}>
+        Veil
+      </div>
+      <div style={{ color: "#64748b", fontSize: "0.9rem" }}>Signing you in…</div>
+    </div>
+  ),
   component: () => {
     // The Elements card is light-theme only — pin the document scheme while
     // this route is mounted so the OS can't auto-darken the form controls.

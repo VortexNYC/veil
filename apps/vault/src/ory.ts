@@ -5,7 +5,7 @@ import { Configuration, FrontendApi } from "@ory/client-fetch"
 // app.veil.nyc instead of bouncing to a separate login host.
 export const kratosURL =
   (import.meta.env.VITE_KRATOS_URL as string | undefined) ??
-  (import.meta.env.PROD ? "https://accounts.veil.nyc" : "http://127.0.0.1:4433")
+  (import.meta.env.PROD ? `${window.location.origin}/auth` : "http://127.0.0.1:4433")
 
 export const oryConfig: OryClientConfiguration = {
   project: {
