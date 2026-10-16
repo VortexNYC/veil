@@ -9,6 +9,7 @@ serve:
       enabled: true
       allowed_origins:
         - https://login.veil.nyc
+        - https://app.veil.nyc
       allowed_methods:
         - GET
         - POST
@@ -28,7 +29,7 @@ serve:
     port: 4434
 
 selfservice:
-  default_browser_return_url: https://login.veil.nyc/
+  default_browser_return_url: https://app.veil.nyc/
   allowed_return_urls:
     - https://login.veil.nyc
     - https://id.veil.nyc
@@ -53,9 +54,10 @@ selfservice:
         passwordless: false
         rp:
           display_name: Veil
-          id: login.veil.nyc
+          id: veil.nyc
           origins:
             - https://login.veil.nyc
+            - https://app.veil.nyc
     lookup_secret:
       enabled: true
 
@@ -75,9 +77,9 @@ selfservice:
       use: code
     logout:
       after:
-        default_browser_return_url: https://login.veil.nyc/login
+        default_browser_return_url: https://app.veil.nyc/login
     login:
-      ui_url: https://login.veil.nyc/login
+      ui_url: https://app.veil.nyc/login
       lifespan: 10m
     registration:
       enabled: false

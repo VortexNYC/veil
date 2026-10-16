@@ -14,9 +14,9 @@ import {
   UsersThree,
   type Icon,
 } from "@phosphor-icons/react";
-import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { beginLogin, signedIn, signOut, token, amrOf } from "../auth";
+import { signedIn, signOut, token, amrOf } from "../auth";
 import { billing, billingCheckout } from "../origin";
 import type { BillingView } from "@vortex-api/veil";
 
@@ -25,7 +25,10 @@ export const Route = createFileRoute("/_app")({
     if (signedIn()) {
       return;
     }
-    window.location.assign(await beginLogin());
+    // Embedded sign-in: render Elements at /login on this origin instead of
+    // bouncing through Hydra to login.veil.nyc — the cross-app hop is the
+    // flicker users see on entry.
+    throw redirect({ to: "/login" });
   },
   component: Shell,
 });
