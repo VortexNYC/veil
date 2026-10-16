@@ -41,6 +41,8 @@ selfservice:
       enabled: true
     code:
       enabled: true
+      config:
+        mfa_enabled: true
     totp:
       enabled: true
       config:

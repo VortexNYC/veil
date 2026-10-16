@@ -35,6 +35,8 @@ selfservice:
       enabled: true
     code:
       enabled: true
+      config:
+        mfa_enabled: true
       # Invites: glue CreateIdentity + POST /admin/recovery/code. Courier (mailpit) delivers.
       # organization_id is stamped. Identity-plane owner/member is Keto. Grants stay in the vault.
     totp:
