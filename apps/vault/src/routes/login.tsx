@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
+import { useEffect } from "react"
 import { Login } from "@ory/elements-react/theme"
 import { frontend, kratosURL, oryConfig } from "../ory"
 import { beginLogin } from "../auth"
@@ -36,9 +37,21 @@ export const Route = createFileRoute("/login")({
     window.location.assign(await beginLogin())
     return new Promise<never>(() => {})
   },
-  component: () => (
-    <div className="veil-login">
-      <Login flow={Route.useLoaderData()} config={oryConfig} />
-    </div>
-  ),
+  component: () => {
+    // The Elements card is light-theme only — pin the document scheme while
+    // this route is mounted so the OS can't auto-darken the form controls.
+    useEffect(() => {
+      const root = document.documentElement
+      const prev = root.style.colorScheme
+      root.style.colorScheme = "light"
+      return () => {
+        root.style.colorScheme = prev
+      }
+    }, [])
+    return (
+      <div className="veil-login">
+        <Login flow={Route.useLoaderData()} config={oryConfig} />
+      </div>
+    )
+  },
 })

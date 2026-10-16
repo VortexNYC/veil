@@ -37,3 +37,8 @@
 .veil-login .ory-elements input:focus {
   background: #fff;
 }
+
+/* Elements is a light theme — pin the document so the OS never auto-darkens it. */
+:root {
+  color-scheme: light;
+}

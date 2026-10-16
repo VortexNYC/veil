@@ -24,7 +24,7 @@
   gap: 2rem;
   background:
     radial-gradient(60rem 40rem at 50% -10%, rgb(99 102 241 / 0.10), transparent 60%),
-    var(--color-kumo-canvas);
+    #f8fafc;
 }
 .veil-login .ory-elements {
   width: 100%;
