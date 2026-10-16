@@ -36,5 +36,19 @@ export const Route = createFileRoute("/login")({
     window.location.assign(await beginLogin())
     return new Promise<never>(() => {})
   },
-  component: () => <Login flow={Route.useLoaderData()} config={oryConfig} />,
+  component: () => (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2rem",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: "420px" }}>
+        <Login flow={Route.useLoaderData()} config={oryConfig} />
+      </div>
+    </div>
+  ),
 })
