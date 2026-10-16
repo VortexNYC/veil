@@ -1,10 +1,19 @@
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { finishLogin } from "../auth";
+import { beginLogin, finishLogin } from "../auth";
 
 export const Route = createFileRoute("/oidc/callback")({
   loader: async () => {
-    await finishLogin(window.location.href);
+    try {
+      await finishLogin(window.location.href);
+    } catch (e) {
+      // aal1 session was reused — redo authorize forcing fresh factors
+      if (e instanceof Error && e.message === "aal2") {
+        window.location.assign(await beginLogin(true));
+        return new Promise<never>(() => {});
+      }
+      throw e;
+    }
     throw redirect({ to: "/items" });
   },
   component: Callback,

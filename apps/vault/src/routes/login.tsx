@@ -17,13 +17,22 @@ export const Route = createFileRoute("/login")({
     // Hydra returns here carrying the login_challenge flow. A dead flow id
     // self-heals the same way.
     if (!deps.flow) {
+      const url = new URL("/self-service/login/browser", kratosURL)
       if (deps.login_challenge) {
-        const url = new URL("/self-service/login/browser", kratosURL)
         url.searchParams.set("login_challenge", deps.login_challenge)
-        window.location.assign(url)
       } else {
-        window.location.assign(await beginLogin())
+        // No challenge yet: kratos session exists → OIDC hop silently mints
+        // the token; no session → browser flow bounces straight back here
+        // with ?flow= — skipping the Hydra round-trip cuts a visible hop.
+        if (await frontend.toSession().catch(() => null)) {
+          window.location.assign(await beginLogin())
+        } else {
+          url.searchParams.set("return_to", `${window.location.origin}/login`)
+          window.location.assign(url)
+        }
+        return new Promise<never>(() => {})
       }
+      window.location.assign(url)
       return new Promise<never>(() => {})
     }
     try {
