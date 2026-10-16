@@ -46,5 +46,7 @@
     "@types/react": "~19.1.10",
     "oxlint": "^1.0.0",
     "typescript": "~5.9.3"
-  }
+  },
+  "author": "Organization 13 Inc.",
+  "license": "UNLICENSED"
 }
