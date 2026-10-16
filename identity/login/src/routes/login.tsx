@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { Login } from "@ory/elements-react/theme"
-import { frontend, oryConfig } from "../ory"
+import { frontend, kratosURL, oryConfig } from "../ory"
 import { loadOrCreateFlow, loginSearch } from "../flow"
 
 export const Route = createFileRoute("/login")({
@@ -11,57 +11,42 @@ export const Route = createFileRoute("/login")({
     login_challenge: search.login_challenge,
   }),
   loader: ({ deps }) => {
-    const req: { returnTo?: string; loginChallenge?: string; refresh?: boolean } = {}
-    if (deps.return_to) {
-      req.returnTo = deps.return_to
-    }
-    if (deps.login_challenge) {
-      req.loginChallenge = deps.login_challenge
-    }
-    const createFlow = async () => {
-      const flow = await frontend.createBrowserLoginFlow(req).catch(async (e: unknown) => {
-        // A live session plus prompt=login lands here: kratos refuses a plain
-        // flow; recreate it as a refresh flow at the session's AAL (below) or
-        // Elements renders a dead-end ("no authentication methods available").
-        // A shared cookie jar (Android custom tabs share Chrome's) makes the
-        // plain create fail other ways too — any create error with a live
-        // session gets the same refresh-at-AAL retry.
-        if (await isActiveSession(e)) {
-          return frontend.createBrowserLoginFlow(await refreshAtSessionAal(req))
-        }
-        if (await frontend.toSession().catch(() => null)) {
-          return frontend.createBrowserLoginFlow(await refreshAtSessionAal(req))
-        }
-        throw e
-      })
-      // With a login_challenge, kratos auto-forces refresh and returns a
-      // methodless flow instead of erroring — catch that too.
-      if (!hasCredentialNodes(flow)) {
-        const session = await frontend.toSession().catch(() => null)
-        if (session) {
-          return frontend.createBrowserLoginFlow(await refreshAtSessionAal(req))
+    // Browser flows are navigated to, never fetched: kratos answers
+    // /self-service/login/browser with a 303 back to this page carrying
+    // ?flow=, and following that cross-origin redirect chain via fetch
+    // dies on CORS. We hand the window to kratos and never resolve.
+    const createFlow = async (): Promise<never> => {
+      // A live session (Android custom tabs share Chrome's cookie jar)
+      // makes a plain create bounce — navigate with refresh at the
+      // session's AAL instead of erroring into a dead-end.
+      const session = await frontend.toSession().catch(() => null)
+      const url = new URL("/self-service/login/browser", kratosURL)
+      if (deps.return_to) url.searchParams.set("return_to", deps.return_to)
+      if (deps.login_challenge) url.searchParams.set("login_challenge", deps.login_challenge)
+      if (session) {
+        url.searchParams.set("refresh", "true")
+        if (session.authenticator_assurance_level === "aal2") {
+          url.searchParams.set("aal", "aal2")
         }
       }
-      return flow
+      window.location.assign(url)
+      return new Promise<never>(() => {})
     }
     return loadOrCreateFlow(
       "/login",
       deps.flow,
       createFlow,
-      // A persisted ?flow= can also point at a methodless refresh flow —
-      // re-run the guarded create path instead of rendering the dead-end.
+      // A persisted ?flow= can also point at a methodless refresh flow or a
+      // dead id from a stale cookie jar — navigate the create path instead
+      // of rendering the dead-end.
       async (id) => {
         try {
           const flow = await frontend.getLoginFlow({ id })
           if (hasCredentialNodes(flow)) {
             return flow
           }
-        } catch (e) {
-          // A carried flow id from a stale cookie jar can refuse the fetch
-          // outright; with a live session the refresh path is the way out.
-          if (!(await frontend.toSession().catch(() => null))) {
-            throw e
-          }
+        } catch {
+          // fall through — a dead flow id self-heals via navigation
         }
         return createFlow()
       },
@@ -76,27 +61,4 @@ type Flow = { ui?: { nodes?: { group?: string }[] } }
 
 function hasCredentialNodes(flow: Flow): boolean {
   return (flow.ui?.nodes ?? []).some((n) => (n.group ?? "default") !== "default")
-}
-
-async function refreshAtSessionAal(req: {
-  returnTo?: string
-  loginChallenge?: string
-}): Promise<{ returnTo?: string; loginChallenge?: string; refresh: true; aal?: string }> {
-  const session = await frontend.toSession().catch(() => null)
-  return {
-    ...req,
-    refresh: true,
-    aal: session?.authenticator_assurance_level === "aal2" ? "aal2" : undefined,
-  }
-}
-
-async function isActiveSession(e: unknown): Promise<boolean> {
-  const res = (e as { response?: Response }).response
-  if (!(res instanceof Response)) return false
-  try {
-    const body = (await res.clone().json()) as { error?: { id?: string } }
-    return body.error?.id === "session_already_available"
-  } catch {
-    return false
-  }
 }
