@@ -12,3 +12,51 @@
     @apply bg-kumo-canvas text-kumo-default m-0 antialiased;
   }
 }
+
+/* Embedded sign-in — vault-canvas backdrop, elevated card, brand accent. */
+.veil-login {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  gap: 2rem;
+  background:
+    radial-gradient(60rem 40rem at 50% -10%, rgb(99 102 241 / 0.10), transparent 60%),
+    #f8fafc;
+}
+.veil-login .ory-elements {
+  width: 100%;
+  max-width: 28rem;
+}
+.veil-login .ory-elements > div {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.06),
+    0 12px 32px -8px rgb(0 0 0 / 0.14);
+}
+
+/* Elements card polish — tighten the stock spacing, deepen the surface,
+   match the vault's weight. */
+.veil-login .ory-elements [data-testid="ory/card"] {
+  gap: 1.75rem;
+  padding: 2.75rem;
+  border-radius: 1rem;
+  border-color: rgb(15 23 42 / 0.08);
+  box-shadow:
+    0 0 0 1px rgb(15 23 42 / 0.04),
+    0 2px 4px rgb(15 23 42 / 0.05),
+    0 20px 48px -12px rgb(15 23 42 / 0.18);
+}
+.veil-login .ory-elements {
+  --radius-forms: 0.5rem;
+  --radius-buttons: 0.5rem;
+  --radius-cards: 1rem;
+}
+.veil-login .ory-elements input {
+  background: rgb(248 250 252);
+}
+.veil-login .ory-elements input:focus-within,
+.veil-login .ory-elements input:focus {
+  background: #fff;
+}

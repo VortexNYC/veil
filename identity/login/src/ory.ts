@@ -9,7 +9,8 @@ export const kratosURL =
 
 export const oryConfig: OryClientConfiguration = {
   project: {
-    name: "veil",
+    name: "Veil",
+    hide_ory_branding: true,
     default_redirect_url: "/",
     error_ui_url: "/error",
     registration_enabled: false,
