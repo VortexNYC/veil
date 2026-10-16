@@ -12,6 +12,7 @@ export type AuthorizeInput = {
   redirectURI: string
   state: string
   challenge: string
+  force?: boolean
 }
 
 export function buildAuthorizeURL(input: AuthorizeInput): string {
@@ -19,8 +20,10 @@ export function buildAuthorizeURL(input: AuthorizeInput): string {
   u.searchParams.set("client_id", input.clientID)
   u.searchParams.set("code_challenge", input.challenge)
   u.searchParams.set("code_challenge_method", "S256")
-  u.searchParams.set("max_age", "0")
-  u.searchParams.set("prompt", "login")
+  if (input.force) {
+    u.searchParams.set("max_age", "0")
+    u.searchParams.set("prompt", "login")
+  }
   u.searchParams.set("redirect_uri", input.redirectURI)
   u.searchParams.set("response_type", "code")
   u.searchParams.set("scope", "openid")
@@ -101,7 +104,7 @@ export function amrOf(raw: string): string[] {
   return amr.filter((v): v is string => typeof v === "string")
 }
 
-export async function beginLogin(): Promise<string> {
+export async function beginLogin(force = false): Promise<string> {
   const verifier = random(32)
   const state = random(16)
   const challenge = await sha256(verifier)
@@ -113,6 +116,7 @@ export async function beginLogin(): Promise<string> {
     redirectURI: redirectURI(),
     state,
     challenge,
+    force,
   })
 }
 
