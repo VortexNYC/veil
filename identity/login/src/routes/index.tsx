@@ -8,11 +8,17 @@ export const Route = createFileRoute("/")({
 })
 
 function Home() {
-  const [session, setSession] = useState<Session | null>(null)
+  // undefined = session probe in flight; render nothing rather than
+  // flashing the wrong state and swapping underneath the user.
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   useEffect(() => {
     void frontend.toSession().then(setSession).catch(() => setSession(null))
   }, [])
+
+  if (session === undefined) {
+    return <main />
+  }
 
   const traits = session?.identity?.traits
   const email =
