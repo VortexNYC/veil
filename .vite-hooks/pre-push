@@ -1,0 +1,7 @@
+#!/bin/sh
+# The heavy suite gates on push, not per-PR: go test -race, govulncheck,
+# veil-vault vitest. Merge gate in cloudflare-ci covers sdk-fresh, vet,
+# lint, typecheck, secret-scan.
+set -e
+make test vuln
+pnpm --filter veil-vault test
