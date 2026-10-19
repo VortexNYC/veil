@@ -18,6 +18,7 @@ export const Route = createFileRoute("/login")({
     // self-heals the same way.
     if (!deps.flow) {
       const url = new URL(`${kratosURL}/self-service/login/browser`)
+      url.searchParams.set("_", String(Date.now())) // bust edge-cached SPA fallback under this path
       if (deps.login_challenge) {
         url.searchParams.set("login_challenge", deps.login_challenge)
       } else {

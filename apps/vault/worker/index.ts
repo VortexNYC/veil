@@ -1,31 +1,69 @@
-// Proxies Kratos under /auth/* so the sign-in dance never leaves app.veil.nyc.
-// Redirect targets and flow JSON (ui.action, continue_with) are rewritten so
-// nothing points the browser back at accounts.veil.nyc.
-
 const UPSTREAM = "https://accounts.veil.nyc"
+const PREFIX = "/auth"
+
+interface Env {
+  ASSETS: { fetch(req: Request): Promise<Response> }
+}
 
 export default {
-  async fetch(request: Request, env: { ASSETS: { fetch: (r: Request) => Promise<Response> } }): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    if (!url.pathname.startsWith("/auth/")) {
+    if (!url.pathname.startsWith(`${PREFIX}/`)) {
       return env.ASSETS.fetch(request)
     }
-    const host = url.origin
-    const upstream = UPSTREAM + url.pathname.slice("/auth".length) + url.search
+
+    const upstream = new URL(
+      url.pathname.slice(PREFIX.length) + url.search,
+      UPSTREAM,
+    )
+    const fwd = new Headers()
+    for (const key of [
+      "cookie",
+      "content-type",
+      "accept",
+      "accept-language",
+      "user-agent",
+      "origin",
+      "referer",
+    ]) {
+      const v = request.headers.get(key)
+      if (v) fwd.set(key, v.replaceAll(url.origin, UPSTREAM))
+    }
+
     const res = await fetch(upstream, {
       method: request.method,
-      headers: request.headers,
-      body: request.body,
+      headers: fwd,
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : request.body,
       redirect: "manual",
+      cf: { cacheTtl: 0 },
     })
-    const headers = new Headers(res.headers)
-    const loc = headers.get("location")
-    if (loc) {
-      headers.set("location", loc.replaceAll(UPSTREAM, `${host}/auth`))
+
+    const headers = new Headers()
+    for (const [k, v] of res.headers) {
+      const lk = k.toLowerCase()
+      if (lk === "location") {
+        headers.set(k, v.replaceAll(UPSTREAM, url.origin + PREFIX))
+      } else if (lk === "content-type" || lk === "vary") {
+        headers.set(k, v)
+      }
     }
-    const ct = headers.get("content-type") ?? ""
-    if (ct.includes("application/json")) {
-      const body = (await res.text()).replaceAll(UPSTREAM, `${host}/auth`)
+    for (const sc of res.headers.getSetCookie()) {
+      headers.append("set-cookie", sc)
+    }
+    headers.set("cache-control", "private, no-store")
+
+    if (res.status >= 300 && res.status < 400) {
+      return new Response(null, { status: res.status, headers })
+    }
+    const ct = res.headers.get("content-type") ?? ""
+    if (ct.includes("json")) {
+      const body = (await res.text()).replaceAll(
+        UPSTREAM,
+        url.origin + PREFIX,
+      )
       return new Response(body, { status: res.status, headers })
     }
     return new Response(res.body, { status: res.status, headers })
