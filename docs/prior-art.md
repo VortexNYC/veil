@@ -46,11 +46,12 @@ That list is a 1Password clone roundup. Most of it is a human vault, a file form
 - TOTP minted at Use. SSH agent socket. Item history. Audit events without secrets.
 - Origin is Railway. Laptop is a cloud agent of that origin.
 
-### Backend patterns still missing (this order, nothing else)
+### Backend patterns — status
 
-1. **Sandbox session mint** written 2026-09-15. Owner `POST /v1/sessions` (Infisical Agent Vault `sessions.create`). Orchestrator mints a short-lived token onto an existing agent and hands the sandbox only that file plus `HTTPS_PROXY` + CA. The 1h agent JWT stays off the sandbox. Token once; never list; never MCP. Default 15m, max 1h.
-2. **Revoke tree** (Vault). One command: this agent may not Use anything, and every grant it holds is dead. Incident response. We can delete a grant today; we cannot kill the principal’s whole tree.
-3. **Honey item** (Infisical honey tokens). An item whose URI is a tripwire. Use is always deny + alert. No secret worth stealing.
+1. **Sandbox session mint** — written. Owner `POST /v1/sessions` (Infisical Agent Vault `sessions.create`). Orchestrator mints a short-lived token onto an existing agent and hands the sandbox only that file plus `HTTPS_PROXY` + CA. The 1h agent JWT stays off the sandbox. Token once; never list; never MCP. Default 15m, max 1h. `internal/app/session.go`, `veil session`.
+2. **Revoke tree** — written. `veil agent revoke --id` kills the principal, every grant it holds, and live sandbox sessions. In-flight Use fails closed with `agent_revoked` (checked again just before the secret is touched). `internal/broker/broker.go`.
+3. **Dummy placeholders** — written. `veil-inject` is the child-env dummy; the proxy substitutes on the wire. `internal/proxy/dummy.go`.
+4. **Honey item** — written. `item add --honey` sets `kind=honey`; any Use denies with reason `honey` before grant evaluation and writes an audit row. Decoy material optional.
 
 ### Do not add
 
