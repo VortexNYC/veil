@@ -1022,6 +1022,7 @@ components:
           - passkey
           - card
           - identity
+          - honey
           type: string
         owner:
           $ref: "#/components/schemas/Owner"
@@ -1322,6 +1323,7 @@ components:
           - passkey
           - card
           - identity
+          - honey
           type: string
         secret:
           description: Vault material. Request only. Never returned.
