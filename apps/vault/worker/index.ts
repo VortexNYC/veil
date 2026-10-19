@@ -51,7 +51,9 @@ export default {
       }
     }
     for (const sc of res.headers.getSetCookie()) {
-      headers.append("set-cookie", sc)
+      // Kratos emits Domain=accounts.veil.nyc — the browser never sends it
+      // back through app.veil.nyc, so pin cookies to the parent zone.
+      headers.append("set-cookie", sc.replace(/Domain=accounts\.veil\.nyc/gi, "Domain=veil.nyc"))
     }
     headers.set("cache-control", "private, no-store")
 
