@@ -1495,7 +1495,8 @@
               "file",
               "passkey",
               "card",
-              "identity"
+              "identity",
+              "honey"
             ]
           },
           "owner": {
@@ -1752,7 +1753,8 @@
               "file",
               "passkey",
               "card",
-              "identity"
+              "identity",
+              "honey"
             ]
           },
           "secret": {
