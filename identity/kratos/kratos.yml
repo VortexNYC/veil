@@ -37,6 +37,7 @@ selfservice:
       enabled: true
       config:
         mfa_enabled: true
+        passwordless_enabled: true
       # Invites: glue CreateIdentity + POST /admin/recovery/code. Courier (mailpit) delivers.
       # organization_id is stamped. Identity-plane owner/member is Keto. Grants stay in the vault.
     totp:
@@ -46,7 +47,7 @@ selfservice:
     webauthn:
       enabled: true
       config:
-        passwordless: false
+        passwordless: true
         rp:
           display_name: Veil
           id: localhost

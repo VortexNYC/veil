@@ -44,6 +44,7 @@ selfservice:
       enabled: true
       config:
         mfa_enabled: true
+        passwordless_enabled: true
     totp:
       enabled: true
       config:
@@ -51,7 +52,7 @@ selfservice:
     webauthn:
       enabled: true
       config:
-        passwordless: false
+        passwordless: true
         rp:
           display_name: Veil
           id: veil.nyc
