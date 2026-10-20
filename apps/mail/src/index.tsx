@@ -12,10 +12,14 @@ interface Env {
 	EMAIL_FROM: string;
 	MAIL_TOKEN: string;
 	RESEND_KEY?: string;
+	TELNYX_API_KEY?: string;
+	TELNYX_MESSAGING_PROFILE_ID?: string;
+	TELNYX_FROM?: string;
 }
 
 interface SendRequest {
 	to: string;
+	channel?: string;
 	subject?: string;
 	html?: string;
 	text?: string;
@@ -193,6 +197,24 @@ export default {
 		}
 		if (!body.to) {
 			return Response.json({ error: "to required" }, { status: 400 });
+		}
+		if (body.channel === "sms" || /^\+\d{7,15}$/.test(body.to)) {
+			const text = body.text ?? str(body.data?.body) ?? str(body.data?.message) ?? (body.html ? body.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
+			if (!text) return Response.json({ error: "sms body required" }, { status: 400 });
+			if (!env.TELNYX_API_KEY || !env.TELNYX_FROM) {
+				return Response.json({ error: "sms not configured" }, { status: 501 });
+			}
+			const smsBody: Record<string, string> = { from: env.TELNYX_FROM, to: body.to, text };
+			if (env.TELNYX_MESSAGING_PROFILE_ID) smsBody.messaging_profile_id = env.TELNYX_MESSAGING_PROFILE_ID;
+			const res = await fetch("https://api.telnyx.com/v2/messages", {
+				method: "POST",
+				headers: { Authorization: `Bearer ${env.TELNYX_API_KEY}`, "Content-Type": "application/json" },
+				body: JSON.stringify(smsBody),
+			});
+			if (!res.ok) {
+				return Response.json({ error: "sms failed", detail: await res.text() }, { status: 502 });
+			}
+			return Response.json({ ok: true });
 		}
 		const rendered = templateFor(body);
 		let subject: string;
