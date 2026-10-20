@@ -692,6 +692,7 @@ func itemCmd(home *string) *cobra.Command {
 	var numberFile, cvvFile, expMonth, expYear, holder string
 	var updateURIs []string
 	var tags []string
+	var honey bool
 	add := &cobra.Command{
 		Use:   "add NAME",
 		Short: "Store material from files. Never argv. OAuth refresh stays in the broker.",
@@ -701,7 +702,24 @@ func itemCmd(home *string) *cobra.Command {
 			var kind protocol.ItemKind
 			var err error
 			fileName := ""
-			if attachFile != "" {
+			if honey {
+				if attachFile != "" || sshFile != "" || numberFile != "" || refreshFile != "" {
+					return fmt.Errorf("--honey is a decoy tripwire. not --file/--ssh-file/--number-file/--refresh-file")
+				}
+				kind = protocol.ItemHoney
+				if secretFile != "" {
+					token, err = readFileMaterial(secretFile)
+					if err != nil {
+						return err
+					}
+				}
+				if totpFile != "" {
+					totpSeed, err = readFileMaterial(totpFile)
+					if err != nil {
+						return err
+					}
+				}
+			} else if attachFile != "" {
 				fileBody, err = os.ReadFile(attachFile)
 				if err != nil {
 					return err
@@ -797,6 +815,7 @@ func itemCmd(home *string) *cobra.Command {
 	add.Flags().StringSliceVar(&tags, "tag", nil, "owner label. not ACL")
 	add.Flags().StringVar(&login, "login", "", "fill username. metadata on the item. not a secret")
 	add.Flags().StringVar(&secretFile, "secret-file", "", "file containing the API key (`-` for stdin)")
+	add.Flags().BoolVar(&honey, "honey", false, "tripwire item. any Use is deny + alert. decoy material optional")
 	add.Flags().StringVar(&sshFile, "ssh-file", "", "OpenSSH/PEM private key file. Never argv. Kind becomes ssh.")
 	add.Flags().StringVar(&totpFile, "totp-file", "", "file containing the TOTP seed, never the 6-digit code")
 	add.Flags().StringVar(&refreshFile, "refresh-file", "", "OAuth refresh token file. Never argv.")

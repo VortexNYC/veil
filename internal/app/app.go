@@ -513,7 +513,7 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 			itemID = generated
 		}
 	}
-	if len(opts.Token) == 0 && len(opts.TOTPSeed) == 0 && len(opts.Refresh) == 0 && len(opts.File) == 0 && len(opts.Passkey) == 0 {
+	if len(opts.Token) == 0 && len(opts.TOTPSeed) == 0 && len(opts.Refresh) == 0 && len(opts.File) == 0 && len(opts.Passkey) == 0 && opts.Kind != protocol.ItemHoney {
 		return protocol.Item{}, fmt.Errorf("app: empty secret")
 	}
 	kind := opts.Kind

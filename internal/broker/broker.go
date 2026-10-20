@@ -236,6 +236,12 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	if req.Fetch != nil {
 		target = req.Fetch.URL
 	}
+	// Honey items are tripwires: any authenticated Use is deny + audit. The
+	// deny runs before grant evaluation so a stolen grant still trips it.
+	if item.Kind == protocol.ItemHoney {
+		dec := protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "honey"}
+		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
+	}
 	dec := grant.Evaluate(grant.Input{
 		Principal: agent,
 		Item:      item,

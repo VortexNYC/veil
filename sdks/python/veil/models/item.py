@@ -44,8 +44,8 @@ class Item(BaseModel):
     @field_validator('kind')
     def kind_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(['api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity']):
-            raise ValueError("must be one of enum values ('api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity')")
+        if value not in set(['api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity', 'honey']):
+            raise ValueError("must be one of enum values ('api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity', 'honey')")
         return value
 
     model_config = ConfigDict(

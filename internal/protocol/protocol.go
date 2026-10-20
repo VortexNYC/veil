@@ -63,6 +63,9 @@ const (
 	ItemPasskey  ItemKind = "passkey"
 	ItemCard     ItemKind = "card"
 	ItemIdentity ItemKind = "identity"
+	// ItemHoney is a tripwire. Any Use is deny + alert; material is a decoy
+	// or empty. Never injected, never filled.
+	ItemHoney ItemKind = "honey"
 )
 
 // Injects is whether Use / child env may touch this kind. SSH stays on the
@@ -70,7 +73,7 @@ const (
 // fill-host only. PAN/CVV never enter a child env.
 func (k ItemKind) Injects() bool {
 	switch k {
-	case ItemSSH, ItemFile, ItemPasskey, ItemCard, ItemIdentity:
+	case ItemSSH, ItemFile, ItemPasskey, ItemCard, ItemIdentity, ItemHoney:
 		return false
 	default:
 		return true

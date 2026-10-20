@@ -25,8 +25,8 @@ func TestOfficialMFAMethodsEnabled(t *testing.T) {
 				t.Fatalf("%s missing %s", name, needle)
 			}
 		}
-		if strings.Contains(s, "passwordless: true") {
-			t.Fatalf("%s webauthn is first-factor; MFA is password then totp/webauthn", name)
+		if !strings.Contains(s, "passwordless: true") {
+			t.Fatalf("%s passkey-first sign-in is the product default", name)
 		}
 		if name == "kratos.veil.yml" {
 			if strings.Contains(s, "127.0.0.1:1025") || strings.Contains(s, "smtp://mail:") {

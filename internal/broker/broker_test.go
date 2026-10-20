@@ -1220,3 +1220,74 @@ func TestUseDeniedCallsDoNotConsume(t *testing.T) {
 		t.Fatalf("denied uses consumed allowance: %d", got)
 	}
 }
+
+func TestUseHoneyDeniesGranted(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	mem := b.Store.(*store.Memory)
+	honey := protocol.Item{
+		ID:    "item-honey",
+		OrgID: "org-1",
+		Name:  "honey-aws",
+		Kind:  protocol.ItemHoney,
+		Owner: protocol.Owner{Kind: protocol.OwnerOrg, ID: "org-1"},
+		URIs:  []string{upstream.URL},
+	}
+	if err := mem.PutItem(honey, store.Secret("decoy-not-a-secret")); err != nil {
+		t.Fatal(err)
+	}
+	// A valid grant exists — the tripwire still denies.
+	if err := mem.PutGrant(protocol.Grant{
+		ID:      "grant-honey",
+		OrgID:   "org-1",
+		AgentID: agent.ID,
+		ItemID:  honey.ID,
+		Level:   protocol.Level2,
+		Actions: []protocol.ActionKind{protocol.ActionFetch},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: honey.ID,
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Decision != protocol.DecisionDeny || got.Reason != "honey" {
+		t.Fatalf("honey use: %+v", got)
+	}
+	mustNoLeak(t, got)
+	if err := AssertNoSecret(got, []byte("decoy-not-a-secret")); err != nil {
+		t.Fatal(err)
+	}
+	// The deny is an audit row — the alert path consumes it.
+	events, err := mem.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawHoney bool
+	for _, e := range events {
+		mustNoLeak(t, e)
+		if e.ItemID == honey.ID && e.Decision == protocol.DecisionDeny && e.Reason == "honey" {
+			sawHoney = true
+		}
+	}
+	if !sawHoney {
+		t.Fatal("no honey deny in audit")
+	}
+
+	// A granted real item still allows — the deny is the item kind, not
+	// collateral damage on the agent.
+	ok, err := b.Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: "item-1",
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok.Decision != protocol.DecisionAllow {
+		t.Fatalf("real use: %+v", ok)
+	}
+}
