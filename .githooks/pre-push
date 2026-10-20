@@ -1,4 +1,17 @@
 #!/bin/sh
+# pre-push — the laptop half of the merge bar.
+#
+# cloudflare-ci runs the fast contract on the PR (`ci` check: sdk-fresh,
+# vet, vp lint, typecheck; `secret-scan`). The heavy suite (make gate:
+# go test -race -shuffle=on, govulncheck, vault vitest, docs build)
+# gates HERE — a push that lands red on the suite was a laptop that
+# bypassed the hook.
+# Bypass once: VEIL_SKIP_PUSH_GATE=1 git push ...
+set -u
+
+refs=$(cat)
+[ -z "$refs" ] && exit 0
+
 # Live-path tripwire: pushes to main that touch the production plane
 # (backup-ingest, identity, railway config, the broker's app/api/cmd)
 # must come through a PR merge, not a bare commit. A merge commit or a
@@ -6,7 +19,7 @@
 # not — it skipped CI+review on the paths that page at 3am.
 # Bypass once with: VEIL_ALLOW_LIVE_PATH_PUSH=1 git push ...
 live='apps/backup-ingest/|identity/|\.railway/|internal/app/|internal/publicapi/|cmd/'
-while read local_ref local_sha remote_ref remote_sha; do
+echo "$refs" | while read local_ref local_sha remote_ref remote_sha; do
   [ "$remote_ref" = "refs/heads/main" ] || continue
   [ "$remote_sha" = "0000000000000000000000000000000000000000" ] && continue
   range="$remote_sha..$local_sha"
@@ -20,4 +33,34 @@ while read local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 done
+
+# Heavy suite gate — same steps `make ci` runs after the fast contract.
+if [ -n "${VEIL_SKIP_PUSH_GATE:-}" ]; then
+  echo "veil: VEIL_SKIP_PUSH_GATE set — skipping make gate."
+  exit 0
+fi
+
+# Postgres-backed tests are PG_TEST_DSN-gated; without the container they
+# silently skip and the push gates on sqlite only — going blind. Bring up
+# the same throwaway container prove-hydra uses.
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  docker start veil-pg-test >/dev/null 2>&1 || \
+    docker run -d --name veil-pg-test -p 127.0.0.1:55432:5432 \
+      -e POSTGRES_PASSWORD=test -e POSTGRES_DB=veiltest postgres:17 >/dev/null 2>&1
+  for i in $(seq 1 30); do
+    docker exec veil-pg-test pg_isready -U postgres >/dev/null 2>&1 && break
+    sleep 1
+  done
+  # secretlint-disable-next-line -- throwaway local test container creds, not a real secret
+  PG_TEST_DSN="postgres://postgres:test@127.0.0.1:55432/veiltest?sslmode=disable"
+  export PG_TEST_DSN
+else
+  echo "veil: docker unavailable — PG_TEST_DSN unset, Postgres tests will skip"
+fi
+
+echo "veil: make gate (heavy suite) — VEIL_SKIP_PUSH_GATE=1 bypasses"
+if ! make gate; then
+  echo "veil: push blocked — make gate failed. Fix it, or bypass once with VEIL_SKIP_PUSH_GATE=1."
+  exit 1
+fi
 exit 0

@@ -1,8 +1,9 @@
 #!/bin/sh
 # pre-commit — keep obviously-broken commits out of the PR loop.
-# Fast only: gofmt + vet on staged Go files' packages. The full gate
-# is CI; this just stops the embarrassing ones from costing a 5-minute
-# CI round-trip. Bypass once: git commit -n.
+# Fast only: gofmt + vet on staged Go files' packages. The heavy gate
+# is pre-push `make gate` + cloudflare-ci's `ci` check; this just stops
+# the embarrassing ones from costing a 5-minute round-trip.
+# Bypass once: git commit -n.
 set -u
 files=$(git diff --cached --name-only --diff-filter=ACMR)
 [ -z "$files" ] && exit 0

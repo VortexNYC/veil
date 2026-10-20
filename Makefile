@@ -26,9 +26,16 @@ sdk-fresh:
 
 ci:
 	$(MAKE) sdk-fresh
-	$(MAKE) vet test vuln
+	$(MAKE) vet
 	pnpm exec vp lint
 	pnpm run typecheck
+	$(MAKE) gate
+
+# The heavy suite. cloudflare-ci's `ci` check is the fast contract above;
+# this gates locally via .githooks/pre-push — a push that lands red on
+# the suite was a laptop that bypassed the hook.
+gate:
+	$(MAKE) test vuln
 	pnpm --filter veil-vault test
 	pnpm run docs:build
 
