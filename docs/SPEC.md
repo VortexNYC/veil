@@ -707,8 +707,9 @@ Next: Mac helper (slice 32). Typed-save / TOTP-from-page on Chrome are CFT-prove
 
 ## Testing
 
-- GitHub Actions runs `make ci`. That is the merge bar. A green `go test` with red lint, stale SDKs, or a broken vault typecheck is a lie.
-- `make ci` is: `sdk:generate` plus a dirty-tree check on `sdks/` and `internal/publicapi/spec.json`, `go vet`, `go test -race -shuffle=on ./...` with agent/origin env unset and `VEIL_FILL_TOUCHID=0` (so Chrome-launched host tests cannot inherit a laptop JWT), `vp lint`, login+vault typecheck, vault vitest, docs build. Fill `node --test` runs from Go (`TestFieldsJS`). It does not hit `https://veil.nyc`. It does not load Chrome.
+- cloudflare-ci is the merge bar. The repo webhook (`POST /webhook/github` on the `cloudflare-ci` worker) fires `ChecksWorkflow`, which runs each check in a `ChecksSandbox` container and posts via the Checks API. The `ci` context is the fast contract — `make sdk-fresh vet` + `vp lint` + `pnpm typecheck` — and `secret-scan` is `pnpm scan:secrets`. A green `go test` with red lint, stale SDKs, or a broken vault typecheck is a lie.
+- The heavy suite gates via `.githooks/pre-push` → `make gate`: `go test -race -shuffle=on ./...` with agent/origin env unset and `VEIL_FILL_TOUCHID=0` (so Chrome-launched host tests cannot inherit a laptop JWT), `govulncheck`, vault vitest, docs build. The hook brings up `veil-pg-test` so `PG_TEST_DSN` tests actually run. `make ci` remains the whole bar on one command for a laptop that wants it.
+- `make ci` is: `sdk:generate` plus a dirty-tree check on `sdks/` and `internal/publicapi/spec.json`, `go vet`, `vp lint`, login+vault typecheck, then `make gate`. Fill `node --test` runs from Go (`TestFieldsJS`). It does not hit `https://veil.nyc`. It does not load Chrome.
 - The Go suite **is** `testing` + `go test`. That is Vitest for this repo. `t.Run` is `describe`/`it`. `testing.F` seed values run in CI; `go test -fuzz=FuzzName ./pkg` is a laptop soak, not GitHub. `testing/synctest` is the fake clock (confirm 30s). `-race` and `-shuffle=on` are on `make test`. Do not add Ginkgo, testify, or a second runner.
 - Vitest is `apps/vault` only. Fill JS stays Node's `node:test`.
 - `go test ./...` is the Go suite. It does not prove `https://veil.nyc`.

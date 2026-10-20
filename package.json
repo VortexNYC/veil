@@ -14,7 +14,8 @@
     "sdk:generate": "pnpm exec tsx scripts/generate-sdks.ts",
     "docs:dev": "pnpm --filter @vortex-api/veil-docs dev",
     "docs:build": "pnpm --filter @vortex-api/veil-docs build",
-    "prove:cli-golden-flow": "go test ./internal/cli ./internal/mcpserver ./internal/publicapi -count=1"
+    "prove:cli-golden-flow": "go test ./internal/cli ./internal/mcpserver ./internal/publicapi -count=1",
+    "prepare": "vp config"
   },
   "devDependencies": {
     "@hey-api/client-fetch": "^0.13.1",
