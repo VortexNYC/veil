@@ -1,0 +1,8 @@
+title = "Veil gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "PostHog project API keys are write-only public tokens — they ship in client bundles by design and cannot read data."
+regexes = ['''phc_[A-Za-z0-9]{48}''']
