@@ -3,7 +3,7 @@
 // SDK, no secrets — path + surface only. ctx.waitUntil keeps the send
 // off the request path; a reporting failure must never fail the worker.
 const HOST = "https://us.i.posthog.com/capture/";
-const KEY = "phc_v5HaYTE3N9siA53wtYmkFHSm28mBATJJsdDjeaobHxC8";
+const KEY = "phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8";
 
 export function reportWorkerError(
 	surface: string,

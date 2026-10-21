@@ -10,7 +10,7 @@
     return;
   }
   var HOST = "https://us.i.posthog.com";
-  var KEY = "phc_v5HaYTE3N9siA53wtYmkFHSm28mBATJJsdDjeaobHxC8";
+  var KEY = "phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8";
   var installId = null;
 
   function send(props) {

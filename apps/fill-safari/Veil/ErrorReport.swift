@@ -10,7 +10,7 @@ import Foundation
 
 enum ErrorReport {
     private static let host = "https://us.i.posthog.com/capture/"
-    private static let key = "phc_v5HaYTE3N9siA53wtYmkFHSm28mBATJJsdDjeaobHxC8"
+    private static let key = "phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8"
     private static let installId: String = {
         if let id = UserDefaults.standard.string(forKey: "veilInstallId") {
             return id
