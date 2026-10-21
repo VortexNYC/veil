@@ -6,7 +6,7 @@
 // regenerated per launch; grouping matters, not identity.
 
 const HOST = "https://us.i.posthog.com/capture/";
-const KEY = "phc_v5HaYTE3N9siA53wtYmkFHSm28mBATJJsdDjeaobHxC8";
+const KEY = "phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8";
 
 let installId = `phone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
