@@ -2,7 +2,7 @@ module github.com/VortexNYC/veil
 
 go 1.26.8
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/chromedp/chromedp v0.13.7
