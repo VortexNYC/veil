@@ -8,7 +8,7 @@ import "./styles.css"
 // Bug telemetry lands in one place: PostHog error tracking. Exceptions
 // only — no autocapture, no session recording, no item data. The vault's
 // contents never leave the client.
-posthog.init("phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8", {
+posthog.init("phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8" // gitleaks:allow, {
   api_host: "https://us.i.posthog.com",
   autocapture: false,
   capture_pageview: false,
