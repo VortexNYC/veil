@@ -333,6 +333,9 @@ type UseRequest struct {
 	ItemID string
 	Action ActionKind
 	Fetch  *Fetch
+	// Dry evaluates the decision (and files the ask on need_approval) but
+	// never claims a use or touches the secret — the agent's pre-flight.
+	Dry bool
 }
 
 type FetchResult struct {

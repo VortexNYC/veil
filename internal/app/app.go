@@ -2319,6 +2319,18 @@ func (a *App) UseSession(ctx context.Context, rawToken, itemID, method, rawURL s
 	return a.UseFetchSession(ctx, rawToken, itemID, protocol.Fetch{Method: method, URL: rawURL})
 }
 
+// UseCheck evaluates a Use without executing it: grant + approval checks run
+// (and the need_approval ask is filed) but no use is claimed and the secret
+// is never touched. Agents pre-flight with it; humans see the ask.
+func (a *App) UseCheck(ctx context.Context, agentID, itemID, method, rawURL string) (protocol.UseResult, error) {
+	return a.Broker.Use(ctx, protocol.Principal{ID: agentID}, protocol.UseRequest{
+		ItemID: itemID,
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{Method: method, URL: rawURL},
+		Dry:    true,
+	})
+}
+
 func (a *App) UseFetchSession(ctx context.Context, rawToken, itemID string, fetch protocol.Fetch) (protocol.UseResult, error) {
 	hash := sessionHash(rawToken)
 	return a.Broker.UseSession(ctx, hash, protocol.UseRequest{

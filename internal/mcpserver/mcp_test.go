@@ -729,3 +729,56 @@ func TestMCPApprovalStatusReportsExpired(t *testing.T) {
 		t.Fatalf("open-past-expiry should report expired, got %q", out.Status)
 	}
 }
+
+func TestMCPCheckDryRun(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	iss := newTestIssuer(t)
+	hit := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		_, _ = io.WriteString(w, "ok")
+	}))
+	t.Cleanup(upstream.Close)
+	if _, err := a.AddItem("stripe", upstream.URL, []byte(secret)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgent("grok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.BindWorkload("grok", iss.URL, "agent-grok", "veil"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddGrant("grok", "stripe", "level1"); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(Mux(a, "http://veil.test/mcp", iss.URL))
+	t.Cleanup(ts.Close)
+	ctx := context.Background()
+	cs := connect(t, ctx, ts.URL+Path, iss.token(t, "agent-grok", "veil"))
+	defer cs.Close()
+
+	out, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "check",
+		Arguments: FetchIn{Item: "stripe", URL: upstream.URL},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(out)
+	if !bytes.Contains(raw, []byte("need_approval")) {
+		t.Fatalf("check should need_approval: %s", raw)
+	}
+	if !bytes.Contains(raw, []byte("request_id")) {
+		t.Fatalf("check should file the ask: %s", raw)
+	}
+	if hit {
+		t.Fatal("check hit the upstream — dry-run must not execute")
+	}
+	if scrub.Contains(raw, []byte(secret)) {
+		t.Fatal("check leaked secret")
+	}
+}

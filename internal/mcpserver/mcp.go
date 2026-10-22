@@ -102,6 +102,25 @@ func New(a *app.App) *mcp.Server {
 		return nil, out, err
 	})
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "check",
+		Description: "Dry-run a fetch: evaluates the grant decision without calling the URL, claiming a use, or touching the secret. On need_approval it files the ask and returns request_id — also how an agent explicitly requests approval.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in FetchIn) (*mcp.CallToolResult, FetchOut, error) {
+		agentID, err := principal(req)
+		if err != nil {
+			return nil, FetchOut{}, err
+		}
+		got, err := a.UseCheck(ctx, agentID, in.Item, in.Method, in.URL)
+		if err != nil {
+			return nil, FetchOut{}, err
+		}
+		return nil, FetchOut{
+			Decision:         string(got.Decision),
+			Reason:           got.Reason,
+			RequestID:        got.RequestID,
+			RequestExpiresAt: got.RequestExpiresAt,
+		}, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "match_items",
 		Description: "List items this agent may Use whose URIs match a URL — which item to name in fetch. Names and URIs only, never secrets.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in MatchIn) (*mcp.CallToolResult, ListOut, error) {
