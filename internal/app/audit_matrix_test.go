@@ -225,7 +225,7 @@ func TestAuditMatrix_WorkloadBind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.BindWorkloadFor(owner, agent.ID, "iss", "sub", "aud"); err != nil {
+	if _, err := a.BindWorkloadFor(owner, agent.ID, "https://issuer.test", "sub", "aud"); err != nil {
 		t.Fatal(err)
 	}
 	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionWorkloadBound), owner.ID, "", "agent="+agent.ID)

@@ -1144,6 +1144,9 @@ func (a *App) BindWorkloadFor(actor protocol.Principal, agentID, issuer, subject
 	if issuer == "" || subject == "" || audience == "" {
 		return protocol.Workload{}, fmt.Errorf("app: issuer, subject, and audience are required")
 	}
+	if err := workload.ValidateBinding(issuer, subject); err != nil {
+		return protocol.Workload{}, err
+	}
 	own, err := a.ownsVault(actor)
 	if err != nil {
 		return protocol.Workload{}, err

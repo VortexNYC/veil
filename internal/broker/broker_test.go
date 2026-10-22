@@ -1353,3 +1353,106 @@ func TestUseHoneyRevokeTagAutoRevokesAgent(t *testing.T) {
 		t.Fatalf("after honey-revoke tripwire, want agent_revoked, got %+v", after)
 	}
 }
+
+func TestAnthropicWIFJWTBearerExchangeInjectsAccessTokenNeverLeaksAssertion(t *testing.T) {
+	const assertionSecret = "hydra_secret_DO_NOT_LEAK"
+	const assertionJWT = "eyJhbGciOiJSUzI1NiJ9.assertion_DO_NOT_LEAK.sig"
+	const anthropicOAT = "sk-ant-oat01-EPHEMERAL_DO_NOT_LEAK"
+
+	idpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if !ok || u != "agent-claude" || p != assertionSecret {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"`+assertionJWT+`","token_type":"Bearer","expires_in":300}`)
+	}))
+	t.Cleanup(idpSrv.Close)
+
+	var sawWIF map[string]string
+	anthropicWIFSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&sawWIF); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"`+anthropicOAT+`","token_type":"Bearer","expires_in":600}`)
+	}))
+	t.Cleanup(anthropicWIFSrv.Close)
+
+	var sawUpstreamAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawUpstreamAuth = r.Header.Get("Authorization")
+		_, _ = io.WriteString(w, "echo:"+sawUpstreamAuth+":"+assertionSecret)
+	}))
+	t.Cleanup(upstream.Close)
+
+	mem := store.NewMemory()
+	agent := protocol.Principal{Kind: protocol.PrincipalAgent, ID: "agent-1", OrgID: "org-1"}
+	blob, err := material.PackWIF(material.WIFOpts{
+		TokenURL:          anthropicWIFSrv.URL + "/v1/oauth/token",
+		AssertionTokenURL: idpSrv.URL + "/oauth2/token",
+		AssertionClientID: "agent-claude",
+		AssertionSecret:   assertionSecret,
+		AssertionAudience: "anthropic",
+		FederationRuleID:  "fdrl_01ABC",
+		OrganizationID:    "00000000-0000-0000-0000-000000000001",
+		ServiceAccountID:  "svac_01XYZ",
+		WorkspaceID:       "wrkspc_01DEF",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := protocol.Item{
+		ID:    "anthropic-wif",
+		OrgID: "org-1",
+		Name:  "anthropic-wif",
+		Kind:  protocol.ItemOAuth,
+		Owner: protocol.Owner{Kind: protocol.OwnerOrg, ID: "org-1"},
+		URIs:  []string{upstream.URL},
+	}
+	if err := mem.PutAgent(agent); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.PutItem(item, store.Secret(blob)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.PutGrant(protocol.Grant{
+		ID:      "grant-wif",
+		OrgID:   "org-1",
+		AgentID: agent.ID,
+		ItemID:  item.ID,
+		Level:   protocol.Level2,
+		Actions: []protocol.ActionKind{protocol.ActionFetch},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := New(mem).Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: item.ID,
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1/messages"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Decision != protocol.DecisionAllow {
+		t.Fatalf("decision: %+v", got)
+	}
+	if sawWIF["grant_type"] != "urn:ietf:params:oauth:grant-type:jwt-bearer" ||
+		sawWIF["assertion"] != assertionJWT ||
+		sawWIF["federation_rule_id"] != "fdrl_01ABC" ||
+		sawWIF["service_account_id"] != "svac_01XYZ" {
+		t.Fatalf("unexpected WIF exchange body: %+v", sawWIF)
+	}
+	if sawUpstreamAuth != "Bearer "+anthropicOAT {
+		t.Fatalf("upstream auth=%q, want Bearer %s", sawUpstreamAuth, anthropicOAT)
+	}
+	if err := AssertNoSecret(got, []byte(assertionSecret)); err != nil {
+		t.Fatal(err)
+	}
+	if err := AssertNoSecret(got, []byte(anthropicOAT)); err != nil {
+		t.Fatal(err)
+	}
+}
