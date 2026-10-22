@@ -2,8 +2,16 @@ package store
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
+
+func appendDSNParam(dsn, kv string) string {
+	if strings.Contains(dsn, "?") {
+		return dsn + "&" + kv
+	}
+	return dsn + "?" + kv
+}
 
 // TestPostgresPoolBudget proves the connection-budget knobs actually bind:
 // VEIL_PG_MAX_CONNS resizes the request pool, VEIL_PG_AUDIT_CONNS the audit
@@ -28,7 +36,7 @@ func TestPostgresPoolBudget(t *testing.T) {
 	}
 
 	// Env wins over DSN.
-	s2, err := OpenPostgres(dsn+"&pool_max_conns=3", testMasterKey(t))
+	s2, err := OpenPostgres(appendDSNParam(dsn, "pool_max_conns=3"), testMasterKey(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +47,7 @@ func TestPostgresPoolBudget(t *testing.T) {
 
 	// DSN respected when env unset.
 	t.Setenv("VEIL_PG_MAX_CONNS", "")
-	s3, err := OpenPostgres(dsn+"&pool_max_conns=3", testMasterKey(t))
+	s3, err := OpenPostgres(appendDSNParam(dsn, "pool_max_conns=3"), testMasterKey(t))
 	if err != nil {
 		t.Fatal(err)
 	}
