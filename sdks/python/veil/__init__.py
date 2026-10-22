@@ -51,6 +51,7 @@ __all__ = [
     "CreateSessionResponse",
     "DeleteMe200Response",
     "DeleteOrg200Response",
+    "DeviceRegisterRequest",
     "EventsResponse",
     "Grant",
     "GrantsResponse",
@@ -69,6 +70,7 @@ __all__ = [
     "ProvisionResponse",
     "RemoveMember200Response",
     "RequestsResponse",
+    "RotateItem200Response",
     "Session",
     "SessionsResponse",
     "UpdateItemRequest",
@@ -116,6 +118,7 @@ from veil.models.create_session_request import CreateSessionRequest as CreateSes
 from veil.models.create_session_response import CreateSessionResponse as CreateSessionResponse
 from veil.models.delete_me200_response import DeleteMe200Response as DeleteMe200Response
 from veil.models.delete_org200_response import DeleteOrg200Response as DeleteOrg200Response
+from veil.models.device_register_request import DeviceRegisterRequest as DeviceRegisterRequest
 from veil.models.events_response import EventsResponse as EventsResponse
 from veil.models.grant import Grant as Grant
 from veil.models.grants_response import GrantsResponse as GrantsResponse
@@ -134,6 +137,7 @@ from veil.models.promote_owner200_response import PromoteOwner200Response as Pro
 from veil.models.provision_response import ProvisionResponse as ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response as RemoveMember200Response
 from veil.models.requests_response import RequestsResponse as RequestsResponse
+from veil.models.rotate_item200_response import RotateItem200Response as RotateItem200Response
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest

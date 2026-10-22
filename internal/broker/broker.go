@@ -278,6 +278,9 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		dec = protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "not_injectable"}
 		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
 	}
+	if req.Dry {
+		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
+	}
 	if req.Action != protocol.ActionFetch || req.Fetch == nil {
 		dec = protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "unsupported_action"}
 		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil

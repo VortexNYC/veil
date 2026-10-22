@@ -9,14 +9,18 @@ Bearer is the agent (Hydra `client_credentials` JWT). The host is not identity.
 
 ## Surfaces
 
-| Surface | Same operations |
+| Surface | Operations |
 | --- | --- |
 | OpenAPI | `GET /v1/items`, `POST /v1/use` |
-| MCP | `list_items`, `fetch` |
+| MCP | `list_items`, `match_items`, `fetch`, `check`, `approval_status` |
 | CLI | `item list` is owner; `use --body-file` is the agent fetch |
 | SDKs | generated from the spec |
 
 `useItem` / `fetch` / `use --body-file` send method, headers, and body. The broker injects the credential. The response is the upstream result with vault secrets scrubbed.
+
+- `match_items` — which granted item covers a URL (pick the right `item` for `fetch`).
+- `check` — dry-run the decision without calling the upstream or touching the secret; on `need_approval` it files the ask and returns `request_id`.
+- `approval_status` — poll that `request_id`: `open`, `approved`, `denied`, `expired`. Retry `fetch` once approved.
 
 There is no `GetSecret`. `gen`, `write`, `audit`, and `run` are not coding-agent tools.
 
@@ -30,4 +34,26 @@ veil grant add --agent cursor --item stripe --level level2
 veil mcp config
 ```
 
-Mint with `agent token`. JWT is `--out-file` only. Send it as `Authorization: Bearer`. MCP URL is `https://veil.nyc/mcp`. HTTP Use is `POST /v1/use`.
+## Token lifecycle — read this
+
+Minted JWTs expire in **~1 hour**. An expired JWT gets `401 invalid token` on every call — this is the failure most integrations trip on.
+
+The durable credential is the **Hydra client secret** (`cursor.hydra`), not the JWT. Two refresh paths:
+
+**Agent host has the veil CLI** — remint on a timer or on 401:
+
+```
+veil agent token cursor --secret-file ./cursor.hydra --out-file ./cursor.jwt
+```
+
+**Cloud agent, no CLI** — mint directly from Hydra's public token endpoint:
+
+```
+curl -X POST https://id.veil.nyc/oauth2/token \
+  -u "agent-cursor:$SECRET" \
+  -d "grant_type=client_credentials&scope=veil"
+```
+
+`agent-cursor` is the client id (`veil agent hydra` prints it). Cache the returned `access_token` until its `expires_in` nears zero; do not mint per request.
+
+If the agent lost its secret file, re-run `veil agent hydra cursor --secret-file ... --force` — the old secret is rotated out.

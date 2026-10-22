@@ -72,6 +72,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(grantCmd(&home))
 	root.AddCommand(groupCmd(&home))
 	root.AddCommand(useCmd(&home))
+	root.AddCommand(rotateCmd(&home))
 	root.AddCommand(approveCmd(&home))
 	root.AddCommand(requestCmd(&home))
 	root.AddCommand(mcpCmd(&home))
@@ -2052,7 +2053,11 @@ func fillCmd(home *string) *cobra.Command {
 					return err
 				}
 				if _, err := originHumanTokenLive(cmd.Context()); err != nil {
-					return err
+					// A stale/expired token must not kill the daemon: the
+					// socket stays up, clients get need_login per request,
+					// and Refresh remints on demand once creds are valid.
+					// Exiting here put the launchd bridge in a crash loop.
+					fmt.Fprintf(cmd.ErrOrStderr(), "veil-fill: %v (will retry per request)\n", err)
 				}
 				h = fill.NewOrigin(dir, originBase(), "")
 				h.Issuer = envOr("VEIL_HYDRA_ISSUER", "https://id.veil.nyc")
@@ -2083,6 +2088,19 @@ func fillCmd(home *string) *cobra.Command {
 					return err
 				}
 				paths := fill.BridgeSocketPaths(dir, user)
+				// One bridge per vault home. launchd, the app's ensure(),
+				// and `fill install` can each spawn — the socket bind steals
+				// silently, so without a flock every spawn wins and the
+				// losers idle forever with warm confirm children.
+				lock, err := fill.BridgeLock(dir)
+				if err != nil {
+					return err
+				}
+				if lock == nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "veil-fill: bridge already running, exiting\n")
+					return nil
+				}
+				defer lock.Close()
 				// Confirms live in a persistent --confirm-server child —
 				// the daemon itself stays a pure Go process with no
 				// AppKit, so macOS never manages it as an app
@@ -2591,4 +2609,15 @@ func reportCmd(home *string) *cobra.Command {
 	}
 	c.Flags().BoolVar(&hibp, "hibp", false, "opt into HIBP k-anonymity breach counts (5-char SHA-1 prefix only)")
 	return c
+}
+
+func rotateCmd(home *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rotate ITEM",
+		Short: "Rotate an item's credential at its provider. Owner only; grants and item id are untouched.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return originRotateItem(cmd, args[0])
+		},
+	}
 }

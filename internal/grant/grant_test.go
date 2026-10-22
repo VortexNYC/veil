@@ -241,6 +241,28 @@ func TestHostAllowedIPLiteralStaysExact(t *testing.T) {
 	}
 }
 
+func TestManagementEndpointDenied(t *testing.T) {
+	in := fixture(protocol.Level2)
+	in.Item.URIs = []string{"https://api.resend.com"}
+	in.TargetURL = "https://api.resend.com/emails"
+	if got := Evaluate(in); got.Decision != protocol.DecisionAllow {
+		t.Fatalf("ordinary endpoint denied: %+v", got)
+	}
+	for _, u := range []string{
+		"https://api.resend.com/api-keys",
+		"https://api.resend.com/api-keys/key_123",
+		"https://api.resend.com/emails/../api-keys",
+		"https://api.resend.com/%61pi-keys",
+		"https://api.resend.com/%2561pi-keys",
+	} {
+		in.TargetURL = u
+		got := Evaluate(in)
+		if got.Decision != protocol.DecisionDeny || got.Reason != "management_endpoint" {
+			t.Fatalf("%s: want management_endpoint deny, got %+v", u, got)
+		}
+	}
+}
+
 func FuzzRegistrable(f *testing.F) {
 	f.Add("https://dash.cloudflare.com/login")
 	f.Add("https://www.amazon.co.uk/dp/1")

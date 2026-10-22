@@ -30,6 +30,7 @@ import (
 	"github.com/VortexNYC/veil/internal/passkey"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/push"
+	"github.com/VortexNYC/veil/internal/rotate"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/VortexNYC/veil/internal/workload"
 )
@@ -87,6 +88,11 @@ type RequestNotify interface {
 }
 
 var ErrExists = errors.New("app: vault already exists")
+
+// ErrIdentityUnavailable marks dependency failures in the identity plane
+// (Keto membership, Hydra verification) — distinct from bad credentials so
+// API callers see 503-unavailable instead of a misleading 401.
+var ErrIdentityUnavailable = errors.New("app: identity plane unavailable")
 
 type config struct {
 	OrgID   string `json:"org_id"`
@@ -747,6 +753,83 @@ func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []stri
 	return item, nil
 }
 
+// RotateItem swaps an item's credential server-side: the provider's
+// key-management API mints a replacement, the new secret is verified and
+// sealed in place — item id and grants are untouched, agents keep calling
+// Use. Retire of the old provider key is best-effort and audited either way.
+// Owner-only: rotation is vault administration, not a grant.
+func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, error) {
+	if ok, err := a.ownsVault(actor); err != nil || !ok {
+		if err != nil {
+			return protocol.Item{}, err
+		}
+		return protocol.Item{}, ErrForbidden
+	}
+	item, err := a.Store.Item(name)
+	if err != nil {
+		return protocol.Item{}, err
+	}
+	if item.Archived {
+		return protocol.Item{}, fmt.Errorf("app: item archived")
+	}
+	var rot rotate.Rotator
+	for _, u := range item.URIs {
+		if r, ok := rotate.ForHost(u); ok {
+			rot = r
+			break
+		}
+	}
+	if rot == nil {
+		return protocol.Item{}, rotate.ErrNoRotator()
+	}
+	raw, err := a.Store.Secret(item.ID)
+	if err != nil {
+		return protocol.Item{}, err
+	}
+	env := material.Unpack(raw)
+	live := []byte(env.Token)
+	ctx := context.Background()
+	next, keyID, err := rot.Create(ctx, item.Name, live)
+	if err != nil {
+		return protocol.Item{}, fmt.Errorf("rotate: %w", err)
+	}
+	// The new key id is the only breadcrumb to an orphan — log it the moment
+	// it exists so a mid-rotation failure never strands an unaccounted key.
+	rollback := func() {
+		slog.Warn("rotate: retiring orphaned new key", "item", name, "key_id", keyID)
+		if err := rot.Retire(ctx, keyID, next); err != nil {
+			slog.Warn("rotate: orphan not retired", "item", name, "key_id", keyID, "err", err)
+		}
+	}
+	if err := rot.Verify(ctx, next); err != nil {
+		rollback()
+		return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
+	}
+	// Dual-phase state lives inside the sealed material.Envelope, never in
+	// item.Tags — agent-facing list paths never see provider key IDs.
+	oldKeyID := env.KeyID
+	pendingID := env.PendingKeyID
+	sealed, err := material.WithRotatedToken(raw, next, keyID, oldKeyID)
+	if err != nil {
+		rollback()
+		return protocol.Item{}, err
+	}
+	// Commit the sealed swap and audit row before retiring the outgoing
+	// pending key — an irreversible provider-side revoke must never run
+	// ahead of the local transaction.
+	reason := fmt.Sprintf("name=%s new_key_id=%s old_key_id=%s retired_key_id=%s", name, keyID, oldKeyID, pendingID)
+	if err := a.Store.PutItem(item, store.Secret(sealed), adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemRotated, reason)); err != nil {
+		rollback()
+		return protocol.Item{}, err
+	}
+	if pendingID != "" {
+		if err := rot.Retire(ctx, pendingID, live); err != nil {
+			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
+		}
+	}
+	return item, nil
+}
+
 func (a *App) ArchiveItem(name string) error {
 	return a.archiveItem(a.HumanID, name)
 }
@@ -999,7 +1082,7 @@ func (a *App) PrincipalFromOIDC(ctx context.Context, rawToken string) (protocol.
 	}
 	ok, merr := a.Members.IsMember(ctx, p.OrgID, p.ID)
 	if merr != nil {
-		return protocol.Principal{}, merr
+		return protocol.Principal{}, fmt.Errorf("%w: %v", ErrIdentityUnavailable, merr)
 	}
 	if !ok {
 		return protocol.Principal{}, fmt.Errorf("app: not a member")
@@ -2051,7 +2134,7 @@ func (a *App) grantUntil(actor protocol.Principal, grantee, itemID string, level
 		if agent.OrgID != org {
 			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
 		}
-		if agent.Owner.Kind == protocol.OwnerUser && agent.Owner.ID != actor.ID {
+		if agent.Owner.Kind == protocol.OwnerUser && agent.Owner.ID != actor.ID && agent.Owner.ID != a.HumanID {
 			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
 		}
 	case errors.Is(err, store.ErrNotFound):
@@ -2317,6 +2400,18 @@ func (a *App) UseFetch(ctx context.Context, agentID, itemID string, fetch protoc
 
 func (a *App) UseSession(ctx context.Context, rawToken, itemID, method, rawURL string) (protocol.UseResult, error) {
 	return a.UseFetchSession(ctx, rawToken, itemID, protocol.Fetch{Method: method, URL: rawURL})
+}
+
+// UseCheck evaluates a Use without executing it: grant + approval checks run
+// (and the need_approval ask is filed) but no use is claimed and the secret
+// is never touched. Agents pre-flight with it; humans see the ask.
+func (a *App) UseCheck(ctx context.Context, agentID, itemID, method, rawURL string) (protocol.UseResult, error) {
+	return a.Broker.Use(ctx, protocol.Principal{ID: agentID}, protocol.UseRequest{
+		ItemID: itemID,
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{Method: method, URL: rawURL},
+		Dry:    true,
+	})
 }
 
 func (a *App) UseFetchSession(ctx context.Context, rawToken, itemID string, fetch protocol.Fetch) (protocol.UseResult, error) {

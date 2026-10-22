@@ -116,6 +116,17 @@ func ServeStdio() {
 	// Pay the AppKit boot once, at spawn — the daemon prewarms this child
 	// at bridge start so even the first prompt is warm.
 	warmAppKit()
+	// Parent-death watchdog: if the daemon dies while a prompt is parked
+	// mid-eval, this child reparents to launchd and would otherwise live
+	// forever holding an unanswerable access sheet on screen.
+	go func() {
+		for {
+			time.Sleep(2 * time.Second)
+			if os.Getppid() == 1 {
+				os.Exit(0)
+			}
+		}
+	}()
 	sc := bufio.NewScanner(os.Stdin)
 	sc.Buffer(make([]byte, 64<<10), 64<<10)
 	enc := json.NewEncoder(os.Stdout)

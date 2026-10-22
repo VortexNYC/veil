@@ -131,6 +131,7 @@ const (
 	// with the write they describe.
 	ActionItemCreated    ActionKind = "item_created"
 	ActionItemUpdated    ActionKind = "item_updated"
+	ActionItemRotated    ActionKind = "item_rotated"
 	ActionItemArchived   ActionKind = "item_archived"
 	ActionItemDeleted    ActionKind = "item_deleted"
 	ActionAgentCreated   ActionKind = "agent_created"
@@ -333,6 +334,9 @@ type UseRequest struct {
 	ItemID string
 	Action ActionKind
 	Fetch  *Fetch
+	// Dry evaluates the decision (and files the ask on need_approval) but
+	// never claims a use or touches the secret — the agent's pre-flight.
+	Dry bool
 }
 
 type FetchResult struct {

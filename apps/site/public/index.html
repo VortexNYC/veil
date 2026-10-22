@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Veil</title>
-<meta name="description" content="Veil — the credential broker for agents. Private alpha.">
+<title>Veil — the credential broker for agents</title>
+<meta name="description" content="Veil gives agents access to credentials without ever showing them the secret. Items, grants, injectable fills — brokered, approved, audited.">
+<meta property="og:title" content="Veil — the credential broker for agents">
+<meta property="og:description" content="Agents act. Humans approve. Secrets stay sealed.">
 <style>
   @font-face {
     font-family: "Hedvig Letters Serif";
@@ -19,6 +21,7 @@
   :root {
     --void: oklch(0.1 0 0);
     --surface: oklch(0.165 0 0);
+    --raised: oklch(0.2 0 0);
     --border: oklch(0.26 0 0);
     --subtle: oklch(0.52 0 0);
     --secondary: oklch(0.68 0 0);
@@ -37,27 +40,27 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 48px 20px;
+    padding: 64px 20px 48px;
   }
-  main { max-width: 560px; width: 100%; }
+  main { max-width: 640px; width: 100%; }
   h1 {
     font-family: var(--serif);
-    font-size: clamp(44px, 9vw, 72px);
+    font-size: clamp(48px, 10vw, 84px);
     font-weight: 400;
     color: var(--bright);
     letter-spacing: -0.02em;
     line-height: 1;
   }
   .tag {
-    margin-top: 16px;
-    font-size: 17px;
+    margin-top: 18px;
+    font-size: 18px;
     color: var(--secondary);
-    line-height: 1.5;
+    line-height: 1.55;
   }
+  .tag strong { color: var(--foreground); font-weight: 500; }
   .alpha {
     display: inline-block;
-    margin-top: 24px;
+    margin-top: 22px;
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.14em;
@@ -68,50 +71,126 @@
     border-radius: 999px;
   }
   .install {
-    margin-top: 32px;
+    margin-top: 28px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 14px 16px;
     font-family: var(--mono);
     font-size: 13px;
-    color: var(--foreground);
     overflow-x: auto;
     white-space: nowrap;
   }
   .install .c { color: var(--subtle); }
+  .flow {
+    margin-top: 48px;
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .step {
+    background: var(--void);
+    padding: 20px 22px;
+  }
+  .step h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--subtle);
+  }
+  .step p {
+    margin-top: 8px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--secondary);
+  }
+  .step p b { color: var(--foreground); font-weight: 500; }
+  .flow-alt { background: var(--surface); }
+  .bound {
+    margin-top: 40px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    background: var(--surface);
+  }
+  .bound h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 20px;
+    color: var(--bright);
+  }
+  .bound ul {
+    margin: 12px 0 0 18px;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--secondary);
+  }
+  .bound li b { color: var(--foreground); font-weight: 500; }
   nav {
-    margin-top: 32px;
+    margin-top: 40px;
     display: flex;
-    gap: 24px;
+    flex-wrap: wrap;
+    gap: 20px;
     font-family: var(--mono);
     font-size: 13px;
   }
   nav a { color: var(--secondary); text-decoration: none; }
   nav a:hover { color: var(--bright); }
   .foot {
-    margin-top: 24px;
+    margin-top: 28px;
     font-family: var(--mono);
     font-size: 12px;
     color: var(--subtle);
     line-height: 1.7;
   }
-  .foot a { color: var(--secondary); }
+  .foot a, .foot code { color: var(--secondary); }
 </style>
 </head>
 <body>
 <main>
   <h1>Veil</h1>
-  <p class="tag">The credential broker for agents.<br>Items, grants, and injectable secrets — your agent never sees the plaintext.</p>
+  <p class="tag">The credential broker for agents.<br>
+  Your agent gets the <strong>ability to use</strong> a secret — it never gets the secret. Grants decide what it may use; humans approve the rest; every use is audited.</p>
   <span class="alpha">Private alpha · invite only</span>
 
   <div class="install"><span class="c">$</span> curl -fsSL https://veil.nyc/install.sh | sh</div>
 
+  <div class="flow">
+    <div class="step">
+      <h3>01 — Bind the agent</h3>
+      <p><b>veil agent hydra</b> issues a workload credential — no shared keys, no pasted tokens. Cursor, Claude Code, Grok, devin-cli, custom runners.</p>
+    </div>
+    <div class="step flow-alt">
+      <h3>02 — Grant the item</h3>
+      <p>The owner grants <b>use</b>, not possession. An agent sees item names and URIs via <b>list_items</b> and <b>match_items</b> — never plaintext.</p>
+    </div>
+    <div class="step">
+      <h3>03 — Brokered use</h3>
+      <p><b>fetch</b> calls the URL with the credential injected upstream — the response comes back, the secret doesn't. On Mac, fill writes into the page after Touch ID. Level-1 grants page a human; the agent polls <b>approval_status</b> and retries.</p>
+    </div>
+  </div>
+
+  <div class="bound">
+    <h2>The boundary</h2>
+    <ul>
+      <li><b>Agents never receive secrets.</b> Not in JSON, MCP, logs, or audit records — the transport doesn't carry them.</li>
+      <li><b>The grant is the object.</b> Per-item, per-level, per-principal. Revocable. Audited.</li>
+      <li><b>Humans stay in the loop.</b> Remote approval for level-1 use; Touch ID before anything leaves your Mac.</li>
+      <li><b>Identity is Ory.</b> Kratos for humans, Hydra for tokens, Keto for membership — no hand-rolled auth.</li>
+    </ul>
+  </div>
+
   <nav>
     <a href="/docs">Docs</a>
     <a href="/docs/changelog">Changelog</a>
-    <a href="https://login.veil.nyc">Sign in</a>
+    <a href="https://app.veil.nyc">Sign in</a>
     <a href="https://app.veil.nyc">Vault</a>
+    <a href="https://veil.nyc/mcp">MCP</a>
     <a href="/security">Security</a>
     <a href="/privacy">Privacy</a>
   </nav>

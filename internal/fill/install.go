@@ -127,7 +127,10 @@ func InstallBridgeAgent(env InstallEnv) error {
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<true/>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>VEIL_REPLICA_KEYSTORE</key>

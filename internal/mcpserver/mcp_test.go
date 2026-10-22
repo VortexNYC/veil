@@ -583,3 +583,202 @@ func TestMCPRevokeAgent(t *testing.T) {
 		t.Fatalf("mcp list after revoke: %+v", items)
 	}
 }
+
+func TestMCPMatchAndApprovalStatus(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	iss := newTestIssuer(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	t.Cleanup(upstream.Close)
+	if _, err := a.AddItem("stripe", upstream.URL, []byte(secret)); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"grok", "muse"} {
+		if _, err := a.AddAgent(name); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.BindWorkload(name, iss.URL, "agent-"+name, "veil"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.AddGrant("grok", "stripe", "level1"); err != nil {
+		t.Fatal(err)
+	}
+
+	public := "http://veil.test/mcp"
+	ts := httptest.NewServer(Mux(a, public, iss.URL))
+	t.Cleanup(ts.Close)
+	ctx := context.Background()
+	cs := connect(t, ctx, ts.URL+Path, iss.token(t, "agent-grok", "veil"))
+	defer cs.Close()
+
+	match, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "match_items",
+		Arguments: MatchIn{URL: upstream.URL + "/v1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchRaw, err := json.Marshal(match)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(matchRaw, []byte("stripe")) {
+		t.Fatalf("match_items missed stripe: %s", matchRaw)
+	}
+	if scrub.Contains(matchRaw, []byte(secret)) {
+		t.Fatal("match_items leaked secret")
+	}
+	miss, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "match_items",
+		Arguments: MatchIn{URL: "https://nope.example"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := json.Marshal(miss); bytes.Contains(raw, []byte("stripe")) {
+		t.Fatalf("match_items returned non-matching item: %s", raw)
+	}
+
+	fetch, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "fetch",
+		Arguments: FetchIn{Item: "stripe", URL: upstream.URL},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchRaw, err := json.Marshal(fetch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(fetchRaw, []byte("need_approval")) {
+		t.Fatalf("level1 fetch should need_approval: %s", fetchRaw)
+	}
+	var parsed struct {
+		RequestID string `json:"request_id"`
+	}
+	structured, _ := json.Marshal(fetch.StructuredContent)
+	if err := json.Unmarshal(structured, &parsed); err != nil || parsed.RequestID == "" {
+		t.Fatalf("fetch missing request_id handle: %s", fetchRaw)
+	}
+
+	status, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "approval_status",
+		Arguments: ApprovalStatusIn{RequestID: parsed.RequestID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusRaw, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(statusRaw, []byte("open")) {
+		t.Fatalf("approval_status not open: %s", statusRaw)
+	}
+	if scrub.Contains(statusRaw, []byte(secret)) {
+		t.Fatal("approval_status leaked secret")
+	}
+
+	other := connect(t, ctx, ts.URL+Path, iss.token(t, "agent-muse", "veil"))
+	defer other.Close()
+	peek, err := other.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "approval_status",
+		Arguments: ApprovalStatusIn{RequestID: parsed.RequestID},
+	})
+	if err == nil && !peek.IsError {
+		t.Fatal("muse read grok's approval request")
+	}
+}
+
+func TestMCPApprovalStatusReportsExpired(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	iss := newTestIssuer(t)
+	if _, err := a.AddItem("x", "https://x.example", []byte(secret)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgent("grok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.BindWorkload("grok", iss.URL, "agent-grok", "veil"); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	reqID := "req-expired-test"
+	if _, err := a.Store.FileRequest(protocol.ApprovalRequest{
+		ID: reqID, OrgID: protocol.LocalOrgID, AgentID: "grok", ItemID: "x",
+		GrantID: "g", Action: protocol.ActionFetch, Status: protocol.RequestOpen,
+		CreatedAt: past.Add(-time.Hour), ExpiresAt: past,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := approvalStatus(a, "grok", reqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != string(protocol.RequestExpired) {
+		t.Fatalf("open-past-expiry should report expired, got %q", out.Status)
+	}
+}
+
+func TestMCPCheckDryRun(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	iss := newTestIssuer(t)
+	hit := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		_, _ = io.WriteString(w, "ok")
+	}))
+	t.Cleanup(upstream.Close)
+	if _, err := a.AddItem("stripe", upstream.URL, []byte(secret)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgent("grok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.BindWorkload("grok", iss.URL, "agent-grok", "veil"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddGrant("grok", "stripe", "level1"); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(Mux(a, "http://veil.test/mcp", iss.URL))
+	t.Cleanup(ts.Close)
+	ctx := context.Background()
+	cs := connect(t, ctx, ts.URL+Path, iss.token(t, "agent-grok", "veil"))
+	defer cs.Close()
+
+	out, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "check",
+		Arguments: FetchIn{Item: "stripe", URL: upstream.URL},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(out)
+	if !bytes.Contains(raw, []byte("need_approval")) {
+		t.Fatalf("check should need_approval: %s", raw)
+	}
+	if !bytes.Contains(raw, []byte("request_id")) {
+		t.Fatalf("check should file the ask: %s", raw)
+	}
+	if hit {
+		t.Fatal("check hit the upstream — dry-run must not execute")
+	}
+	if scrub.Contains(raw, []byte(secret)) {
+		t.Fatal("check leaked secret")
+	}
+}

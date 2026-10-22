@@ -624,6 +624,103 @@ func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*Provisi
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type HumanAPIRegisterDeviceRequest struct {
+	ctx context.Context
+	ApiService *HumanAPIService
+	deviceRegisterRequest *DeviceRegisterRequest
+}
+
+func (r HumanAPIRegisterDeviceRequest) DeviceRegisterRequest(deviceRegisterRequest DeviceRegisterRequest) HumanAPIRegisterDeviceRequest {
+	r.deviceRegisterRequest = &deviceRegisterRequest
+	return r
+}
+
+func (r HumanAPIRegisterDeviceRequest) Execute() (*http.Response, error) {
+	return r.ApiService.RegisterDeviceExecute(r)
+}
+
+/*
+RegisterDevice Register a push endpoint for the caller's org. The phone app POSTs its APNs/FCM token on sign-in and refresh. Humans only — an agent must never mint a wake channel for asks meant to reach a human. Idempotent upsert.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIRegisterDeviceRequest
+*/
+func (a *HumanAPIService) RegisterDevice(ctx context.Context) HumanAPIRegisterDeviceRequest {
+	return HumanAPIRegisterDeviceRequest{
+		ApiService: a,
+		ctx: ctx,
+	}
+}
+
+// Execute executes the request
+func (a *HumanAPIService) RegisterDeviceExecute(r HumanAPIRegisterDeviceRequest) (*http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.RegisterDevice")
+	if err != nil {
+		return nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/devices"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.deviceRegisterRequest == nil {
+		return nil, reportError("deviceRegisterRequest is required and must be specified")
+	}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	// body params
+	localVarPostBody = r.deviceRegisterRequest
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarHTTPResponse, newErr
+	}
+
+	return localVarHTTPResponse, nil
+}
+
 type HumanAPIRemoveMemberRequest struct {
 	ctx context.Context
 	ApiService *HumanAPIService
@@ -723,6 +820,102 @@ func (a *HumanAPIService) RemoveMemberExecute(r HumanAPIRemoveMemberRequest) (*R
 	}
 
 	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type HumanAPIUnregisterDeviceRequest struct {
+	ctx context.Context
+	ApiService *HumanAPIService
+	token *string
+}
+
+func (r HumanAPIUnregisterDeviceRequest) Token(token string) HumanAPIUnregisterDeviceRequest {
+	r.token = &token
+	return r
+}
+
+func (r HumanAPIUnregisterDeviceRequest) Execute() (*http.Response, error) {
+	return r.ApiService.UnregisterDeviceExecute(r)
+}
+
+/*
+UnregisterDevice Drop a push token — sign-out and token rotation land here. Idempotent: an absent token is already unregistered.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIUnregisterDeviceRequest
+*/
+func (a *HumanAPIService) UnregisterDevice(ctx context.Context) HumanAPIUnregisterDeviceRequest {
+	return HumanAPIUnregisterDeviceRequest{
+		ApiService: a,
+		ctx: ctx,
+	}
+}
+
+// Execute executes the request
+func (a *HumanAPIService) UnregisterDeviceExecute(r HumanAPIUnregisterDeviceRequest) (*http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.UnregisterDevice")
+	if err != nil {
+		return nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/devices"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.token == nil {
+		return nil, reportError("token is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "token", r.token, "form", "")
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarHTTPResponse, newErr
+	}
+
+	return localVarHTTPResponse, nil
 }
 
 type HumanAPIVaultReportRequest struct {
