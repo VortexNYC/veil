@@ -2056,7 +2056,7 @@ func (a *App) grantUntil(actor protocol.Principal, grantee, itemID string, level
 		if agent.OrgID != org {
 			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
 		}
-		if agent.Owner.Kind == protocol.OwnerUser && agent.Owner.ID != actor.ID {
+		if agent.Owner.Kind == protocol.OwnerUser && agent.Owner.ID != actor.ID && agent.Owner.ID != a.HumanID {
 			return protocol.Grant{}, fmt.Errorf("app: unknown grantee")
 		}
 	case errors.Is(err, store.ErrNotFound):
