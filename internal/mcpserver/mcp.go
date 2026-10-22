@@ -198,9 +198,13 @@ func approvalStatus(a *app.App, agentID, requestID string) (ApprovalStatusOut, e
 	if req.AgentID != agentID {
 		return ApprovalStatusOut{}, fmt.Errorf("mcp: not found")
 	}
+	status := req.Status
+	if status == protocol.RequestOpen && !time.Now().Before(req.ExpiresAt) {
+		status = protocol.RequestExpired
+	}
 	return ApprovalStatusOut{
 		RequestID:  req.ID,
-		Status:     string(req.Status),
+		Status:     string(status),
 		ItemID:     req.ItemID,
 		Action:     string(req.Action),
 		CreatedAt:  req.CreatedAt,
