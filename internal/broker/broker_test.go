@@ -1357,7 +1357,7 @@ func TestUseHoneyRevokeTagAutoRevokesAgent(t *testing.T) {
 func TestAnthropicWIFJWTBearerExchangeInjectsAccessTokenNeverLeaksAssertion(t *testing.T) {
 	const assertionSecret = "hydra_secret_DO_NOT_LEAK"
 	const assertionJWT = "eyJhbGciOiJSUzI1NiJ9.assertion_DO_NOT_LEAK.sig"
-	const anthropicOAT = "sk-ant-oat01-EPHEMERAL_DO_NOT_LEAK"
+	const anthropicOAT = "oat01_ephemeral_DO_NOT_LEAK"
 
 	idpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
