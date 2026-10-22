@@ -348,6 +348,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		return protocol.UseResult{}, fmt.Errorf("secret: %w", err)
 	}
 	env := material.Unpack(secret)
+	oldRefresh := env.Refresh
 	fr, code, access, nextRefresh, err := b.fetch(ctx, req.Fetch, env, now)
 	if nextRefresh != "" && nextRefresh != env.Refresh {
 		if rotated, rerr := material.WithRefresh(secret, nextRefresh); rerr == nil {
@@ -368,7 +369,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		return dec, err
 	}
 	status := fr.Status
-	hide := material.ScrubList(env, secret, []byte(code), []byte(access), []byte(nextRefresh))
+	hide := material.ScrubList(env, secret, []byte(code), []byte(access), []byte(oldRefresh), []byte(nextRefresh))
 	fr.Body = scrub.Bytes(fr.Body, hide...)
 	for k, vs := range fr.Header {
 		cleaned := make([]string, len(vs))

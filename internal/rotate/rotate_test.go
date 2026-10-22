@@ -194,4 +194,18 @@ func TestSpecRotatorAndRedirectRefusal(t *testing.T) {
 	if exfilHit.Load() {
 		t.Fatal("redirect followed to exfil server")
 	}
+
+	// Spec with create_path/retire_path not covered by management_paths is rejected.
+	if _, err := NewSpecRotator(Spec{
+		Host:            host,
+		Scheme:          "http",
+		CreatePath:      "/v1/tokens",
+		TokenField:      "data.secret",
+		KeyIDField:      "data.id",
+		VerifyPath:      "/v1/me",
+		RetirePath:      "/v1/tokens/{id}",
+		ManagementPaths: []string{"/v1/other"},
+	}); err == nil {
+		t.Fatal("spec with uncovered create/retire path should be rejected")
+	}
 }

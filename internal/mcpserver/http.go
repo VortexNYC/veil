@@ -136,7 +136,11 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("GET /ready", ready(a, issuer, errs))
-	h := Handler(a, publicURL)
+	handlerPublicURL := publicURL
+	if issuer == SelfHostIssuer {
+		handlerPublicURL = ""
+	}
+	h := Handler(a, handlerPublicURL)
 	mux.Handle(Path, h)
 	mux.Handle(Path+"/", h)
 	publicapi.Mount(mux, a)

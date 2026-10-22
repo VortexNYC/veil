@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 )
@@ -58,6 +59,19 @@ func NewSpecRotator(spec Spec) (Rotator, error) {
 	}
 	if len(spec.ManagementPaths) == 0 {
 		return nil, fmt.Errorf("rotate spec: management_paths required so agent fetch is blocked")
+	}
+	covered := func(target string) bool {
+		clean := path.Clean("/" + strings.ToLower(target))
+		for _, prefix := range spec.ManagementPaths {
+			p := path.Clean("/" + strings.ToLower(prefix))
+			if clean == p || strings.HasPrefix(clean, p+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	if !covered(spec.CreatePath) || !covered(strings.ReplaceAll(spec.RetirePath, "{id}", "id")) {
+		return nil, fmt.Errorf("rotate spec: create_path and retire_path must be covered by management_paths")
 	}
 	scheme := strings.ToLower(strings.TrimSpace(spec.Scheme))
 	if scheme == "" {

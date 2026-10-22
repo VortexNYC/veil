@@ -129,6 +129,7 @@ type App struct {
 
 	inviteLim            inviteLimiter
 	usageStop, usageDone chan struct{}
+	rotStop, rotDone     chan struct{}
 }
 
 func Init(dir string) (*App, error) {
@@ -440,6 +441,7 @@ func firstEnv(keys ...string) string {
 func (a *App) Close() error {
 	var errs []error
 	a.stopUsageReporter()
+	a.stopRotationTicker()
 	if a.Auditor != nil {
 		if err := a.Auditor.Close(); err != nil {
 			errs = append(errs, err)
@@ -926,6 +928,40 @@ func (a *App) RotateDue(now time.Time, maxItems int) (int, error) {
 		rotated++
 	}
 	return rotated, nil
+}
+
+// StartRotationTicker runs RotateDue once per hour (max 20 due items/tick).
+// Egress rate (AGENTS.md rule 9): 0 bytes/tick when no item has
+// next_rotate_at <= now; bounded to <=20 provider rotations/hour when due.
+func (a *App) StartRotationTicker() {
+	if a.rotStop != nil {
+		return
+	}
+	a.rotStop = make(chan struct{})
+	a.rotDone = make(chan struct{})
+	go func() {
+		defer close(a.rotDone)
+		tick := time.NewTicker(time.Hour)
+		defer tick.Stop()
+		for {
+			select {
+			case <-a.rotStop:
+				return
+			case now := <-tick.C:
+				if _, err := a.RotateDue(now, 20); err != nil {
+					slog.Warn("rotation ticker failed", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+func (a *App) stopRotationTicker() {
+	if a.rotStop == nil {
+		return
+	}
+	close(a.rotStop)
+	<-a.rotDone
 }
 
 func (a *App) ArchiveItem(name string) error {

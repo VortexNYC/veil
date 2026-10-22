@@ -2283,6 +2283,7 @@ func mcpCmd(home *string) *cobra.Command {
 				return err
 			}
 			defer a.Close()
+			a.StartRotationTicker()
 			listen = mcpserver.ListenAddr(listen, cmd.Flags().Changed("listen"))
 			publicURL = mcpPublicURL(publicURL, listen)
 			issuer := envOr("VEIL_HYDRA_ISSUER", "http://127.0.0.1:4444")
