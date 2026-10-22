@@ -375,6 +375,7 @@ func TestValidateBindingBlocksGlobalImpersonationAndSSRF(t *testing.T) {
 		{"https://169.254.169.254", "sub"},
 		{"https://10.0.0.1", "sub"},
 		{"https://192.168.1.1", "sub"},
+		{"https://[::ffff:0.0.0.0]", "sub"},
 		{"https://user:pass@issuer.example.com", "sub"},
 		{"https://issuer.example.com?foo=bar", "sub"},
 		{"file:///etc/passwd", "sub"},

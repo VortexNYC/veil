@@ -125,6 +125,11 @@ func WithToken(raw, token []byte) ([]byte, error) {
 	env.Token = string(token)
 	env.KeyID = ""
 	env.PendingKeyID = ""
+	env.FederationRuleID = ""
+	env.AssertionTokenURL = ""
+	env.AssertionClientID = ""
+	env.AssertionClientSec = ""
+	env.AssertionAudience = ""
 	return pack(env)
 }
 
@@ -328,15 +333,23 @@ func AccessToken(ctx context.Context, env Envelope, client *http.Client) (string
 // WIF exchange when FederationRuleID is set) and also returns any rotated
 // refresh token issued by the provider so the broker can persist it.
 func AccessTokenWithRefresh(ctx context.Context, env Envelope, client *http.Client) (access, nextRefresh string, err error) {
+	access, nextRefresh, _, err = AccessTokenWithMetadata(ctx, env, client)
+	return access, nextRefresh, err
+}
+
+// AccessTokenWithMetadata is AccessTokenWithRefresh plus any intermediate
+// secret material (such as a minted WIF assertion JWT) that the caller must
+// include in response scrubbing.
+func AccessTokenWithMetadata(ctx context.Context, env Envelope, client *http.Client) (access, nextRefresh, extraScrub string, err error) {
 	if env.FederationRuleID != "" {
-		tok, err := exchangeWIFJWTBearer(ctx, env, client)
-		return tok, "", err
+		tok, assertion, err := exchangeWIFJWTBearer(ctx, env, client)
+		return tok, "", assertion, err
 	}
 	if env.Refresh == "" {
-		return env.Token, "", nil
+		return env.Token, "", "", nil
 	}
 	if env.TokenURL == "" || env.ClientID == "" {
-		return "", "", errOAuth
+		return "", "", "", errOAuth
 	}
 	cfg := &oauth2.Config{
 		ClientID:     env.ClientID,
@@ -346,17 +359,17 @@ func AccessTokenWithRefresh(ctx context.Context, env Envelope, client *http.Clie
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
 	tok, err := cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: env.Refresh}).Token()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if tok.AccessToken == "" {
-		return "", "", errOAuth
+		return "", "", "", errOAuth
 	}
-	return tok.AccessToken, strings.TrimSpace(tok.RefreshToken), nil
+	return tok.AccessToken, strings.TrimSpace(tok.RefreshToken), "", nil
 }
 
-func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client) (string, error) {
+func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client) (access, assertion string, err error) {
 	if env.TokenURL == "" || env.AssertionTokenURL == "" || env.AssertionClientID == "" || env.AssertionClientSec == "" {
-		return "", errOAuth
+		return "", "", errOAuth
 	}
 	if client == nil {
 		client = http.DefaultClient
@@ -376,11 +389,12 @@ func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client
 	}
 	assertionTok, err := cc.Token(context.WithValue(ctx, oauth2.HTTPClient, client))
 	if err != nil || strings.TrimSpace(assertionTok.AccessToken) == "" {
-		return "", errOAuth
+		return "", "", errOAuth
 	}
+	assertion = strings.TrimSpace(assertionTok.AccessToken)
 	body := map[string]string{
 		"grant_type":         "urn:ietf:params:oauth:grant-type:jwt-bearer",
-		"assertion":          strings.TrimSpace(assertionTok.AccessToken),
+		"assertion":          assertion,
 		"federation_rule_id": env.FederationRuleID,
 	}
 	if env.FederationOrgID != "" {
@@ -394,29 +408,29 @@ func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", err
+		return "", assertion, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.TokenURL, bytes.NewReader(payload))
 	if err != nil {
-		return "", err
+		return "", assertion, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", assertion, err
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil || res.StatusCode != http.StatusOK {
-		return "", errOAuth
+		return "", assertion, errOAuth
 	}
 	var out struct {
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil || strings.TrimSpace(out.AccessToken) == "" {
-		return "", errOAuth
+		return "", assertion, errOAuth
 	}
-	return strings.TrimSpace(out.AccessToken), nil
+	return strings.TrimSpace(out.AccessToken), assertion, nil
 }
 
 var errOAuth = errString("material: oauth refresh failed")

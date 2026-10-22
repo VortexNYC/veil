@@ -84,7 +84,8 @@ func (c *Checker) Agent(ctx context.Context, rawToken string) (protocol.Principa
 
 // bestMatch picks the governing workload binding for sub among candidates
 // sharing an (issuer, audience): exact subject match always wins; otherwise
-// the longest trailing-* prefix match wins.
+// the longest trailing-* prefix match wins. Two prefixes of equal length can
+// never both match sub because (issuer, subject) is the primary key.
 func bestMatch(cands []protocol.Workload, sub string) *protocol.Workload {
 	var best *protocol.Workload
 	bestLen := -1
@@ -130,6 +131,7 @@ func ValidateBinding(issuer, subject string) error {
 	scheme := strings.ToLower(u.Scheme)
 	isLoopbackHost := host == "localhost"
 	if ip, perr := netip.ParseAddr(host); perr == nil {
+		ip = ip.Unmap()
 		if ip.IsLoopback() {
 			isLoopbackHost = true
 		} else if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {

@@ -23,3 +23,30 @@ func TestTransportSetsUserAgent(t *testing.T) {
 		t.Fatalf("ua %q", got)
 	}
 }
+
+func TestRejectPrivateOrMetadataPeer(t *testing.T) {
+	for _, blocked := range []string{
+		"169.254.169.254:80",
+		"10.0.0.1:443",
+		"172.16.0.1:443",
+		"192.168.1.1:443",
+		"0.0.0.0:443",
+		"[::ffff:0.0.0.0]:443",
+		"[::ffff:169.254.169.254]:80",
+		"[fe80::1]:443",
+		"[fc00::1]:443",
+	} {
+		if err := rejectPrivateOrMetadataPeer("tcp", blocked, nil); err == nil {
+			t.Fatalf("rejectPrivateOrMetadataPeer(%q) allowed non-public peer", blocked)
+		}
+	}
+	for _, allowed := range []string{
+		"127.0.0.1:4444",
+		"[::1]:4444",
+		"140.82.112.6:443",
+	} {
+		if err := rejectPrivateOrMetadataPeer("tcp", allowed, nil); err != nil {
+			t.Fatalf("rejectPrivateOrMetadataPeer(%q) rejected valid peer: %v", allowed, err)
+		}
+	}
+}

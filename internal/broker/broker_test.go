@@ -1384,7 +1384,7 @@ func TestAnthropicWIFJWTBearerExchangeInjectsAccessTokenNeverLeaksAssertion(t *t
 	var sawUpstreamAuth string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sawUpstreamAuth = r.Header.Get("Authorization")
-		_, _ = io.WriteString(w, "echo:"+sawUpstreamAuth+":"+assertionSecret)
+		_, _ = io.WriteString(w, "echo:"+sawUpstreamAuth+":"+assertionSecret+":"+assertionJWT)
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -1450,6 +1450,9 @@ func TestAnthropicWIFJWTBearerExchangeInjectsAccessTokenNeverLeaksAssertion(t *t
 		t.Fatalf("upstream auth=%q, want Bearer %s", sawUpstreamAuth, anthropicOAT)
 	}
 	if err := AssertNoSecret(got, []byte(assertionSecret)); err != nil {
+		t.Fatal(err)
+	}
+	if err := AssertNoSecret(got, []byte(assertionJWT)); err != nil {
 		t.Fatal(err)
 	}
 	if err := AssertNoSecret(got, []byte(anthropicOAT)); err != nil {
