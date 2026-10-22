@@ -73,3 +73,51 @@ func TestForHostAndProviderKeyID(t *testing.T) {
 		t.Fatalf("phantom key id %q", got)
 	}
 }
+
+func TestSendgridRotateLifecycle(t *testing.T) {
+	var created, deleted atomic.Int32
+	keys := map[string]bool{"sg_live": true}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !keys[auth] {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v3/api_keys":
+			created.Add(1)
+			keys["sg_new"] = true
+			_ = json.NewEncoder(w).Encode(map[string]string{"api_key_id": "k_new", "api_key": "sg_new"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v3/scopes":
+			_ = json.NewEncoder(w).Encode(map[string]any{"scopes": []string{}})
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v3/api_keys/"):
+			deleted.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "nope", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	rot := &sendgridRotator{base: srv.URL}
+	ctx := context.Background()
+	next, keyID, err := rot.Create(ctx, "sendgrid", []byte("sg_live"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(next) != "sg_new" || keyID != "k_new" {
+		t.Fatalf("create: token=%s id=%s", next, keyID)
+	}
+	if err := rot.Verify(ctx, next); err != nil {
+		t.Fatal(err)
+	}
+	if err := rot.Retire(ctx, "k_old", []byte("sg_live")); err != nil {
+		t.Fatal(err)
+	}
+	if created.Load() != 1 || deleted.Load() != 1 {
+		t.Fatalf("created=%d deleted=%d", created.Load(), deleted.Load())
+	}
+	if _, ok := ForHost("https://api.sendgrid.com/v3/mail/send"); !ok {
+		t.Fatal("sendgrid host unmapped")
+	}
+}
