@@ -32,9 +32,10 @@ export default defineRailway(() => {
   // as the rollback path — redeploy it to re-run the idempotent sync.
   // Rollback: move the volumeMount back to veil, delete VEIL_POSTGRES_DSN,
   // redeploy. Drop pwm-volume only after the rollback window closes.
-  // VEIL_MASTER_KEY MUST stay live on veil (preserve() cannot read sealed
-  // variables — an apply will silently drop one). Local recovery copy:
-  // ~/.config/vortex/veil-master-key and ~/.veil/wraps on the founder's Mac.
+  // VEIL_MASTER_KEY is intentionally absent: it was the pre-multi-org seed
+  // and leaked in the 2026-10-21 Railway env disclosure. The local org
+  // master was rotated (`veil key rotate-org`), so a stale env value would
+  // fail boot loudly — the variable is retired, not preserved.
   // The Railway volume keeps its original name — the API has no volume
   // rename, and renaming the resource would provision an empty volume.
   const veilVolume = volume("pwm-volume", { region: "sfo", sizeMB: 500, allowOnlineResize: true });
@@ -57,7 +58,7 @@ export default defineRailway(() => {
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
     volumeMounts: { "/spool": veilSpool },
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_AUDIT_SPOOL_DIR: "/spool", VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MASTER_KEY: preserve(), VEIL_MAX_IN_FLIGHT_USE: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve(), VEIL_APNS_KEY: preserve(), VEIL_APNS_KEY_PATH: preserve(), VEIL_APNS_KEY_ID: preserve(), VEIL_APNS_TEAM_ID: preserve(), VEIL_APNS_BUNDLE: preserve(), VEIL_APNS_PROD: preserve() },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_AUDIT_SPOOL_DIR: "/spool", VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MAX_IN_FLIGHT_USE: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve(), VEIL_APNS_KEY: preserve(), VEIL_APNS_KEY_PATH: preserve(), VEIL_APNS_KEY_ID: preserve(), VEIL_APNS_TEAM_ID: preserve(), VEIL_APNS_BUNDLE: preserve(), VEIL_APNS_PROD: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
     source: github("VortexNYC/veil", { branch: "main" }),
