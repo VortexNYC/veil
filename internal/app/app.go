@@ -30,6 +30,7 @@ import (
 	"github.com/VortexNYC/veil/internal/passkey"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/push"
+	"github.com/VortexNYC/veil/internal/rotate"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/VortexNYC/veil/internal/workload"
 )
@@ -749,6 +750,71 @@ func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []stri
 	if err := a.Store.PutItem(item, store.Secret(raw), adminEvent(actorID, item.OrgID, item.ID, protocol.ActionItemUpdated, "")); err != nil {
 		return protocol.Item{}, err
 	}
+	return item, nil
+}
+
+// RotateItem swaps an item's credential server-side: the provider's
+// key-management API mints a replacement, the new secret is verified and
+// sealed in place — item id and grants are untouched, agents keep calling
+// Use. Retire of the old provider key is best-effort and audited either way.
+// Owner-only: rotation is vault administration, not a grant.
+func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, error) {
+	if ok, err := a.ownsVault(actor); err != nil || !ok {
+		if err != nil {
+			return protocol.Item{}, err
+		}
+		return protocol.Item{}, ErrForbidden
+	}
+	item, err := a.Store.Item(name)
+	if err != nil {
+		return protocol.Item{}, err
+	}
+	if item.Archived {
+		return protocol.Item{}, fmt.Errorf("app: item archived")
+	}
+	var rot rotate.Rotator
+	for _, u := range item.URIs {
+		if r, ok := rotate.ForHost(u); ok {
+			rot = r
+			break
+		}
+	}
+	if rot == nil {
+		return protocol.Item{}, rotate.ErrNoRotator()
+	}
+	raw, err := a.Store.Secret(item.ID)
+	if err != nil {
+		return protocol.Item{}, err
+	}
+	env := material.Unpack(raw)
+	ctx := rotate.WithLiveKey(context.Background(), []byte(env.Token))
+	next, keyID, err := rot.Create(ctx, item.Name)
+	if err != nil {
+		return protocol.Item{}, fmt.Errorf("rotate: %w", err)
+	}
+	if err := rot.Verify(ctx, next); err != nil {
+		return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
+	}
+	oldKeyID := rotate.ProviderKeyID(item.Tags)
+	var tags []string
+	for _, t := range item.Tags {
+		if !strings.HasPrefix(t, rotate.ProviderIDTagPrefix) {
+			tags = append(tags, t)
+		}
+	}
+	if keyID != "" {
+		tags = append(tags, rotate.ProviderIDTagPrefix+keyID)
+	}
+	if _, err := a.updateItem(actor.ID, name, nil, nil, tags, "", next); err != nil {
+		return protocol.Item{}, err
+	}
+	if err := rot.Retire(ctx, oldKeyID); err != nil {
+		// The swap already landed — a stuck old key is an ops note, not a
+		// rollback reason (the new credential is verified and sealed).
+		slog.Warn("rotate: old provider key not retired", "item", name, "err", err)
+	}
+	a.auditBestEffort(adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemUpdated, "rotate name="+name))
+	item.Tags = tags
 	return item, nil
 }
 

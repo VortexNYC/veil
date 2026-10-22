@@ -23,6 +23,7 @@ Method | HTTP request | Description
 [**list_sessions**](OwnerApi.md#list_sessions) | **GET** /v1/sessions | Active sandbox sessions. Metadata only. Never the token. Not MCP.
 [**remove_group_member**](OwnerApi.md#remove_group_member) | **DELETE** /v1/groups/{name}/members/{kind}/{id} | Remove a member from the group. Not MCP.
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
+[**rotate_item**](OwnerApi.md#rotate_item) | **POST** /v1/items/{name}/rotate | Rotate an item&#39;s credential via the provider&#39;s key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
 [**stream_requests**](OwnerApi.md#stream_requests) | **GET** /v1/requests/stream | Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.
 [**update_item**](OwnerApi.md#update_item) | **PATCH** /v1/items/{name} | Replace URIs, tags, and fill username. No secret.
 
@@ -1512,6 +1513,86 @@ Name | Type | Description  | Notes
 **400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **rotate_item**
+> RotateItem200Response rotate_item(name)
+
+Rotate an item's credential via the provider's key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.rotate_item200_response import RotateItem200Response
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+
+    try:
+        # Rotate an item's credential via the provider's key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
+        api_response = api_instance.rotate_item(name)
+        print("The response of OwnerApi->rotate_item:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->rotate_item: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+
+### Return type
+
+[**RotateItem200Response**](RotateItem200Response.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Rotated |  -  |
+**400** | rotate failed |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
+**422** | provider has no key-management API |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

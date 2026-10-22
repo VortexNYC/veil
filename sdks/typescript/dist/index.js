@@ -1022,6 +1022,11 @@ var registerDevice = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var rotateItem = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/items/{name}/rotate",
+  ...options
+});
 export {
   addGroupMember,
   approveRequest,
@@ -1059,6 +1064,7 @@ export {
   removeGroupMember,
   removeMember,
   revokeAgent,
+  rotateItem,
   streamRequests,
   unregisterDevice,
   updateItem,

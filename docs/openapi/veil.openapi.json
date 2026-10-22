@@ -1525,6 +1525,57 @@
           }
         }
       }
+    },
+    "/v1/items/{name}/rotate": {
+      "post": {
+        "operationId": "rotateItem",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Rotate an item's credential via the provider's key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rotated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "string"
+                    },
+                    "rotated": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rotate failed"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          },
+          "422": {
+            "description": "provider has no key-management API"
+          }
+        }
+      }
     }
   },
   "components": {

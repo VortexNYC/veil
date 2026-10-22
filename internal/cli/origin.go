@@ -754,3 +754,21 @@ func originReport(cmd *cobra.Command, hibp bool) error {
 	}
 	return encode(cmd, rep)
 }
+
+// originRotateItem POSTs the rotate route — the origin owns the secret and
+// the provider call; the CLI never sees either key.
+func originRotateItem(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+name+"/rotate", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}

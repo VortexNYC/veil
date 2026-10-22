@@ -29,6 +29,7 @@ import (
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/oneimport"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/rotate"
 	"github.com/VortexNYC/veil/internal/store"
 )
 
@@ -310,6 +311,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/import", s.importItems)
 	mux.HandleFunc("PATCH /v1/items/{name}", s.updateItem)
 	mux.HandleFunc("POST /v1/items/{name}/archive", s.archiveItem)
+	mux.HandleFunc("POST /v1/items/{name}/rotate", s.rotateItem)
 	mux.HandleFunc("DELETE /v1/items/{name}", s.deleteItem)
 	mux.HandleFunc("GET /v1/grants", s.listGrants)
 	mux.HandleFunc("POST /v1/grants", s.createGrant)
@@ -481,6 +483,26 @@ func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]bool{"archived": true})
+}
+
+// rotateItem swaps the item's credential via the provider's key-management
+// API — owner-only. The response carries the item metadata and never the
+// secret.
+func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireItemWrite(w, r)
+	if !ok {
+		return
+	}
+	item, err := s.App.RotateItem(p, r.PathValue("name"))
+	if err != nil {
+		if errors.Is(err, rotate.ErrNoRotator()) {
+			http.Error(w, "no rotation support for this item's provider", http.StatusUnprocessableEntity)
+			return
+		}
+		http.Error(w, "rotate failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{"item": item.Name, "rotated": true})
 }
 
 func (s *Server) deleteItem(w http.ResponseWriter, r *http.Request) {

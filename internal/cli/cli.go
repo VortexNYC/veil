@@ -72,6 +72,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(grantCmd(&home))
 	root.AddCommand(groupCmd(&home))
 	root.AddCommand(useCmd(&home))
+	root.AddCommand(rotateCmd(&home))
 	root.AddCommand(approveCmd(&home))
 	root.AddCommand(requestCmd(&home))
 	root.AddCommand(mcpCmd(&home))
@@ -2608,4 +2609,15 @@ func reportCmd(home *string) *cobra.Command {
 	}
 	c.Flags().BoolVar(&hibp, "hibp", false, "opt into HIBP k-anonymity breach counts (5-char SHA-1 prefix only)")
 	return c
+}
+
+func rotateCmd(home *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rotate ITEM",
+		Short: "Rotate an item's credential at its provider. Owner only; grants and item id are untouched.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return originRotateItem(cmd, args[0])
+		},
+	}
 }
