@@ -25,34 +25,36 @@ const (
 )
 
 type Envelope struct {
-	V          int    `json:"v"`
-	Token      string `json:"token,omitempty"`
-	Login      string `json:"login,omitempty"`
-	TOTP       string `json:"totp,omitempty"`
-	Refresh    string `json:"refresh,omitempty"`
-	TokenURL   string `json:"token_url,omitempty"`
-	ClientID   string `json:"client_id,omitempty"`
-	ClientSec  string `json:"client_secret,omitempty"`
-	FileName   string `json:"file_name,omitempty"`
-	MIME       string `json:"mime,omitempty"`
-	FileB64    string `json:"file_b64,omitempty"`
-	PasskeyPEM string `json:"passkey_pem,omitempty"`
-	CredID     string `json:"cred_id,omitempty"`
-	RpID       string `json:"rp_id,omitempty"`
-	UserHandle string `json:"user_handle,omitempty"`
-	Number     string `json:"number,omitempty"`
-	ExpMonth   string `json:"exp_month,omitempty"`
-	ExpYear    string `json:"exp_year,omitempty"`
-	CVV        string `json:"cvv,omitempty"`
-	GivenName  string `json:"given_name,omitempty"`
-	FamilyName string `json:"family_name,omitempty"`
-	Address    string `json:"address,omitempty"`
-	City       string `json:"city,omitempty"`
-	Region     string `json:"region,omitempty"`
-	Postal     string `json:"postal,omitempty"`
-	Country    string `json:"country,omitempty"`
-	Phone      string `json:"phone,omitempty"`
-	Email      string `json:"email,omitempty"`
+	V            int    `json:"v"`
+	Token        string `json:"token,omitempty"`
+	Login        string `json:"login,omitempty"`
+	TOTP         string `json:"totp,omitempty"`
+	Refresh      string `json:"refresh,omitempty"`
+	TokenURL     string `json:"token_url,omitempty"`
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSec    string `json:"client_secret,omitempty"`
+	FileName     string `json:"file_name,omitempty"`
+	MIME         string `json:"mime,omitempty"`
+	FileB64      string `json:"file_b64,omitempty"`
+	PasskeyPEM   string `json:"passkey_pem,omitempty"`
+	CredID       string `json:"cred_id,omitempty"`
+	RpID         string `json:"rp_id,omitempty"`
+	UserHandle   string `json:"user_handle,omitempty"`
+	Number       string `json:"number,omitempty"`
+	ExpMonth     string `json:"exp_month,omitempty"`
+	ExpYear      string `json:"exp_year,omitempty"`
+	CVV          string `json:"cvv,omitempty"`
+	GivenName    string `json:"given_name,omitempty"`
+	FamilyName   string `json:"family_name,omitempty"`
+	Address      string `json:"address,omitempty"`
+	City         string `json:"city,omitempty"`
+	Region       string `json:"region,omitempty"`
+	Postal       string `json:"postal,omitempty"`
+	Country      string `json:"country,omitempty"`
+	Phone        string `json:"phone,omitempty"`
+	Email        string `json:"email,omitempty"`
+	KeyID        string `json:"key_id,omitempty"`
+	PendingKeyID string `json:"pending_key_id,omitempty"`
 }
 
 func PackFile(name, mime string, body []byte) ([]byte, error) {
@@ -106,6 +108,21 @@ func WithToken(raw, token []byte) ([]byte, error) {
 	env := Unpack(raw)
 	env.V = Version
 	env.Token = string(token)
+	return pack(env)
+}
+
+// WithRotatedToken seals a rotated token and the dual-phase provider key IDs
+// in one envelope. Item list and MCP never see these fields.
+func WithRotatedToken(raw, token []byte, keyID, pendingKeyID string) ([]byte, error) {
+	token = trim(token)
+	if len(token) == 0 {
+		return nil, fmt.Errorf("material: empty token")
+	}
+	env := Unpack(raw)
+	env.V = Version
+	env.Token = string(token)
+	env.KeyID = strings.TrimSpace(keyID)
+	env.PendingKeyID = strings.TrimSpace(pendingKeyID)
 	return pack(env)
 }
 

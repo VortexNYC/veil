@@ -111,3 +111,5 @@ func (r *sendgridRotator) Retire(ctx context.Context, keyID string, liveKey []by
 	}
 	return nil
 }
+
+func (r *sendgridRotator) ManagementPaths() []string { return []string{"/v3/api_keys"} }

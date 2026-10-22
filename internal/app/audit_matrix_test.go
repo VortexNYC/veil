@@ -16,7 +16,24 @@ import (
 	"time"
 
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/rotate"
 )
+
+type stubRotator struct {
+	n       int
+	retired []string
+}
+
+func (s *stubRotator) Create(_ context.Context, _ string, _ []byte) ([]byte, string, error) {
+	s.n++
+	return []byte("re_next"), "key_" + string(rune('0'+s.n)), nil
+}
+func (*stubRotator) Verify(_ context.Context, _ []byte) error { return nil }
+func (s *stubRotator) Retire(_ context.Context, keyID string, _ []byte) error {
+	s.retired = append(s.retired, keyID)
+	return nil
+}
+func (*stubRotator) ManagementPaths() []string { return []string{"/api-keys"} }
 
 func auditRows(t *testing.T, a *App) []protocol.AuditEvent {
 	t.Helper()
@@ -108,6 +125,37 @@ func TestAuditMatrix_ItemLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemUpdated), owner.ID, item.ID, "")
+
+	sr := &stubRotator{}
+	rotate.Register("rot.test", sr)
+	rotItem, err := a.PutItemFor(owner, ItemOpts{Name: "mx-rot", URI: "https://rot.test", Tags: []string{"user-tag"}, Token: []byte(secret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cycle 1: key_1 minted, no prior key -> retired=deferred; Tags untouched.
+	after1, err := a.RotateItem(owner, rotItem.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after1.Tags) != 1 || after1.Tags[0] != "user-tag" {
+		t.Fatalf("rotate polluted item.Tags: %v", after1.Tags)
+	}
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_1 old_key_id= retired_key_id= retired=deferred")
+
+	// Cycle 2: key_2 minted, key_1 moves to pending, still nothing to retire.
+	if _, err := a.RotateItem(owner, rotItem.ID); err != nil {
+		t.Fatal(err)
+	}
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_2 old_key_id=key_1 retired_key_id= retired=deferred")
+
+	// Cycle 3: key_3 minted, key_2 moves to pending, key_1 retired.
+	if _, err := a.RotateItem(owner, rotItem.ID); err != nil {
+		t.Fatal(err)
+	}
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_3 old_key_id=key_2 retired_key_id=key_1 retired=true")
+	if len(sr.retired) != 1 || sr.retired[0] != "key_1" {
+		t.Fatalf("want [key_1] retired on cycle 3, got %v", sr.retired)
+	}
 
 	if err := a.ArchiveItemFor(owner, item.ID); err != nil {
 		t.Fatal(err)

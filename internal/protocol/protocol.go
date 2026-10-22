@@ -131,6 +131,7 @@ const (
 	// with the write they describe.
 	ActionItemCreated    ActionKind = "item_created"
 	ActionItemUpdated    ActionKind = "item_updated"
+	ActionItemRotated    ActionKind = "item_rotated"
 	ActionItemArchived   ActionKind = "item_archived"
 	ActionItemDeleted    ActionKind = "item_deleted"
 	ActionAgentCreated   ActionKind = "agent_created"

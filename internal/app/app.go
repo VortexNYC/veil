@@ -786,7 +786,8 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 	if err != nil {
 		return protocol.Item{}, err
 	}
-	live := []byte(material.Unpack(raw).Token)
+	env := material.Unpack(raw)
+	live := []byte(env.Token)
 	ctx := context.Background()
 	next, keyID, err := rot.Create(ctx, item.Name, live)
 	if err != nil {
@@ -804,34 +805,28 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 		rollback()
 		return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
 	}
-	oldKeyID := rotate.ProviderKeyID(item.Tags)
-	pendingID := rotate.PendingKeyID(item.Tags)
-	var tags []string
-	for _, t := range item.Tags {
-		if !strings.HasPrefix(t, rotate.ProviderIDTagPrefix) && !strings.HasPrefix(t, rotate.PendingTagPrefix) {
-			tags = append(tags, t)
-		}
-	}
-	if keyID != "" {
-		tags = append(tags, rotate.ProviderIDTagPrefix+keyID)
-	}
-	// Dual-phase: the outgoing key stays valid through the next cycle so
-	// inject/run consumers that cached it keep working; it retires on the
-	// following rotate.
-	if oldKeyID != "" {
-		tags = append(tags, rotate.PendingTagPrefix+oldKeyID)
-	}
-	if _, err := a.updateItem(actor.ID, name, nil, nil, tags, "", next); err != nil {
+	// Dual-phase state lives inside the sealed material.Envelope, never in
+	// item.Tags — agent-facing list paths never see provider key IDs.
+	oldKeyID := env.KeyID
+	pendingID := env.PendingKeyID
+	sealed, err := material.WithRotatedToken(raw, next, keyID, oldKeyID)
+	if err != nil {
 		rollback()
 		return protocol.Item{}, err
 	}
+	retired := "deferred"
 	if pendingID != "" {
+		retired = "true"
 		if err := rot.Retire(ctx, pendingID, live); err != nil {
+			retired = "false"
 			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
 		}
 	}
-	a.auditBestEffort(adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemUpdated, "rotate name="+name))
-	item.Tags = tags
+	reason := fmt.Sprintf("name=%s new_key_id=%s old_key_id=%s retired_key_id=%s retired=%s", name, keyID, oldKeyID, pendingID, retired)
+	if err := a.Store.PutItem(item, store.Secret(sealed), adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemRotated, reason)); err != nil {
+		rollback()
+		return protocol.Item{}, err
+	}
 	return item, nil
 }
 
@@ -2667,9 +2662,6 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 		if item.Archived || item.OrgID != g.OrgID {
 			continue
 		}
-		// Rotation bookkeeping is owner-facing — provider key ids never
-		// leave the vault on an agent path.
-		item.Tags = rotate.StripRotationTags(item.Tags)
 		out = append(out, item)
 	}
 	return out, nil

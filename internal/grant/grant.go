@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/publicsuffix"
 
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/rotate"
 )
 
 var errEmptyDest = errors.New("grant: empty destination")
@@ -72,6 +73,9 @@ func Evaluate(in Input) protocol.UseResult {
 	if in.Action == protocol.ActionFetch {
 		if err := hostAllowed(in.Item, in.TargetURL); err != "" {
 			return deny(err)
+		}
+		if rotate.ManagementEndpoint(in.TargetURL) {
+			return deny("management_endpoint")
 		}
 	}
 	switch g.Level {

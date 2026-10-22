@@ -82,3 +82,5 @@ func (r *resendRotator) Retire(ctx context.Context, keyID string, liveKey []byte
 	}
 	return nil
 }
+
+func (r *resendRotator) ManagementPaths() []string { return []string{"/api-keys"} }

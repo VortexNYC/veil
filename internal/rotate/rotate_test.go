@@ -59,18 +59,21 @@ func TestResendRotateLifecycle(t *testing.T) {
 	}
 }
 
-func TestForHostAndProviderKeyID(t *testing.T) {
+func TestForHostAndManagementEndpoints(t *testing.T) {
 	if _, ok := ForHost("https://api.resend.com/emails"); !ok {
 		t.Fatal("resend host unmapped")
 	}
 	if _, ok := ForHost("https://example.com"); ok {
 		t.Fatal("unknown host mapped")
 	}
-	if got := ProviderKeyID([]string{"agents", "rot:key_9"}); got != "key_9" {
-		t.Fatalf("provider key id %q", got)
+	if !ManagementEndpoint("https://api.resend.com/api-keys/123") {
+		t.Fatal("resend management path missed")
 	}
-	if got := ProviderKeyID([]string{"agents"}); got != "" {
-		t.Fatalf("phantom key id %q", got)
+	if !ManagementEndpoint("https://api.sendgrid.com/v3/api_keys") {
+		t.Fatal("sendgrid management path missed")
+	}
+	if ManagementEndpoint("https://api.resend.com/emails") {
+		t.Fatal("ordinary path flagged as management")
 	}
 }
 

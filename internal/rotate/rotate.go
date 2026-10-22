@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -29,6 +30,11 @@ type Rotator interface {
 	// liveKey. Best-effort — an orphan key still costs the provider
 	// nothing, but it must be logged.
 	Retire(ctx context.Context, keyID string, liveKey []byte) error
+	// ManagementPaths lists URL path prefixes on this provider's host that
+	// mint, list, or revoke API keys. Agent fetch calls to these paths are
+	// denied by the grant engine so a self-rotating credential cannot be
+	// used by an agent to mint its own keys.
+	ManagementPaths() []string
 }
 
 // ForHost maps an item's URI host to a registered provider rotator.
@@ -37,8 +43,38 @@ func ForHost(rawURL string) (Rotator, bool) {
 	if err != nil || u == nil {
 		return nil, false
 	}
-	r, ok := byHost[u.Hostname()]
+	if r, ok := byHost[strings.ToLower(u.Host)]; ok {
+		return r, true
+	}
+	r, ok := byHost[strings.ToLower(u.Hostname())]
 	return r, ok
+}
+
+// ManagementEndpoint reports whether rawURL targets a registered provider's
+// key-management endpoint — paths only the broker's RotateItem may call.
+func ManagementEndpoint(rawURL string) bool {
+	if rawURL == "" {
+		return false
+	}
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u == nil {
+		return false
+	}
+	r, ok := ForHost(rawURL)
+	if !ok {
+		return false
+	}
+	clean := path.Clean("/" + strings.ToLower(u.Path))
+	for _, prefix := range r.ManagementPaths() {
+		p := path.Clean("/" + strings.ToLower(prefix))
+		if clean == p || strings.HasPrefix(clean, p+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 var byHost = map[string]Rotator{}
@@ -49,52 +85,17 @@ func register(hosts []string, r Rotator) {
 	}
 }
 
+// Register binds a rotator to a host or host:port.
+func Register(host string, r Rotator) {
+	byHost[strings.ToLower(host)] = r
+}
+
 // Coverage is the provider matrix for docs/status — which hosts rotate
 // zero-touch.
 func Coverage() []string {
 	out := make([]string, 0, len(byHost))
 	for h := range byHost {
 		out = append(out, h)
-	}
-	return out
-}
-
-// ProviderIDTag is the item tag carrying the provider-side key id of the
-// live credential — rot:<key-id>. Not secret; lets Retire find the old key.
-// It must be stripped from agent-facing item lists — see ScrubAgentItem.
-const ProviderIDTagPrefix = "rot:"
-
-func ProviderKeyID(tags []string) string {
-	for _, t := range tags {
-		if s, ok := strings.CutPrefix(t, ProviderIDTagPrefix); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-// PendingTagPrefix marks the previous rotation's key id — it stays valid
-// through one full cycle (dual-phase overlap) and is retired on the next
-// rotate, so callers that cached the old credential keep working.
-const PendingTagPrefix = "rot-pending:"
-
-func PendingKeyID(tags []string) string {
-	for _, t := range tags {
-		if s, ok := strings.CutPrefix(t, PendingTagPrefix); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-// StripRotationTags removes provider bookkeeping tags from tags an agent is
-// about to see — rotation state is owner-facing, not agent-facing.
-func StripRotationTags(tags []string) []string {
-	out := tags[:0:0]
-	for _, t := range tags {
-		if !strings.HasPrefix(t, ProviderIDTagPrefix) && !strings.HasPrefix(t, PendingTagPrefix) {
-			out = append(out, t)
-		}
 	}
 	return out
 }
