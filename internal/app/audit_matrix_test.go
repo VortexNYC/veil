@@ -132,7 +132,7 @@ func TestAuditMatrix_ItemLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Cycle 1: key_1 minted, no prior key -> retired=deferred; Tags untouched.
+	// Cycle 1: key_1 minted, no prior key; Tags untouched.
 	after1, err := a.RotateItem(owner, rotItem.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -140,19 +140,19 @@ func TestAuditMatrix_ItemLifecycle(t *testing.T) {
 	if len(after1.Tags) != 1 || after1.Tags[0] != "user-tag" {
 		t.Fatalf("rotate polluted item.Tags: %v", after1.Tags)
 	}
-	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_1 old_key_id= retired_key_id= retired=deferred")
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_1 old_key_id= retired_key_id=")
 
 	// Cycle 2: key_2 minted, key_1 moves to pending, still nothing to retire.
 	if _, err := a.RotateItem(owner, rotItem.ID); err != nil {
 		t.Fatal(err)
 	}
-	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_2 old_key_id=key_1 retired_key_id= retired=deferred")
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_2 old_key_id=key_1 retired_key_id=")
 
-	// Cycle 3: key_3 minted, key_2 moves to pending, key_1 retired.
+	// Cycle 3: key_3 minted, key_2 moves to pending, key_1 retired after PutItem commits.
 	if _, err := a.RotateItem(owner, rotItem.ID); err != nil {
 		t.Fatal(err)
 	}
-	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_3 old_key_id=key_2 retired_key_id=key_1 retired=true")
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemRotated), owner.ID, rotItem.ID, "new_key_id=key_3 old_key_id=key_2 retired_key_id=key_1")
 	if len(sr.retired) != 1 || sr.retired[0] != "key_1" {
 		t.Fatalf("want [key_1] retired on cycle 3, got %v", sr.retired)
 	}

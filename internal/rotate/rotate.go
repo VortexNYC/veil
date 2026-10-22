@@ -67,7 +67,19 @@ func ManagementEndpoint(rawURL string) bool {
 	if !ok {
 		return false
 	}
-	clean := path.Clean("/" + strings.ToLower(u.Path))
+	decoded := u.Path
+	for range 4 {
+		next, err := url.PathUnescape(decoded)
+		if err != nil {
+			// Malformed escape on a provider with management endpoints fails closed.
+			return true
+		}
+		if next == decoded {
+			break
+		}
+		decoded = next
+	}
+	clean := path.Clean("/" + strings.ToLower(decoded))
 	for _, prefix := range r.ManagementPaths() {
 		p := path.Clean("/" + strings.ToLower(prefix))
 		if clean == p || strings.HasPrefix(clean, p+"/") {

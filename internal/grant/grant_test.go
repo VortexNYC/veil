@@ -253,6 +253,7 @@ func TestManagementEndpointDenied(t *testing.T) {
 		"https://api.resend.com/api-keys/key_123",
 		"https://api.resend.com/emails/../api-keys",
 		"https://api.resend.com/%61pi-keys",
+		"https://api.resend.com/%2561pi-keys",
 	} {
 		in.TargetURL = u
 		got := Evaluate(in)

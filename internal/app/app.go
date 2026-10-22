@@ -814,18 +814,18 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 		rollback()
 		return protocol.Item{}, err
 	}
-	retired := "deferred"
-	if pendingID != "" {
-		retired = "true"
-		if err := rot.Retire(ctx, pendingID, live); err != nil {
-			retired = "false"
-			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
-		}
-	}
-	reason := fmt.Sprintf("name=%s new_key_id=%s old_key_id=%s retired_key_id=%s retired=%s", name, keyID, oldKeyID, pendingID, retired)
+	// Commit the sealed swap and audit row before retiring the outgoing
+	// pending key — an irreversible provider-side revoke must never run
+	// ahead of the local transaction.
+	reason := fmt.Sprintf("name=%s new_key_id=%s old_key_id=%s retired_key_id=%s", name, keyID, oldKeyID, pendingID)
 	if err := a.Store.PutItem(item, store.Secret(sealed), adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemRotated, reason)); err != nil {
 		rollback()
 		return protocol.Item{}, err
+	}
+	if pendingID != "" {
+		if err := rot.Retire(ctx, pendingID, live); err != nil {
+			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
+		}
 	}
 	return item, nil
 }

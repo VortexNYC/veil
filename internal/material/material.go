@@ -108,6 +108,8 @@ func WithToken(raw, token []byte) ([]byte, error) {
 	env := Unpack(raw)
 	env.V = Version
 	env.Token = string(token)
+	env.KeyID = ""
+	env.PendingKeyID = ""
 	return pack(env)
 }
 
