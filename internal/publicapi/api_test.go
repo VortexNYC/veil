@@ -2109,3 +2109,32 @@ func TestDeviceRegistration(t *testing.T) {
 		t.Fatalf("unregister left rows: %+v", devs)
 	}
 }
+
+func TestBindWorkloadAPI(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	if _, err := a.AddAgent("ci-runner"); err != nil {
+		t.Fatal(err)
+	}
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/agents/ci-runner/bind", "human", BindWorkloadRequest{
+		Issuer:   "https://token.actions.githubusercontent.com",
+		Subject:  "repo:VortexNYC/veil:ref:refs/heads/main",
+		Audience: "veil",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("bind want 200, got %d: %s", code, raw)
+	}
+	bound, err := a.Store.WorkloadsForIssuer("https://token.actions.githubusercontent.com")
+	if err != nil || len(bound) != 1 || bound[0].AgentID != "ci-runner" {
+		t.Fatalf("workload not bound: %v %+v", err, bound)
+	}
+	// An agent must never bind workload identities.
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/agents/ci-runner/bind", "agent", BindWorkloadRequest{
+		Issuer:   "https://evil.example",
+		Subject:  "sub",
+		Audience: "veil",
+	})
+	if code != http.StatusForbidden {
+		t.Fatalf("agent bind want 403, got %d", code)
+	}
+}

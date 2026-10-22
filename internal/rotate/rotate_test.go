@@ -124,3 +124,74 @@ func TestSendgridRotateLifecycle(t *testing.T) {
 		t.Fatal("sendgrid host unmapped")
 	}
 }
+
+func TestSpecRotatorAndRedirectRefusal(t *testing.T) {
+	exfilHit := atomic.Bool{}
+	exfil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		exfilHit.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(exfil.Close)
+
+	redirectMode := atomic.Bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if redirectMode.Load() {
+			http.Redirect(w, r, exfil.URL+"/steal", http.StatusFound)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/tokens":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{"id": "tok_42", "secret": "sk_next_42"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/me":
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/tokens/tok_old":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "nope", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	host := strings.TrimPrefix(srv.URL, "http://")
+	if err := RegisterSpec(Spec{
+		Host:            host,
+		Scheme:          "http",
+		CreatePath:      "/v1/tokens",
+		TokenField:      "data.secret",
+		KeyIDField:      "data.id",
+		VerifyPath:      "/v1/me",
+		RetirePath:      "/v1/tokens/{id}",
+		ManagementPaths: []string{"/v1/tokens"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !ManagementEndpoint(srv.URL + "/v1/tokens/tok_42") {
+		t.Fatal("spec management path not guarded")
+	}
+	rot, ok := ForHost(srv.URL + "/v1/chat")
+	if !ok {
+		t.Fatal("spec rotator not registered")
+	}
+	ctx := context.Background()
+	tok, keyID, err := rot.Create(ctx, "acme", []byte("sk_live"))
+	if err != nil || string(tok) != "sk_next_42" || keyID != "tok_42" {
+		t.Fatalf("spec create: %s %s %v", tok, keyID, err)
+	}
+	if err := rot.Verify(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if err := rot.Retire(ctx, "tok_old", []byte("sk_live")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Redirect refusal: a 302 must error out without ever hitting exfil.
+	redirectMode.Store(true)
+	if _, _, err := rot.Create(ctx, "acme", []byte("sk_live")); err == nil {
+		t.Fatal("redirect should be refused")
+	}
+	if exfilHit.Load() {
+		t.Fatal("redirect followed to exfil server")
+	}
+}

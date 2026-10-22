@@ -1576,6 +1576,56 @@
           }
         }
       }
+    },
+    "/v1/agents/{name}/bind": {
+      "post": {
+        "operationId": "bindWorkload",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Bind an existing agent to an external OIDC issuer, subject, and audience (workload identity federation). Owner-only — binding an auth method to an agent is a grant-adjacent write.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindWorkloadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workload binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bind failed"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2770,6 +2820,51 @@
           "label": {
             "type": "string",
             "description": "device label"
+          }
+        }
+      },
+      "BindWorkloadRequest": {
+        "type": "object",
+        "required": [
+          "issuer",
+          "subject",
+          "audience"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string",
+            "description": "OIDC issuer URL"
+          },
+          "subject": {
+            "type": "string",
+            "description": "expected token sub claim"
+          },
+          "audience": {
+            "type": "string",
+            "description": "expected token aud claim"
+          }
+        }
+      },
+      "WorkloadView": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "issuer",
+          "subject",
+          "audience"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "audience": {
+            "type": "string"
           }
         }
       }

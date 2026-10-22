@@ -25,36 +25,39 @@ const (
 )
 
 type Envelope struct {
-	V            int    `json:"v"`
-	Token        string `json:"token,omitempty"`
-	Login        string `json:"login,omitempty"`
-	TOTP         string `json:"totp,omitempty"`
-	Refresh      string `json:"refresh,omitempty"`
-	TokenURL     string `json:"token_url,omitempty"`
-	ClientID     string `json:"client_id,omitempty"`
-	ClientSec    string `json:"client_secret,omitempty"`
-	FileName     string `json:"file_name,omitempty"`
-	MIME         string `json:"mime,omitempty"`
-	FileB64      string `json:"file_b64,omitempty"`
-	PasskeyPEM   string `json:"passkey_pem,omitempty"`
-	CredID       string `json:"cred_id,omitempty"`
-	RpID         string `json:"rp_id,omitempty"`
-	UserHandle   string `json:"user_handle,omitempty"`
-	Number       string `json:"number,omitempty"`
-	ExpMonth     string `json:"exp_month,omitempty"`
-	ExpYear      string `json:"exp_year,omitempty"`
-	CVV          string `json:"cvv,omitempty"`
-	GivenName    string `json:"given_name,omitempty"`
-	FamilyName   string `json:"family_name,omitempty"`
-	Address      string `json:"address,omitempty"`
-	City         string `json:"city,omitempty"`
-	Region       string `json:"region,omitempty"`
-	Postal       string `json:"postal,omitempty"`
-	Country      string `json:"country,omitempty"`
-	Phone        string `json:"phone,omitempty"`
-	Email        string `json:"email,omitempty"`
-	KeyID        string `json:"key_id,omitempty"`
-	PendingKeyID string `json:"pending_key_id,omitempty"`
+	V                int    `json:"v"`
+	Token            string `json:"token,omitempty"`
+	Login            string `json:"login,omitempty"`
+	TOTP             string `json:"totp,omitempty"`
+	Refresh          string `json:"refresh,omitempty"`
+	TokenURL         string `json:"token_url,omitempty"`
+	ClientID         string `json:"client_id,omitempty"`
+	ClientSec        string `json:"client_secret,omitempty"`
+	FileName         string `json:"file_name,omitempty"`
+	MIME             string `json:"mime,omitempty"`
+	FileB64          string `json:"file_b64,omitempty"`
+	PasskeyPEM       string `json:"passkey_pem,omitempty"`
+	CredID           string `json:"cred_id,omitempty"`
+	RpID             string `json:"rp_id,omitempty"`
+	UserHandle       string `json:"user_handle,omitempty"`
+	Number           string `json:"number,omitempty"`
+	ExpMonth         string `json:"exp_month,omitempty"`
+	ExpYear          string `json:"exp_year,omitempty"`
+	CVV              string `json:"cvv,omitempty"`
+	GivenName        string `json:"given_name,omitempty"`
+	FamilyName       string `json:"family_name,omitempty"`
+	Address          string `json:"address,omitempty"`
+	City             string `json:"city,omitempty"`
+	Region           string `json:"region,omitempty"`
+	Postal           string `json:"postal,omitempty"`
+	Country          string `json:"country,omitempty"`
+	Phone            string `json:"phone,omitempty"`
+	Email            string `json:"email,omitempty"`
+	KeyID            string `json:"key_id,omitempty"`
+	PendingKeyID     string `json:"pending_key_id,omitempty"`
+	ManagementItemID string `json:"management_item_id,omitempty"`
+	RotateInterval   string `json:"rotate_interval,omitempty"`
+	NextRotateAt     int64  `json:"next_rotate_at,omitempty"`
 }
 
 func PackFile(name, mime string, body []byte) ([]byte, error) {
@@ -116,6 +119,12 @@ func WithToken(raw, token []byte) ([]byte, error) {
 // WithRotatedToken seals a rotated token and the dual-phase provider key IDs
 // in one envelope. Item list and MCP never see these fields.
 func WithRotatedToken(raw, token []byte, keyID, pendingKeyID string) ([]byte, error) {
+	return WithRotatedTokenMeta(raw, token, keyID, pendingKeyID, "", "", 0)
+}
+
+// WithRotatedTokenMeta seals a rotated token, dual-phase key IDs, and optional
+// management-credential / rotation-schedule metadata inside the envelope.
+func WithRotatedTokenMeta(raw, token []byte, keyID, pendingKeyID, mgmtItemID, interval string, nextRotateAt int64) ([]byte, error) {
 	token = trim(token)
 	if len(token) == 0 {
 		return nil, fmt.Errorf("material: empty token")
@@ -125,6 +134,15 @@ func WithRotatedToken(raw, token []byte, keyID, pendingKeyID string) ([]byte, er
 	env.Token = string(token)
 	env.KeyID = strings.TrimSpace(keyID)
 	env.PendingKeyID = strings.TrimSpace(pendingKeyID)
+	if strings.TrimSpace(mgmtItemID) != "" {
+		env.ManagementItemID = strings.TrimSpace(mgmtItemID)
+	}
+	if strings.TrimSpace(interval) != "" {
+		env.RotateInterval = strings.TrimSpace(interval)
+	}
+	if nextRotateAt > 0 {
+		env.NextRotateAt = nextRotateAt
+	}
 	return pack(env)
 }
 
@@ -136,6 +154,19 @@ func PackOAuth(refresh, tokenURL, clientID, clientSecret []byte) ([]byte, error)
 		ClientID:  string(trim(clientID)),
 		ClientSec: string(trim(clientSecret)),
 	})
+}
+
+// WithRefresh seals a rotated OAuth refresh token into an existing envelope,
+// preserving all other fields.
+func WithRefresh(raw []byte, refresh string) ([]byte, error) {
+	refresh = strings.TrimSpace(refresh)
+	if refresh == "" {
+		return nil, fmt.Errorf("material: empty refresh token")
+	}
+	env := Unpack(raw)
+	env.V = Version
+	env.Refresh = refresh
+	return pack(env)
 }
 
 func PackCard(number, expMonth, expYear, cvv, name string) ([]byte, error) {
@@ -240,11 +271,18 @@ func Apply(h http.Header, env Envelope, now time.Time) (code string, err error) 
 // AccessToken follows Authsome's "log in once" pattern. Refresh stays here.
 // golang.org/x/oauth2 performs the refresh. The access token is for inject only.
 func AccessToken(ctx context.Context, env Envelope, client *http.Client) (string, error) {
+	access, _, err := AccessTokenWithRefresh(ctx, env, client)
+	return access, err
+}
+
+// AccessTokenWithRefresh performs the OAuth refresh and also returns any
+// rotated refresh token issued by the provider so the broker can persist it.
+func AccessTokenWithRefresh(ctx context.Context, env Envelope, client *http.Client) (access, nextRefresh string, err error) {
 	if env.Refresh == "" {
-		return env.Token, nil
+		return env.Token, "", nil
 	}
 	if env.TokenURL == "" || env.ClientID == "" {
-		return "", errOAuth
+		return "", "", errOAuth
 	}
 	cfg := &oauth2.Config{
 		ClientID:     env.ClientID,
@@ -254,12 +292,12 @@ func AccessToken(ctx context.Context, env Envelope, client *http.Client) (string
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
 	tok, err := cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: env.Refresh}).Token()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if tok.AccessToken == "" {
-		return "", errOAuth
+		return "", "", errOAuth
 	}
-	return tok.AccessToken, nil
+	return tok.AccessToken, strings.TrimSpace(tok.RefreshToken), nil
 }
 
 var errOAuth = errString("material: oauth refresh failed")

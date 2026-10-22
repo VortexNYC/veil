@@ -177,6 +177,19 @@ type CreateAgentRequest struct {
 	Name string `json:"name"`
 }
 
+type BindWorkloadRequest struct {
+	Issuer   string `json:"issuer"`
+	Subject  string `json:"subject"`
+	Audience string `json:"audience"`
+}
+
+type WorkloadView struct {
+	AgentID  string `json:"agent_id"`
+	Issuer   string `json:"issuer"`
+	Subject  string `json:"subject"`
+	Audience string `json:"audience"`
+}
+
 type AgentsResponse struct {
 	Agents []protocol.Principal `json:"agents"`
 }
@@ -322,6 +335,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/groups/{name}/members/{kind}/{id}", s.removeGroupMember)
 	mux.HandleFunc("GET /v1/agents", s.listAgents)
 	mux.HandleFunc("POST /v1/agents", s.createAgent)
+	mux.HandleFunc("POST /v1/agents/{name}/bind", s.bindWorkload)
 	mux.HandleFunc("POST /v1/agents/{name}/revoke", s.revokeAgent)
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
@@ -485,6 +499,11 @@ func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"archived": true})
 }
 
+type RotateItemRequest struct {
+	ManagementItem string `json:"management_item,omitempty"`
+	Interval       string `json:"interval,omitempty"`
+}
+
 // rotateItem swaps the item's credential via the provider's key-management
 // API — owner-only. The response carries the item metadata and never the
 // secret.
@@ -493,7 +512,24 @@ func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := s.App.RotateItem(p, r.PathValue("name"))
+	var in RotateItemRequest
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+	}
+	var opts app.RotateOpts
+	opts.ManagementItem = strings.TrimSpace(in.ManagementItem)
+	if strings.TrimSpace(in.Interval) != "" {
+		d, err := time.ParseDuration(strings.TrimSpace(in.Interval))
+		if err != nil || d <= 0 {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		opts.Interval = d
+	}
+	item, err := s.App.RotateItemWith(p, r.PathValue("name"), opts)
 	if err != nil {
 		if errors.Is(err, rotate.ErrNoRotator()) {
 			http.Error(w, "no rotation support for this item's provider", http.StatusUnprocessableEntity)
@@ -705,6 +741,39 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, p)
+}
+
+func (s *Server) bindWorkload(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in BindWorkloadRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	bound, err := s.App.BindWorkloadFor(
+		owner,
+		strings.TrimSpace(r.PathValue("name")),
+		strings.TrimSpace(in.Issuer),
+		strings.TrimSpace(in.Subject),
+		strings.TrimSpace(in.Audience),
+	)
+	if err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "bind failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, WorkloadView{
+		AgentID:  bound.AgentID,
+		Issuer:   bound.Issuer,
+		Subject:  bound.Subject,
+		Audience: bound.Audience,
+	})
 }
 
 func (s *Server) revokeAgent(w http.ResponseWriter, r *http.Request) {

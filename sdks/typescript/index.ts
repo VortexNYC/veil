@@ -6,6 +6,7 @@ export {
   archiveItem,
   auditFeed,
   billingWebhook,
+  bindWorkload,
   createAgent,
   createBillingCheckout,
   createGrant,
@@ -73,6 +74,11 @@ export type {
   BillingWebhookErrors,
   BillingWebhookResponse,
   BillingWebhookResponses,
+  BindWorkloadData,
+  BindWorkloadErrors,
+  BindWorkloadRequest,
+  BindWorkloadResponse,
+  BindWorkloadResponses,
   CardFields,
   ClientOptions,
   CreateAgentData,
@@ -245,6 +251,7 @@ export type {
   VaultReportFinding,
   VaultReportResponse,
   VaultReportResponses,
+  WorkloadView,
 } from "./types.gen";
 export { createClient } from "./client";
 export type { Config } from "./client";

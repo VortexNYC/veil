@@ -99,6 +99,10 @@ const TagNeverFill = "veil:never-fill"
 // another device — the 1Password "approve sign-in elsewhere" posture.
 const TagRemoteApprove = "veil:remote-approve"
 
+// TagHoneyRevoke marks a honey tripwire item that immediately revokes the
+// offending agent (and cancels its pending approval requests) on first touch.
+const TagHoneyRevoke = "veil:honey-revoke"
+
 // NeverFill reports whether the item carries the reserved never-fill tag.
 func (i Item) NeverFill() bool {
 	return slices.Contains(i.Tags, TagNeverFill)
@@ -107,6 +111,11 @@ func (i Item) NeverFill() bool {
 // RemoteApprove reports whether the item carries the remote-approve tag.
 func (i Item) RemoteApprove() bool {
 	return slices.Contains(i.Tags, TagRemoteApprove)
+}
+
+// HoneyRevoke reports whether a honey item auto-revokes the agent on touch.
+func (i Item) HoneyRevoke() bool {
+	return slices.Contains(i.Tags, TagHoneyRevoke)
 }
 
 type ActionKind string

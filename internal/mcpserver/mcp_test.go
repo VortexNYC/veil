@@ -400,6 +400,24 @@ func TestReadyFailsWhenIssuerDown(t *testing.T) {
 	}
 }
 
+func TestReadySelfHostWithoutHydra(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ts := httptest.NewServer(Mux(a, "http://veil.test/mcp", SelfHostIssuer))
+	t.Cleanup(ts.Close)
+	ready, err := http.Get(ts.URL + "/ready")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ready.Body.Close()
+	if ready.StatusCode != http.StatusOK {
+		t.Fatalf("self-host ready %d", ready.StatusCode)
+	}
+}
+
 // The 5xx counter is the monitor's bleed signal: an origin can be "ready"
 // while a route fails every call — the window count must show up in the
 // /ready body.

@@ -757,12 +757,23 @@ func originReport(cmd *cobra.Command, hibp bool) error {
 
 // originRotateItem POSTs the rotate route — the origin owns the secret and
 // the provider call; the CLI never sees either key.
-func originRotateItem(cmd *cobra.Command, name string) error {
+func originRotateItem(cmd *cobra.Command, name, mgmtItem string, interval time.Duration) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
 	}
-	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+name+"/rotate", tok, nil)
+	var payload []byte
+	if mgmtItem != "" || interval > 0 {
+		in := publicapi.RotateItemRequest{ManagementItem: mgmtItem}
+		if interval > 0 {
+			in.Interval = interval.String()
+		}
+		payload, err = json.Marshal(in)
+		if err != nil {
+			return err
+		}
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+name+"/rotate", tok, payload)
 	if err != nil {
 		return err
 	}
@@ -771,4 +782,33 @@ func originRotateItem(cmd *cobra.Command, name string) error {
 		return err
 	}
 	return encode(cmd, out)
+}
+
+func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(publicapi.BindWorkloadRequest{
+		Issuer:   issuer,
+		Subject:  subject,
+		Audience: audience,
+	})
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/agents/"+url.PathEscape(name)+"/bind", tok, payload)
+	if err != nil {
+		return err
+	}
+	var out publicapi.WorkloadView
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, protocol.Workload{
+		AgentID:  out.AgentID,
+		Issuer:   out.Issuer,
+		Subject:  out.Subject,
+		Audience: out.Audience,
+	})
 }

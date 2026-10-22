@@ -10,6 +10,7 @@ import (
 	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/store"
 )
 
 // EnvName is the Infisical vault-run name: item name, uppercased, hyphen to underscore.
@@ -116,13 +117,20 @@ func (b *Broker) ChildEnv(ctx context.Context, agent protocol.Principal) ([]stri
 		env := material.Unpack(secret)
 		val := env.Token
 		if env.Refresh != "" {
-			access, err := material.AccessToken(ctx, env, b.client())
+			access, nextRefresh, err := material.AccessTokenWithRefresh(ctx, env, b.client())
 			if err != nil {
 				event.Decision = protocol.DecisionDeny
 				event.Reason = "oauth_failed"
 				_ = b.appendAudit(ctx, event)
 				LogEvent(event, item.Name, "", 0)
 				continue
+			}
+			if nextRefresh != "" && nextRefresh != env.Refresh {
+				if rotated, rerr := material.WithRefresh(secret, nextRefresh); rerr == nil {
+					if perr := b.Store.PutItem(item, store.Secret(rotated)); perr != nil {
+						slog.Warn("oauth refresh persist failed", "item", item.ID, "err", perr)
+					}
+				}
 			}
 			val = access
 		}

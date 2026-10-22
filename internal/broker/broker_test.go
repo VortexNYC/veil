@@ -385,13 +385,14 @@ func TestTOTPMintedAtInjectNeverReturned(t *testing.T) {
 
 func TestOAuthRefreshInjectsAccessTokenNeverRefresh(t *testing.T) {
 	const refresh = "refresh_DO_NOT_LEAK"
+	const refreshNext = "refresh_NEXT_DO_NOT_LEAK"
 	const access = "access_DO_NOT_LEAK"
 	var sawRefresh string
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		sawRefresh = r.Form.Get("refresh_token")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"access_token":"`+access+`","token_type":"Bearer","expires_in":3600}`)
+		_, _ = io.WriteString(w, `{"access_token":"`+access+`","refresh_token":"`+refreshNext+`","token_type":"Bearer","expires_in":3600}`)
 	}))
 	t.Cleanup(tokenSrv.Close)
 
@@ -445,6 +446,17 @@ func TestOAuthRefreshInjectsAccessTokenNeverRefresh(t *testing.T) {
 	}
 	if sawRefresh != refresh {
 		t.Fatalf("token endpoint saw %q", sawRefresh)
+	}
+	// Second Use must send the rotated refresh token persisted on the first Use.
+	if _, err := New(mem).Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: "item-1",
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if sawRefresh != refreshNext {
+		t.Fatalf("second Use did not persist rotated refresh token: saw %q, want %q", sawRefresh, refreshNext)
 	}
 	if sawAuth != "Bearer "+access {
 		t.Fatalf("auth=%q", sawAuth)
@@ -1289,5 +1301,55 @@ func TestUseHoneyDeniesGranted(t *testing.T) {
 	}
 	if ok.Decision != protocol.DecisionAllow {
 		t.Fatalf("real use: %+v", ok)
+	}
+}
+
+func TestUseHoneyRevokeTagAutoRevokesAgent(t *testing.T) {
+	b, agent, _, upstream, _ := setup(t, protocol.Level2)
+	mem := b.Store.(*store.Memory)
+	honey := protocol.Item{
+		ID:    "item-honey-kill",
+		OrgID: "org-1",
+		Name:  "honey-prod-root",
+		Kind:  protocol.ItemHoney,
+		Owner: protocol.Owner{Kind: protocol.OwnerOrg, ID: "org-1"},
+		URIs:  []string{upstream.URL},
+		Tags:  []string{protocol.TagHoneyRevoke},
+	}
+	if err := mem.PutItem(honey, store.Secret("decoy")); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.PutGrant(protocol.Grant{
+		ID:      "grant-honey-kill",
+		OrgID:   "org-1",
+		AgentID: agent.ID,
+		ItemID:  honey.ID,
+		Level:   protocol.Level2,
+		Actions: []protocol.ActionKind{protocol.ActionFetch},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: honey.ID,
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Decision != protocol.DecisionDeny || got.Reason != "honey" {
+		t.Fatalf("honey use: %+v", got)
+	}
+	// Subsequent Use of a real granted item must now fail with agent_revoked.
+	after, err := b.Use(context.Background(), agent, protocol.UseRequest{
+		ItemID: "item-1",
+		Action: protocol.ActionFetch,
+		Fetch:  &protocol.Fetch{URL: upstream.URL + "/v1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Decision != protocol.DecisionDeny || after.Reason != "agent_revoked" {
+		t.Fatalf("after honey-revoke tripwire, want agent_revoked, got %+v", after)
 	}
 }
