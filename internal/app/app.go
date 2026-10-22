@@ -88,6 +88,11 @@ type RequestNotify interface {
 
 var ErrExists = errors.New("app: vault already exists")
 
+// ErrIdentityUnavailable marks dependency failures in the identity plane
+// (Keto membership, Hydra verification) — distinct from bad credentials so
+// API callers see 503-unavailable instead of a misleading 401.
+var ErrIdentityUnavailable = errors.New("app: identity plane unavailable")
+
 type config struct {
 	OrgID   string `json:"org_id"`
 	HumanID string `json:"human_id"`
@@ -999,7 +1004,7 @@ func (a *App) PrincipalFromOIDC(ctx context.Context, rawToken string) (protocol.
 	}
 	ok, merr := a.Members.IsMember(ctx, p.OrgID, p.ID)
 	if merr != nil {
-		return protocol.Principal{}, merr
+		return protocol.Principal{}, fmt.Errorf("%w: %v", ErrIdentityUnavailable, merr)
 	}
 	if !ok {
 		return protocol.Principal{}, fmt.Errorf("app: not a member")

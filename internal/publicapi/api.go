@@ -1544,6 +1544,10 @@ func (s *Server) resolveAgentID(r *http.Request) (string, error) {
 func (s *Server) requirePrincipal(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
 	p, err := s.resolve(r)
 	if err != nil {
+		if errors.Is(err, app.ErrIdentityUnavailable) {
+			http.Error(w, "identity plane unavailable", http.StatusServiceUnavailable)
+			return protocol.Principal{}, false
+		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return protocol.Principal{}, false
 	}
