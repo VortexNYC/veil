@@ -426,3 +426,28 @@ func TestFillSyncNeverFillTag(t *testing.T) {
 		t.Fatal("untagged item missing from sync")
 	}
 }
+
+// Regression for 75b9cdc: an OIDC owner (actor.ID != a.HumanID, proven via
+// Members.IsOwner) may delegate an agent created locally with Owner.ID=a.HumanID
+// ("self"), while a non-owner member in the same org is still rejected.
+func TestOwnerDelegatesSelfOwnedAgent(t *testing.T) {
+	a, prov, _, roles, owner := matrixApp(t)
+	a.OrgID = owner.OrgID
+	agent, err := a.AddAgent("local-self-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := a.PutItemFor(owner, ItemOpts{Name: "self-agent-item", Token: []byte(secret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.GrantUntil(owner, agent.ID, item.ID, protocol.Level2, nil); err != nil {
+		t.Fatalf("OIDC owner rejected on self-owned agent: %v", err)
+	}
+	prov.stamps = append(prov.stamps, [2]string{"member", owner.OrgID})
+	roles.members[owner.OrgID+"|member"] = true
+	member := provisioned(t, a, prov, "member")
+	if _, err := a.GrantUntil(member, agent.ID, item.ID, protocol.Level2, nil); err == nil {
+		t.Fatal("non-owner member minted a grant on self-owned agent")
+	}
+}

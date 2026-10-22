@@ -28,7 +28,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }).catch(function () {});
-    } catch (_) {}
+    } catch {}
   }
 
   function stackOf(err) {

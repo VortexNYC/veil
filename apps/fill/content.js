@@ -30,7 +30,7 @@
       keepalive.onDisconnect.addListener(function () {
         keepalive = null;
       });
-    } catch (e) {
+    } catch {
       keepalive = null;
     }
   }
