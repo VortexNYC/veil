@@ -695,3 +695,37 @@ func TestMCPMatchAndApprovalStatus(t *testing.T) {
 		t.Fatal("muse read grok's approval request")
 	}
 }
+
+func TestMCPApprovalStatusReportsExpired(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	iss := newTestIssuer(t)
+	if _, err := a.AddItem("x", "https://x.example", []byte(secret)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgent("grok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.BindWorkload("grok", iss.URL, "agent-grok", "veil"); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	reqID := "req-expired-test"
+	if _, err := a.Store.FileRequest(protocol.ApprovalRequest{
+		ID: reqID, OrgID: protocol.LocalOrgID, AgentID: "grok", ItemID: "x",
+		GrantID: "g", Action: protocol.ActionFetch, Status: protocol.RequestOpen,
+		CreatedAt: past.Add(-time.Hour), ExpiresAt: past,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := approvalStatus(a, "grok", reqID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != string(protocol.RequestExpired) {
+		t.Fatalf("open-past-expiry should report expired, got %q", out.Status)
+	}
+}

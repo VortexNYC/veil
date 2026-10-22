@@ -59,12 +59,14 @@ type ApprovalStatusIn struct {
 }
 
 type ApprovalStatusOut struct {
-	RequestID  string     `json:"request_id"`
-	Status     string     `json:"status"`
-	ItemID     string     `json:"item_id"`
-	Action     string     `json:"action"`
-	CreatedAt  time.Time  `json:"created_at"`
-	ExpiresAt  time.Time  `json:"expires_at"`
+	RequestID string    `json:"request_id"`
+	Status    string    `json:"status"`
+	ItemID    string    `json:"item_id"`
+	Action    string    `json:"action"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	// ResolvedAt is set by the resolver/sweeper — a derived "expired" status
+	// can show a nil ResolvedAt until the sweeper writes the row.
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 

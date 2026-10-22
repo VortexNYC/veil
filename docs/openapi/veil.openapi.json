@@ -1485,6 +1485,12 @@
           },
           "400": {
             "description": "platform must be apns or fcm and token is required"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "principal is not a human"
           }
         }
       },
@@ -1510,6 +1516,12 @@
           },
           "400": {
             "description": "token required"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "principal is not a human"
           }
         }
       }
