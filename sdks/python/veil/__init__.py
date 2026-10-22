@@ -42,6 +42,7 @@ __all__ = [
     "AuditFeedResponse",
     "BillingCheckout",
     "BillingView",
+    "BindWorkloadRequest",
     "CardFields",
     "CreateAgentRequest",
     "CreateGrantRequest",
@@ -78,6 +79,7 @@ __all__ = [
     "UseResponse",
     "VaultReport",
     "VaultReportFinding",
+    "WorkloadView",
 ]
 
 # import apis into sdk package
@@ -109,6 +111,7 @@ from veil.models.audit_feed_event import AuditFeedEvent as AuditFeedEvent
 from veil.models.audit_feed_response import AuditFeedResponse as AuditFeedResponse
 from veil.models.billing_checkout import BillingCheckout as BillingCheckout
 from veil.models.billing_view import BillingView as BillingView
+from veil.models.bind_workload_request import BindWorkloadRequest as BindWorkloadRequest
 from veil.models.card_fields import CardFields as CardFields
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest as CreateGrantRequest
@@ -145,4 +148,5 @@ from veil.models.use_request import UseRequest as UseRequest
 from veil.models.use_response import UseResponse as UseResponse
 from veil.models.vault_report import VaultReport as VaultReport
 from veil.models.vault_report_finding import VaultReportFinding as VaultReportFinding
+from veil.models.workload_view import WorkloadView as WorkloadView
 

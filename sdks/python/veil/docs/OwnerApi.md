@@ -7,6 +7,7 @@ Method | HTTP request | Description
 [**add_group_member**](OwnerApi.md#add_group_member) | **POST** /v1/groups/{name}/members | Add an agent or human to the group. Not MCP.
 [**approve_request**](OwnerApi.md#approve_request) | **POST** /v1/requests/{id}/approve | Approve an open request — unlocks its level-1 grant for ttl. First write wins.
 [**archive_item**](OwnerApi.md#archive_item) | **POST** /v1/items/{name}/archive | Hide from Use and list. History stays.
+[**bind_workload**](OwnerApi.md#bind_workload) | **POST** /v1/agents/{name}/bind | Bind an existing agent to an external OIDC issuer, subject, and audience (workload identity federation). Owner-only — binding an auth method to an agent is a grant-adjacent write.
 [**create_agent**](OwnerApi.md#create_agent) | **POST** /v1/agents | Register an agent principal. Not a Hydra secret. Not MCP.
 [**create_grant**](OwnerApi.md#create_grant) | **POST** /v1/grants | Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.
 [**create_group**](OwnerApi.md#create_group) | **POST** /v1/groups | Create an org group. Not MCP.
@@ -263,6 +264,88 @@ void (empty response body)
 **400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | agent cannot archive items |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **bind_workload**
+> WorkloadView bind_workload(name, bind_workload_request)
+
+Bind an existing agent to an external OIDC issuer, subject, and audience (workload identity federation). Owner-only — binding an auth method to an agent is a grant-adjacent write.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.bind_workload_request import BindWorkloadRequest
+from veil.models.workload_view import WorkloadView
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+    bind_workload_request = veil.BindWorkloadRequest() # BindWorkloadRequest | 
+
+    try:
+        # Bind an existing agent to an external OIDC issuer, subject, and audience (workload identity federation). Owner-only — binding an auth method to an agent is a grant-adjacent write.
+        api_response = api_instance.bind_workload(name, bind_workload_request)
+        print("The response of OwnerApi->bind_workload:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->bind_workload: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+ **bind_workload_request** | [**BindWorkloadRequest**](BindWorkloadRequest.md)|  | 
+
+### Return type
+
+[**WorkloadView**](WorkloadView.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Workload binding |  -  |
+**400** | bind failed |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

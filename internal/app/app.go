@@ -129,6 +129,7 @@ type App struct {
 
 	inviteLim            inviteLimiter
 	usageStop, usageDone chan struct{}
+	rotStop, rotDone     chan struct{}
 }
 
 func Init(dir string) (*App, error) {
@@ -440,6 +441,7 @@ func firstEnv(keys ...string) string {
 func (a *App) Close() error {
 	var errs []error
 	a.stopUsageReporter()
+	a.stopRotationTicker()
 	if a.Auditor != nil {
 		if err := a.Auditor.Close(); err != nil {
 			errs = append(errs, err)
@@ -753,12 +755,23 @@ func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []stri
 	return item, nil
 }
 
+// RotateOpts configures optional separate management-credential authority and
+// automatic rotation interval for an item.
+type RotateOpts struct {
+	ManagementItem string
+	Interval       time.Duration
+}
+
 // RotateItem swaps an item's credential server-side: the provider's
 // key-management API mints a replacement, the new secret is verified and
 // sealed in place — item id and grants are untouched, agents keep calling
 // Use. Retire of the old provider key is best-effort and audited either way.
 // Owner-only: rotation is vault administration, not a grant.
 func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, error) {
+	return a.RotateItemWith(actor, name, RotateOpts{})
+}
+
+func (a *App) RotateItemWith(actor protocol.Principal, name string, opts RotateOpts) (protocol.Item, error) {
 	if ok, err := a.ownsVault(actor); err != nil || !ok {
 		if err != nil {
 			return protocol.Item{}, err
@@ -769,6 +782,14 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 	if err != nil {
 		return protocol.Item{}, err
 	}
+	if item.OrgID != actor.OrgID {
+		return protocol.Item{}, ErrForbidden
+	}
+	return a.rotateItemInternal(actor.ID, item, opts)
+}
+
+func (a *App) rotateItemInternal(actorID string, item protocol.Item, opts RotateOpts) (protocol.Item, error) {
+	name := item.Name
 	if item.Archived {
 		return protocol.Item{}, fmt.Errorf("app: item archived")
 	}
@@ -787,7 +808,34 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 		return protocol.Item{}, err
 	}
 	env := material.Unpack(raw)
+	mgmtID := strings.TrimSpace(opts.ManagementItem)
+	if mgmtID == "" {
+		mgmtID = strings.TrimSpace(env.ManagementItemID)
+	}
 	live := []byte(env.Token)
+	if mgmtID != "" {
+		mgmtItem, merr := a.Store.Item(mgmtID)
+		if merr != nil || mgmtItem.Archived || mgmtItem.OrgID != item.OrgID {
+			return protocol.Item{}, fmt.Errorf("rotate: invalid management item")
+		}
+		mgmtRaw, merr := a.Store.Secret(mgmtItem.ID)
+		if merr != nil {
+			return protocol.Item{}, fmt.Errorf("rotate: management secret: %w", merr)
+		}
+		live = []byte(material.Unpack(mgmtRaw).Token)
+	}
+	intervalStr := strings.TrimSpace(env.RotateInterval)
+	if opts.Interval > 0 {
+		intervalStr = opts.Interval.String()
+	}
+	var nextRotateAt int64
+	if intervalStr != "" {
+		d, perr := time.ParseDuration(intervalStr)
+		if perr != nil || d <= 0 {
+			return protocol.Item{}, fmt.Errorf("rotate: invalid interval %q", intervalStr)
+		}
+		nextRotateAt = time.Now().UTC().Add(d).Unix()
+	}
 	ctx := context.Background()
 	next, keyID, err := rot.Create(ctx, item.Name, live)
 	if err != nil {
@@ -797,7 +845,11 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 	// it exists so a mid-rotation failure never strands an unaccounted key.
 	rollback := func() {
 		slog.Warn("rotate: retiring orphaned new key", "item", name, "key_id", keyID)
-		if err := rot.Retire(ctx, keyID, next); err != nil {
+		retireAuth := next
+		if mgmtID != "" {
+			retireAuth = live
+		}
+		if err := rot.Retire(ctx, keyID, retireAuth); err != nil {
 			slog.Warn("rotate: orphan not retired", "item", name, "key_id", keyID, "err", err)
 		}
 	}
@@ -809,7 +861,7 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 	// item.Tags — agent-facing list paths never see provider key IDs.
 	oldKeyID := env.KeyID
 	pendingID := env.PendingKeyID
-	sealed, err := material.WithRotatedToken(raw, next, keyID, oldKeyID)
+	sealed, err := material.WithRotatedTokenMeta(raw, next, keyID, oldKeyID, mgmtID, intervalStr, nextRotateAt)
 	if err != nil {
 		rollback()
 		return protocol.Item{}, err
@@ -818,7 +870,7 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 	// pending key — an irreversible provider-side revoke must never run
 	// ahead of the local transaction.
 	reason := fmt.Sprintf("name=%s new_key_id=%s old_key_id=%s retired_key_id=%s", name, keyID, oldKeyID, pendingID)
-	if err := a.Store.PutItem(item, store.Secret(sealed), adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemRotated, reason)); err != nil {
+	if err := a.Store.PutItem(item, store.Secret(sealed), adminEvent(actorID, item.OrgID, item.ID, protocol.ActionItemRotated, reason)); err != nil {
 		rollback()
 		return protocol.Item{}, err
 	}
@@ -828,6 +880,88 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 		}
 	}
 	return item, nil
+}
+
+// RotateDue rotates up to maxItems items whose sealed NextRotateAt watermark
+// is due at now. Egress contract (AGENTS.md rule 9): zero Postgres writes and
+// zero outbound provider calls when no item is due; bounded to maxItems per
+// invocation so a backlog drains across ticks without a burst.
+func (a *App) RotateDue(now time.Time, maxItems int) (int, error) {
+	if maxItems <= 0 {
+		maxItems = 20
+	}
+	items, err := a.Store.ListItems()
+	if err != nil {
+		return 0, err
+	}
+	unixNow := now.UTC().Unix()
+	rotated := 0
+	for _, item := range items {
+		if rotated >= maxItems {
+			break
+		}
+		if item.Archived {
+			continue
+		}
+		hasRot := false
+		for _, u := range item.URIs {
+			if _, ok := rotate.ForHost(u); ok {
+				hasRot = true
+				break
+			}
+		}
+		if !hasRot {
+			continue
+		}
+		raw, err := a.Store.Secret(item.ID)
+		if err != nil {
+			continue
+		}
+		env := material.Unpack(raw)
+		if env.NextRotateAt <= 0 || unixNow < env.NextRotateAt {
+			continue
+		}
+		if _, err := a.rotateItemInternal("system:auto-rotate", item, RotateOpts{}); err != nil {
+			slog.Warn("rotate due failed", "item", item.ID, "err", err)
+			continue
+		}
+		rotated++
+	}
+	return rotated, nil
+}
+
+// StartRotationTicker runs RotateDue once per hour (max 20 due items/tick).
+// Egress rate (AGENTS.md rule 9): 0 bytes/tick when no item has
+// next_rotate_at <= now; bounded to <=20 provider rotations/hour when due.
+func (a *App) StartRotationTicker() {
+	if a.rotStop != nil {
+		return
+	}
+	a.rotStop = make(chan struct{})
+	a.rotDone = make(chan struct{})
+	go func() {
+		defer close(a.rotDone)
+		tick := time.NewTicker(time.Hour)
+		defer tick.Stop()
+		for {
+			select {
+			case <-a.rotStop:
+				return
+			case now := <-tick.C:
+				if _, err := a.RotateDue(now, 20); err != nil {
+					slog.Warn("rotation ticker failed", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+func (a *App) stopRotationTicker() {
+	if a.rotStop == nil {
+		return
+	}
+	close(a.rotStop)
+	<-a.rotDone
 }
 
 func (a *App) ArchiveItem(name string) error {

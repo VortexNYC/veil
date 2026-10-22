@@ -1062,6 +1062,41 @@ paths:
         \ no rotator."
       tags:
       - Owner
+  /v1/agents/{name}/bind:
+    post:
+      operationId: bindWorkload
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BindWorkloadRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkloadView"
+          description: Workload binding
+        "400":
+          description: bind failed
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: "Bind an existing agent to an external OIDC issuer, subject, and audience\
+        \ (workload identity federation). Owner-only — binding an auth method to an\
+        \ agent is a grant-adjacent write."
+      tags:
+      - Owner
 components:
   schemas:
     Item:
@@ -2332,6 +2367,45 @@ components:
       required:
       - platform
       - token
+    BindWorkloadRequest:
+      example:
+        issuer: issuer
+        subject: subject
+        audience: audience
+      properties:
+        issuer:
+          description: OIDC issuer URL
+          type: string
+        subject:
+          description: expected token sub claim
+          type: string
+        audience:
+          description: expected token aud claim
+          type: string
+      required:
+      - audience
+      - issuer
+      - subject
+    WorkloadView:
+      example:
+        agent_id: agent_id
+        issuer: issuer
+        subject: subject
+        audience: audience
+      properties:
+        agent_id:
+          type: string
+        issuer:
+          type: string
+        subject:
+          type: string
+        audience:
+          type: string
+      required:
+      - agent_id
+      - audience
+      - issuer
+      - subject
     removeMember_200_response:
       example:
         removed: true

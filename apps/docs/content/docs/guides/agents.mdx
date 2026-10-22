@@ -57,3 +57,34 @@ curl -X POST https://id.veil.nyc/oauth2/token \
 `agent-cursor` is the client id (`veil agent hydra` prints it). Cache the returned `access_token` until its `expires_in` nears zero; do not mint per request.
 
 If the agent lost its secret file, re-run `veil agent hydra cursor --secret-file ... --force` — the old secret is rotated out.
+
+## Zero-Secret-Zero OIDC Federation (`agent bind`)
+
+Workloads that already have an OIDC identity (GitHub Actions, Fly.io machines, or apps signed in through Better Auth, Clerk, or WorkOS) do not need a Hydra client secret or any `VEIL_*` secret in environment variables. Bind the agent to the external issuer:
+
+```
+# GitHub Actions (binds https://token.actions.githubusercontent.com + repo:org/repo:ref:refs/heads/main)
+veil agent bind ci --preset github-actions --repo VortexNYC/veil
+
+# Fly.io machine OIDC
+veil agent bind worker --preset fly --org vortex --app worker
+
+# Better Auth / Clerk / WorkOS / custom OIDC issuer
+veil agent bind web --preset better-auth --issuer https://auth.example.com --subject service-web
+```
+
+`veil agent bind` works against both a local vault and `VEIL_ORIGIN` (`POST /v1/agents/{name}/bind`).
+
+## Self-Host (Single Binary, No Docker)
+
+For hobby projects, homelabs, or air-gapped runners, `veil mcp --self-host` runs the full MCP + `/v1/*` broker as a single binary backed by local SQLite (`~/.veil`) or Postgres (`VEIL_POSTGRES_DSN`) without Kratos, Hydra, or Keto:
+
+```
+veil init
+veil item add resend --uri https://api.resend.com
+veil agent add ci
+veil agent bind ci --preset github-actions --repo you/app
+veil grant add --agent ci --item resend --level level2
+veil mcp --self-host --listen 0.0.0.0:8080
+```
+

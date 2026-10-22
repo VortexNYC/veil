@@ -23,6 +23,7 @@ from veil.models.audit_feed_event import AuditFeedEvent
 from veil.models.audit_feed_response import AuditFeedResponse
 from veil.models.billing_checkout import BillingCheckout
 from veil.models.billing_view import BillingView
+from veil.models.bind_workload_request import BindWorkloadRequest
 from veil.models.card_fields import CardFields
 from veil.models.create_agent_request import CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest
@@ -59,4 +60,5 @@ from veil.models.use_request import UseRequest
 from veil.models.use_response import UseResponse
 from veil.models.vault_report import VaultReport
 from veil.models.vault_report_finding import VaultReportFinding
+from veil.models.workload_view import WorkloadView
 

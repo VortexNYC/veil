@@ -451,3 +451,53 @@ func TestOwnerDelegatesSelfOwnedAgent(t *testing.T) {
 		t.Fatal("non-owner member minted a grant on self-owned agent")
 	}
 }
+
+type authCheckRotator struct {
+	sawKey string
+	n      int
+}
+
+func (r *authCheckRotator) Create(_ context.Context, _ string, liveKey []byte) ([]byte, string, error) {
+	r.sawKey = string(liveKey)
+	r.n++
+	return []byte("rotated_worker_secret"), "kid_1", nil
+}
+func (*authCheckRotator) Verify(_ context.Context, _ []byte) error           { return nil }
+func (*authCheckRotator) Retire(_ context.Context, _ string, _ []byte) error { return nil }
+func (*authCheckRotator) ManagementPaths() []string                          { return []string{"/keys"} }
+
+func TestRotateWithManagementItemAndSchedule(t *testing.T) {
+	a, _, _, _, owner := matrixApp(t)
+	ar := &authCheckRotator{}
+	rotate.Register("mgmt.test", ar)
+
+	mgmt, err := a.PutItemFor(owner, ItemOpts{Name: "aws-iam-admin", URI: "https://iam.test", Token: []byte("ADMIN_ROOT_KEY")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := a.PutItemFor(owner, ItemOpts{Name: "aws-worker", URI: "https://mgmt.test", Token: []byte("WORKER_SCOPED_KEY")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.RotateItemWith(owner, worker.ID, RotateOpts{
+		ManagementItem: mgmt.ID,
+		Interval:       time.Hour,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ar.sawKey != "ADMIN_ROOT_KEY" {
+		t.Fatalf("rotator signed with %q, want management item secret", ar.sawKey)
+	}
+	// Not due yet -> RotateDue is a zero-write no-op.
+	if n, err := a.RotateDue(time.Now(), 10); err != nil || n != 0 {
+		t.Fatalf("RotateDue before deadline: n=%d err=%v", n, err)
+	}
+	// Past deadline -> RotateDue rotates it using the persisted ManagementItemID.
+	ar.sawKey = ""
+	if n, err := a.RotateDue(time.Now().Add(2*time.Hour), 10); err != nil || n != 1 {
+		t.Fatalf("RotateDue after deadline: n=%d err=%v", n, err)
+	}
+	if ar.sawKey != "ADMIN_ROOT_KEY" {
+		t.Fatalf("scheduled rotation lost management item: saw %q", ar.sawKey)
+	}
+}

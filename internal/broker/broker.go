@@ -238,9 +238,28 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	}
 	// Honey items are tripwires: any authenticated Use is deny + audit. The
 	// deny runs before grant evaluation so a stolen grant still trips it.
+	// When tagged veil:honey-revoke, the tripwire also auto-revokes the
+	// offending agent and cancels its open approval asks.
 	if item.Kind == protocol.ItemHoney {
 		dec := protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "honey"}
-		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
+		out := b.auditUse(ctx, span, agent, item, req, dec, target, 0, now)
+		if item.HoneyRevoke() && agent.ID != "" {
+			revEvent := protocol.AuditEvent{
+				Time:     now,
+				OrgID:    agent.OrgID,
+				AgentID:  agent.ID,
+				ItemID:   item.ID,
+				Action:   protocol.ActionRevoke,
+				Decision: protocol.DecisionAllow,
+				Reason:   "honey_tripwire agent=" + agent.ID,
+			}
+			if err := b.Store.RevokeAgent(agent.ID, now, revEvent); err != nil {
+				slog.Warn("honey auto-revoke failed", "agent", agent.ID, "err", err)
+			} else {
+				_ = b.Store.CancelRequestsForAgent(agent.ID, now)
+			}
+		}
+		return out, nil
 	}
 	dec := grant.Evaluate(grant.Input{
 		Principal: agent,
@@ -329,7 +348,17 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		return protocol.UseResult{}, fmt.Errorf("secret: %w", err)
 	}
 	env := material.Unpack(secret)
-	fr, code, access, err := b.fetch(ctx, req.Fetch, env, now)
+	oldRefresh := env.Refresh
+	fr, code, access, nextRefresh, err := b.fetch(ctx, req.Fetch, env, now)
+	if nextRefresh != "" && nextRefresh != env.Refresh {
+		if rotated, rerr := material.WithRefresh(secret, nextRefresh); rerr == nil {
+			if perr := b.Store.PutItem(item, store.Secret(rotated)); perr != nil {
+				slog.Warn("oauth refresh persist failed", "item", item.ID, "err", perr)
+			} else {
+				env.Refresh = nextRefresh
+			}
+		}
+	}
 	// The allow row is already durable — it records the authorization and the
 	// credential release, which happened regardless of the upstream outcome.
 	// Upstream status stays in logs and spans.
@@ -340,7 +369,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		return dec, err
 	}
 	status := fr.Status
-	hide := material.ScrubList(env, secret, []byte(code), []byte(access))
+	hide := material.ScrubList(env, secret, []byte(code), []byte(access), []byte(oldRefresh), []byte(nextRefresh))
 	fr.Body = scrub.Bytes(fr.Body, hide...)
 	for k, vs := range fr.Header {
 		cleaned := make([]string, len(vs))
@@ -427,7 +456,7 @@ func (b *Broker) auditUse(ctx context.Context, span trace.Span, agent protocol.P
 	return dec
 }
 
-func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Envelope, now time.Time) (*protocol.FetchResult, string, string, error) {
+func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Envelope, now time.Time) (*protocol.FetchResult, string, string, string, error) {
 	method := f.Method
 	if method == "" {
 		method = http.MethodGet
@@ -444,40 +473,40 @@ func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Enve
 	}
 	req, err := http.NewRequestWithContext(ctx, method, f.URL, body)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", "", err
 	}
 	for k, vs := range f.Header {
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
 	}
-	access, err := material.AccessToken(ctx, env, b.client())
+	access, nextRefresh, err := material.AccessTokenWithRefresh(ctx, env, b.client())
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", "", err
 	}
 	if access != "" && req.Header.Get("Authorization") == "" {
 		req.Header.Set("Authorization", material.AuthorizationValue(access))
 	}
 	code, err := material.Apply(req.Header, env, now)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", "", err
 	}
 	res, err := b.client().Do(req)
 	if err != nil {
 		span.SetStatus(codes.Error, "upstream")
-		return nil, "", "", err
+		return nil, "", "", nextRefresh, err
 	}
 	defer res.Body.Close()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", nextRefresh, err
 	}
 	return &protocol.FetchResult{
 		Status: res.StatusCode,
 		Header: res.Header.Clone(),
 		Body:   raw,
-	}, code, access, nil
+	}, code, access, nextRefresh, nil
 }
 
 // Approve records a human approval for a level-1 grant — approval insert

@@ -49,6 +49,7 @@ import (
 	"github.com/VortexNYC/veil/internal/sshagent"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/VortexNYC/veil/internal/totpenroll"
+	"github.com/VortexNYC/veil/internal/workload"
 )
 
 func New(version string) *cobra.Command {
@@ -1076,30 +1077,48 @@ func agentCmd(home *string) *cobra.Command {
 	revoke.Flags().StringVar(&revokeID, "id", "", "agent id to revoke. never argv.")
 	_ = revoke.MarkFlagRequired("id")
 	c.AddCommand(revoke)
-	var issuer, subject, audience string
+	var issuer, subject, audience, preset, repo, ref, flyOrg, flyApp string
 	bind := &cobra.Command{
 		Use:   "bind NAME",
-		Short: "Bind an existing agent to an external OIDC issuer and subject",
+		Short: "Bind an existing agent to an external OIDC issuer and subject (or --preset github-actions|fly|better-auth|clerk|workos)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			iss, sub, aud, err := workload.ResolvePreset(workload.PresetOpts{
+				Preset:   preset,
+				Issuer:   issuer,
+				Subject:  subject,
+				Audience: audience,
+				Repo:     repo,
+				Ref:      ref,
+				Org:      flyOrg,
+				App:      flyApp,
+			})
+			if err != nil {
+				return err
+			}
+			if originBase() != "" {
+				return originAgentBind(cmd, args[0], iss, sub, aud)
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err
 			}
 			defer a.Close()
-			w, err := a.BindWorkload(args[0], issuer, subject, audience)
+			w, err := a.BindWorkload(args[0], iss, sub, aud)
 			if err != nil {
 				return err
 			}
 			return encode(cmd, w)
 		},
 	}
+	bind.Flags().StringVar(&preset, "preset", "", "issuer preset: github-actions, fly, better-auth, clerk, workos")
 	bind.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL we verify, not one we run")
 	bind.Flags().StringVar(&subject, "subject", "", "token sub claim for this agent")
-	bind.Flags().StringVar(&audience, "audience", "", "expected token aud")
-	_ = bind.MarkFlagRequired("issuer")
-	_ = bind.MarkFlagRequired("subject")
-	_ = bind.MarkFlagRequired("audience")
+	bind.Flags().StringVar(&audience, "audience", "", "expected token aud (defaults to 'veil' with --preset)")
+	bind.Flags().StringVar(&repo, "repo", "", "github-actions preset: owner/repo")
+	bind.Flags().StringVar(&ref, "ref", "", "github-actions preset: git ref (default refs/heads/main)")
+	bind.Flags().StringVar(&flyOrg, "org", "", "fly preset: Fly.io org slug")
+	bind.Flags().StringVar(&flyApp, "app", "", "fly preset: Fly.io app name")
 	c.AddCommand(bind)
 
 	var secretFile string
@@ -2254,6 +2273,7 @@ func sshCmd(home *string) *cobra.Command {
 
 func mcpCmd(home *string) *cobra.Command {
 	var listen, publicURL string
+	var selfHost bool
 	c := &cobra.Command{
 		Use:   "mcp",
 		Short: "Serve Streamable HTTP MCP. Bearer is the agent. Tools cannot return secrets.",
@@ -2263,9 +2283,13 @@ func mcpCmd(home *string) *cobra.Command {
 				return err
 			}
 			defer a.Close()
+			a.StartRotationTicker()
 			listen = mcpserver.ListenAddr(listen, cmd.Flags().Changed("listen"))
 			publicURL = mcpPublicURL(publicURL, listen)
 			issuer := envOr("VEIL_HYDRA_ISSUER", "http://127.0.0.1:4444")
+			if selfHost || strings.TrimSpace(os.Getenv("VEIL_SELF_HOST")) == "1" {
+				issuer = mcpserver.SelfHostIssuer
+			}
 			slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 				Level: logLevel(),
 				ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
@@ -2304,6 +2328,7 @@ func mcpCmd(home *string) *cobra.Command {
 	}
 	c.PersistentFlags().StringVar(&listen, "listen", mcpserver.DefaultAddr, "TCP address")
 	c.PersistentFlags().StringVar(&publicURL, "url", "", "public MCP URL (default http://<listen>/mcp)")
+	c.Flags().BoolVar(&selfHost, "self-host", false, "single-binary external-OIDC mode (skip Hydra discovery probe on /ready)")
 	c.AddCommand(&cobra.Command{
 		Use:   "config",
 		Short: "Print remote MCP config. No secrets.",
@@ -2612,12 +2637,33 @@ func reportCmd(home *string) *cobra.Command {
 }
 
 func rotateCmd(home *string) *cobra.Command {
-	return &cobra.Command{
+	var mgmtItem string
+	var interval time.Duration
+	c := &cobra.Command{
 		Use:   "rotate ITEM",
 		Short: "Rotate an item's credential at its provider. Owner only; grants and item id are untouched.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return originRotateItem(cmd, args[0])
+			if originBase() != "" {
+				return originRotateItem(cmd, args[0], mgmtItem, interval)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			item, err := a.RotateItemWith(actor, args[0], app.RotateOpts{
+				ManagementItem: mgmtItem,
+				Interval:       interval,
+			})
+			if err != nil {
+				return err
+			}
+			return encode(cmd, map[string]any{"item": item.Name, "rotated": true})
 		},
 	}
+	c.Flags().StringVar(&mgmtItem, "management-item", "", "separate vault item holding the provider management credential")
+	c.Flags().DurationVar(&interval, "interval", 0, "auto-rotation interval (e.g. 24h, 168h)")
+	return c
 }

@@ -418,6 +418,26 @@ export type DeviceRegisterRequest = {
      */
     label?: string;
 };
+export type BindWorkloadRequest = {
+    /**
+     * OIDC issuer URL
+     */
+    issuer: string;
+    /**
+     * expected token sub claim
+     */
+    subject: string;
+    /**
+     * expected token aud claim
+     */
+    audience: string;
+};
+export type WorkloadView = {
+    agent_id: string;
+    issuer: string;
+    subject: string;
+    audience: string;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1541,3 +1561,32 @@ export type RotateItemResponses = {
     };
 };
 export type RotateItemResponse = RotateItemResponses[keyof RotateItemResponses];
+export type BindWorkloadData = {
+    body: BindWorkloadRequest;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/agents/{name}/bind';
+};
+export type BindWorkloadErrors = {
+    /**
+     * bind failed
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+export type BindWorkloadResponses = {
+    /**
+     * Workload binding
+     */
+    200: WorkloadView;
+};
+export type BindWorkloadResponse = BindWorkloadResponses[keyof BindWorkloadResponses];

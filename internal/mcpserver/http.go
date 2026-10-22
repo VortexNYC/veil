@@ -24,7 +24,11 @@ const (
 	DefaultAddr      = "127.0.0.1:4461"
 	DefaultPublicURL = "https://veil.nyc/mcp"
 	DefaultIssuer    = "https://id.veil.nyc"
-	Path             = "/mcp"
+	// SelfHostIssuer marks a standalone single-binary origin (--self-host or
+	// VEIL_SELF_HOST=1) where agents authenticate via bound external OIDC
+	// issuers or session leases, with no sibling Hydra process.
+	SelfHostIssuer = "none"
+	Path           = "/mcp"
 )
 
 // ListenAddr is the TCP address mcp binds. Railway healthchecks $PORT
@@ -132,11 +136,15 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("GET /ready", ready(a, issuer, errs))
-	h := Handler(a, publicURL)
+	handlerPublicURL := publicURL
+	if issuer == SelfHostIssuer {
+		handlerPublicURL = ""
+	}
+	h := Handler(a, handlerPublicURL)
 	mux.Handle(Path, h)
 	mux.Handle(Path+"/", h)
 	publicapi.Mount(mux, a)
-	if publicURL != "" && issuer != "" {
+	if publicURL != "" && issuer != "" && issuer != SelfHostIssuer {
 		meta := &oauthex.ProtectedResourceMetadata{
 			Resource:               publicURL,
 			AuthorizationServers:   []string{issuer},
@@ -150,10 +158,10 @@ func Mux(a *app.App, publicURL, issuer string) http.Handler {
 }
 
 // ready is origin truth: the process can answer agents only if Hydra discovery
-// works and the store can serve a round trip. /health stays process liveness
-// so a dead dependency is visible instead of a green lie. The body carries
-// the rolling 5xx count so the monitor sees a route bleeding without the
-// process being down.
+// works (unless running in self-host external-OIDC mode) and the store can
+// serve a round trip. /health stays process liveness so a dead dependency is
+// visible instead of a green lie. The body carries the rolling 5xx count so
+// the monitor sees a route bleeding without the process being down.
 func ready(a *app.App, issuer string, errs *errWindow) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -161,28 +169,31 @@ func ready(a *app.App, issuer string, errs *errWindow) http.HandlerFunc {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("not ready\n"))
 		}
-		if strings.TrimSpace(issuer) == "" {
+		issuer = strings.TrimSpace(issuer)
+		if issuer == "" {
 			notReady()
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		if err != nil {
-			notReady()
-			return
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			notReady()
-			return
-		}
-		defer res.Body.Close()
-		_, _ = io.Copy(io.Discard, res.Body)
-		if res.StatusCode != http.StatusOK {
-			notReady()
-			return
+		if issuer != SelfHostIssuer {
+			u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+			if err != nil {
+				notReady()
+				return
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				notReady()
+				return
+			}
+			defer res.Body.Close()
+			_, _ = io.Copy(io.Discard, res.Body)
+			if res.StatusCode != http.StatusOK {
+				notReady()
+				return
+			}
 		}
 		if p, ok := a.Store.(interface {
 			Ping(context.Context) error

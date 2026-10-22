@@ -72,9 +72,9 @@ func TestRemoteGate(t *testing.T) {
 	tagged := protocol.Item{Tags: []string{protocol.TagRemoteApprove}}
 	plain := protocol.Item{}
 	cases := []struct {
-		mode      string
-		item      protocol.Item
-		want      bool
+		mode string
+		item protocol.Item
+		want bool
 	}{
 		{"tagged", tagged, true},
 		{"tagged", plain, false},

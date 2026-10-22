@@ -1027,12 +1027,22 @@ var rotateItem = (options) => (options.client ?? client).post({
   url: "/v1/items/{name}/rotate",
   ...options
 });
+var bindWorkload = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/agents/{name}/bind",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
 export {
   addGroupMember,
   approveRequest,
   archiveItem,
   auditFeed,
   billingWebhook,
+  bindWorkload,
   createAgent,
   createBillingCheckout,
   createClient,
