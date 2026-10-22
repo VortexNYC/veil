@@ -349,7 +349,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	}
 	env := material.Unpack(secret)
 	oldRefresh := env.Refresh
-	fr, code, access, nextRefresh, err := b.fetch(ctx, req.Fetch, env, now)
+	fr, code, access, nextRefresh, extraScrub, err := b.fetch(ctx, req.Fetch, env, now)
 	if nextRefresh != "" && nextRefresh != env.Refresh {
 		if rotated, rerr := material.WithRefresh(secret, nextRefresh); rerr == nil {
 			if perr := b.Store.PutItem(item, store.Secret(rotated)); perr != nil {
@@ -369,7 +369,7 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		return dec, err
 	}
 	status := fr.Status
-	hide := material.ScrubList(env, secret, []byte(code), []byte(access), []byte(oldRefresh), []byte(nextRefresh))
+	hide := material.ScrubList(env, secret, []byte(code), []byte(access), []byte(oldRefresh), []byte(nextRefresh), []byte(extraScrub))
 	fr.Body = scrub.Bytes(fr.Body, hide...)
 	for k, vs := range fr.Header {
 		cleaned := make([]string, len(vs))
@@ -456,7 +456,7 @@ func (b *Broker) auditUse(ctx context.Context, span trace.Span, agent protocol.P
 	return dec
 }
 
-func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Envelope, now time.Time) (*protocol.FetchResult, string, string, string, error) {
+func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Envelope, now time.Time) (*protocol.FetchResult, string, string, string, string, error) {
 	method := f.Method
 	if method == "" {
 		method = http.MethodGet
@@ -473,40 +473,40 @@ func (b *Broker) fetch(ctx context.Context, f *protocol.Fetch, env material.Enve
 	}
 	req, err := http.NewRequestWithContext(ctx, method, f.URL, body)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 	for k, vs := range f.Header {
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
 	}
-	access, nextRefresh, err := material.AccessTokenWithRefresh(ctx, env, b.client())
+	access, nextRefresh, extraScrub, err := material.AccessTokenWithMetadata(ctx, env, b.client())
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 	if access != "" && req.Header.Get("Authorization") == "" {
 		req.Header.Set("Authorization", material.AuthorizationValue(access))
 	}
 	code, err := material.Apply(req.Header, env, now)
 	if err != nil {
-		return nil, "", "", "", err
+		return nil, "", "", "", "", err
 	}
 	res, err := b.client().Do(req)
 	if err != nil {
 		span.SetStatus(codes.Error, "upstream")
-		return nil, "", "", nextRefresh, err
+		return nil, "", "", nextRefresh, extraScrub, err
 	}
 	defer res.Body.Close()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return nil, "", "", nextRefresh, err
+		return nil, "", "", nextRefresh, extraScrub, err
 	}
 	return &protocol.FetchResult{
 		Status: res.StatusCode,
 		Header: res.Header.Clone(),
 		Body:   raw,
-	}, code, access, nextRefresh, nil
+	}, code, access, nextRefresh, extraScrub, nil
 }
 
 // Approve records a human approval for a level-1 grant — approval insert

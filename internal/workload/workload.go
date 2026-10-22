@@ -10,6 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/netip"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -50,22 +52,22 @@ func (c *Checker) Agent(ctx context.Context, rawToken string) (protocol.Principa
 	}
 
 	var last error
-	seen := map[string]struct{}{}
+	var audiences []string
+	byAudience := map[string][]protocol.Workload{}
 	for _, w := range bound {
-		if _, ok := seen[w.Audience]; ok {
-			continue
+		if _, ok := byAudience[w.Audience]; !ok {
+			audiences = append(audiences, w.Audience)
 		}
-		seen[w.Audience] = struct{}{}
-		sub, err := c.subject(ctx, iss, w.Audience, rawToken)
+		byAudience[w.Audience] = append(byAudience[w.Audience], w)
+	}
+	for _, aud := range audiences {
+		sub, err := c.subject(ctx, iss, aud, rawToken)
 		if err != nil {
 			last = err
 			continue
 		}
-		hit, err := c.Store.Workload(iss, sub)
-		if err != nil {
-			return protocol.Principal{}, err
-		}
-		if hit == nil || hit.Audience != w.Audience {
+		hit := bestMatch(byAudience[aud], sub)
+		if hit == nil {
 			continue
 		}
 		agent, err := c.Store.Agent(hit.AgentID)
@@ -78,6 +80,93 @@ func (c *Checker) Agent(ctx context.Context, rawToken string) (protocol.Principa
 		return protocol.Principal{}, fmt.Errorf("workload: %w", last)
 	}
 	return protocol.Principal{}, fmt.Errorf("workload: subject not bound")
+}
+
+// bestMatch picks the governing workload binding for sub among candidates
+// sharing an (issuer, audience): exact subject match always wins; otherwise
+// the longest trailing-* prefix match wins. Two prefixes of equal length can
+// never both match sub because (issuer, subject) is the primary key.
+func bestMatch(cands []protocol.Workload, sub string) *protocol.Workload {
+	var best *protocol.Workload
+	bestLen := -1
+	for i := range cands {
+		w := &cands[i]
+		if w.Subject == sub {
+			return w
+		}
+		if strings.HasSuffix(w.Subject, "*") && len(w.Subject) > 1 {
+			prefix := w.Subject[:len(w.Subject)-1]
+			if strings.HasPrefix(sub, prefix) && len(prefix) > bestLen {
+				best = w
+				bestLen = len(prefix)
+			}
+		}
+	}
+	return best
+}
+
+// ValidateBinding enforces Anthropic-style WIF safety rules at bind time:
+//   - issuer must be https:// (or http:// on loopback for local dev/tests),
+//     with no userinfo, query, or fragment, and must not target private,
+//     link-local, multicast, or cloud-metadata (169.254.0.0/16) IP literals.
+//   - subject may be an exact claim or a trailing-* prefix pattern whose
+//     prefix is >= 4 chars and ends on a delimiter (':', '/', '-', '.').
+//     On https://token.actions.githubusercontent.com, a wildcard subject must
+//     include the owner/ substring (repo:<owner>/...) so 'repo:*' can never
+//     trust every public repository on GitHub.
+func ValidateBinding(issuer, subject string) error {
+	issuer = strings.TrimSpace(issuer)
+	subject = strings.TrimSpace(subject)
+	if issuer == "" || subject == "" {
+		return fmt.Errorf("workload: issuer and subject are required")
+	}
+	u, err := url.Parse(issuer)
+	if err != nil || u == nil || u.Host == "" {
+		return fmt.Errorf("workload: invalid issuer URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("workload: issuer URL must not contain userinfo, query, or fragment")
+	}
+	host := strings.ToLower(u.Hostname())
+	scheme := strings.ToLower(u.Scheme)
+	isLoopbackHost := host == "localhost"
+	if ip, perr := netip.ParseAddr(host); perr == nil {
+		ip = ip.Unmap()
+		if ip.IsLoopback() {
+			isLoopbackHost = true
+		} else if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+			return fmt.Errorf("workload: issuer IP literal %s is not a public address", host)
+		}
+	}
+	switch scheme {
+	case "https":
+	case "http":
+		if !isLoopbackHost {
+			return fmt.Errorf("workload: issuer must use https")
+		}
+	default:
+		return fmt.Errorf("workload: issuer must use https")
+	}
+
+	if strings.Contains(subject, "*") {
+		if strings.Count(subject, "*") != 1 || !strings.HasSuffix(subject, "*") {
+			return fmt.Errorf("workload: wildcard '*' is only allowed at the end of subject")
+		}
+		prefix := strings.TrimSuffix(subject, "*")
+		if len(prefix) < 4 {
+			return fmt.Errorf("workload: subject prefix before '*' is too short")
+		}
+		last := prefix[len(prefix)-1]
+		if last != ':' && last != '/' && last != '-' && last != '.' {
+			return fmt.Errorf("workload: subject prefix before '*' must end with ':', '/', '-', or '.'")
+		}
+		if host == "token.actions.githubusercontent.com" {
+			if !strings.HasPrefix(prefix, "repo:") || !strings.Contains(prefix, "/") {
+				return fmt.Errorf("workload: github-actions wildcard subject must scope at least repo:<owner>/*")
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Checker) subject(ctx context.Context, issuer, audience, raw string) (string, error) {

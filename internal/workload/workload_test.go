@@ -324,3 +324,76 @@ func BenchmarkAgentVerifyParallel(b *testing.B) {
 		b.Fatalf("provider discovery called %d times, want 1", iss.discoveries.Load())
 	}
 }
+
+func TestSubjectPrefixWildcardAndExactPrecedence(t *testing.T) {
+	iss := newTestIssuer(t)
+	mem := store.NewMemory()
+	for _, id := range []string{"org-wide", "repo-wide", "main-exact"} {
+		if err := mem.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: id, OrgID: "org"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, w := range []protocol.Workload{
+		{AgentID: "org-wide", Issuer: iss.URL, Subject: "repo:VortexNYC/*", Audience: "veil"},
+		{AgentID: "repo-wide", Issuer: iss.URL, Subject: "repo:VortexNYC/veil:*", Audience: "veil"},
+		{AgentID: "main-exact", Issuer: iss.URL, Subject: "repo:VortexNYC/veil:ref:refs/heads/main", Audience: "veil"},
+	} {
+		if err := mem.PutWorkload(w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := New(mem)
+	ctx := context.Background()
+
+	// Exact match beats both prefixes.
+	got, err := c.Agent(ctx, iss.token(t, "repo:VortexNYC/veil:ref:refs/heads/main", "veil", time.Now().Add(time.Hour)))
+	if err != nil || got.ID != "main-exact" {
+		t.Fatalf("exact match: got %+v err=%v, want main-exact", got, err)
+	}
+	// Longer prefix (repo:VortexNYC/veil:*) beats shorter prefix (repo:VortexNYC/*).
+	got, err = c.Agent(ctx, iss.token(t, "repo:VortexNYC/veil:pull_request", "veil", time.Now().Add(time.Hour)))
+	if err != nil || got.ID != "repo-wide" {
+		t.Fatalf("longer prefix: got %+v err=%v, want repo-wide", got, err)
+	}
+	// Shorter prefix matches another repo in the same org.
+	got, err = c.Agent(ctx, iss.token(t, "repo:VortexNYC/pile:ref:refs/heads/main", "veil", time.Now().Add(time.Hour)))
+	if err != nil || got.ID != "org-wide" {
+		t.Fatalf("shorter prefix: got %+v err=%v, want org-wide", got, err)
+	}
+	// Unrelated org is denied.
+	if _, err := c.Agent(ctx, iss.token(t, "repo:OtherOrg/veil:ref:refs/heads/main", "veil", time.Now().Add(time.Hour))); err == nil {
+		t.Fatal("unrelated org matched")
+	}
+}
+
+func TestValidateBindingBlocksGlobalImpersonationAndSSRF(t *testing.T) {
+	bad := [][2]string{
+		{"https://token.actions.githubusercontent.com", "*"},
+		{"https://token.actions.githubusercontent.com", "repo:*"},
+		{"https://token.actions.githubusercontent.com", "repo:VortexNYC*"},
+		{"http://token.actions.githubusercontent.com", "repo:VortexNYC/veil:ref:refs/heads/main"},
+		{"https://169.254.169.254", "sub"},
+		{"https://10.0.0.1", "sub"},
+		{"https://192.168.1.1", "sub"},
+		{"https://[::ffff:0.0.0.0]", "sub"},
+		{"https://user:" + "pass@issuer.example.com", "sub"},
+		{"https://issuer.example.com?foo=bar", "sub"},
+		{"file:///etc/passwd", "sub"},
+	}
+	for _, tc := range bad {
+		if err := ValidateBinding(tc[0], tc[1]); err == nil {
+			t.Fatalf("ValidateBinding(%q, %q) accepted unsafe binding", tc[0], tc[1])
+		}
+	}
+	good := [][2]string{
+		{"https://token.actions.githubusercontent.com", "repo:VortexNYC/veil:*"},
+		{"https://token.actions.githubusercontent.com", "repo:VortexNYC/*"},
+		{"https://oidc.eks.us-west-2.amazonaws.com/id/EX", "system:serviceaccount:prod:*"},
+		{"http://127.0.0.1:4444", "agent-cursor"},
+	}
+	for _, tc := range good {
+		if err := ValidateBinding(tc[0], tc[1]); err != nil {
+			t.Fatalf("ValidateBinding(%q, %q) rejected valid binding: %v", tc[0], tc[1], err)
+		}
+	}
+}

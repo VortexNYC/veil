@@ -1077,10 +1077,10 @@ func agentCmd(home *string) *cobra.Command {
 	revoke.Flags().StringVar(&revokeID, "id", "", "agent id to revoke. never argv.")
 	_ = revoke.MarkFlagRequired("id")
 	c.AddCommand(revoke)
-	var issuer, subject, audience, preset, repo, ref, flyOrg, flyApp string
+	var issuer, subject, audience, preset, repo, ref, flyOrg, flyApp, vercelEnv string
 	bind := &cobra.Command{
 		Use:   "bind NAME",
-		Short: "Bind an existing agent to an external OIDC issuer and subject (or --preset github-actions|fly|better-auth|clerk|workos)",
+		Short: "Bind an existing agent to an external OIDC issuer and subject (or --preset vercel|github-actions|fly|better-auth|clerk|workos)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			iss, sub, aud, err := workload.ResolvePreset(workload.PresetOpts{
@@ -1092,6 +1092,7 @@ func agentCmd(home *string) *cobra.Command {
 				Ref:      ref,
 				Org:      flyOrg,
 				App:      flyApp,
+				Env:      vercelEnv,
 			})
 			if err != nil {
 				return err
@@ -1111,14 +1112,15 @@ func agentCmd(home *string) *cobra.Command {
 			return encode(cmd, w)
 		},
 	}
-	bind.Flags().StringVar(&preset, "preset", "", "issuer preset: github-actions, fly, better-auth, clerk, workos")
+	bind.Flags().StringVar(&preset, "preset", "", "issuer preset: vercel, github-actions, fly, better-auth, clerk, workos")
 	bind.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL we verify, not one we run")
 	bind.Flags().StringVar(&subject, "subject", "", "token sub claim for this agent")
-	bind.Flags().StringVar(&audience, "audience", "", "expected token aud (defaults to 'veil' with --preset)")
+	bind.Flags().StringVar(&audience, "audience", "", "expected token aud (defaults to 'veil' or https://vercel.com/<org> with --preset)")
 	bind.Flags().StringVar(&repo, "repo", "", "github-actions preset: owner/repo")
 	bind.Flags().StringVar(&ref, "ref", "", "github-actions preset: git ref (default refs/heads/main)")
-	bind.Flags().StringVar(&flyOrg, "org", "", "fly preset: Fly.io org slug")
-	bind.Flags().StringVar(&flyApp, "app", "", "fly preset: Fly.io app name")
+	bind.Flags().StringVar(&flyOrg, "org", "", "vercel / fly preset: team or org slug")
+	bind.Flags().StringVar(&flyApp, "app", "", "vercel / fly preset: project or app name")
+	bind.Flags().StringVar(&vercelEnv, "env", "", "vercel preset: production, preview, development, or * (default production)")
 	c.AddCommand(bind)
 
 	var secretFile string

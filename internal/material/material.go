@@ -6,16 +6,20 @@
 package material
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 const (
@@ -25,39 +29,47 @@ const (
 )
 
 type Envelope struct {
-	V                int    `json:"v"`
-	Token            string `json:"token,omitempty"`
-	Login            string `json:"login,omitempty"`
-	TOTP             string `json:"totp,omitempty"`
-	Refresh          string `json:"refresh,omitempty"`
-	TokenURL         string `json:"token_url,omitempty"`
-	ClientID         string `json:"client_id,omitempty"`
-	ClientSec        string `json:"client_secret,omitempty"`
-	FileName         string `json:"file_name,omitempty"`
-	MIME             string `json:"mime,omitempty"`
-	FileB64          string `json:"file_b64,omitempty"`
-	PasskeyPEM       string `json:"passkey_pem,omitempty"`
-	CredID           string `json:"cred_id,omitempty"`
-	RpID             string `json:"rp_id,omitempty"`
-	UserHandle       string `json:"user_handle,omitempty"`
-	Number           string `json:"number,omitempty"`
-	ExpMonth         string `json:"exp_month,omitempty"`
-	ExpYear          string `json:"exp_year,omitempty"`
-	CVV              string `json:"cvv,omitempty"`
-	GivenName        string `json:"given_name,omitempty"`
-	FamilyName       string `json:"family_name,omitempty"`
-	Address          string `json:"address,omitempty"`
-	City             string `json:"city,omitempty"`
-	Region           string `json:"region,omitempty"`
-	Postal           string `json:"postal,omitempty"`
-	Country          string `json:"country,omitempty"`
-	Phone            string `json:"phone,omitempty"`
-	Email            string `json:"email,omitempty"`
-	KeyID            string `json:"key_id,omitempty"`
-	PendingKeyID     string `json:"pending_key_id,omitempty"`
-	ManagementItemID string `json:"management_item_id,omitempty"`
-	RotateInterval   string `json:"rotate_interval,omitempty"`
-	NextRotateAt     int64  `json:"next_rotate_at,omitempty"`
+	V                  int    `json:"v"`
+	Token              string `json:"token,omitempty"`
+	Login              string `json:"login,omitempty"`
+	TOTP               string `json:"totp,omitempty"`
+	Refresh            string `json:"refresh,omitempty"`
+	TokenURL           string `json:"token_url,omitempty"`
+	ClientID           string `json:"client_id,omitempty"`
+	ClientSec          string `json:"client_secret,omitempty"`
+	FileName           string `json:"file_name,omitempty"`
+	MIME               string `json:"mime,omitempty"`
+	FileB64            string `json:"file_b64,omitempty"`
+	PasskeyPEM         string `json:"passkey_pem,omitempty"`
+	CredID             string `json:"cred_id,omitempty"`
+	RpID               string `json:"rp_id,omitempty"`
+	UserHandle         string `json:"user_handle,omitempty"`
+	Number             string `json:"number,omitempty"`
+	ExpMonth           string `json:"exp_month,omitempty"`
+	ExpYear            string `json:"exp_year,omitempty"`
+	CVV                string `json:"cvv,omitempty"`
+	GivenName          string `json:"given_name,omitempty"`
+	FamilyName         string `json:"family_name,omitempty"`
+	Address            string `json:"address,omitempty"`
+	City               string `json:"city,omitempty"`
+	Region             string `json:"region,omitempty"`
+	Postal             string `json:"postal,omitempty"`
+	Country            string `json:"country,omitempty"`
+	Phone              string `json:"phone,omitempty"`
+	Email              string `json:"email,omitempty"`
+	KeyID              string `json:"key_id,omitempty"`
+	PendingKeyID       string `json:"pending_key_id,omitempty"`
+	ManagementItemID   string `json:"management_item_id,omitempty"`
+	RotateInterval     string `json:"rotate_interval,omitempty"`
+	NextRotateAt       int64  `json:"next_rotate_at,omitempty"`
+	AssertionTokenURL  string `json:"assertion_token_url,omitempty"`
+	AssertionClientID  string `json:"assertion_client_id,omitempty"`
+	AssertionClientSec string `json:"assertion_client_secret,omitempty"`
+	AssertionAudience  string `json:"assertion_audience,omitempty"`
+	FederationRuleID   string `json:"federation_rule_id,omitempty"`
+	FederationOrgID    string `json:"federation_org_id,omitempty"`
+	ServiceAccountID   string `json:"service_account_id,omitempty"`
+	WorkspaceID        string `json:"workspace_id,omitempty"`
 }
 
 func PackFile(name, mime string, body []byte) ([]byte, error) {
@@ -113,6 +125,11 @@ func WithToken(raw, token []byte) ([]byte, error) {
 	env.Token = string(token)
 	env.KeyID = ""
 	env.PendingKeyID = ""
+	env.FederationRuleID = ""
+	env.AssertionTokenURL = ""
+	env.AssertionClientID = ""
+	env.AssertionClientSec = ""
+	env.AssertionAudience = ""
 	return pack(env)
 }
 
@@ -153,6 +170,43 @@ func PackOAuth(refresh, tokenURL, clientID, clientSecret []byte) ([]byte, error)
 		TokenURL:  string(trim(tokenURL)),
 		ClientID:  string(trim(clientID)),
 		ClientSec: string(trim(clientSecret)),
+	})
+}
+
+// WIFOpts configures an outbound RFC 7523 jwt-bearer Workload Identity
+// Federation item (such as Anthropic's POST /v1/oauth/token) so Veil mints a
+// short-lived upstream access token per use without storing a static API key.
+type WIFOpts struct {
+	TokenURL          string
+	AssertionTokenURL string
+	AssertionClientID string
+	AssertionSecret   string
+	AssertionAudience string
+	FederationRuleID  string
+	OrganizationID    string
+	ServiceAccountID  string
+	WorkspaceID       string
+}
+
+func PackWIF(opts WIFOpts) ([]byte, error) {
+	if strings.TrimSpace(opts.TokenURL) == "" ||
+		strings.TrimSpace(opts.AssertionTokenURL) == "" ||
+		strings.TrimSpace(opts.AssertionClientID) == "" ||
+		strings.TrimSpace(opts.AssertionSecret) == "" ||
+		strings.TrimSpace(opts.FederationRuleID) == "" {
+		return nil, fmt.Errorf("material: incomplete WIF configuration")
+	}
+	return pack(Envelope{
+		V:                  Version,
+		TokenURL:           strings.TrimSpace(opts.TokenURL),
+		AssertionTokenURL:  strings.TrimSpace(opts.AssertionTokenURL),
+		AssertionClientID:  strings.TrimSpace(opts.AssertionClientID),
+		AssertionClientSec: strings.TrimSpace(opts.AssertionSecret),
+		AssertionAudience:  strings.TrimSpace(opts.AssertionAudience),
+		FederationRuleID:   strings.TrimSpace(opts.FederationRuleID),
+		FederationOrgID:    strings.TrimSpace(opts.OrganizationID),
+		ServiceAccountID:   strings.TrimSpace(opts.ServiceAccountID),
+		WorkspaceID:        strings.TrimSpace(opts.WorkspaceID),
 	})
 }
 
@@ -275,14 +329,27 @@ func AccessToken(ctx context.Context, env Envelope, client *http.Client) (string
 	return access, err
 }
 
-// AccessTokenWithRefresh performs the OAuth refresh and also returns any
-// rotated refresh token issued by the provider so the broker can persist it.
+// AccessTokenWithRefresh performs the OAuth refresh (or RFC 7523 jwt-bearer
+// WIF exchange when FederationRuleID is set) and also returns any rotated
+// refresh token issued by the provider so the broker can persist it.
 func AccessTokenWithRefresh(ctx context.Context, env Envelope, client *http.Client) (access, nextRefresh string, err error) {
+	access, nextRefresh, _, err = AccessTokenWithMetadata(ctx, env, client)
+	return access, nextRefresh, err
+}
+
+// AccessTokenWithMetadata is AccessTokenWithRefresh plus any intermediate
+// secret material (such as a minted WIF assertion JWT) that the caller must
+// include in response scrubbing.
+func AccessTokenWithMetadata(ctx context.Context, env Envelope, client *http.Client) (access, nextRefresh, extraScrub string, err error) {
+	if env.FederationRuleID != "" {
+		tok, assertion, err := exchangeWIFJWTBearer(ctx, env, client)
+		return tok, "", assertion, err
+	}
 	if env.Refresh == "" {
-		return env.Token, "", nil
+		return env.Token, "", "", nil
 	}
 	if env.TokenURL == "" || env.ClientID == "" {
-		return "", "", errOAuth
+		return "", "", "", errOAuth
 	}
 	cfg := &oauth2.Config{
 		ClientID:     env.ClientID,
@@ -292,12 +359,78 @@ func AccessTokenWithRefresh(ctx context.Context, env Envelope, client *http.Clie
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
 	tok, err := cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: env.Refresh}).Token()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if tok.AccessToken == "" {
+		return "", "", "", errOAuth
+	}
+	return tok.AccessToken, strings.TrimSpace(tok.RefreshToken), "", nil
+}
+
+func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client) (access, assertion string, err error) {
+	if env.TokenURL == "" || env.AssertionTokenURL == "" || env.AssertionClientID == "" || env.AssertionClientSec == "" {
 		return "", "", errOAuth
 	}
-	return tok.AccessToken, strings.TrimSpace(tok.RefreshToken), nil
+	if client == nil {
+		client = http.DefaultClient
+	}
+	aud := env.AssertionAudience
+	if aud == "" {
+		aud = "veil"
+	}
+	cc := clientcredentials.Config{
+		ClientID:     env.AssertionClientID,
+		ClientSecret: env.AssertionClientSec,
+		TokenURL:     env.AssertionTokenURL,
+		AuthStyle:    oauth2.AuthStyleInHeader,
+		EndpointParams: url.Values{
+			"audience": {aud},
+		},
+	}
+	assertionTok, err := cc.Token(context.WithValue(ctx, oauth2.HTTPClient, client))
+	if err != nil || strings.TrimSpace(assertionTok.AccessToken) == "" {
+		return "", "", errOAuth
+	}
+	assertion = strings.TrimSpace(assertionTok.AccessToken)
+	body := map[string]string{
+		"grant_type":         "urn:ietf:params:oauth:grant-type:jwt-bearer",
+		"assertion":          assertion,
+		"federation_rule_id": env.FederationRuleID,
+	}
+	if env.FederationOrgID != "" {
+		body["organization_id"] = env.FederationOrgID
+	}
+	if env.ServiceAccountID != "" {
+		body["service_account_id"] = env.ServiceAccountID
+	}
+	if env.WorkspaceID != "" {
+		body["workspace_id"] = env.WorkspaceID
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return "", assertion, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.TokenURL, bytes.NewReader(payload))
+	if err != nil {
+		return "", assertion, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		return "", assertion, err
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil || res.StatusCode != http.StatusOK {
+		return "", assertion, errOAuth
+	}
+	var out struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil || strings.TrimSpace(out.AccessToken) == "" {
+		return "", assertion, errOAuth
+	}
+	return strings.TrimSpace(out.AccessToken), assertion, nil
 }
 
 var errOAuth = errString("material: oauth refresh failed")
@@ -322,6 +455,9 @@ func ScrubList(env Envelope, extra ...[]byte) [][]byte {
 	}
 	if env.ClientSec != "" {
 		out = append(out, []byte(env.ClientSec))
+	}
+	if env.AssertionClientSec != "" {
+		out = append(out, []byte(env.AssertionClientSec))
 	}
 	if env.PasskeyPEM != "" {
 		out = append(out, []byte(env.PasskeyPEM))

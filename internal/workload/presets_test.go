@@ -15,6 +15,18 @@ func TestResolvePreset(t *testing.T) {
 	}
 
 	iss, sub, aud, err = ResolvePreset(PresetOpts{
+		Preset: "vercel",
+		Org:    "acme",
+		App:    "acme_website",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iss != "https://oidc.vercel.com/acme" || sub != "owner:acme:project:acme_website:environment:production" || aud != "https://vercel.com/acme" {
+		t.Fatalf("vercel preset: %q %q %q", iss, sub, aud)
+	}
+
+	iss, sub, aud, err = ResolvePreset(PresetOpts{
 		Preset: "fly",
 		Org:    "vortex",
 		App:    "worker",

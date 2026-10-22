@@ -19,12 +19,13 @@ type PresetOpts struct {
 	Audience string
 	Repo     string // github-actions: owner/repo
 	Ref      string // github-actions: git ref (default refs/heads/main)
-	Org      string // fly: Fly.io org slug
-	App      string // fly: Fly.io app name
+	Org      string // fly / vercel: org or team slug
+	App      string // fly / vercel: app or project name
+	Env      string // vercel: production, preview, development, or * (default production)
 }
 
-// ResolvePreset expands a named OIDC federation preset (github-actions, fly,
-// better-auth, clerk, workos) or validates raw (issuer, subject, audience).
+// ResolvePreset expands a named OIDC federation preset (github-actions, vercel,
+// fly, better-auth, clerk, workos) or validates raw (issuer, subject, audience).
 func ResolvePreset(opts PresetOpts) (issuer, subject, audience string, err error) {
 	p := strings.ToLower(strings.TrimSpace(opts.Preset))
 	issuer = strings.TrimSpace(opts.Issuer)
@@ -34,6 +35,32 @@ func ResolvePreset(opts PresetOpts) (issuer, subject, audience string, err error
 	switch p {
 	case "":
 		// Raw flags: caller must provide all three explicitly.
+	case "vercel":
+		team := strings.TrimSpace(opts.Org)
+		if issuer == "" {
+			if team == "" {
+				return "", "", "", fmt.Errorf("workload: vercel preset requires --org <team-slug> (or --issuer)")
+			}
+			issuer = "https://oidc.vercel.com/" + team
+		}
+		if subject == "" {
+			proj := strings.TrimSpace(opts.App)
+			if team == "" || proj == "" {
+				return "", "", "", fmt.Errorf("workload: vercel preset requires --org <team-slug> and --app <project-name> (or --subject)")
+			}
+			env := strings.TrimSpace(opts.Env)
+			if env == "" {
+				env = "production"
+			}
+			subject = "owner:" + team + ":project:" + proj + ":environment:" + env
+		}
+		if audience == "" {
+			if team != "" {
+				audience = "https://vercel.com/" + team
+			} else {
+				audience = DefaultAudience
+			}
+		}
 	case "github-actions":
 		if issuer == "" {
 			issuer = "https://token.actions.githubusercontent.com"
@@ -78,7 +105,7 @@ func ResolvePreset(opts PresetOpts) (issuer, subject, audience string, err error
 			audience = DefaultAudience
 		}
 	default:
-		return "", "", "", fmt.Errorf("workload: unknown preset %q (want github-actions, fly, better-auth, clerk, or workos)", p)
+		return "", "", "", fmt.Errorf("workload: unknown preset %q (want vercel, github-actions, fly, better-auth, clerk, or workos)", p)
 	}
 
 	if issuer == "" || subject == "" || audience == "" {
