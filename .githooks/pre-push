@@ -40,10 +40,24 @@ if [ -n "${VEIL_SKIP_PUSH_GATE:-}" ]; then
   exit 0
 fi
 
-# Postgres-backed tests are PG_TEST_DSN-gated; without the container they
-# silently skip and the push gates on sqlite only — going blind. Bring up
-# the same throwaway container prove-hydra uses.
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+# Postgres-backed tests are PG_TEST_DSN-gated; without a database they
+# silently skip and the push gates on sqlite only — going blind. Prefer
+# pgx (per-push isolated DB with 15m TTL, no Docker needed); fall back to
+# the throwaway Docker container prove-hydra uses.
+export PATH="$HOME/.local/bin:$HOME/.pgx/bin:$PATH"
+if command -v pgx >/dev/null 2>&1; then
+  pgx run >/dev/null 2>&1
+  PGX_CONF="${PGX_HOME:-$HOME/.pgx}/data/postgresql.conf"
+  if [ -f "$PGX_CONF" ] && ! grep -q "max_replication_slots = 10" "$PGX_CONF"; then
+    printf '\nwal_level = replica\nmax_wal_senders = 10\nmax_replication_slots = 10\n' >> "$PGX_CONF"
+    pgx restart >/dev/null 2>&1
+  fi
+  PGX_DB="veiltest-$$"
+  pgx create "$PGX_DB" --ttl 15m >/dev/null 2>&1
+  trap 'pgx drop "$PGX_DB" --force >/dev/null 2>&1 || true' EXIT
+  PG_TEST_DSN="$(pgx url "$PGX_DB")?sslmode=disable"
+  export PG_TEST_DSN
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   docker start veil-pg-test >/dev/null 2>&1 || \
     docker run -d --name veil-pg-test -p 127.0.0.1:55432:5432 \
       -e POSTGRES_PASSWORD=test -e POSTGRES_DB=veiltest postgres:17 >/dev/null 2>&1
@@ -55,7 +69,7 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   PG_TEST_DSN="postgres://postgres:test@127.0.0.1:55432/veiltest?sslmode=disable"
   export PG_TEST_DSN
 else
-  echo "veil: docker unavailable — PG_TEST_DSN unset, Postgres tests will skip"
+  echo "veil: neither pgx nor docker available — PG_TEST_DSN unset, Postgres tests will skip"
 fi
 
 echo "veil: make gate (heavy suite) — VEIL_SKIP_PUSH_GATE=1 bypasses"
