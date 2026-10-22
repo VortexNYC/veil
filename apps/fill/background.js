@@ -153,7 +153,7 @@ function hostSend(msg, timeoutMs) {
       if (waiters.size === 0 && port) {
         try {
           port.disconnect();
-        } catch (e) {}
+        } catch {}
         port = null;
       }
       wait.reject(new Error("host timeout"));
