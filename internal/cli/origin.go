@@ -56,6 +56,22 @@ func originToken(tokenFile string) (string, error) {
 	if t := strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN")); t != "" {
 		return t, nil
 	}
+	// @vercel/oidc 4.0.0 compatibility: check VERCEL_OIDC_TOKEN_FILE first
+	// (strict: an unreadable or empty configured file errors rather than
+	// falling back to VERCEL_OIDC_TOKEN), then VERCEL_OIDC_TOKEN.
+	if f := strings.TrimSpace(os.Getenv("VERCEL_OIDC_TOKEN_FILE")); f != "" {
+		b, err := readFileMaterial(f)
+		if err != nil {
+			return "", err
+		}
+		if len(b) == 0 {
+			return "", fmt.Errorf("origin: empty VERCEL_OIDC_TOKEN_FILE")
+		}
+		return string(b), nil
+	}
+	if t := strings.TrimSpace(os.Getenv("VERCEL_OIDC_TOKEN")); t != "" {
+		return t, nil
+	}
 	return "", fmt.Errorf("origin: --oidc-token-file, VEIL_OIDC_TOKEN_FILE, or VEIL_OIDC_TOKEN is required")
 }
 
