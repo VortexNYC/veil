@@ -73,12 +73,26 @@ func ProviderKeyID(tags []string) string {
 	return ""
 }
 
+// PendingTagPrefix marks the previous rotation's key id — it stays valid
+// through one full cycle (dual-phase overlap) and is retired on the next
+// rotate, so callers that cached the old credential keep working.
+const PendingTagPrefix = "rot-pending:"
+
+func PendingKeyID(tags []string) string {
+	for _, t := range tags {
+		if s, ok := strings.CutPrefix(t, PendingTagPrefix); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 // StripRotationTags removes provider bookkeeping tags from tags an agent is
 // about to see — rotation state is owner-facing, not agent-facing.
 func StripRotationTags(tags []string) []string {
 	out := tags[:0:0]
 	for _, t := range tags {
-		if !strings.HasPrefix(t, ProviderIDTagPrefix) {
+		if !strings.HasPrefix(t, ProviderIDTagPrefix) && !strings.HasPrefix(t, PendingTagPrefix) {
 			out = append(out, t)
 		}
 	}

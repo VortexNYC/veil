@@ -805,23 +805,30 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 		return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
 	}
 	oldKeyID := rotate.ProviderKeyID(item.Tags)
+	pendingID := rotate.PendingKeyID(item.Tags)
 	var tags []string
 	for _, t := range item.Tags {
-		if !strings.HasPrefix(t, rotate.ProviderIDTagPrefix) {
+		if !strings.HasPrefix(t, rotate.ProviderIDTagPrefix) && !strings.HasPrefix(t, rotate.PendingTagPrefix) {
 			tags = append(tags, t)
 		}
 	}
 	if keyID != "" {
 		tags = append(tags, rotate.ProviderIDTagPrefix+keyID)
 	}
+	// Dual-phase: the outgoing key stays valid through the next cycle so
+	// inject/run consumers that cached it keep working; it retires on the
+	// following rotate.
+	if oldKeyID != "" {
+		tags = append(tags, rotate.PendingTagPrefix+oldKeyID)
+	}
 	if _, err := a.updateItem(actor.ID, name, nil, nil, tags, "", next); err != nil {
 		rollback()
 		return protocol.Item{}, err
 	}
-	if err := rot.Retire(ctx, oldKeyID, live); err != nil {
-		// The swap already landed — a stuck old key is an ops note, not a
-		// rollback reason (the new credential is verified and sealed).
-		slog.Warn("rotate: old provider key not retired", "item", name, "err", err)
+	if pendingID != "" {
+		if err := rot.Retire(ctx, pendingID, live); err != nil {
+			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
+		}
 	}
 	a.auditBestEffort(adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemUpdated, "rotate name="+name))
 	item.Tags = tags
