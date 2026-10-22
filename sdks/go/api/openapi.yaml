@@ -984,6 +984,52 @@ paths:
         \ Not MCP."
       tags:
       - Billing
+  /v1/devices:
+    delete:
+      operationId: unregisterDevice
+      parameters:
+      - explode: true
+        in: query
+        name: token
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "204":
+          description: Device unregistered
+        "400":
+          description: token required
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: principal is not a human
+      summary: "Drop a push token — sign-out and token rotation land here. Idempotent:\
+        \ an absent token is already unregistered."
+      tags:
+      - Human
+    post:
+      operationId: registerDevice
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRegisterRequest"
+        required: true
+      responses:
+        "204":
+          description: Device registered
+        "400":
+          description: platform must be apns or fcm and token is required
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: principal is not a human
+      summary: Register a push endpoint for the caller's org. The phone app POSTs
+        its APNs/FCM token on sign-in and refresh. Humans only — an agent must never
+        mint a wake channel for asks meant to reach a human. Idempotent upsert.
+      tags:
+      - Human
 components:
   schemas:
     Item:
@@ -2233,6 +2279,27 @@ components:
       required:
       - member_id
       - member_kind
+    DeviceRegisterRequest:
+      example:
+        platform: apns
+        token: token
+        label: label
+      properties:
+        platform:
+          description: push platform
+          enum:
+          - apns
+          - fcm
+          type: string
+        token:
+          description: device push token
+          type: string
+        label:
+          description: device label
+          type: string
+      required:
+      - platform
+      - token
     removeMember_200_response:
       example:
         removed: true

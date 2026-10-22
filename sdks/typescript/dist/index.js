@@ -1008,6 +1008,20 @@ var createBillingCheckout = (options) => (options?.client ?? client).post({
   url: "/v1/billing/checkout",
   ...options
 });
+var unregisterDevice = (options) => (options.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/devices",
+  ...options
+});
+var registerDevice = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/devices",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
 export {
   addGroupMember,
   approveRequest,
@@ -1041,10 +1055,12 @@ export {
   listSessions,
   promoteOwner,
   provision,
+  registerDevice,
   removeGroupMember,
   removeMember,
   revokeAgent,
   streamRequests,
+  unregisterDevice,
   updateItem,
   useItem,
   vaultReport

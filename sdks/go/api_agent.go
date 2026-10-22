@@ -18,12 +18,11 @@ import (
 	"net/url"
 )
 
-
 // AgentAPIService AgentAPI service
 type AgentAPIService service
 
 type AgentAPIGetHealthRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *AgentAPIService
 }
 
@@ -34,24 +33,25 @@ func (r AgentAPIGetHealthRequest) Execute() (string, *http.Response, error) {
 /*
 GetHealth Liveness. No secrets.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return AgentAPIGetHealthRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return AgentAPIGetHealthRequest
 */
 func (a *AgentAPIService) GetHealth(ctx context.Context) AgentAPIGetHealthRequest {
 	return AgentAPIGetHealthRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return string
+//
+//	@return string
 func (a *AgentAPIService) GetHealthExecute(r AgentAPIGetHealthRequest) (string, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  string
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue string
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "AgentAPIService.GetHealth")
@@ -120,7 +120,7 @@ func (a *AgentAPIService) GetHealthExecute(r AgentAPIGetHealthRequest) (string, 
 }
 
 type AgentAPIGetOpenApiRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *AgentAPIService
 }
 
@@ -131,24 +131,25 @@ func (r AgentAPIGetOpenApiRequest) Execute() (map[string]interface{}, *http.Resp
 /*
 GetOpenApi This contract.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return AgentAPIGetOpenApiRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return AgentAPIGetOpenApiRequest
 */
 func (a *AgentAPIService) GetOpenApi(ctx context.Context) AgentAPIGetOpenApiRequest {
 	return AgentAPIGetOpenApiRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return map[string]interface{}
+//
+//	@return map[string]interface{}
 func (a *AgentAPIService) GetOpenApiExecute(r AgentAPIGetOpenApiRequest) (map[string]interface{}, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  map[string]interface{}
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue map[string]interface{}
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "AgentAPIService.GetOpenApi")
@@ -217,7 +218,7 @@ func (a *AgentAPIService) GetOpenApiExecute(r AgentAPIGetOpenApiRequest) (map[st
 }
 
 type AgentAPIListEventsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *AgentAPIService
 }
 
@@ -228,24 +229,25 @@ func (r AgentAPIListEventsRequest) Execute() (*EventsResponse, *http.Response, e
 /*
 ListEvents This agent's grant events. Decision, item, action. Never secrets. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return AgentAPIListEventsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return AgentAPIListEventsRequest
 */
 func (a *AgentAPIService) ListEvents(ctx context.Context) AgentAPIListEventsRequest {
 	return AgentAPIListEventsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return EventsResponse
+//
+//	@return EventsResponse
 func (a *AgentAPIService) ListEventsExecute(r AgentAPIListEventsRequest) (*EventsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *EventsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *EventsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "AgentAPIService.ListEvents")
@@ -314,7 +316,7 @@ func (a *AgentAPIService) ListEventsExecute(r AgentAPIListEventsRequest) (*Event
 }
 
 type AgentAPIListItemsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *AgentAPIService
 }
 
@@ -325,24 +327,25 @@ func (r AgentAPIListItemsRequest) Execute() (*ItemsResponse, *http.Response, err
 /*
 ListItems Items this principal may see. Agent: granted. Human owner: the org. Human member: granted. Names and URIs. Never secrets.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return AgentAPIListItemsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return AgentAPIListItemsRequest
 */
 func (a *AgentAPIService) ListItems(ctx context.Context) AgentAPIListItemsRequest {
 	return AgentAPIListItemsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return ItemsResponse
+//
+//	@return ItemsResponse
 func (a *AgentAPIService) ListItemsExecute(r AgentAPIListItemsRequest) (*ItemsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *ItemsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ItemsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "AgentAPIService.ListItems")
@@ -411,7 +414,7 @@ func (a *AgentAPIService) ListItemsExecute(r AgentAPIListItemsRequest) (*ItemsRe
 }
 
 type AgentAPIUseItemRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *AgentAPIService
 	useRequest *UseRequest
 }
@@ -428,24 +431,25 @@ func (r AgentAPIUseItemRequest) Execute() (*UseResponse, *http.Response, error) 
 /*
 UseItem Call a URL as this agent. The broker injects the credential. The vault secret is never in the response.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return AgentAPIUseItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return AgentAPIUseItemRequest
 */
 func (a *AgentAPIService) UseItem(ctx context.Context) AgentAPIUseItemRequest {
 	return AgentAPIUseItemRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return UseResponse
+//
+//	@return UseResponse
 func (a *AgentAPIService) UseItemExecute(r AgentAPIUseItemRequest) (*UseResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *UseResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *UseResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "AgentAPIService.UseItem")

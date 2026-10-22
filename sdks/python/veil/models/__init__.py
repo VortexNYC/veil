@@ -32,6 +32,7 @@ from veil.models.create_session_request import CreateSessionRequest
 from veil.models.create_session_response import CreateSessionResponse
 from veil.models.delete_me200_response import DeleteMe200Response
 from veil.models.delete_org200_response import DeleteOrg200Response
+from veil.models.device_register_request import DeviceRegisterRequest
 from veil.models.events_response import EventsResponse
 from veil.models.grant import Grant
 from veil.models.grants_response import GrantsResponse

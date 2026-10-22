@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"fmt"
 )
 
@@ -24,7 +24,7 @@ type UseRequest struct {
 	// Granted item name
 	Item string `json:"item"`
 	// Absolute URL. Host must match the item.
-	Url string `json:"url"`
+	Url    string  `json:"url"`
 	Method *string `json:"method,omitempty"`
 	// Extra request headers. Never the vault secret.
 	Headers map[string]string `json:"headers,omitempty"`
@@ -236,7 +236,7 @@ func (o *UseRequest) SetBodyB64(v string) {
 }
 
 func (o UseRequest) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -276,10 +276,10 @@ func (o *UseRequest) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
-	for _, requiredProperty := range(requiredProperties) {
+	for _, requiredProperty := range requiredProperties {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -335,5 +335,3 @@ func (v *NullableUseRequest) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

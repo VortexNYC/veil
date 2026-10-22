@@ -404,6 +404,20 @@ export type AddGroupMemberRequest = {
      */
     member_id: string;
 };
+export type DeviceRegisterRequest = {
+    /**
+     * push platform
+     */
+    platform: 'apns' | 'fcm';
+    /**
+     * device push token
+     */
+    token: string;
+    /**
+     * device label
+     */
+    label?: string;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1435,3 +1449,59 @@ export type CreateBillingCheckoutResponses = {
     200: BillingCheckout;
 };
 export type CreateBillingCheckoutResponse = CreateBillingCheckoutResponses[keyof CreateBillingCheckoutResponses];
+export type UnregisterDeviceData = {
+    body?: never;
+    path?: never;
+    query: {
+        token: string;
+    };
+    url: '/v1/devices';
+};
+export type UnregisterDeviceErrors = {
+    /**
+     * token required
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * principal is not a human
+     */
+    403: unknown;
+};
+export type UnregisterDeviceResponses = {
+    /**
+     * Device unregistered
+     */
+    204: void;
+};
+export type UnregisterDeviceResponse = UnregisterDeviceResponses[keyof UnregisterDeviceResponses];
+export type RegisterDeviceData = {
+    body: DeviceRegisterRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/devices';
+};
+export type RegisterDeviceErrors = {
+    /**
+     * platform must be apns or fcm and token is required
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * principal is not a human
+     */
+    403: unknown;
+};
+export type RegisterDeviceResponses = {
+    /**
+     * Device registered
+     */
+    204: void;
+};
+export type RegisterDeviceResponse = RegisterDeviceResponses[keyof RegisterDeviceResponses];

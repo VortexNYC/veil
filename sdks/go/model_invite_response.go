@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"fmt"
 )
 
@@ -22,7 +22,7 @@ var _ MappedNullable = &InviteResponse{}
 // InviteResponse struct for InviteResponse
 type InviteResponse struct {
 	IdentityId string `json:"identity_id"`
-	Emailed bool `json:"emailed"`
+	Emailed    bool   `json:"emailed"`
 	// Only present when mail delivery is not configured (local dev).
 	RecoveryUrl *string `json:"recovery_url,omitempty"`
 }
@@ -129,7 +129,7 @@ func (o *InviteResponse) SetRecoveryUrl(v string) {
 }
 
 func (o InviteResponse) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -160,10 +160,10 @@ func (o *InviteResponse) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
-	for _, requiredProperty := range(requiredProperties) {
+	for _, requiredProperty := range requiredProperties {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -219,5 +219,3 @@ func (v *NullableInviteResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-
