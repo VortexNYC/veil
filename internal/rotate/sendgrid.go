@@ -33,10 +33,36 @@ func (r *sendgridRotator) do(ctx context.Context, key, method, path string, body
 	return http.DefaultClient.Do(req)
 }
 
+// scopesOf reads the live key's own scope set — the replacement must carry
+// the same permissions, never wider (a scoped key must not gain
+// full_access by rotating).
+func (r *sendgridRotator) scopesOf(ctx context.Context, liveKey []byte) ([]string, error) {
+	res, err := r.do(ctx, string(liveKey), http.MethodGet, "/v3/scopes", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("sendgrid scopes: %s", res.Status)
+	}
+	var out struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out.Scopes, nil
+}
+
 func (r *sendgridRotator) Create(ctx context.Context, itemName string, liveKey []byte) ([]byte, string, error) {
+	scopes, err := r.scopesOf(ctx, liveKey)
+	if err != nil {
+		return nil, "", err
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"name":   "veil:" + itemName + ":" + time.Now().UTC().Format("20060102"),
-		"scopes": []string{"full_access"},
+		"scopes": scopes,
 	})
 	res, err := r.do(ctx, string(liveKey), http.MethodPost, "/v3/api_keys", bytes.NewReader(payload))
 	if err != nil {
