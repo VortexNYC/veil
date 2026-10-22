@@ -36,9 +36,9 @@ func TestResendRotateLifecycle(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	rot := &resendRotator{base: srv.URL}
-	ctx := WithLiveKey(context.Background(), []byte("re_live"))
+	ctx := context.Background()
 
-	next, keyID, err := rot.Create(ctx, "resend")
+	next, keyID, err := rot.Create(ctx, "resend", []byte("re_live"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestResendRotateLifecycle(t *testing.T) {
 	if err := rot.Verify(ctx, []byte("re_bogus")); err == nil {
 		t.Fatal("verify accepted a dead key")
 	}
-	if err := rot.Retire(ctx, "key_old"); err != nil {
+	if err := rot.Retire(ctx, "key_old", []byte("re_live")); err != nil {
 		t.Fatal(err)
 	}
 	if created.Load() != 1 || deleted.Load() != 1 {

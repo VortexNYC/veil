@@ -14,18 +14,21 @@ import (
 	"strings"
 )
 
-// Rotator is one provider's key-management API.
+// Rotator is one provider's key-management API. Create and Retire take the
+// live (old) secret as an explicit parameter — it signs the provider's
+// management calls. It is never stored in a context or logged.
 type Rotator interface {
 	// Create mints a fresh credential for the item's name, returning the new
 	// secret and the provider-side key id (stored on the item so the old
-	// credential can be retired later).
-	Create(ctx context.Context, itemName string) (secret []byte, keyID string, err error)
+	// credential can be retired later). liveKey is the current secret.
+	Create(ctx context.Context, itemName string, liveKey []byte) (secret []byte, keyID string, err error)
 	// Verify proves the new credential authenticates — cheap authed call,
 	// no side effects.
 	Verify(ctx context.Context, secret []byte) error
-	// Retire deletes the provider-side credential by id. Best-effort — an
-	// orphan key still costs the provider nothing, but it must be logged.
-	Retire(ctx context.Context, keyID string) error
+	// Retire deletes the provider-side credential by id, signed with
+	// liveKey. Best-effort — an orphan key still costs the provider
+	// nothing, but it must be logged.
+	Retire(ctx context.Context, keyID string, liveKey []byte) error
 }
 
 // ForHost maps an item's URI host to a registered provider rotator.
@@ -58,6 +61,7 @@ func Coverage() []string {
 
 // ProviderIDTag is the item tag carrying the provider-side key id of the
 // live credential — rot:<key-id>. Not secret; lets Retire find the old key.
+// It must be stripped from agent-facing item lists — see ScrubAgentItem.
 const ProviderIDTagPrefix = "rot:"
 
 func ProviderKeyID(tags []string) string {
@@ -67,6 +71,18 @@ func ProviderKeyID(tags []string) string {
 		}
 	}
 	return ""
+}
+
+// StripRotationTags removes provider bookkeeping tags from tags an agent is
+// about to see — rotation state is owner-facing, not agent-facing.
+func StripRotationTags(tags []string) []string {
+	out := tags[:0:0]
+	for _, t := range tags {
+		if !strings.HasPrefix(t, ProviderIDTagPrefix) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 var errNoRotator = fmt.Errorf("rotate: no provider rotator for host")

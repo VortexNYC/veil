@@ -489,7 +489,7 @@ func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {
 // API — owner-only. The response carries the item metadata and never the
 // secret.
 func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireItemWrite(w, r)
+	p, ok := s.requireOwner(w, r)
 	if !ok {
 		return
 	}

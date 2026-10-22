@@ -31,11 +31,11 @@ func (r *resendRotator) do(ctx context.Context, key, method, path string, body i
 	return http.DefaultClient.Do(req)
 }
 
-func (r *resendRotator) Create(ctx context.Context, itemName string) ([]byte, string, error) {
+func (r *resendRotator) Create(ctx context.Context, itemName string, liveKey []byte) ([]byte, string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"name": "veil:" + itemName + ":" + time.Now().UTC().Format("20060102"),
 	})
-	res, err := r.do(ctx, key(ctx), http.MethodPost, "/api-keys", bytes.NewReader(payload))
+	res, err := r.do(ctx, string(liveKey), http.MethodPost, "/api-keys", bytes.NewReader(payload))
 	if err != nil {
 		return nil, "", err
 	}
@@ -67,11 +67,11 @@ func (r *resendRotator) Verify(ctx context.Context, secret []byte) error {
 	return nil
 }
 
-func (r *resendRotator) Retire(ctx context.Context, keyID string) error {
+func (r *resendRotator) Retire(ctx context.Context, keyID string, liveKey []byte) error {
 	if keyID == "" {
 		return nil
 	}
-	res, err := r.do(ctx, key(ctx), http.MethodDelete, "/api-keys/"+strings.TrimSpace(keyID), nil)
+	res, err := r.do(ctx, string(liveKey), http.MethodDelete, "/api-keys/"+strings.TrimSpace(keyID), nil)
 	if err != nil {
 		return err
 	}
@@ -81,21 +81,4 @@ func (r *resendRotator) Retire(ctx context.Context, keyID string) error {
 		return fmt.Errorf("resend retire: %s", res.Status)
 	}
 	return nil
-}
-
-// key pulls the vault credential the rotation request is acting on — the
-// resend rotator signs management calls with the live secret itself.
-func key(ctx context.Context) string {
-	if v, ok := ctx.Value(ctxKey{}).(string); ok {
-		return v
-	}
-	return ""
-}
-
-type ctxKey struct{}
-
-// WithLiveKey carries the in-flight old secret into the rotator — Create and
-// Retire sign with the credential being rotated, not with the new one.
-func WithLiveKey(ctx context.Context, secret []byte) context.Context {
-	return context.WithValue(ctx, ctxKey{}, string(secret))
 }

@@ -786,13 +786,22 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 	if err != nil {
 		return protocol.Item{}, err
 	}
-	env := material.Unpack(raw)
-	ctx := rotate.WithLiveKey(context.Background(), []byte(env.Token))
-	next, keyID, err := rot.Create(ctx, item.Name)
+	live := []byte(material.Unpack(raw).Token)
+	ctx := context.Background()
+	next, keyID, err := rot.Create(ctx, item.Name, live)
 	if err != nil {
 		return protocol.Item{}, fmt.Errorf("rotate: %w", err)
 	}
+	// The new key id is the only breadcrumb to an orphan — log it the moment
+	// it exists so a mid-rotation failure never strands an unaccounted key.
+	rollback := func() {
+		slog.Warn("rotate: retiring orphaned new key", "item", name, "key_id", keyID)
+		if err := rot.Retire(ctx, keyID, next); err != nil {
+			slog.Warn("rotate: orphan not retired", "item", name, "key_id", keyID, "err", err)
+		}
+	}
 	if err := rot.Verify(ctx, next); err != nil {
+		rollback()
 		return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
 	}
 	oldKeyID := rotate.ProviderKeyID(item.Tags)
@@ -806,9 +815,10 @@ func (a *App) RotateItem(actor protocol.Principal, name string) (protocol.Item, 
 		tags = append(tags, rotate.ProviderIDTagPrefix+keyID)
 	}
 	if _, err := a.updateItem(actor.ID, name, nil, nil, tags, "", next); err != nil {
+		rollback()
 		return protocol.Item{}, err
 	}
-	if err := rot.Retire(ctx, oldKeyID); err != nil {
+	if err := rot.Retire(ctx, oldKeyID, live); err != nil {
 		// The swap already landed — a stuck old key is an ops note, not a
 		// rollback reason (the new credential is verified and sealed).
 		slog.Warn("rotate: old provider key not retired", "item", name, "err", err)
@@ -2650,6 +2660,9 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 		if item.Archived || item.OrgID != g.OrgID {
 			continue
 		}
+		// Rotation bookkeeping is owner-facing — provider key ids never
+		// leave the vault on an agent path.
+		item.Tags = rotate.StripRotationTags(item.Tags)
 		out = append(out, item)
 	}
 	return out, nil
