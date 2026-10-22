@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -21,13 +21,13 @@ var _ MappedNullable = &VaultReportFinding{}
 
 // VaultReportFinding struct for VaultReportFinding
 type VaultReportFinding struct {
-	ItemId string   `json:"item_id"`
-	Name   string   `json:"name"`
-	Kind   string   `json:"kind"`
-	Uri    *string  `json:"uri,omitempty"`
-	Weak   []string `json:"weak,omitempty"`
-	Reused *int32   `json:"reused,omitempty"`
-	Pwned  int32    `json:"pwned"`
+	ItemId string `json:"item_id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Uri *string `json:"uri,omitempty"`
+	Weak []string `json:"weak,omitempty"`
+	Reused *int32 `json:"reused,omitempty"`
+	Pwned int32 `json:"pwned"`
 }
 
 type _VaultReportFinding VaultReportFinding
@@ -246,7 +246,7 @@ func (o *VaultReportFinding) SetPwned(v int32) {
 }
 
 func (o VaultReportFinding) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -287,10 +287,10 @@ func (o *VaultReportFinding) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -346,3 +346,5 @@ func (v *NullableVaultReportFinding) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

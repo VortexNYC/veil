@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -21,16 +21,16 @@ var _ MappedNullable = &Item{}
 
 // Item struct for Item
 type Item struct {
-	Id       string   `json:"id"`
-	OrgId    string   `json:"org_id"`
-	Name     string   `json:"name"`
-	Kind     string   `json:"kind"`
-	Owner    Owner    `json:"owner"`
-	Uris     []string `json:"uris"`
-	Tags     []string `json:"tags,omitempty"`
-	Archived *bool    `json:"archived,omitempty"`
-	HasTotp  *bool    `json:"has_totp,omitempty"`
-	HasFile  *bool    `json:"has_file,omitempty"`
+	Id string `json:"id"`
+	OrgId string `json:"org_id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Owner Owner `json:"owner"`
+	Uris []string `json:"uris"`
+	Tags []string `json:"tags,omitempty"`
+	Archived *bool `json:"archived,omitempty"`
+	HasTotp *bool `json:"has_totp,omitempty"`
+	HasFile *bool `json:"has_file,omitempty"`
 	// Fill username. Metadata. Not a secret. Empty if unset.
 	Login *string `json:"login,omitempty"`
 }
@@ -365,7 +365,7 @@ func (o *Item) SetLogin(v string) {
 }
 
 func (o Item) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -416,10 +416,10 @@ func (o *Item) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -475,3 +475,5 @@ func (v *NullableItem) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

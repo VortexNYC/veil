@@ -19,12 +19,13 @@ import (
 	"strings"
 )
 
+
 // HumanAPIService HumanAPI service
 type HumanAPIService service
 
 type HumanAPICreateInviteRequest struct {
-	ctx           context.Context
-	ApiService    *HumanAPIService
+	ctx context.Context
+	ApiService *HumanAPIService
 	inviteRequest *InviteRequest
 }
 
@@ -40,25 +41,24 @@ func (r HumanAPICreateInviteRequest) Execute() (*InviteResponse, *http.Response,
 /*
 CreateInvite Private-alpha invite. Owner-authenticated — the bearer is a verified human ID token of a provisioned human. Creates the Kratos identity plus recovery link under the inviter's org and emails the setup link via the mail worker. recovery_url only appears when mail is not configured (local dev). Idempotent for re-invites. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPICreateInviteRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPICreateInviteRequest
 */
 func (a *HumanAPIService) CreateInvite(ctx context.Context) HumanAPICreateInviteRequest {
 	return HumanAPICreateInviteRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return InviteResponse
+//  @return InviteResponse
 func (a *HumanAPIService) CreateInviteExecute(r HumanAPICreateInviteRequest) (*InviteResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodPost
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *InviteResponse
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *InviteResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.CreateInvite")
@@ -132,7 +132,7 @@ func (a *HumanAPIService) CreateInviteExecute(r HumanAPICreateInviteRequest) (*I
 }
 
 type HumanAPIDeleteMeRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
 }
 
@@ -143,25 +143,24 @@ func (r HumanAPIDeleteMeRequest) Execute() (*DeleteMe200Response, *http.Response
 /*
 DeleteMe Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIDeleteMeRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIDeleteMeRequest
 */
 func (a *HumanAPIService) DeleteMe(ctx context.Context) HumanAPIDeleteMeRequest {
 	return HumanAPIDeleteMeRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return DeleteMe200Response
+//  @return DeleteMe200Response
 func (a *HumanAPIService) DeleteMeExecute(r HumanAPIDeleteMeRequest) (*DeleteMe200Response, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodDelete
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *DeleteMe200Response
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *DeleteMe200Response
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.DeleteMe")
@@ -230,7 +229,7 @@ func (a *HumanAPIService) DeleteMeExecute(r HumanAPIDeleteMeRequest) (*DeleteMe2
 }
 
 type HumanAPIDeleteOrgRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
 }
 
@@ -241,25 +240,24 @@ func (r HumanAPIDeleteOrgRequest) Execute() (*DeleteOrg200Response, *http.Respon
 /*
 DeleteOrg Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIDeleteOrgRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIDeleteOrgRequest
 */
 func (a *HumanAPIService) DeleteOrg(ctx context.Context) HumanAPIDeleteOrgRequest {
 	return HumanAPIDeleteOrgRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return DeleteOrg200Response
+//  @return DeleteOrg200Response
 func (a *HumanAPIService) DeleteOrgExecute(r HumanAPIDeleteOrgRequest) (*DeleteOrg200Response, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodDelete
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *DeleteOrg200Response
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *DeleteOrg200Response
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.DeleteOrg")
@@ -328,9 +326,9 @@ func (a *HumanAPIService) DeleteOrgExecute(r HumanAPIDeleteOrgRequest) (*DeleteO
 }
 
 type HumanAPIDemoteOwnerRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
-	id         string
+	id string
 }
 
 func (r HumanAPIDemoteOwnerRequest) Execute() (*PromoteOwner200Response, *http.Response, error) {
@@ -340,27 +338,26 @@ func (r HumanAPIDemoteOwnerRequest) Execute() (*PromoteOwner200Response, *http.R
 /*
 DemoteOwner Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@param id Kratos identity id of the owner
-	@return HumanAPIDemoteOwnerRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param id Kratos identity id of the owner
+ @return HumanAPIDemoteOwnerRequest
 */
 func (a *HumanAPIService) DemoteOwner(ctx context.Context, id string) HumanAPIDemoteOwnerRequest {
 	return HumanAPIDemoteOwnerRequest{
 		ApiService: a,
-		ctx:        ctx,
-		id:         id,
+		ctx: ctx,
+		id: id,
 	}
 }
 
 // Execute executes the request
-//
-//	@return PromoteOwner200Response
+//  @return PromoteOwner200Response
 func (a *HumanAPIService) DemoteOwnerExecute(r HumanAPIDemoteOwnerRequest) (*PromoteOwner200Response, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodDelete
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *PromoteOwner200Response
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *PromoteOwner200Response
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.DemoteOwner")
@@ -430,9 +427,9 @@ func (a *HumanAPIService) DemoteOwnerExecute(r HumanAPIDemoteOwnerRequest) (*Pro
 }
 
 type HumanAPIPromoteOwnerRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
-	id         string
+	id string
 }
 
 func (r HumanAPIPromoteOwnerRequest) Execute() (*PromoteOwner200Response, *http.Response, error) {
@@ -442,27 +439,26 @@ func (r HumanAPIPromoteOwnerRequest) Execute() (*PromoteOwner200Response, *http.
 /*
 PromoteOwner Grant an existing member the owners tuple. Owner-only. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@param id Kratos identity id of the member
-	@return HumanAPIPromoteOwnerRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param id Kratos identity id of the member
+ @return HumanAPIPromoteOwnerRequest
 */
 func (a *HumanAPIService) PromoteOwner(ctx context.Context, id string) HumanAPIPromoteOwnerRequest {
 	return HumanAPIPromoteOwnerRequest{
 		ApiService: a,
-		ctx:        ctx,
-		id:         id,
+		ctx: ctx,
+		id: id,
 	}
 }
 
 // Execute executes the request
-//
-//	@return PromoteOwner200Response
+//  @return PromoteOwner200Response
 func (a *HumanAPIService) PromoteOwnerExecute(r HumanAPIPromoteOwnerRequest) (*PromoteOwner200Response, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodPost
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *PromoteOwner200Response
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *PromoteOwner200Response
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.PromoteOwner")
@@ -532,7 +528,7 @@ func (a *HumanAPIService) PromoteOwnerExecute(r HumanAPIPromoteOwnerRequest) (*P
 }
 
 type HumanAPIProvisionRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
 }
 
@@ -543,25 +539,24 @@ func (r HumanAPIProvisionRequest) Execute() (*ProvisionResponse, *http.Response,
 /*
 Provision Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIProvisionRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIProvisionRequest
 */
 func (a *HumanAPIService) Provision(ctx context.Context) HumanAPIProvisionRequest {
 	return HumanAPIProvisionRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return ProvisionResponse
+//  @return ProvisionResponse
 func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*ProvisionResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodPost
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *ProvisionResponse
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *ProvisionResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.Provision")
@@ -630,8 +625,8 @@ func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*Provisi
 }
 
 type HumanAPIRegisterDeviceRequest struct {
-	ctx                   context.Context
-	ApiService            *HumanAPIService
+	ctx context.Context
+	ApiService *HumanAPIService
 	deviceRegisterRequest *DeviceRegisterRequest
 }
 
@@ -647,22 +642,22 @@ func (r HumanAPIRegisterDeviceRequest) Execute() (*http.Response, error) {
 /*
 RegisterDevice Register a push endpoint for the caller's org. The phone app POSTs its APNs/FCM token on sign-in and refresh. Humans only — an agent must never mint a wake channel for asks meant to reach a human. Idempotent upsert.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIRegisterDeviceRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIRegisterDeviceRequest
 */
 func (a *HumanAPIService) RegisterDevice(ctx context.Context) HumanAPIRegisterDeviceRequest {
 	return HumanAPIRegisterDeviceRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
 func (a *HumanAPIService) RegisterDeviceExecute(r HumanAPIRegisterDeviceRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod = http.MethodPost
-		localVarPostBody   interface{}
-		formFiles          []formFile
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.RegisterDevice")
@@ -727,9 +722,9 @@ func (a *HumanAPIService) RegisterDeviceExecute(r HumanAPIRegisterDeviceRequest)
 }
 
 type HumanAPIRemoveMemberRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
-	id         string
+	id string
 }
 
 func (r HumanAPIRemoveMemberRequest) Execute() (*RemoveMember200Response, *http.Response, error) {
@@ -739,27 +734,26 @@ func (r HumanAPIRemoveMemberRequest) Execute() (*RemoveMember200Response, *http.
 /*
 RemoveMember Offboard a member. Owner-only — drops the Keto member tuple and the humans row; the removed member's token resolves nothing from that call on. Owners cannot be removed this way (demote first). Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@param id Kratos identity id of the member
-	@return HumanAPIRemoveMemberRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param id Kratos identity id of the member
+ @return HumanAPIRemoveMemberRequest
 */
 func (a *HumanAPIService) RemoveMember(ctx context.Context, id string) HumanAPIRemoveMemberRequest {
 	return HumanAPIRemoveMemberRequest{
 		ApiService: a,
-		ctx:        ctx,
-		id:         id,
+		ctx: ctx,
+		id: id,
 	}
 }
 
 // Execute executes the request
-//
-//	@return RemoveMember200Response
+//  @return RemoveMember200Response
 func (a *HumanAPIService) RemoveMemberExecute(r HumanAPIRemoveMemberRequest) (*RemoveMember200Response, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodDelete
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *RemoveMember200Response
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *RemoveMember200Response
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.RemoveMember")
@@ -829,9 +823,9 @@ func (a *HumanAPIService) RemoveMemberExecute(r HumanAPIRemoveMemberRequest) (*R
 }
 
 type HumanAPIUnregisterDeviceRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
-	token      *string
+	token *string
 }
 
 func (r HumanAPIUnregisterDeviceRequest) Token(token string) HumanAPIUnregisterDeviceRequest {
@@ -846,22 +840,22 @@ func (r HumanAPIUnregisterDeviceRequest) Execute() (*http.Response, error) {
 /*
 UnregisterDevice Drop a push token — sign-out and token rotation land here. Idempotent: an absent token is already unregistered.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIUnregisterDeviceRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIUnregisterDeviceRequest
 */
 func (a *HumanAPIService) UnregisterDevice(ctx context.Context) HumanAPIUnregisterDeviceRequest {
 	return HumanAPIUnregisterDeviceRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
 func (a *HumanAPIService) UnregisterDeviceExecute(r HumanAPIUnregisterDeviceRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod = http.MethodDelete
-		localVarPostBody   interface{}
-		formFiles          []formFile
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.UnregisterDevice")
@@ -925,9 +919,9 @@ func (a *HumanAPIService) UnregisterDeviceExecute(r HumanAPIUnregisterDeviceRequ
 }
 
 type HumanAPIVaultReportRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *HumanAPIService
-	hibp       *string
+	hibp *string
 }
 
 // Opt into HaveIBeenPwned k-anonymity breach counts (5-char SHA-1 prefix only).
@@ -943,25 +937,24 @@ func (r HumanAPIVaultReportRequest) Execute() (*VaultReport, *http.Response, err
 /*
 VaultReport Vault health report — weak, reused, optionally breached passwords across items the human can see. Metadata only; never secrets. hibp=1 opts into k-anonymity breach lookup.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return HumanAPIVaultReportRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return HumanAPIVaultReportRequest
 */
 func (a *HumanAPIService) VaultReport(ctx context.Context) HumanAPIVaultReportRequest {
 	return HumanAPIVaultReportRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return VaultReport
+//  @return VaultReport
 func (a *HumanAPIService) VaultReportExecute(r HumanAPIVaultReportRequest) (*VaultReport, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodGet
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *VaultReport
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *VaultReport
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "HumanAPIService.VaultReport")

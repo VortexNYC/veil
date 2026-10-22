@@ -11,10 +11,10 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"time"
+	"bytes"
+	"fmt"
 )
 
 // checks if the BillingView type satisfies the MappedNullable interface at compile time
@@ -27,9 +27,9 @@ type BillingView struct {
 	// Uses consumed in the current window
 	Used int64 `json:"used"`
 	// Free allowance per window; null when unlimited (metering off or paid plan)
-	Included    NullableInt64 `json:"included"`
-	WindowStart time.Time     `json:"window_start"`
-	WindowEnd   time.Time     `json:"window_end"`
+	Included NullableInt64 `json:"included"`
+	WindowStart time.Time `json:"window_start"`
+	WindowEnd time.Time `json:"window_end"`
 	// Vortex checkout/portal link for capped owners
 	UpgradeUrl *string `json:"upgrade_url,omitempty"`
 }
@@ -213,7 +213,7 @@ func (o *BillingView) SetUpgradeUrl(v string) {
 }
 
 func (o BillingView) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -250,10 +250,10 @@ func (o *BillingView) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -309,3 +309,5 @@ func (v *NullableBillingView) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+
