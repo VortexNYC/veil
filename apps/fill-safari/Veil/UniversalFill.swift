@@ -100,6 +100,10 @@ final class UniversalFill: NSObject {
                     && flags.contains(.maskAlternate)
                     && flags.intersection([.maskCommand, .maskShift]).isEmpty
                 guard backslash || cmdShiftSpace || ctrlOptSpace else { return Unmanaged.passUnretained(event) }
+                if let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                   UniversalFill.browsers.contains(frontBundle) {
+                    return Unmanaged.passUnretained(event)
+                }
                 DispatchQueue.main.async { UniversalFill.shared.trigger() }
                 return nil // the gesture is ours — the field never sees it
             },
@@ -119,9 +123,10 @@ final class UniversalFill: NSObject {
         NSLog("veil: trigger")
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.bundleIdentifier != Bundle.main.bundleIdentifier,
-              let bundleID = front.bundleIdentifier
+              let bundleID = front.bundleIdentifier,
+              !Self.browsers.contains(bundleID)
         else {
-            NSLog("veil: no front app")
+            NSLog("veil: no front native app")
             return
         }
         // A re-trigger supersedes whatever was up: drop the panel and bump

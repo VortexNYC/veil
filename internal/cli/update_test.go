@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -44,6 +47,18 @@ func TestUpdateSyncOnlyRefreshesInstalledExtensions(t *testing.T) {
 }
 
 func TestUpdateCheckAndApplyReleaseUpdate(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevPub := updateVerifyPubB64
+	prevBase := updateAPIBase
+	t.Cleanup(func() {
+		updateVerifyPubB64 = prevPub
+		updateAPIBase = prevBase
+	})
+	updateVerifyPubB64 = base64.StdEncoding.EncodeToString(pub)
+
 	assetName := fmt.Sprintf("veil_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	binName := "veil"
 	if runtime.GOOS == "windows" {
@@ -70,7 +85,10 @@ func TestUpdateCheckAndApplyReleaseUpdate(t *testing.T) {
 	tarBytes := tarBuf.Bytes()
 	sum := sha256.Sum256(tarBytes)
 	goodHex := hex.EncodeToString(sum[:])
+	sumsBody := fmt.Sprintf("%s  %s\n", goodHex, assetName)
+	sigBody := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte(sumsBody)))
 
+	tamperSig := false
 	var srvURL string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -81,25 +99,33 @@ func TestUpdateCheckAndApplyReleaseUpdate(t *testing.T) {
 				"assets": []map[string]any{
 					{"name": assetName, "browser_download_url": srvURL + "/" + assetName},
 					{"name": "checksums.txt", "browser_download_url": srvURL + "/checksums.txt"},
+					{"name": "checksums.txt.sig", "browser_download_url": srvURL + "/checksums.txt.sig"},
 				},
 			})
 		case "/" + assetName:
 			_, _ = w.Write(tarBytes)
 		case "/checksums.txt":
-			fmt.Fprintf(w, "%s  %s\n", goodHex, assetName)
+			_, _ = w.Write([]byte(sumsBody))
+		case "/checksums.txt.sig":
+			if tamperSig {
+				_, _ = w.Write([]byte(base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))))
+				return
+			}
+			_, _ = w.Write([]byte(sigBody))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer srv.Close()
 	srvURL = srv.URL
+	updateAPIBase = srv.URL
 
 	// 1. --check reports update_available
 	var out bytes.Buffer
 	cmd := New("0.1.0")
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--home", t.TempDir(), "update", "--check", "--api-base", srv.URL})
+	cmd.SetArgs([]string{"--home", t.TempDir(), "update", "--check"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("update --check: %v", err)
 	}
@@ -107,7 +133,7 @@ func TestUpdateCheckAndApplyReleaseUpdate(t *testing.T) {
 		t.Fatalf("unexpected check output: %s", out.String())
 	}
 
-	// 2. applyReleaseUpdate verifies SHA-256 and replaces target binary
+	// 2. applyReleaseUpdate rejects invalid Ed25519 signature
 	ctx := context.Background()
 	rel, err := fetchLatestRelease(ctx, srv.URL, "VortexNYC/veil")
 	if err != nil {
@@ -117,6 +143,13 @@ func TestUpdateCheckAndApplyReleaseUpdate(t *testing.T) {
 	if err := os.WriteFile(targetExe, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	tamperSig = true
+	if err := applyReleaseUpdate(ctx, rel, targetExe); err == nil {
+		t.Fatal("expected invalid Ed25519 signature to be rejected")
+	}
+	tamperSig = false
+
+	// 3. applyReleaseUpdate verifies Ed25519 + SHA-256 and replaces target binary
 	if err := applyReleaseUpdate(ctx, rel, targetExe); err != nil {
 		t.Fatalf("applyReleaseUpdate: %v", err)
 	}
