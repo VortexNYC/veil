@@ -11,19 +11,19 @@ import (
 	"github.com/VortexNYC/veil/internal/fill"
 )
 
-var version = "0.1.0"
+var version = "dev"
 
 func resolvedVersion() string {
-	if version != "" && version != "0.1.0" {
-		return version
+	if version != "" && version != "dev" {
+		return strings.TrimPrefix(version, "v")
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		v := strings.TrimSpace(info.Main.Version)
-		if v != "" && v != "(devel)" {
+		if v != "" && v != "(devel)" && !strings.HasPrefix(v, "v0.0.0-") {
 			return strings.TrimPrefix(v, "v")
 		}
 	}
-	return version
+	return "0.1.0"
 }
 
 func init() {

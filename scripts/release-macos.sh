@@ -63,8 +63,10 @@ xcrun stapler staple "$APP"
 rm -f "$DMG"
 hdiutil create -volname Veil -srcfolder "$APP" -ov -format UDZO "$DMG"
 if [ -x /tmp/VeilBuild/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast ]; then
-  mkdir -p /tmp/Veil-appcast && cp "$DMG" /tmp/Veil-appcast/
-  /tmp/VeilBuild/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast /tmp/Veil-appcast
+  rm -rf /tmp/Veil-appcast && mkdir -p /tmp/Veil-appcast && cp "$DMG" /tmp/Veil-appcast/
+  /tmp/VeilBuild/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast \
+    --download-url-prefix "https://github.com/VortexNYC/veil/releases/latest/download/" \
+    /tmp/Veil-appcast
   cp /tmp/Veil-appcast/appcast.xml apps/site/public/releases/appcast.xml
 fi
 echo "done: $DMG"

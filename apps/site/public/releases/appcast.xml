@@ -1,17 +1,14 @@
 <?xml version="1.0" standalone="yes"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
-        <title>Veil Updates</title>
-        <link>https://veil.nyc/releases/appcast.xml</link>
-        <description>Most recent changes with links to updates.</description>
-        <language>en</language>
+        <title>Veil</title>
         <item>
-            <title>Veil 1.0</title>
-            <pubDate>Fri, 23 Oct 2026 15:40:00 +0000</pubDate>
+            <title>1.0</title>
+            <pubDate>Fri, 23 Oct 2026 14:33:05 -0400</pubDate>
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/VortexNYC/veil/releases/latest/download/Veil.dmg" length="0" type="application/octet-stream" />
+            <enclosure url="https://github.com/VortexNYC/veil/releases/latest/download/Veil.dmg" length="28805164" type="application/octet-stream" sparkle:edSignature="xP0CfYYTOG23TWuBht2/Ul1t/aYkXne4c2F+aCcGQrx+Df4hFPO0xytFyYercQhOWRYj+Kqo8DueQA4Cw+XuCQ=="/>
         </item>
     </channel>
 </rss>
