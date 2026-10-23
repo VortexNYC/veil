@@ -225,7 +225,7 @@ func (h *Host) handlePeer(raw []byte, peer *Peer) []byte {
 	}
 	if peek.Nonce == "" && peek.Message == "" {
 		switch peek.Action {
-		case "ping", "match", "fill", "generate", "save", "enrollTotp", "passkeyCreate", "passkeyGet", "unlock", "token", "bind":
+		case "ping", "match", "list", "fill", "generate", "save", "enrollTotp", "passkeyCreate", "passkeyGet", "unlock", "token", "bind", "relock":
 			fillDebug("action=" + peek.Action + " nonce=")
 			defer debugMark("done "+peek.Action, 0)()
 			return h.handleJSON(raw, peer)
@@ -827,6 +827,56 @@ func (h *Host) InvalidateConfirm() {
 	h.confirmScope = ""
 	h.confirmPeer = ""
 	h.mu.Unlock()
+}
+
+// ApplyConfig updates the host's live confirmation/posture settings from cfg.
+func (h *Host) ApplyConfig(cfg HostConfig) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ConfirmMode = ""
+	h.ConfirmTTL = 0
+	h.IconsOff = false
+	h.RemoteApproveMode = ""
+	switch cfg.Policy {
+	case "strict":
+		h.ConfirmMode = "strict"
+		h.IconsOff = true
+	case "relaxed":
+		h.ConfirmMode = "session"
+		h.ConfirmTTL = 5 * time.Minute
+	}
+	switch cfg.Confirm {
+	case "origin", "strict", "session":
+		h.ConfirmMode = cfg.Confirm
+	}
+	if cfg.ConfirmTTL > 0 {
+		h.ConfirmTTL = time.Duration(cfg.ConfirmTTL) * time.Second
+	}
+	if cfg.Icons != nil {
+		h.IconsOff = !*cfg.Icons
+	}
+	switch cfg.RemoteApprove {
+	case "all", "tagged":
+		h.RemoteApproveMode = cfg.RemoteApprove
+	}
+	if cfg.Device != "" {
+		h.Device = cfg.Device
+	} else if h.Device == "" {
+		if host, err := os.Hostname(); err == nil {
+			h.Device = host
+		}
+	}
+}
+
+// ReloadConfig re-reads fill.json from the host's vault home and applies it.
+func (h *Host) ReloadConfig() {
+	dir := h.dir()
+	if dir == "" {
+		return
+	}
+	if cfg, err := ReadHostConfig(dir); err == nil {
+		h.ApplyConfig(cfg)
+	}
 }
 
 func passkeyIsError(raw []byte) bool {

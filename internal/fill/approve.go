@@ -18,7 +18,10 @@ import (
 // "all" covers every release, "tagged" covers `veil:remote-approve`
 // items, anything else is off.
 func (h *Host) remoteGate(item protocol.Item) bool {
-	switch h.RemoteApproveMode {
+	h.mu.Lock()
+	mode := h.RemoteApproveMode
+	h.mu.Unlock()
+	switch mode {
 	case "all":
 		return true
 	case "tagged":
@@ -32,7 +35,9 @@ func (h *Host) remoteGate(item protocol.Item) bool {
 // request itself is deduped per item on the origin, so repeated asks in
 // the same window share one open row.
 func (h *Host) remoteApprove(item protocol.Item, scope string, peer *Peer) error {
+	h.mu.Lock()
 	device := h.Device
+	h.mu.Unlock()
 	if device == "" {
 		device = "laptop"
 	}
@@ -65,11 +70,11 @@ func (h *Host) remoteApprove(item protocol.Item, scope string, peer *Peer) error
 		case "approved":
 			// The remote human was the confirm — arm the peer's reuse
 			// window so near-term fills for this peer don't re-ask.
+			h.mu.Lock()
 			ttl := h.ConfirmTTL
 			if ttl <= 0 {
 				ttl = confirmReuse
 			}
-			h.mu.Lock()
 			h.confirmUntil = time.Now().Add(ttl)
 			h.confirmScope = scope
 			h.confirmPeer = peer.key()

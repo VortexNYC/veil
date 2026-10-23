@@ -2722,36 +2722,7 @@ func attachFillConfirm(h *fill.Host) {
 			cfg, read = c, true
 		}
 	}
-	// The preset names the posture; individual keys override it.
-	switch cfg.Policy {
-	case "strict":
-		h.ConfirmMode = "strict"
-		h.IconsOff = true
-	case "relaxed":
-		h.ConfirmMode = "session"
-		if h.ConfirmTTL <= 0 {
-			h.ConfirmTTL = 5 * time.Minute
-		}
-	}
-	switch cfg.Confirm {
-	case "", "origin", "strict", "session":
-		h.ConfirmMode = cfg.Confirm
-	}
-	if cfg.ConfirmTTL > 0 {
-		h.ConfirmTTL = time.Duration(cfg.ConfirmTTL) * time.Second
-	}
-	if cfg.Icons != nil && !*cfg.Icons {
-		h.IconsOff = true
-	}
-	switch cfg.RemoteApprove {
-	case "all", "tagged":
-		h.RemoteApproveMode = cfg.RemoteApprove
-	}
-	if cfg.Device != "" {
-		h.Device = cfg.Device
-	} else if host, err := os.Hostname(); err == nil {
-		h.Device = host
-	}
+	h.ApplyConfig(cfg)
 	if confirm.Enabled() {
 		h.Confirm = confirm.TouchID
 	}
