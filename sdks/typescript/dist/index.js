@@ -1071,6 +1071,49 @@ var verifyItem = (options) => (options.client ?? client).post({
 });
 
 // sdks/typescript/ambient-oidc.ts
+function b64url(bytes) {
+  let bin = "";
+  for (const b of bytes) {
+    bin += String.fromCharCode(b);
+  }
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlJson(obj) {
+  return b64url(new TextEncoder().encode(JSON.stringify(obj)));
+}
+async function generateDPoPKeyPair() {
+  return await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, [
+    "sign",
+    "verify"
+  ]);
+}
+async function signDPoPProof(opts) {
+  const pubJwk = await crypto.subtle.exportKey("jwk", opts.keyPair.publicKey);
+  const parsed = new URL(opts.url);
+  const htu = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+  const payload = {
+    htm: opts.method.toUpperCase(),
+    htu,
+    iat: Math.floor(Date.now() / 1e3),
+    jti: crypto.randomUUID()
+  };
+  if (opts.accessToken) {
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(opts.accessToken));
+    payload.ath = b64url(new Uint8Array(hash));
+  }
+  const header = {
+    typ: "dpop+jwt",
+    alg: "ES256",
+    jwk: { kty: "EC", crv: "P-256", x: pubJwk.x, y: pubJwk.y }
+  };
+  const signingInput = `${b64urlJson(header)}.${b64urlJson(payload)}`;
+  const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    opts.keyPair.privateKey,
+    new TextEncoder().encode(signingInput)
+  );
+  return `${signingInput}.${b64url(new Uint8Array(sig))}`;
+}
 function getProc() {
   const g = globalThis;
   return g.process;
@@ -1129,9 +1172,37 @@ async function ambientOidcToken(opts) {
   return void 0;
 }
 function createAmbientClient(config) {
+  let keyPairPromise;
+  const resolveKeyPair = () => {
+    if (config?.dpop && typeof config.dpop === "object") {
+      return Promise.resolve(config.dpop);
+    }
+    keyPairPromise ??= generateDPoPKeyPair();
+    return keyPairPromise;
+  };
+  const baseFetch = config?.fetch ?? globalThis.fetch;
+  const dpopFetch = config?.dpop ? async (input, init) => {
+    const req = new Request(input, init);
+    const auth = req.headers.get("Authorization") ?? "";
+    const tok = auth.replace(/^(Bearer|DPoP)\s+/i, "").trim();
+    const kp = await resolveKeyPair();
+    const proof = await signDPoPProof({
+      keyPair: kp,
+      method: req.method,
+      url: req.url,
+      accessToken: tok || void 0
+    });
+    const headers = new Headers(req.headers);
+    if (tok) {
+      headers.set("Authorization", `DPoP ${tok}`);
+    }
+    headers.set("DPoP", proof);
+    return baseFetch(new Request(req, { headers }));
+  } : config?.fetch;
   return createClient({
     baseUrl: "https://veil.nyc",
     ...config,
+    ...dpopFetch ? { fetch: dpopFetch } : {},
     auth: async () => await ambientOidcToken(config) ?? ""
   });
 }
@@ -1157,6 +1228,7 @@ export {
   deleteOrg,
   demoteOwner,
   denyRequest,
+  generateDPoPKeyPair,
   getBilling,
   getHealth,
   getOpenApi,
@@ -1178,6 +1250,7 @@ export {
   removeMember,
   revokeAgent,
   rotateItem,
+  signDPoPProof,
   streamRequests,
   unbindWorkload,
   unregisterDevice,

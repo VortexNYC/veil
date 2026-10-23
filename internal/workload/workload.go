@@ -175,8 +175,8 @@ func ValidateBinding(issuer, subject string) error {
 //     link-local, multicast, or cloud-metadata (169.254.0.0/16) IP literals.
 //   - subject may be an exact claim, a trailing-* prefix pattern whose prefix
 //     is >= 4 chars and ends on a delimiter (':', '/', '-', '.'), or bare "*"
-//     ONLY when claims is non-empty (e.g. Vercel immutable owner_id/project_id
-//     bindings that survive team/project slug renames).
+//     ONLY when claims includes an identity-scoping key (owner_id, project_id,
+//     namespace_id, email, oid, or repositoryUuid).
 func ValidateBindingWithClaims(issuer, subject string, claims map[string][]string) error {
 	issuer = strings.TrimSpace(issuer)
 	subject = strings.TrimSpace(subject)
@@ -211,7 +211,7 @@ func ValidateBindingWithClaims(issuer, subject string, claims map[string][]strin
 		return fmt.Errorf("workload: issuer must use https")
 	}
 
-	hasClaims := false
+	hasScopingClaim := false
 	for k, vals := range claims {
 		k = strings.TrimSpace(k)
 		if k == "" || len(vals) == 0 {
@@ -220,13 +220,14 @@ func ValidateBindingWithClaims(issuer, subject string, claims map[string][]strin
 		switch k {
 		case "iss", "sub", "aud", "exp", "nbf", "iat", "jti":
 			return fmt.Errorf("workload: reserved claim %q must use top-level binding fields", k)
+		case "owner_id", "project_id", "namespace_id", "email", "oid", "repositoryUuid":
+			hasScopingClaim = true
 		}
 		for _, v := range vals {
 			if strings.TrimSpace(v) == "" {
 				return fmt.Errorf("workload: claim %q contains empty value", k)
 			}
 		}
-		hasClaims = true
 	}
 
 	if strings.Contains(subject, "*") {
@@ -238,8 +239,8 @@ func ValidateBindingWithClaims(issuer, subject string, claims map[string][]strin
 		}
 		prefix := strings.TrimSuffix(subject, "*")
 		if prefix == "" {
-			if !hasClaims || host == "token.actions.githubusercontent.com" {
-				return fmt.Errorf("workload: bare '*' subject requires non-empty claims on a tenant-scoped issuer")
+			if !hasScopingClaim || host == "token.actions.githubusercontent.com" {
+				return fmt.Errorf("workload: bare '*' subject requires an identity-scoping claim (owner_id, project_id, namespace_id, email, oid, or repositoryUuid) on a tenant-scoped issuer")
 			}
 			return nil
 		}

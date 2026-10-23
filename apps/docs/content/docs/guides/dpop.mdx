@@ -25,6 +25,29 @@ When an agent sends a `DPoP: <proof-jwt>` header (with `Authorization: DPoP <tok
    - If the JWT access token carries a `cnf.jkt` claim from the issuer, `jkt` must match `cnf.jkt`.
    - For tokens whose issuer does not embed `cnf.jkt` at mint time, Veil enforces **bind-on-first-use**: the first verified `DPoP` proof pins `sha256(access_token) -> jkt` in memory. Any subsequent request with that token that omits the `DPoP` header (downgrade attempt) or signs with a different key is rejected with `401 Unauthorized`.
 
+## Sending DPoP Proofs from TypeScript (`@vortex-api/veil`)
+
+`@vortex-api/veil` includes built-in Web Crypto ES256 DPoP helpers (`createAmbientClient({ dpop: true })`, `generateDPoPKeyPair`, and `signDPoPProof`):
+
+```ts
+import { createAmbientClient, useItem } from "@vortex-api/veil";
+
+export async function POST(req: Request) {
+  // Automatically generates an ephemeral non-extractable P-256 keypair
+  // and attaches a fresh RFC 9449 DPoP proof header on every request.
+  const client = createAmbientClient({ request: req, dpop: true });
+  const { data } = await useItem({
+    client,
+    body: {
+      item: "resend",
+      url: "https://api.resend.com/emails",
+      method: "POST",
+    },
+  });
+  return Response.json({ status: data?.status });
+}
+```
+
 ## Compatibility Note
 
 - **Additive rollout**: Callers that do not send a `DPoP` header continue to work with standard `Authorization: Bearer` tokens.

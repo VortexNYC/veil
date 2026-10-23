@@ -6,7 +6,16 @@ export type AmbientOidcOptions = {
         };
     };
     audience?: string;
+    /** When true (or a CryptoKeyPair), signs every outbound request with an RFC 9449 ES256 DPoP proof. */
+    dpop?: boolean | CryptoKeyPair;
 };
+export declare function generateDPoPKeyPair(): Promise<CryptoKeyPair>;
+export declare function signDPoPProof(opts: {
+    keyPair: CryptoKeyPair;
+    method: string;
+    url: string;
+    accessToken?: string;
+}): Promise<string>;
 /**
  * Resolves an ambient workload OIDC token in priority order:
  * 1. Request `x-vercel-oidc-token` header (Vercel Functions)

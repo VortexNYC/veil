@@ -508,3 +508,31 @@ func TestCheckerRejectsWorkloadOrgMismatch(t *testing.T) {
 		t.Fatal("expected org mismatch error from Checker.Agent")
 	}
 }
+
+func TestValidateBindingBareStarRequiresScopingClaim(t *testing.T) {
+	if err := ValidateBindingWithClaims("https://login.microsoftonline.com/aaaabbbb-0000-cccc-1111-dddd2222eeee/v2.0", "*", map[string][]string{
+		"ver": {"2.0"},
+	}); err == nil {
+		t.Fatal("bare '*' with non-scoping claim ver=2.0 should be rejected")
+	}
+	if err := ValidateBindingWithClaims("https://gitlab.com", "*", map[string][]string{
+		"project_path": {"acme/web"},
+	}); err == nil {
+		t.Fatal("bare '*' with mutable project_path claim should be rejected")
+	}
+	if err := ValidateBindingWithClaims("https://login.microsoftonline.com/aaaabbbb-0000-cccc-1111-dddd2222eeee/v2.0", "*", map[string][]string{
+		"oid": {"aaaaaaaa-0000-1111-2222-bbbbbbbbbbbb"},
+	}); err != nil {
+		t.Fatalf("bare '*' with oid claim should be accepted: %v", err)
+	}
+	if err := ValidateBindingWithClaims("https://accounts.google.com", "*", map[string][]string{
+		"email": {"bot@acme.iam.gserviceaccount.com"},
+	}); err != nil {
+		t.Fatalf("bare '*' with email claim should be accepted: %v", err)
+	}
+	if err := ValidateBindingWithClaims("https://api.bitbucket.org/2.0/workspaces/acme/pipelines-config/identity/oidc", "*", map[string][]string{
+		"repositoryUuid": {"{9a8b}"},
+	}); err != nil {
+		t.Fatalf("bare '*' with repositoryUuid claim should be accepted: %v", err)
+	}
+}
