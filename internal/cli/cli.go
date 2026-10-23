@@ -45,6 +45,7 @@ import (
 	"github.com/VortexNYC/veil/internal/proxy"
 	"github.com/VortexNYC/veil/internal/publicapi"
 	"github.com/VortexNYC/veil/internal/replica"
+	"github.com/VortexNYC/veil/internal/rotate"
 	"github.com/VortexNYC/veil/internal/socket"
 	"github.com/VortexNYC/veil/internal/sshagent"
 	"github.com/VortexNYC/veil/internal/store"
@@ -2771,11 +2772,24 @@ func reportCmd(home *string) *cobra.Command {
 func rotateCmd(home *string) *cobra.Command {
 	var mgmtItem, secretFile string
 	var interval time.Duration
+	var listProviders bool
 	c := &cobra.Command{
-		Use:   "rotate ITEM",
+		Use:   "rotate [ITEM]",
 		Short: "Rotate an item's credential at its provider (or seal a replacement via --secret-file). Owner only; grants and item id are untouched.",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if listProviders {
+				if originBase() != "" {
+					return originRotateProviders(cmd)
+				}
+				return encode(cmd, publicapi.RotateProvidersResponse{
+					ZeroTouchHosts: rotate.Coverage(),
+					Assisted:       true,
+				})
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("rotate: ITEM is required (or pass --providers)")
+			}
 			var replacement []byte
 			if secretFile != "" {
 				var err error
@@ -2807,6 +2821,7 @@ func rotateCmd(home *string) *cobra.Command {
 	c.Flags().StringVar(&mgmtItem, "management-item", "", "separate vault item holding the provider management credential")
 	c.Flags().DurationVar(&interval, "interval", 0, "auto-rotation interval (e.g. 24h, 168h)")
 	c.Flags().StringVar(&secretFile, "secret-file", "", "assisted rotation: replacement credential file for dashboard-only providers")
+	c.Flags().BoolVar(&listProviders, "providers", false, "list zero-touch provider hosts and assisted rotation capability")
 	return c
 }
 

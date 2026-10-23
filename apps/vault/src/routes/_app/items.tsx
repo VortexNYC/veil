@@ -10,7 +10,7 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { PageChrome } from "../../page-chrome";
-import { addItem, importItems, items } from "../../origin";
+import { addItem, importItems, items, rotateProviders, rotateVaultItem } from "../../origin";
 import type { Item } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/items")({
@@ -28,6 +28,8 @@ function Items() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [rotateTarget, setRotateTarget] = useState<string | null>(null);
+  const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -40,6 +42,10 @@ function Items() {
     }
     setError(null);
     setRows(res.data.items);
+    const pres = await rotateProviders();
+    if (pres.data) {
+      setZeroTouchHosts(pres.data.zero_touch_hosts);
+    }
   }
 
   useEffect(() => {
@@ -301,6 +307,7 @@ function Items() {
                   <Table.Head>Name</Table.Head>
                   <Table.Head>Kind</Table.Head>
                   <Table.Head>URIs</Table.Head>
+                  <Table.Head>Rotate</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
@@ -313,6 +320,21 @@ function Items() {
                         {(item.uris ?? []).join(" · ") || "—"}
                       </Text>
                     </Table.Cell>
+                    <Table.Cell>
+                      {item.kind === "api_key" ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setRotateTarget(item.name)}
+                        >
+                          Rotate
+                        </Button>
+                      ) : (
+                        <Text as="span" variant="secondary" size="sm">
+                          —
+                        </Text>
+                      )}
+                    </Table.Cell>
                   </Table.Row>
                 ))}
               </Table.Body>
@@ -320,6 +342,70 @@ function Items() {
           )}
         </LayerCard.Primary>
       </LayerCard>
+      <Dialog.Root
+        open={rotateTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setRotateTarget(null);
+          }
+        }}
+      >
+        <Dialog size="sm" className="p-6">
+          <form
+            key={rotateTarget ?? "closed"}
+            className="flex flex-col gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!rotateTarget) {
+                return;
+              }
+              const fd = new FormData(e.currentTarget);
+              const secret = String(fd.get("secret") ?? "").trim();
+              const interval = String(fd.get("interval") ?? "").trim();
+              const mgmt = String(fd.get("management_item") ?? "").trim();
+              const body =
+                secret || interval || mgmt
+                  ? {
+                      ...(secret ? { secret } : {}),
+                      ...(interval ? { interval } : {}),
+                      ...(mgmt ? { management_item: mgmt } : {}),
+                    }
+                  : undefined;
+              void rotateVaultItem(rotateTarget, body).then((res) => {
+                if (res.error) {
+                  setError("rotate failed");
+                  return;
+                }
+                setNotice(`Rotated ${rotateTarget}`);
+                setRotateTarget(null);
+                void reload();
+              });
+            }}
+          >
+            <Dialog.Title>Rotate {rotateTarget}</Dialog.Title>
+            <Dialog.Description>
+              Zero-touch hosts ({zeroTouchHosts.join(", ") || "api.resend.com, api.sendgrid.com"}) mint and verify a new key automatically. For dashboard-only providers, paste the replacement secret below.
+            </Dialog.Description>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="rot-secret">Replacement secret (optional, for assisted rotation)</Label>
+              <Input id="rot-secret" name="secret" type="password" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="rot-interval">Auto-rotate interval (optional, e.g. 24h or 168h)</Label>
+              <Input id="rot-interval" name="interval" placeholder="24h" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="rot-mgmt">Management item (optional, separate admin credential)</Label>
+              <Input id="rot-mgmt" name="management_item" />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" variant="primary">
+                Rotate
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      </Dialog.Root>
     </PageChrome>
   );
 }

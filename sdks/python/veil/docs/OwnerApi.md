@@ -22,6 +22,7 @@ Method | HTTP request | Description
 [**list_group_members**](OwnerApi.md#list_group_members) | **GET** /v1/groups/{name}/members | Members of the group — agent or human edges. Not MCP.
 [**list_groups**](OwnerApi.md#list_groups) | **GET** /v1/groups | Org groups. A grant to a group is the shared vault. Not MCP.
 [**list_requests**](OwnerApi.md#list_requests) | **GET** /v1/requests | Approval requests filed by level-1 agents. status&#x3D;open lists only unexpired asks. Not MCP.
+[**list_rotate_providers**](OwnerApi.md#list_rotate_providers) | **GET** /v1/rotate/providers | List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.
 [**list_sessions**](OwnerApi.md#list_sessions) | **GET** /v1/sessions | Active sandbox sessions. Metadata only. Never the token. Not MCP.
 [**remove_group_member**](OwnerApi.md#remove_group_member) | **DELETE** /v1/groups/{name}/members/{kind}/{id} | Remove a member from the group. Not MCP.
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
@@ -1445,6 +1446,80 @@ Name | Type | Description  | Notes
 **400** | bad status |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **list_rotate_providers**
+> RotateProvidersResponse list_rotate_providers()
+
+List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.rotate_providers_response import RotateProvidersResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+
+    try:
+        # List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.
+        api_response = api_instance.list_rotate_providers()
+        print("The response of OwnerApi->list_rotate_providers:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_rotate_providers: %s\n" % e)
+```
+
+
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**RotateProvidersResponse**](RotateProvidersResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Rotation provider coverage |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

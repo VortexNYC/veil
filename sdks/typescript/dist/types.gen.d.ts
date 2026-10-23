@@ -490,6 +490,10 @@ export type RotateItemRequest = {
      */
     secret?: string;
 };
+export type RotateProvidersResponse = {
+    zero_touch_hosts: Array<string>;
+    assisted: boolean;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1730,3 +1734,26 @@ export type ListAgentWorkloadsResponses = {
     200: WorkloadsResponse;
 };
 export type ListAgentWorkloadsResponse = ListAgentWorkloadsResponses[keyof ListAgentWorkloadsResponses];
+export type ListRotateProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/rotate/providers';
+};
+export type ListRotateProvidersErrors = {
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+export type ListRotateProvidersResponses = {
+    /**
+     * Rotation provider coverage
+     */
+    200: RotateProvidersResponse;
+};
+export type ListRotateProvidersResponse = ListRotateProvidersResponses[keyof ListRotateProvidersResponses];

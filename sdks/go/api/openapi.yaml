@@ -1192,6 +1192,24 @@ paths:
       summary: List bound OIDC workload policies for an agent. Owner-only.
       tags:
       - Owner
+  /v1/rotate/providers:
+    get:
+      operationId: listRotateProviders
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateProvidersResponse"
+          description: Rotation provider coverage
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: List zero-touch rotation provider hosts and assisted rotation capability.
+        Owner-only.
+      tags:
+      - Owner
 components:
   schemas:
     Item:
@@ -2640,6 +2658,23 @@ components:
         secret:
           description: replacement credential for assisted rotation
           type: string
+    RotateProvidersResponse:
+      example:
+        zero_touch_hosts:
+        - zero_touch_hosts
+        - zero_touch_hosts
+        assisted: true
+      properties:
+        zero_touch_hosts:
+          items:
+            type: string
+          type: array
+          default: null
+        assisted:
+          type: boolean
+      required:
+      - assisted
+      - zero_touch_hosts
     removeMember_200_response:
       example:
         removed: true

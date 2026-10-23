@@ -1059,6 +1059,11 @@ var listAgentWorkloads = (options) => (options.client ?? client).get({
   url: "/v1/agents/{name}/workloads",
   ...options
 });
+var listRotateProviders = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/rotate/providers",
+  ...options
+});
 
 // sdks/typescript/ambient-oidc.ts
 function getProc() {
@@ -1159,6 +1164,7 @@ export {
   listGroups,
   listItems,
   listRequests,
+  listRotateProviders,
   listSessions,
   promoteOwner,
   provision,

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -103,12 +104,13 @@ func Register(host string, r Rotator) {
 }
 
 // Coverage is the provider matrix for docs/status — which hosts rotate
-// zero-touch.
+// zero-touch, sorted deterministically.
 func Coverage() []string {
 	out := make([]string, 0, len(byHost))
 	for h := range byHost {
 		out = append(out, h)
 	}
+	sort.Strings(out)
 	return out
 }
 

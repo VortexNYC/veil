@@ -18,12 +18,14 @@ import {
   listGroups,
   listItems,
   listRequests,
+  listRotateProviders as sdkListRotateProviders,
   removeGroupMember,
+  rotateItem as sdkRotateItem,
   unbindWorkload as sdkUnbindWorkload,
   vaultReport,
   verifyIssuer as sdkVerifyIssuer,
 } from "@vortex-api/veil"
-import type { BindWorkloadRequest } from "@vortex-api/veil"
+import type { BindWorkloadRequest, RotateItemRequest } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
 
 function client() {
@@ -149,6 +151,14 @@ export function agentWorkloads(name: string) {
 
 export function unbindAgentWorkload(name: string, issuer: string, subject: string) {
   return sdkUnbindWorkload({ client: client(), path: { name }, query: { issuer, subject } })
+}
+
+export function rotateVaultItem(name: string, body?: RotateItemRequest) {
+  return sdkRotateItem({ client: client(), path: { name }, body })
+}
+
+export function rotateProviders() {
+  return sdkListRotateProviders({ client: client() })
 }
 
 export function events() {

@@ -1763,6 +1763,33 @@
           }
         }
       }
+    },
+    "/v1/rotate/providers": {
+      "get": {
+        "operationId": "listRotateProviders",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.",
+        "responses": {
+          "200": {
+            "description": "Rotation provider coverage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3131,6 +3158,24 @@
           "secret": {
             "type": "string",
             "description": "replacement credential for assisted rotation"
+          }
+        }
+      },
+      "RotateProvidersResponse": {
+        "type": "object",
+        "required": [
+          "zero_touch_hosts",
+          "assisted"
+        ],
+        "properties": {
+          "zero_touch_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assisted": {
+            "type": "boolean"
           }
         }
       }
