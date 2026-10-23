@@ -1,0 +1,115 @@
+---
+title: OIDC Workload Federation
+description: Authenticate agents and cloud functions to Veil using short-lived platform OIDC tokens — zero static secrets in environment variables.
+---
+
+# OIDC Workload Federation
+
+Long-lived static credentials in environment variables leak through logs, compromised dependencies, and prompt injection. With **OIDC Workload Federation**, your runtime (Vercel Functions, GitHub Actions, Fly.io machines, or a Better Auth / Clerk / WorkOS issuer) presents a short-lived signed OIDC token directly to Veil.
+
+Veil verifies the token against the issuer's JWKS and maps `(issuer, subject, audience, claims)` to an existing agent principal in your organization.
+
+## 1. Bind a Trust Policy
+
+### Vercel (`--preset vercel`)
+
+Vercel's recommended **Team** issuer mode signs tokens with `iss = https://oidc.vercel.com/<team>` and `aud = https://vercel.com/<team>`. Because team and project slugs can be renamed, you can also pin Vercel's immutable `owner_id` (`team_...`) and `project_id` (`prj_...`) claims:
+
+```bash
+# Exact environment binding + immutable team/project IDs
+veil agent bind web-agent \
+  --preset vercel \
+  --org acme \
+  --app acme-web \
+  --env production \
+  --claim owner_id=team_abc123 \
+  --claim project_id=prj_xyz789
+
+# Wildcard across preview + production environments on team issuer
+veil agent bind web-agent \
+  --preset vercel \
+  --org acme \
+  --app acme-web \
+  --env "*" \
+  --claim owner_id=team_abc123
+```
+
+### GitHub Actions (`--preset github-actions`)
+
+```bash
+# Exact ref
+veil agent bind ci-runner --preset github-actions --repo acme/api --ref refs/heads/main
+
+# Branch prefix wildcard (requires repo:<owner>/ scope)
+veil agent bind ci-runner --preset github-actions --repo acme/api --ref "refs/heads/release/*"
+```
+
+### Fly.io (`--preset fly`)
+
+```bash
+veil agent bind fly-worker --preset fly --org acme --app worker
+```
+
+### Better Auth, Clerk, WorkOS, or Custom OIDC Issuers
+
+Any HTTPS OIDC issuer publishing `/.well-known/openid-configuration` works out of the box:
+
+```bash
+# Dry-run OIDC discovery & JWKS check before binding
+veil agent verify-issuer --issuer https://auth.example.com
+
+# Bind with custom claim rules (compatible with @oidc/policy)
+veil agent bind support-bot \
+  --preset better-auth \
+  --issuer https://auth.example.com \
+  --subject "agent:support-*" \
+  --audience veil \
+  --claim tenant_id=org_live_123
+```
+
+## 2. Inspect and Unbind Policies
+
+```bash
+# List all OIDC trust policies bound to an agent
+veil agent workloads web-agent
+
+# Remove a binding
+veil agent unbind web-agent \
+  --issuer https://oidc.vercel.com/acme \
+  --subject "owner:acme:project:acme-web:environment:production"
+```
+
+You can also configure, verify, view, and unbind policies interactively in the Vault UI at `https://app.veil.nyc/agents`.
+
+## 3. Call Veil with Zero Static Env Vars (`createAmbientClient`)
+
+In TypeScript (`@vortex-api/veil`), `createAmbientClient` automatically resolves the runtime's ambient OIDC token on every request:
+
+1. `req.headers.get("x-vercel-oidc-token")` (when you pass the trusted platform `Request` in a Vercel Function)
+2. `VERCEL_OIDC_TOKEN_FILE` / `VERCEL_OIDC_TOKEN` (`vercel env pull`)
+3. GitHub Actions `ACTIONS_ID_TOKEN_REQUEST_URL` + `ACTIONS_ID_TOKEN_REQUEST_TOKEN` (live OIDC token exchange with `audience=veil`)
+4. `VEIL_OIDC_TOKEN_FILE` / `VEIL_OIDC_TOKEN`
+
+```ts
+import { createAmbientClient, useItem } from "@vortex-api/veil";
+
+export async function POST(req: Request) {
+  const client = createAmbientClient({ request: req });
+  const { data } = await useItem({
+    client,
+    body: {
+      item: "resend",
+      url: "https://api.resend.com/emails",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "agent@veil.nyc",
+        to: ["ops@veil.nyc"],
+        subject: "Shipped with zero static env keys",
+        text: "Injected at the Veil broker edge.",
+      }),
+    },
+  });
+  return Response.json({ status: data?.status });
+}
+```

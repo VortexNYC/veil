@@ -1,0 +1,66 @@
+---
+title: Rotation & Breach Containment
+description: Dual-phase broker-side key rotation, declarative /.well-known/key-rotation specs, management-endpoint blocking, and honey auto-revocation.
+---
+
+# Rotation & Breach Containment
+
+When Veil brokers every credential use, rotating an API key no longer requires updating environment variables across Vercel, GitHub Actions, Fly, and developer laptops. Item IDs and grants stay stable while Veil swaps the sealed secret underneath.
+
+## 1. Dual-Phase Broker-Side Rotation (`veil rotate`)
+
+Every zero-touch rotation runs a **4-step dual-phase state machine** inside the sealed envelope (`KeyID` and `PendingKeyID`):
+
+1. **Create**: Mints a replacement key at the provider (`veil:<item>:<YYYYMMDD>`), preserving least-privilege scopes where supported (e.g. SendGrid `/v3/scopes`).
+2. **Verify**: Calls a read-only provider endpoint with the new key. If verification fails, Veil immediately retires the newly created orphan key and aborts.
+3. **Commit**: Seals the new key and records the previous `KeyID` as `PendingKeyID` in a single database transaction with a `rotate` (`ActionItemRotated`) audit row.
+4. **Retire**: Retires the outgoing pending key from the prior rotation cycle—never revoking the live key before the local database transaction has committed.
+
+```bash
+# List zero-touch provider hosts and assisted capability
+veil rotate --providers
+
+# Rotate an item immediately
+veil rotate resend
+
+# Rotate using a separate admin credential item + enable 7-day auto-rotation
+veil rotate resend --management-item resend-admin --interval 168h
+
+# Assisted rotation for dashboard-only providers (Linear, Stripe, Firecrawl)
+veil rotate linear --secret-file ./new-linear-key.txt
+```
+
+## 2. Provider Management-Endpoint Blocking
+
+An agent granted `use` on `resend`, `sendgrid`, or `posthog` must be able to send emails or query events—**not** mint new API keys or delete existing ones.
+
+Every registered rotator declares `ManagementPaths()` (for example `/api-keys` on Resend, `/v3/api_keys` on SendGrid, `/api/personal_api_keys` on PostHog). `grant.Evaluate` normalizes percent-encoding and path traversal (`..`) and fails closed with `DecisionDeny` (`reason="management_endpoint"`) whenever an agent targets a provider's key-management surface.
+
+## 3. Declarative Provider Spec (`rotate.RegisterSpec`)
+
+Providers with standard REST key-management endpoints are registered via the declarative 3-operation `rotate.Spec` (`create`, `verify`, `retire`) pinned to their host (`internal/rotate/spec.go`):
+
+```json
+{
+  "host": "us.posthog.com",
+  "create_path": "/api/personal_api_keys/",
+  "token_field": "value",
+  "key_id_field": "id",
+  "verify_path": "/api/users/@me/",
+  "retire_path": "/api/personal_api_keys/{id}/",
+  "management_paths": ["/api/personal_api_keys"]
+}
+```
+
+All spec-driven requests refuse HTTP redirects (`3xx`) so a live credential is never forwarded off-host.
+
+## 4. Honey Tripwires (`veil:honey-revoke`)
+
+Plant decoy items in your vault to catch prompt-injected or compromised agents immediately:
+
+```bash
+# Create a decoy item that auto-revokes any agent that touches it
+veil item add prod-root-aws --honey --tag veil:honey-revoke
+```
+
+Touching any `--honey` item always denies and audits (`reason="honey"`). When tagged `veil:honey-revoke`, the broker also **revokes the offending agent principal (`agents.revoked_at`, `reason="honey_tripwire agent=<id>"`)**, immediately invalidating every active session and grant for that agent on all subsequent calls.

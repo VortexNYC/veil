@@ -7,6 +7,15 @@ description: What changed in Veil. Private alpha.
 
 Veil is in private alpha. Breaking changes land without notice until `v1`.
 
+## 2026-10-22 — OIDC Workload Federation, Outbound Anthropic WIF, Dual-Phase Rotation & Self-Host
+
+- **OIDC Workload Federation (`veil agent bind`)**: First-class presets for **Vercel** (`--preset vercel`), **GitHub Actions** (`--preset github-actions`), **Fly.io** (`--preset fly`), **Better Auth**, **Clerk**, **WorkOS**, and custom HTTPS OIDC issuers. Supports subject-prefix wildcards, custom claim rules (`--claim owner_id=team_...`), `veil agent verify-issuer` (`POST /v1/workloads/verify-issuer`), `veil agent workloads` / `veil agent unbind`, and DB-level `org_id` isolation.
+- **Zero-Env Ambient OIDC in `@vortex-api/veil`**: `createAmbientClient({ request })` and `ambientOidcToken` resolve `x-vercel-oidc-token`, `VERCEL_OIDC_TOKEN_FILE`, `VERCEL_OIDC_TOKEN`, GitHub Actions `ACTIONS_ID_TOKEN_REQUEST_URL`, and `VEIL_OIDC_TOKEN_FILE` / `VEIL_OIDC_TOKEN` automatically.
+- **Outbound RFC 7523 WIF (`Anthropic`)**: `veil item add --federation-rule-id fdrl_...` and `POST /v1/items` (`wif` object) mint short-lived assertion JWTs from `https://id.veil.nyc` and exchange them for ephemeral upstream provider tokens (`sk-ant-oat01-...`) with in-memory `singleflight` caching (`material.TokenCache`), so Veil never stores a static provider API key.
+- **Dual-Phase Broker-Side Rotation (`veil rotate`)**: Zero-touch rotation for `Resend`, `SendGrid` (preserving live key scopes), `PostHog` (`us`, `eu`, `app`), and declarative `/.well-known/key-rotation` (`SpecRotator`) specs, plus assisted rotation (`--secret-file`), separate `--management-item`, scheduled `--interval` rotation, `GET /v1/rotate/providers`, and `veil item verify` (`POST /v1/items/{name}/verify`).
+- **Provider Management-Endpoint Blocking & Honey Auto-Revoke**: `grant.Evaluate` blocks agent fetches to registered provider key-management endpoints (`reason="management_endpoint"`). Honey items tagged `veil:honey-revoke` revoke the offending agent principal on first touch (`reason="honey_tripwire agent=<id>"`), invalidating all of its sessions and grants.
+- **Single-Binary Self-Host Mode (`veil mcp --self-host`)**: Run Veil on SQLite or Postgres without Ory Hydra/Kratos/Keto (`VEIL_SELF_HOST=1`).
+
 ## 2026-09-24 — Customer lifecycle, DR proof, monitoring
 
 - **Org lifecycle is live.** Owner-gated `DELETE /v1/members/{id}`,
