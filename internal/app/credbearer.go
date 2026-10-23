@@ -47,7 +47,7 @@ func splitCredentialBearer(raw string) (clientID, secret string, ok bool) {
 // token endpoint. The binding's recorded audience is what the minted token
 // carries. Minted tokens are cached by clientID+audience+secret hash via
 // oauth2.ReuseTokenSource, so a hot MCP loop costs zero extra Hydra calls.
-func (a *App) exchangeAgentCredential(ctx context.Context, clientID, secret string) (string, error) {
+func (a *App) exchangeAgentCredential(_ context.Context, clientID, secret string) (string, error) {
 	issuer := strings.TrimSpace(a.hydraIssuer)
 	if issuer == "" {
 		return "", fmt.Errorf("app: unauthorized")

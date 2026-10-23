@@ -37,3 +37,42 @@ func TestApplyMCPStdioDefaultsResolvesExplicitAgentOnly(t *testing.T) {
 		t.Fatalf("token_file=%q", got)
 	}
 }
+
+func TestMCPHTTPBlockEmitsCredentialBearer(t *testing.T) {
+	tmpHome := t.TempDir()
+	credDir := filepath.Join(tmpHome, ".config", "vortex", "veil")
+	if err := os.MkdirAll(credDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(credDir, "grok.hydra"), []byte(`{"secret":"sekrit1","audience":"veil"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("VEIL_ORIGIN", "https://veil.nyc")
+	t.Setenv("VEIL_AGENT", "grok")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
+
+	cfg, err := mcpHTTPBlock("https://veil.nyc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, _ := cfg["mcpServers"].(map[string]any)
+	veil, _ := servers["veil"].(map[string]any)
+	if veil["type"] != "http" || veil["url"] != "https://veil.nyc/mcp" {
+		t.Fatalf("%+v", veil)
+	}
+	headers, _ := veil["headers"].(map[string]string)
+	if got := headers["Authorization"]; got != "Bearer agent-grok:sekrit1" {
+		t.Fatalf("Authorization=%q", got)
+	}
+}
+
+func TestMCPHTTPBlockRequiresAgent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("VEIL_ORIGIN", "https://veil.nyc")
+	t.Setenv("VEIL_AGENT", "")
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
+	if _, err := mcpHTTPBlock("https://veil.nyc"); err == nil {
+		t.Fatal("expected error without VEIL_AGENT")
+	}
+}
