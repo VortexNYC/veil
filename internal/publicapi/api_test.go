@@ -2197,4 +2197,17 @@ func TestBindWorkloadAPI(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("assisted rotate want 200, got %d: %s", code, raw)
 	}
+
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/rotate/providers", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("rotate providers want 200, got %d: %s", code, raw)
+	}
+	var prov RotateProvidersResponse
+	if err := json.Unmarshal(raw, &prov); err != nil || !prov.Assisted || len(prov.ZeroTouchHosts) == 0 {
+		t.Fatalf("unexpected rotate providers: %+v %v", prov, err)
+	}
+	code, _ = doJSON(t, srv, http.MethodGet, "/v1/rotate/providers", "agent", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("agent rotate providers want 403, got %d", code)
+	}
 }

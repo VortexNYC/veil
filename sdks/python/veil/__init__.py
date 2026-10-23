@@ -73,6 +73,7 @@ __all__ = [
     "RequestsResponse",
     "RotateItem200Response",
     "RotateItemRequest",
+    "RotateProvidersResponse",
     "Session",
     "SessionsResponse",
     "UpdateItemRequest",
@@ -147,6 +148,7 @@ from veil.models.remove_member200_response import RemoveMember200Response as Rem
 from veil.models.requests_response import RequestsResponse as RequestsResponse
 from veil.models.rotate_item200_response import RotateItem200Response as RotateItem200Response
 from veil.models.rotate_item_request import RotateItemRequest as RotateItemRequest
+from veil.models.rotate_providers_response import RotateProvidersResponse as RotateProvidersResponse
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest

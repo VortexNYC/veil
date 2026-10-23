@@ -54,6 +54,7 @@ from veil.models.remove_member200_response import RemoveMember200Response
 from veil.models.requests_response import RequestsResponse
 from veil.models.rotate_item200_response import RotateItem200Response
 from veil.models.rotate_item_request import RotateItemRequest
+from veil.models.rotate_providers_response import RotateProvidersResponse
 from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest

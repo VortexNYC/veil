@@ -354,6 +354,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /v1/items/{name}", s.updateItem)
 	mux.HandleFunc("POST /v1/items/{name}/archive", s.archiveItem)
 	mux.HandleFunc("POST /v1/items/{name}/rotate", s.rotateItem)
+	mux.HandleFunc("GET /v1/rotate/providers", s.listRotateProviders)
 	mux.HandleFunc("DELETE /v1/items/{name}", s.deleteItem)
 	mux.HandleFunc("GET /v1/grants", s.listGrants)
 	mux.HandleFunc("POST /v1/grants", s.createGrant)
@@ -590,6 +591,21 @@ func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"item": item.Name, "rotated": true})
+}
+
+type RotateProvidersResponse struct {
+	ZeroTouchHosts []string `json:"zero_touch_hosts"`
+	Assisted       bool     `json:"assisted"`
+}
+
+func (s *Server) listRotateProviders(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireOwner(w, r); !ok {
+		return
+	}
+	writeJSON(w, RotateProvidersResponse{
+		ZeroTouchHosts: rotate.Coverage(),
+		Assisted:       true,
+	})
 }
 
 func (s *Server) deleteItem(w http.ResponseWriter, r *http.Request) {
