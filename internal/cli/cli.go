@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -2002,7 +2003,7 @@ func proxyCmd(home *string) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), e)
 			}
 			ctx := cmd.Context()
-			ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+			ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			<-ctx.Done()
 			return nil
@@ -2198,7 +2199,7 @@ func serveCmd(home *string) *cobra.Command {
 			}
 			defer s.Close()
 			fmt.Fprintln(cmd.OutOrStdout(), s.Path)
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			<-ctx.Done()
 			return nil
@@ -2438,7 +2439,7 @@ func sshCmd(home *string) *cobra.Command {
 			}
 			defer s.Close()
 			fmt.Fprintf(cmd.OutOrStdout(), "SSH_AUTH_SOCK=%s\n", s.Path)
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			<-ctx.Done()
 			return nil
@@ -2490,7 +2491,7 @@ func mcpCmd(home *string) *cobra.Command {
 				MaxHeaderBytes:    1 << 20,
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), publicURL)
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			go func() {
 				<-ctx.Done()
@@ -2522,7 +2523,7 @@ func mcpCmd(home *string) *cobra.Command {
 		Use:   "stdio",
 		Short: "Laptop MCP for Cursor. Same tools as origin. Token from file, never argv.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			return runOriginMCPStdio(ctx)
 		},
