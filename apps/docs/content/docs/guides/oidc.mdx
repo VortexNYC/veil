@@ -48,6 +48,35 @@ veil agent bind ci-runner --preset github-actions --repo acme/api --ref "refs/he
 veil agent bind fly-worker --preset fly --org acme --app worker
 ```
 
+### GitLab CI, Google Cloud, Bitbucket, AWS EKS & Azure Entra ID
+
+Veil supports all 8 provider presets from [`ui.shadcn.com/oidc`](https://ui.shadcn.com/oidc):
+
+```bash
+# GitLab CI (--preset gitlab)
+veil agent bind gitlab-runner --preset gitlab --repo acme/platform/web --ref main
+
+# Google Cloud Service Account (--preset google)
+veil agent bind gcp-bot --preset google --subject 117000111222 --claim email=bot@acme.iam.gserviceaccount.com
+
+# Bitbucket Pipelines (--preset bitbucket)
+veil agent bind bb-runner --preset bitbucket --org acme --subject "{repo-uuid}"
+
+# AWS EKS Service Account (--preset aws-eks)
+veil agent bind eks-bot --preset aws-eks --issuer https://oidc.eks.us-east-1.amazonaws.com/id/EX --org default --app deploy-bot
+
+# Azure Entra ID Workload (--preset azure)
+veil agent bind entra-bot --preset azure --org aaaabbbb-0000-cccc-1111-dddd2222eeee --subject "*" --claim oid=aaaaaaaa-0000-1111-2222-bbbbbbbbbbbb
+```
+
+### Install the Veil Provider in Your Own `shadcn` OIDC UI App
+
+If you are building a service with [`ui.shadcn.com/oidc`](https://ui.shadcn.com/oidc) and want your users to trust AI agents authenticated by Veil (`https://id.veil.nyc`), install the Veil provider directly from Veil's `shadcn` registry endpoint:
+
+```bash
+npx shadcn@latest add https://veil.nyc/r/provider-veil.json
+```
+
 ### Better Auth, Clerk, WorkOS, or Custom OIDC Issuers
 
 Any HTTPS OIDC issuer publishing `/.well-known/openid-configuration` works out of the box:

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "provider-veil",
+  "title": "Veil Agent Provider",
+  "description": "A self-contained form component that emits an OidcPolicy for a Veil-authenticated AI agent or workload (https://id.veil.nyc): agent principal ID, audience, and optional additional claims.",
+  "registryDependencies": [
+    "https://ui.shadcn.com/oidc/r/policy.json",
+    "https://ui.shadcn.com/oidc/r/claims.json",
+    "button",
+    "field",
+    "input"
+  ],
+  "files": [
+    {
+      "path": "registry/oidc/components/provider-veil.tsx",
+      "content": "\"use client\"\n\nimport * as React from \"react\"\n\nimport { cn } from \"@/lib/utils\"\nimport { Button } from \"@/components/ui/button\"\nimport { Field, FieldDescription, FieldLabel } from \"@/components/ui/field\"\nimport { Input } from \"@/components/ui/input\"\nimport {\n  ClaimChip,\n  ClaimsList,\n  claimRowsFromPolicy,\n  claimsListValid,\n  mergeClaimRows,\n  type ClaimRow,\n} from \"@/components/oidc/claims\"\nimport type { OidcPolicy } from \"@/lib/oidc/policy\"\n\nfunction VeilIcon({ ...props }: React.ComponentProps<\"svg\">) {\n  return (\n    <svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"2\" {...props}>\n      <rect x=\"4\" y=\"10\" width=\"16\" height=\"10\" rx=\"2\" />\n      <path d=\"M8 10V7a4 4 0 0 1 8 0v3\" />\n    </svg>\n  )\n}\n\ntype Fields = {\n  agentId: string\n  audience: string\n  extraClaims: ClaimRow[]\n}\n\nconst DEFAULTS: Fields = {\n  agentId: \"\",\n  audience: \"veil\",\n  extraClaims: [],\n}\n\nconst FIRST_CLASS_CLAIMS = [\"aud\", \"sub\"]\n\nconst ISSUER = \"https://id.veil.nyc\"\n\nfunction compile(fields: Fields): OidcPolicy {\n  const claims: Record<string, string[]> = {}\n  if (fields.audience) {\n    claims.aud = [fields.audience]\n  }\n  if (fields.agentId) {\n    const raw = fields.agentId.trim()\n    claims.sub = [raw.startsWith(\"agent-\") ? raw : `agent-${raw}`]\n  }\n  mergeClaimRows(claims, fields.extraClaims, FIRST_CLASS_CLAIMS)\n  return { issuer: ISSUER, claims }\n}\n\nfunction parse(policy: OidcPolicy): Fields | null {\n  if (policy.issuer !== ISSUER) {\n    return null\n  }\n  if (\n    FIRST_CLASS_CLAIMS.some((name) => (policy.claims[name]?.length ?? 0) > 1)\n  ) {\n    return null\n  }\n  const extraClaims = claimRowsFromPolicy(policy.claims, FIRST_CLASS_CLAIMS)\n  if (extraClaims === null) {\n    return null\n  }\n  const rawSub = policy.claims.sub?.[0] ?? \"\"\n  return {\n    agentId: rawSub.startsWith(\"agent-\") ? rawSub.slice(\"agent-\".length) : rawSub,\n    audience: policy.claims.aud?.[0] ?? \"\",\n    extraClaims,\n  }\n}\n\nfunction matchesVeilPolicy(policy: OidcPolicy) {\n  return parse(policy) !== null\n}\n\nfunction VeilPolicyForm({\n  defaultValue,\n  onChange,\n  onSubmit,\n  className,\n}: {\n  defaultValue?: OidcPolicy\n  onChange?: (policy: OidcPolicy) => void\n  onSubmit: (policy: OidcPolicy) => void\n  className?: string\n}) {\n  const [fields, setFields] = React.useState(() =>\n    defaultValue ? (parse(defaultValue) ?? DEFAULTS) : DEFAULTS\n  )\n\n  const apply = (next: Fields) => {\n    setFields(next)\n    const policy = compile(next)\n    onChange?.(\n      defaultValue?.label ? { ...policy, label: defaultValue.label } : policy\n    )\n  }\n\n  const handleSubmit = (event: React.FormEvent) => {\n    event.preventDefault()\n    if (\n      !(\n        Boolean(fields.agentId && fields.audience) &&\n        claimsListValid(fields.extraClaims, FIRST_CLASS_CLAIMS)\n      )\n    ) {\n      return\n    }\n    const policy = compile(fields)\n    onSubmit(\n      defaultValue?.label ? { ...policy, label: defaultValue.label } : policy\n    )\n  }\n\n  return (\n    <form onSubmit={handleSubmit} className={cn(\"space-y-4\", className)}>\n      <Field>\n        <FieldLabel>\n          Issuer <ClaimChip>iss</ClaimChip>\n        </FieldLabel>\n        <Input value={ISSUER} readOnly />\n        <FieldDescription>Fixed for Veil agent identity tokens.</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel>\n          Agent ID <ClaimChip>sub</ClaimChip>\n        </FieldLabel>\n        <Input\n          value={fields.agentId}\n          placeholder=\"cursor\"\n          onChange={(event) =>\n            apply({ ...fields, agentId: event.target.value.trim() })\n          }\n        />\n        <FieldDescription>Compiled to subject agent-&lt;name&gt;.</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel>\n          Audience <ClaimChip>aud</ClaimChip>\n        </FieldLabel>\n        <Input\n          value={fields.audience}\n          placeholder=\"veil\"\n          onChange={(event) =>\n            apply({ ...fields, audience: event.target.value.trim() })\n          }\n        />\n      </Field>\n      <ClaimsList\n        value={fields.extraClaims}\n        onChange={(rows) => apply({ ...fields, extraClaims: rows })}\n        reserved={FIRST_CLASS_CLAIMS}\n      />\n      <Button type=\"submit\">Save</Button>\n    </form>\n  )\n}\n\nexport { VeilIcon, VeilPolicyForm, matchesVeilPolicy }\n",
+      "type": "registry:component",
+      "target": "@components/oidc/provider-veil.tsx"
+    }
+  ],
+  "meta": {
+    "tagline": "Trust a Veil-authenticated AI agent"
+  },
+  "categories": ["auth", "forms"],
+  "type": "registry:component"
+}
