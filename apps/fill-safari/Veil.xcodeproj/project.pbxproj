@@ -369,7 +369,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin\"\ncd \"$SRCROOT/../..\" && go build -o \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/MacOS/veil-bin\" ./cmd/veil\ncd \"$SRCROOT/../vault\" 2>/dev/null || cd \"$SRCROOT/../../apps/vault\"\npnpm build \"$PNPM_FLAGS\" >/dev/null\nrm -rf \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault\"\ncp -R dist \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault\"\nrm -f \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault/wrangler.json\"\n";
+			shellScript = "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin\"\ncd \"$SRCROOT/../..\" && go build -o \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/MacOS/veil-bin\" ./cmd/veil\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --identifier nyc.veil.host \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/MacOS/veil-bin\"; fi\ncd \"$SRCROOT/../vault\" 2>/dev/null || cd \"$SRCROOT/../../apps/vault\"\npnpm build \"$PNPM_FLAGS\" >/dev/null\nrm -rf \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault\"\ncp -R dist \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault\"\nrm -f \"$BUILT_PRODUCTS_DIR/$WRAPPER_NAME/Contents/Resources/vault/wrangler.json\"\n";
 		};
 
 /* Begin PBXSourcesBuildPhase section */

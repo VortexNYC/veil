@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -381,16 +380,12 @@ func originItemAdd(cmd *cobra.Command, name, uri string, tags []string, kind pro
 	return encode(cmd, item)
 }
 
-func originItemImport(cmd *cobra.Command, path string) error {
+func originItemImportBytes(cmd *cobra.Command, name string, raw []byte) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	q := url.QueryEscape(filepath.Base(path))
+	q := url.QueryEscape(name)
 	body, err := originDoFile(cmd.Context(), "/v1/import?filename="+q, tok, raw)
 	if err != nil {
 		return err

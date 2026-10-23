@@ -139,8 +139,13 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "token":
 		// Post-unlock the app wants the human's ID token to inject into the
 		// vault webview — same bearer the SPA would mint itself. Local
-		// transport only; never an agent surface.
+		// transport only; never an agent surface. If the cached JWT expired,
+		// remint via h.Refresh so opening Veil.app never lands on an expired
+		// session.
 		tok, err := h.bearer()
+		if err != nil && h.Refresh != nil {
+			tok, err = h.Refresh()
+		}
 		out := struct {
 			Token string `json:"token,omitempty"`
 			Error string `json:"error,omitempty"`
@@ -991,6 +996,7 @@ func (h *Host) jsonPasskeyCreate(origin string, publicKey json.RawMessage, extra
 		return jsonPasskeyErr("canceled")
 	}
 	out := jsonPasskeyFromHost(h.passkeysRegister(origin, publicKey, extra))
+	h.invalidateIndex()
 	h.replicaSyncSoon()
 	return out
 }
@@ -1000,7 +1006,26 @@ func (h *Host) jsonPasskeyGet(origin string, publicKey json.RawMessage, peer *Pe
 	if origin == "" || len(publicKey) == 0 {
 		return jsonPasskeyErr("failed")
 	}
-	if err := h.confirm("Veil wants to use a passkey", grant.Registrable(origin), true, peer); err != nil {
+	var hit *jsonMatchEntry
+	for _, e := range h.jsonMatch(origin) {
+		if e.Kind == "passkey" {
+			cp := e
+			hit = &cp
+			break
+		}
+	}
+	if hit == nil {
+		fillDebug("passkeyGet no passkey item for " + origin)
+		return jsonPasskeyErr("failed")
+	}
+	scope := grant.Registrable(origin)
+	gate := func() error {
+		if item, ok := h.indexItem(hit.UUID); ok && h.remoteGate(item) {
+			return h.remoteApprove(item, scope, peer)
+		}
+		return h.confirm("Veil wants to use a passkey", scope, true, peer)
+	}
+	if err := gate(); err != nil {
 		return jsonPasskeyErr("canceled")
 	}
 	return jsonPasskeyFromHost(h.passkeysGet(origin, publicKey))

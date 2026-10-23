@@ -512,8 +512,16 @@ func TestJSONPasskeyGetConfirmDeniedDoesNotCallOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = a.Close() })
+	if _, err := a.PutItem(app.ItemOpts{
+		Name:  "gh-passkey",
+		Kind:  protocol.ItemPasskey,
+		URI:   "https://github.com",
+		Token: []byte("placeholder"),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	srv := originAPI(t, a)
-	var gets atomic.Int32
+	var gets, confirms atomic.Int32
 	inner := srv.Config.Handler
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/v1/fill/passkeys/get" {
@@ -522,7 +530,29 @@ func TestJSONPasskeyGetConfirmDeniedDoesNotCallOrigin(t *testing.T) {
 		inner.ServeHTTP(w, r)
 	})
 	h := NewOrigin(t.TempDir(), srv.URL, "human")
-	h.Confirm = func(string) error { return errors.New("no") }
+	h.Confirm = func(string) error {
+		confirms.Add(1)
+		return errors.New("no")
+	}
+	// An origin with no matching passkey item must fail without popping Touch ID.
+	noMatch := jsonHandle(t, h, map[string]any{
+		"action": "passkeyGet",
+		"origin": "https://unrelated.example.com",
+		"publicKey": map[string]any{
+			"challenge": "Z2V0Y2hhbGxlbmdlMTIz",
+			"rpId":      "unrelated.example.com",
+		},
+	})
+	var noMatchFail struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(noMatch, &noMatchFail); err != nil || noMatchFail.Error != "failed" {
+		t.Fatalf("no-match passkeyGet want failed, got %s", noMatch)
+	}
+	if confirms.Load() != 0 {
+		t.Fatalf("no-match passkeyGet popped confirm %d times", confirms.Load())
+	}
+
 	got := jsonHandle(t, h, map[string]any{
 		"action": "passkeyGet",
 		"origin": "https://github.com",
@@ -536,6 +566,9 @@ func TestJSONPasskeyGetConfirmDeniedDoesNotCallOrigin(t *testing.T) {
 	}
 	if err := json.Unmarshal(got, &fail); err != nil || fail.Error != "canceled" {
 		t.Fatalf("denied get %s", got)
+	}
+	if confirms.Load() != 1 {
+		t.Fatalf("expected 1 confirm on matching passkey, got %d", confirms.Load())
 	}
 	if gets.Load() != 0 {
 		t.Fatalf("denied get called origin %d", gets.Load())

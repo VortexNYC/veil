@@ -1,0 +1,45 @@
+---
+title: Passkeys, TOTP & 1Password Migration
+description: How Veil handles WebAuthn passkeys (local Touch ID or remote approval), TOTP authenticators, and one-command migration from 1Password CLI and Google Authenticator.
+---
+
+# Passkeys, TOTP & 1Password Migration
+
+## 1. How Passkeys Work in Veil (`passkeyCreate` / `passkeyGet`)
+
+Passkeys (`WebAuthn` ECDSA P-256 credentials) require **User Presence / User Verification (`UV`)** on every sign-in. Unlike password managers that omit passkey support for agents, Veil seals the passkey's P-256 private key inside the vault (`material.PackPasskey`) and signs WebAuthn assertions inside the host/origin after human verification:
+
+1. **Pre-Match Before Prompting**: When a page calls `navigator.credentials.get`, Veil first checks whether your vault has a `passkey` item matching the site's origin (`h.jsonMatch(origin)`). If no passkey matches that site, Veil returns immediately without popping a Touch ID prompt.
+2. **Local Touch ID or Remote Approval (`remote_approve`)**:
+   - **On your Mac / iOS device**: Touch ID or Face ID gates the assertion (`h.confirm`).
+   - **For remote or browser-agent sessions (`remote_approve: "tagged" | "all"`)**: Veil files a fill approval request (`POST /v1/fill/request`), notifies your device, waits for your approval, and then signs the WebAuthn `clientDataHash` / challenge inside Veil (`POST /v1/fill/passkeys/get`).
+3. **Private Key Never Leaves the Vault**: Only the signed WebAuthn assertion response (`authenticatorData`, `clientDataJSON`, `signature`, `userHandle`) is returned to the browser—never the private key.
+
+## 2. Migrating from 1Password CLI (`--from-op`) & `.1pux`
+
+You can import your existing 1Password vault either from an exported `.1pux` file or directly from your signed-in local `op` CLI:
+
+```bash
+# Import directly from the local signed-in 1Password CLI (op)
+veil item import --from-op
+
+# Or scope to a specific 1Password vault
+veil item import --from-op --vault Private
+
+# Or import a 1Password .1pux export, Bitwarden CSV/JSON, Apple Passwords CSV, or KeePass XML
+veil item import ./export.1pux
+```
+
+`veil item import --from-op` streams your logins, passwords, API credentials, TOTP seeds (`otpauth://`), and credit cards in memory and deduplicates against your existing Veil vault.
+
+## 3. Importing TOTP Codes from Google Authenticator (`otpauth://`)
+
+If your 2FA codes live in an external authenticator app, you can attach them to existing items or bulk-import `otpauth://totp/...` URIs:
+
+```bash
+# Bulk-import a file of newline-delimited otpauth://totp/... URIs
+veil item import ./authenticator-uris.txt
+
+# Or open an otpauth:// link directly in Veil.app on macOS
+open "otpauth://totp/GitHub:octocat?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"
+```

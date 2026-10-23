@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
 	"github.com/VortexNYC/veil/internal/app"
+	"github.com/VortexNYC/veil/internal/dpop"
 	"github.com/VortexNYC/veil/internal/otelsetup"
 	"github.com/VortexNYC/veil/internal/publicapi"
 )
@@ -69,7 +70,10 @@ func Handler(a *app.App, publicURL string) http.Handler {
 	if publicURL != "" {
 		opts.ResourceMetadataURL = wellKnownURL(publicURL)
 	}
-	return auth.RequireBearerToken(func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+	return auth.RequireBearerToken(func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
+		if err := dpop.VerifyRequest(req, token); err != nil {
+			return nil, fmt.Errorf("%w", auth.ErrInvalidToken)
+		}
 		agent, err := a.AgentFromOIDC(ctx, token)
 		if err != nil {
 			return nil, fmt.Errorf("%w", auth.ErrInvalidToken)
