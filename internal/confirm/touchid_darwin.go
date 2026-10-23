@@ -66,6 +66,10 @@ static pid_t veil_ppid(pid_t pid) {
 
 static BOOL veil_skip_exe(NSString *exe) {
 	return [exe isEqualToString:@"veil"] ||
+		[exe isEqualToString:@"veil-bin"] ||
+		[exe isEqualToString:@"Veil"] ||
+		[exe isEqualToString:@"Veil Extension"] ||
+		[exe isEqualToString:@"Veil AutoFill"] ||
 		[exe isEqualToString:@"native-host"] ||
 		[exe isEqualToString:@"zsh"] ||
 		[exe isEqualToString:@"bash"] ||
@@ -81,7 +85,8 @@ static NSRunningApplication *veil_client_app(void) {
 	for (int i = 0; i < 12 && pid > 1; i++) {
 		NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
 		NSString *exe = app.executableURL.lastPathComponent ?: @"";
-		if (app.bundleIdentifier.length > 0 && !veil_skip_exe(exe)) {
+		NSString *bid = app.bundleIdentifier ?: @"";
+		if (bid.length > 0 && ![bid hasPrefix:@"nyc.veil."] && !veil_skip_exe(exe)) {
 			return app;
 		}
 		pid = veil_ppid(pid);
@@ -242,289 +247,47 @@ static NSImage *veil_veil_mark(void) {
 	return img;
 }
 
-@interface VeilAccessSheet : NSObject <NSWindowDelegate>
-@property(nonatomic) int result;
-@property(nonatomic) int finished;
-@property(nonatomic) int evaluating;
-@property(nonatomic, copy) NSString *why;
-@property(nonatomic, strong) NSWindow *win;
-@property(nonatomic, strong) LAContext *lac;
-@end
-
-@implementation VeilAccessSheet
-- (void)finish:(int)res {
-	if (self.finished) {
-		return;
-	}
-	self.finished = 1;
-	self.result = res;
-	[self.win orderOut:nil];
-	[NSApp stopModal];
-	// stopModal only sets a flag — post a synthetic event so the modal
-	// loop wakes instead of parking in mach_msg forever.
-	NSEvent *wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
-		location:NSZeroPoint modifierFlags:0 timestamp:0
-		windowNumber:0 context:nil subtype:0 data1:0 data2:0];
-	[NSApp postEvent:wake atStart:YES];
-	veil_confirm_log([NSString stringWithFormat:@"sheet finish=%d", res]);
-}
-- (void)finishEval:(NSNumber *)ok {
-	self.evaluating = 0;
-	[self finish:ok.intValue];
-}
-- (void)scan {
-	if (self.finished || self.evaluating) {
-		return;
-	}
-	// VEIL_CONFIRM_PREVIEW=1 parks the sheet without arming the scan —
-	// a visual-iteration hook for checking the chrome without a finger
-	// and without the LA card stacked over it.
-	if (getenv("VEIL_CONFIRM_PREVIEW")) {
-		return;
-	}
-	self.evaluating = 1;
-	LAContext *ctx = self.lac;
-	NSString *why = self.why;
-	veil_confirm_log(@"scan: dispatching eval");
-	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-		int ok = veil_touchid_ctx(ctx, why.UTF8String);
-		[self performSelectorOnMainThread:@selector(finishEval:)
-			withObject:@(ok)
-			waitUntilDone:NO
-			modes:@[NSModalPanelRunLoopMode, NSDefaultRunLoopMode]];
-	});
-}
-- (void)authorize:(id)sender {
-	(void)sender;
-	[self scan];
-}
-- (void)cancel:(id)sender {
-	(void)sender;
-	[self.lac invalidate];
-	[self finish:0];
-}
-- (BOOL)windowShouldClose:(NSWindow *)sender {
-	(void)sender;
-	[self.lac invalidate];
-	[self finish:0];
-	return YES;
-}
-@end
-
-static NSImageView *veil_round_icon(NSImage *img, CGFloat size, CGFloat radius) {
-	NSImageView *v = [[NSImageView alloc] initWithFrame:NSMakeRect(0, 0, size, size)];
-	v.image = img;
-	v.imageScaling = NSImageScaleProportionallyUpOrDown;
-	v.wantsLayer = YES;
-	v.layer.cornerRadius = radius;
-	v.layer.masksToBounds = YES;
-	[v.widthAnchor constraintEqualToConstant:size].active = YES;
-	[v.heightAnchor constraintEqualToConstant:size].active = YES;
-	return v;
-}
-
-// The access sheet is the same window every time — only the asking-app
-// icon, the verb line, and the account change. Built once at warm time;
-// per request the three request-specific bits swap.
-static NSWindow *veil_sheet_win = nil;
-static NSImageView *veil_sheet_left = nil;
-static NSTextField *veil_sheet_allow = nil;
-static NSTextField *veil_sheet_acct = nil;
-static NSButton *veil_sheet_cancel = nil;
-static NSButton *veil_sheet_auth = nil;
-
-static void veil_sheet_once(void) {
-	if (veil_sheet_win) {
-		return;
-	}
-	// A borderless card — titlebar chrome hidden, the visual effect view
-	// is the edge. Traffic lights stay out: Cancel is the only close.
-	NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 392, 292)
-		styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-			NSWindowStyleMaskFullSizeContentView | NSWindowStyleMaskNonactivatingPanel)
-		backing:NSBackingStoreBuffered
-		defer:NO];
-	win.titleVisibility = NSWindowTitleHidden;
-	win.titlebarAppearsTransparent = YES;
-	[win standardWindowButton:NSWindowCloseButton].hidden = YES;
-	[win standardWindowButton:NSWindowMiniaturizeButton].hidden = YES;
-	[win standardWindowButton:NSWindowZoomButton].hidden = YES;
-	win.hasShadow = YES;
-	win.level = NSModalPanelWindowLevel;
-	win.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
-		NSWindowCollectionBehaviorStationary |
-		NSWindowCollectionBehaviorFullScreenAuxiliary;
-	win.releasedWhenClosed = NO;
-	veil_sheet_win = win;
-
-	NSVisualEffectView *fx = [[NSVisualEffectView alloc] initWithFrame:NSMakeRect(0, 0, 392, 292)];
-	fx.material = NSVisualEffectMaterialUnderWindowBackground;
-	fx.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-	fx.state = NSVisualEffectStateActive;
-	fx.wantsLayer = YES;
-	fx.layer.cornerRadius = 14;
-	fx.layer.masksToBounds = YES;
-	fx.translatesAutoresizingMaskIntoConstraints = NO;
-	[win.contentView addSubview:fx];
-	[NSLayoutConstraint activateConstraints:@[
-		[fx.leadingAnchor constraintEqualToAnchor:win.contentView.leadingAnchor],
-		[fx.trailingAnchor constraintEqualToAnchor:win.contentView.trailingAnchor],
-		[fx.topAnchor constraintEqualToAnchor:win.contentView.topAnchor],
-		[fx.bottomAnchor constraintEqualToAnchor:win.contentView.bottomAnchor],
-	]];
-
-	// Requester icon → permission arrow → Veil mark.
-	veil_sheet_left = veil_round_icon([NSImage imageWithSystemSymbolName:@"app.fill" accessibilityDescription:nil], 60, 13);
-	NSImageView *arrow = [[NSImageView alloc] init];
-	arrow.image = [[NSImage imageWithSystemSymbolName:@"arrow.right" accessibilityDescription:nil]
-		imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:16 weight:NSFontWeightSemibold]];
-	arrow.contentTintColor = NSColor.tertiaryLabelColor;
-	[arrow.widthAnchor constraintEqualToConstant:18].active = YES;
-	NSImageView *mark = veil_round_icon(veil_veil_mark(), 60, 13);
-	NSStackView *icons = [NSStackView stackViewWithViews:@[veil_sheet_left, arrow, mark]];
-	icons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-	icons.alignment = NSLayoutAttributeCenterY;
-	icons.spacing = 14;
-
-	veil_sheet_allow = [NSTextField labelWithString:@""];
-	veil_sheet_allow.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
-	veil_sheet_allow.alignment = NSTextAlignmentCenter;
-	veil_sheet_allow.lineBreakMode = NSLineBreakByWordWrapping;
-	veil_sheet_allow.maximumNumberOfLines = 2;
-
-	// Account pill — the identity the secret comes out under.
-	NSImageView *acctIcon = veil_round_icon(veil_veil_mark(), 22, 5);
-	veil_sheet_acct = [NSTextField labelWithString:@""];
-	veil_sheet_acct.font = [NSFont systemFontOfSize:12.5 weight:NSFontWeightMedium];
-	NSStackView *acctRow = [NSStackView stackViewWithViews:@[acctIcon, veil_sheet_acct]];
-	acctRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-	acctRow.alignment = NSLayoutAttributeCenterY;
-	acctRow.spacing = 8;
-	acctRow.edgeInsets = NSEdgeInsetsMake(7, 12, 7, 12);
-	acctRow.wantsLayer = YES;
-	acctRow.layer.cornerRadius = 9;
-	acctRow.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
-
-	// Touch ID hint — the sensor is armed on show; the button is the
-	// explicit affordance and re-arms if a scan was cancelled.
-	NSImageView *finger = [[NSImageView alloc] init];
-	finger.image = [[NSImage imageWithSystemSymbolName:@"touchid" accessibilityDescription:@"Touch ID"]
-		imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:15 weight:NSFontWeightRegular]];
-	NSTextField *hint = [NSTextField labelWithString:@"Touch the sensor to authorize"];
-	hint.textColor = NSColor.secondaryLabelColor;
-	hint.font = [NSFont systemFontOfSize:11.5 weight:NSFontWeightRegular];
-	NSStackView *hintRow = [NSStackView stackViewWithViews:@[finger, hint]];
-	hintRow.spacing = 6;
-	hintRow.alignment = NSLayoutAttributeCenterY;
-
-	veil_sheet_cancel = [NSButton buttonWithTitle:@"Cancel" target:nil action:@selector(cancel:)];
-	veil_sheet_cancel.keyEquivalent = @"\e";
-	veil_sheet_cancel.bezelStyle = NSBezelStylePush;
-	veil_sheet_auth = [NSButton buttonWithTitle:@"Authorize with Touch ID" target:nil action:@selector(authorize:)];
-	veil_sheet_auth.keyEquivalent = @"\r";
-	veil_sheet_auth.bezelStyle = NSBezelStylePush;
-	NSStackView *btns = [NSStackView stackViewWithViews:@[veil_sheet_cancel, veil_sheet_auth]];
-	btns.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-	btns.alignment = NSLayoutAttributeCenterY;
-	btns.spacing = 10;
-
-	NSStackView *stack = [NSStackView stackViewWithViews:@[icons, veil_sheet_allow, acctRow, hintRow, btns]];
-	stack.orientation = NSUserInterfaceLayoutOrientationVertical;
-	stack.alignment = NSLayoutAttributeCenterX;
-	stack.spacing = 18;
-	stack.translatesAutoresizingMaskIntoConstraints = NO;
-	[fx addSubview:stack];
-	[NSLayoutConstraint activateConstraints:@[
-		[stack.leadingAnchor constraintEqualToAnchor:fx.leadingAnchor constant:28],
-		[stack.trailingAnchor constraintEqualToAnchor:fx.trailingAnchor constant:-28],
-		[stack.topAnchor constraintEqualToAnchor:fx.topAnchor constant:24],
-		[stack.bottomAnchor constraintEqualToAnchor:fx.bottomAnchor constant:-22],
-		[acctRow.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
-		[acctRow.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
-	]];
-
-	// center() resolves against the key screen — on a multi-display
-	// setup it can park the sheet on a different monitor than the LA
-	// dialog or slide it off the visible edge. Frame it explicitly on
-	// the main screen's visible area, just below center so the LA card
-	// (dead-center) and ours read as one composed ask, not a blob.
-	NSScreen *scr = [NSScreen mainScreen];
-	NSRect vis = scr.visibleFrame;
-	NSSize size = win.frame.size;
-	[win setFrameOrigin:NSMakePoint(
-		NSMidX(vis) - size.width / 2,
-		NSMidY(vis) - size.height / 2 - 165)];
-}
-
 static void veil_warm_app(void) {
 	// The --confirm-server child runs this at spawn: every per-request
-	// veil_access then skips the 1.5s LaunchServices handshake +
-	// sharedApplication boot + the ~1.3s first window build.
+	// veil_access then skips the LaunchServices handshake + sharedApplication
+	// boot and presents the native macOS Touch ID dialog immediately.
 	[NSApplication sharedApplication];
-	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 	[NSProcessInfo processInfo].automaticTerminationSupportEnabled = NO;
 	[NSApp finishLaunching];
-	veil_sheet_once();
+	NSApp.applicationIconImage = veil_veil_mark();
 	veil_confirm_log(@"warm appkit done");
 }
 
-static int veil_access(const char *action, const char *account, const char *reason) {
+static int veil_access(const char *action, const char *account) {
 	__block int out = 0;
 	void (^run)(void) = ^{
 		veil_confirm_log(@"sheet run enter");
 		[NSApplication sharedApplication];
-		// Regular — the sheet is a real window; Prohibited would keep it
-		// off-screen entirely. orderFrontRegardless fronts it without an
-		// activate, so the requester still holds key focus.
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 		[NSProcessInfo processInfo].automaticTerminationSupportEnabled = NO;
 		[NSApp finishLaunching];
-		// A bare binary has no app icon — the LA card falls back to the
-		// generic green exec glyph. The mark is the asking face.
 		NSApp.applicationIconImage = veil_veil_mark();
-		VeilAccessSheet *ctrl = [[VeilAccessSheet alloc] init];
-		ctrl.lac = [[LAContext alloc] init];
 		NSRunningApplication *client = veil_client_app();
-		NSString *appName = client.localizedName.length ? client.localizedName : @"this app";
-		NSImage *clientIcon = client.icon ?: [NSImage imageWithSystemSymbolName:@"app.fill" accessibilityDescription:nil];
-		NSString *allow = [NSString stringWithFormat:@"Allow %@ to %s", appName, action];
+		NSString *appName = client.localizedName.length ? client.localizedName : @"";
 		NSString *who = [NSString stringWithUTF8String:account];
-		// The LA dialog reads "Veil is trying to {why}" — give it a verb
-		// phrase, not our headline, or it renders "is trying to Allow…".
-		ctrl.why = who.length
-			? [NSString stringWithFormat:@"%s for %@ as %@", action, appName, who]
-			: [NSString stringWithFormat:@"%s for %@", action, appName];
-
-		veil_sheet_once();
-		NSWindow *win = veil_sheet_win;
-		win.delegate = ctrl;
-		ctrl.win = win;
-		veil_sheet_cancel.target = ctrl;
-		veil_sheet_auth.target = ctrl;
-		veil_sheet_left.image = clientIcon;
-		veil_sheet_allow.stringValue = allow;
-		veil_sheet_acct.stringValue = who;
-		veil_confirm_log(@"sheet ready");
-		// Never activate or take key: activating our process pulls focus
-		// from the requester — and for a Safari AutoFill/passkey request
-		// the OS cancels the provider handoff the moment the host app
-		// loses key. The scan arms now; the sheet explains why.
-		[ctrl scan];
-		[win orderFrontRegardless];
-		while (!ctrl.finished) {
-			[[NSRunLoop currentRunLoop]
-				runMode:NSDefaultRunLoopMode
-				beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.25]];
+		NSString *why = nil;
+		if (appName.length > 0 && who.length > 0) {
+			why = [NSString stringWithFormat:@"%s in %@ (%@)", action, appName, who];
+		} else if (appName.length > 0) {
+			why = [NSString stringWithFormat:@"%s in %@", action, appName];
+		} else if (who.length > 0 && ![who isEqualToString:@"Veil"]) {
+			why = [NSString stringWithFormat:@"%s (%@)", action, who];
+		} else {
+			why = [NSString stringWithFormat:@"%s", action];
 		}
-		veil_confirm_log(@"runloop exited");
-		[win orderOut:nil];
-		win.delegate = nil;
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-		out = ctrl.result;
+		if (getenv("VEIL_CONFIRM_PREVIEW")) {
+			out = 0;
+			return;
+		}
+		LAContext *ctx = [[LAContext alloc] init];
+		out = veil_touchid_ctx(ctx, why.UTF8String);
 	};
-	// Callers off the main thread — bridge socket workers, CLI helpers —
-	// cannot run AppKit where they stand. Queue the modal onto the main
-	// queue and wait; the main thread owns a real run loop everywhere.
 	if ([NSThread isMainThread]) {
 		run();
 	} else {
@@ -584,11 +347,9 @@ func TouchID(reason string) error {
 	account := accountLabel()
 	ca := C.CString(action)
 	cc := C.CString(account)
-	cr := C.CString(reason)
 	defer C.free(unsafe.Pointer(ca))
 	defer C.free(unsafe.Pointer(cc))
-	defer C.free(unsafe.Pointer(cr))
-	if C.veil_access(ca, cc, cr) != 1 {
+	if C.veil_access(ca, cc) != 1 {
 		return fmt.Errorf("fill: touch id declined")
 	}
 	return nil

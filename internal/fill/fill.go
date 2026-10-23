@@ -792,7 +792,11 @@ func (h *Host) confirm(reason, scope string, reuse bool, peer *Peer) error {
 		return nil
 	}
 	eval := debugMark("confirm eval", 0)
-	if err := h.Confirm(reason); err != nil {
+	prompt := reason
+	if scope != "" && !strings.Contains(reason, scope) {
+		prompt = reason + " on " + scope
+	}
+	if err := h.Confirm(prompt); err != nil {
 		eval()
 		fillDebug("confirm denied")
 		h.InvalidateConfirm()
