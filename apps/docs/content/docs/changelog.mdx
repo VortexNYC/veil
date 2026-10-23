@@ -15,6 +15,9 @@ Veil is in private alpha. Breaking changes land without notice until `v1`.
 - **Dual-Phase Broker-Side Rotation (`veil rotate`)**: Zero-touch rotation for `Resend`, `SendGrid` (preserving live key scopes), `PostHog` (`us`, `eu`, `app`), and declarative `/.well-known/key-rotation` (`SpecRotator`) specs, plus assisted rotation (`--secret-file`), separate `--management-item`, scheduled `--interval` rotation, `GET /v1/rotate/providers`, and `veil item verify` (`POST /v1/items/{name}/verify`).
 - **Provider Management-Endpoint Blocking & Honey Auto-Revoke**: `grant.Evaluate` blocks agent fetches to registered provider key-management endpoints (`reason="management_endpoint"`). Honey items tagged `veil:honey-revoke` revoke the offending agent principal on first touch (`reason="honey_tripwire agent=<id>"`), invalidating all of its sessions and grants.
 - **Single-Binary Self-Host Mode (`veil mcp --self-host`)**: Run Veil on SQLite or Postgres without Ory Hydra/Kratos/Keto (`VEIL_SELF_HOST=1`).
+- **RFC 9449 DPoP Proof-of-Possession (`internal/dpop`)**: Sender-constrains short-lived OIDC and session tokens on `/v1/use`, `/mcp`, and principal-authenticated `/v1/*` routes using ES256 `dpop+jwt` proofs (`htm`, `htu`, `iat`, `ath`, `jti` replay cache, `cnf.jkt` + bind-on-first-use key pinning).
+- **One-Command 1Password CLI & Authenticator Migration (`veil item import --from-op`)**: Streams logins, passwords, API credentials, TOTP seeds, and credit cards directly from the local signed-in `op` CLI (or newline-delimited `otpauth://` files) and deduplicates against the vault.
+- **Passkey Pre-Check, Remote Approval & Single Native Touch ID Dialog**: `passkeyGet` verifies a matching `passkey` item exists before prompting Touch ID, supports `remote_approve` via `POST /v1/fill/request`, and presents a single native macOS `LAContext` Touch ID dialog naming the target site domain (`on <domain>`).
 
 ## 2026-09-24 — Customer lifecycle, DR proof, monitoring
 

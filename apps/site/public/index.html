@@ -42,7 +42,7 @@
     align-items: center;
     padding: 64px 20px 48px;
   }
-  main { max-width: 640px; width: 100%; }
+  main { max-width: 720px; width: 100%; }
   h1 {
     font-family: var(--serif);
     font-size: clamp(48px, 10vw, 84px);
@@ -204,26 +204,31 @@
 
   <div class="install"><span class="c">$</span> curl -fsSL https://veil.nyc/install.sh | sh</div>
 
-  <div class="codeblock"><span class="c"># 1. Trust your Vercel / GitHub Actions / Fly workload — zero static env keys</span>
+  <div class="codeblock"><span class="c"># 1. Migrate from 1Password CLI in one command &amp; trust your Vercel / GitHub / Fly workload</span>
+<span class="k">veil item import</span> --from-op
 <span class="k">veil agent bind</span> web --preset vercel --org acme --app web --claim owner_id=team_abc123
+<span class="k">veil grant add</span> --agent web --item resend --level level2
 
 <span class="c"># 2. Call any upstream API from your agent or function — Veil injects &amp; scrubs at the edge</span>
 <span class="k">import</span> { createAmbientClient, useItem } <span class="k">from</span> "@vortex-api/veil";
 <span class="k">const</span> client = createAmbientClient({ request: req });
-<span class="k">await</span> useItem({ client, body: { item: "resend", url: "https://api.resend.com/emails", method: "POST" } });</div>
+<span class="k">await</span> useItem({ client, body: { item: "resend", url: "https://api.resend.com/emails", method: "POST" } });
+
+<span class="c"># 3. Rotate keys with 0-downtime dual-phase overlap — agents &amp; grants never change</span>
+<span class="k">veil rotate</span> resend --interval 168h</div>
 
   <div class="flow">
     <div class="step">
-      <h3>01 — Bind the workload</h3>
-      <p><b>veil agent bind</b> trusts short-lived OIDC tokens from <b>Vercel</b>, <b>GitHub Actions</b>, <b>Fly.io</b>, <b>Better Auth</b>, <b>Clerk</b>, or <b>WorkOS</b> — and <b>veil agent hydra</b> issues a dedicated client credential for Cursor, Claude Code, Grok, and devin-cli. Zero static API keys in environment variables.</p>
+      <h3>01 — Principal separation (agents are not you)</h3>
+      <p><b>veil agent bind</b> trusts short-lived OIDC tokens from <b>Vercel</b>, <b>GitHub Actions</b>, <b>Fly.io</b>, <b>Better Auth</b>, <b>Clerk</b>, or <b>WorkOS</b> — and <b>veil agent hydra</b> issues a dedicated client credential for Cursor, Claude Code, Grok, Muse, and devin-cli. Agents are distinct principals (<code>PrincipalAgent</code> vs <code>PrincipalHuman</code>), never sharing your personal login session.</p>
     </div>
     <div class="step flow-alt">
-      <h3>02 — Grant &amp; rotate</h3>
-      <p>The owner grants <b>use</b>, not possession. Agents see item names and URIs via <b>list_items</b> and <b>match_items</b> — never plaintext. <b>veil rotate</b> rolls keys with dual-phase overlap (or exchanges short-lived RFC 7523 assertions for <b>Anthropic WIF</b> so Veil never stores a static provider API key).</p>
+      <h3>02 — Grant, rotate &amp; outbound WIF</h3>
+      <p>The owner grants <b>use</b>, not possession. Agents see item names and URIs via <b>list_items</b> and <b>match_items</b> — never plaintext. <b>veil rotate</b> rolls keys on Resend, SendGrid, and PostHog with dual-phase overlap, or exchanges short-lived RFC 7523 assertions for <b>Anthropic WIF</b> (<code>--service-account-id svac_...</code>) so Veil never stores a static provider API key.</p>
     </div>
     <div class="step">
-      <h3>03 — Brokered use</h3>
-      <p><b>fetch</b> calls the URL with the credential injected upstream and blocks provider key-management endpoints. On Mac, fill writes into the page after Touch ID. Level-1 grants page a human; the agent polls <b>approval_status</b> and retries.</p>
+      <h3>03 — Brokered API use, browser fill &amp; passkeys</h3>
+      <p><b>fetch</b> injects credentials at the edge and blocks provider key-management endpoints. For browser &amp; OS sign-ins, Veil fills logins, TOTP codes, and sealed <b>WebAuthn P-256 passkeys</b> after local Touch ID or remote device approval (<code>POST /v1/fill/request</code>).</p>
     </div>
   </div>
 
@@ -231,9 +236,9 @@
     <h2>The boundary</h2>
     <ul>
       <li><b>Agents never receive secrets.</b> Not in JSON, MCP, logs, or audit records — the transport doesn't carry them.</li>
-      <li><b>Death to static env keys.</b> Authenticate from Vercel Functions, GitHub Actions, or Fly via ambient OIDC (<code>createAmbientClient</code>), or run <code>veil mcp --self-host</code> as a single binary on your own box.</li>
-      <li><b>The grant is the object.</b> Per-item, per-level, per-principal. Honey tripwires (<code>veil:honey-revoke</code>) auto-revoke compromised agents on first touch.</li>
-      <li><b>Humans stay in the loop.</b> Remote approval for level-1 use; Touch ID before anything leaves your Mac; Ory Kratos + Hydra + Keto for identity.</li>
+      <li><b>Death to static env keys &amp; token replay.</b> Authenticate via ambient OIDC (<code>createAmbientClient</code>), constrain tokens with <b>RFC 9449 DPoP</b> (<code>dpop+jwt</code> ES256 proof-of-possession), or run <code>veil mcp --self-host</code> as a single binary.</li>
+      <li><b>Forensic audit &amp; honey tripwires.</b> Every <code>fetch</code>, <code>fill</code>, and <code>item_rotated</code> row in <code>GET /v1/audit/events</code> records the exact <code>agent_id</code> and <code>approval_id</code>. Honey items (<code>veil:honey-revoke</code>) revoke compromised agents on first touch.</li>
+      <li><b>Humans stay in the loop.</b> Remote approval for level-1 use and passkeys; single native Touch ID prompt before anything leaves your Mac; Ory Kratos + Hydra + Keto for identity.</li>
     </ul>
   </div>
 
@@ -251,8 +256,14 @@
         <tr>
           <td>Agent sees plaintext secret</td>
           <td>Yes (in process)</td>
-          <td>Yes (after read)</td>
+          <td>Yes (on API read)</td>
           <td class="yes">Never (injected at edge)</td>
+        </tr>
+        <tr>
+          <td>Principal separation (<code>agent_id</code> vs human)</td>
+          <td>Shared key</td>
+          <td>Shares personal login</td>
+          <td class="yes">First-class <code>PrincipalAgent</code></td>
         </tr>
         <tr>
           <td>Workload auth (Vercel / GitHub / Fly OIDC)</td>
@@ -261,10 +272,22 @@
           <td class="yes">Short-lived OIDC + claims</td>
         </tr>
         <tr>
+          <td>Sender-constrained proof-of-possession</td>
+          <td>No</td>
+          <td>No</td>
+          <td class="yes">RFC 9449 DPoP (<code>ES256</code>)</td>
+        </tr>
+        <tr>
           <td>Works with both static-key &amp; OIDC SaaS APIs</td>
           <td>Manual paste</td>
           <td>Manual paste</td>
           <td class="yes">Brokered + outbound WIF</td>
+        </tr>
+        <tr>
+          <td>Passkeys (WebAuthn) with remote approval</td>
+          <td>N/A</td>
+          <td>Local device only</td>
+          <td class="yes">Touch ID + remote approval</td>
         </tr>
         <tr>
           <td>Key rotation blast radius</td>
