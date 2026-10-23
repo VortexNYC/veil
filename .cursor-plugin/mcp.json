@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "veil": {
+      "command": "veil",
+      "args": ["mcp", "stdio"],
+      "env": {
+        "VEIL_ORIGIN": "https://veil.nyc",
+        "VEIL_HYDRA_ISSUER": "https://id.veil.nyc"
+      }
+    }
+  }
+}
