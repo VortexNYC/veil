@@ -287,5 +287,10 @@ export type {
 } from "./types.gen";
 export { createClient } from "./client";
 export type { Config } from "./client";
-export { ambientOidcToken, createAmbientClient } from "./ambient-oidc";
+export {
+  ambientOidcToken,
+  createAmbientClient,
+  generateDPoPKeyPair,
+  signDPoPProof,
+} from "./ambient-oidc";
 export type { AmbientOidcOptions } from "./ambient-oidc";
