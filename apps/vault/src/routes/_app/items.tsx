@@ -10,7 +10,14 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { PageChrome } from "../../page-chrome";
-import { addItem, importItems, items, rotateProviders, rotateVaultItem } from "../../origin";
+import {
+  addItem,
+  importItems,
+  items,
+  rotateProviders,
+  rotateVaultItem,
+  verifyVaultItem,
+} from "../../origin";
 import type { Item } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/items")({
@@ -388,19 +395,33 @@ function Items() {
                       </Text>
                     </Table.Cell>
                     <Table.Cell>
-                      {item.kind === "api_key" ? (
+                      <div className="flex items-center gap-2">
                         <Button
                           type="button"
                           variant="secondary"
-                          onClick={() => setRotateTarget(item.name)}
+                          onClick={() => {
+                            void verifyVaultItem(item.name).then((res) => {
+                              if (res.error || !res.data) {
+                                setError(`verify failed for ${item.name}`);
+                                return;
+                              }
+                              setError(null);
+                              setNotice(`Verified ${item.name} (${res.data.mode})`);
+                            });
+                          }}
                         >
-                          Rotate
+                          Verify
                         </Button>
-                      ) : (
-                        <Text as="span" variant="secondary" size="sm">
-                          —
-                        </Text>
-                      )}
+                        {item.kind === "api_key" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setRotateTarget(item.name)}
+                          >
+                            Rotate
+                          </Button>
+                        ) : null}
+                      </div>
                     </Table.Cell>
                   </Table.Row>
                 ))}

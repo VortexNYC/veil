@@ -475,6 +475,12 @@ func TestVerifyIssuer(t *testing.T) {
 	if down.Code != CodeDiscoveryFailed {
 		t.Fatalf("VerifyIssuer unreachable: %+v", down)
 	}
+	c.mu.Lock()
+	cached := len(c.providers)
+	c.mu.Unlock()
+	if cached != 0 {
+		t.Fatalf("VerifyIssuer should not populate c.providers: got %d entries", cached)
+	}
 }
 
 func TestCheckerRejectsWorkloadOrgMismatch(t *testing.T) {
