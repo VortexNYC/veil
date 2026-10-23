@@ -476,3 +476,29 @@ func TestVerifyIssuer(t *testing.T) {
 		t.Fatalf("VerifyIssuer unreachable: %+v", down)
 	}
 }
+
+func TestCheckerRejectsWorkloadOrgMismatch(t *testing.T) {
+	iss := newTestIssuer(t)
+	s := store.NewMemory()
+	if err := s.PutAgent(protocol.Principal{
+		Kind:  protocol.PrincipalAgent,
+		ID:    "agent-a",
+		OrgID: "org-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutWorkload(protocol.Workload{
+		AgentID:  "agent-a",
+		OrgID:    "org-2",
+		Issuer:   iss.URL,
+		Subject:  "repo:acme/api:ref:refs/heads/main",
+		Audience: "veil",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chk := New(s)
+	tok := iss.token(t, "repo:acme/api:ref:refs/heads/main", "veil", time.Now().Add(time.Hour))
+	if _, err := chk.Agent(context.Background(), tok); err == nil {
+		t.Fatal("expected org mismatch error from Checker.Agent")
+	}
+}

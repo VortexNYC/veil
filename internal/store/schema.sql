@@ -124,6 +124,7 @@ CREATE TABLE audit_outbox (
 CREATE TABLE workloads (
     issuer TEXT NOT NULL,
     subject TEXT NOT NULL,
+    org_id TEXT NOT NULL DEFAULT '',
     agent_id TEXT NOT NULL,
     audience TEXT NOT NULL,
     claims TEXT NOT NULL DEFAULT '{}',

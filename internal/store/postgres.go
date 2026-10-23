@@ -818,6 +818,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE TABLE IF NOT EXISTS workloads (
 			issuer TEXT NOT NULL,
 			subject TEXT NOT NULL,
+			org_id TEXT NOT NULL DEFAULT '',
 			agent_id TEXT NOT NULL,
 			audience TEXT NOT NULL,
 			claims TEXT NOT NULL DEFAULT '{}',
@@ -995,6 +996,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		// are all agent grants; agent_id stays the subject id column.
 		`ALTER TABLE grants ADD COLUMN IF NOT EXISTS subject_kind TEXT NOT NULL DEFAULT 'agent'`,
 		`ALTER TABLE workloads ADD COLUMN IF NOT EXISTS claims TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE workloads ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err

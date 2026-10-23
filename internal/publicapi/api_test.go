@@ -2210,4 +2210,38 @@ func TestBindWorkloadAPI(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatalf("agent rotate providers want 403, got %d", code)
 	}
+
+	// Verify item dry-run on sealed API key item succeeds for owner, 403 for agent.
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/items/linear/verify", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("verify item want 200, got %d: %s", code, raw)
+	}
+	var vres VerifyItemResponse
+	if err := json.Unmarshal(raw, &vres); err != nil || !vres.Verified || vres.Mode != "sealed_ok" {
+		t.Fatalf("unexpected verify response: %+v %v", vres, err)
+	}
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/items/linear/verify", "agent", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("agent verify item want 403, got %d", code)
+	}
+
+	// DB-level cross-org workload isolation: PutWorkload for another org's (issuer, subject) returns ErrDenied.
+	if err := a.Store.PutWorkload(protocol.Workload{
+		AgentID:  "other-org-agent",
+		OrgID:    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		Issuer:   "https://oidc.vercel.com/acme",
+		Subject:  "owner:acme:project:web:environment:production",
+		Audience: "https://vercel.com/acme",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.PutWorkload(protocol.Workload{
+		AgentID:  "ci-runner",
+		OrgID:    protocol.LocalOrgID,
+		Issuer:   "https://oidc.vercel.com/acme",
+		Subject:  "owner:acme:project:web:environment:production",
+		Audience: "https://vercel.com/acme",
+	}); !errors.Is(err, store.ErrDenied) {
+		t.Fatalf("cross-org PutWorkload want ErrDenied, got %v", err)
+	}
 }

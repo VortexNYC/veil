@@ -1052,7 +1052,32 @@ func itemCmd(home *string) *cobra.Command {
 	}
 	write.Flags().StringVar(&outFile, "out-file", "", "destination path. never stdout.")
 	_ = write.MarkFlagRequired("out-file")
-	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write)
+	verify := &cobra.Command{
+		Use:   "verify NAME",
+		Short: "Dry-run an item's credential (WIF exchange, OAuth refresh, or provider verify) without revealing the secret",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originItemVerify(cmd, args[0])
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			mode, err := a.VerifyItem(cmd.Context(), actor, args[0])
+			if err != nil {
+				return err
+			}
+			return encode(cmd, publicapi.VerifyItemResponse{
+				Item:     args[0],
+				Verified: true,
+				Mode:     mode,
+			})
+		},
+	}
+	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, verify)
 	return c
 }
 

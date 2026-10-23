@@ -83,6 +83,7 @@ __all__ = [
     "VaultReportFinding",
     "VerifyIssuerRequest",
     "VerifyIssuerResponse",
+    "VerifyItemResponse",
     "WIFItemFields",
     "WorkloadView",
     "WorkloadsResponse",
@@ -158,6 +159,7 @@ from veil.models.vault_report import VaultReport as VaultReport
 from veil.models.vault_report_finding import VaultReportFinding as VaultReportFinding
 from veil.models.verify_issuer_request import VerifyIssuerRequest as VerifyIssuerRequest
 from veil.models.verify_issuer_response import VerifyIssuerResponse as VerifyIssuerResponse
+from veil.models.verify_item_response import VerifyItemResponse as VerifyItemResponse
 from veil.models.wif_item_fields import WIFItemFields as WIFItemFields
 from veil.models.workload_view import WorkloadView as WorkloadView
 from veil.models.workloads_response import WorkloadsResponse as WorkloadsResponse

@@ -173,6 +173,7 @@ type UsageCounter struct {
 type Workload struct {
 	Issuer   string
 	Subject  string
+	OrgID    string
 	AgentID  string
 	Audience string
 	Claims   string

@@ -1200,15 +1200,89 @@ func (a *App) BindWorkloadForWithClaims(actor protocol.Principal, agentID, issue
 	}
 	w := protocol.Workload{
 		AgentID:  agentID,
+		OrgID:    agent.OrgID,
 		Issuer:   issuer,
 		Subject:  subject,
 		Audience: audience,
 		Claims:   claims,
 	}
 	if err := a.Store.PutWorkload(w, adminEvent(actor.ID, agent.OrgID, "", protocol.ActionWorkloadBound, "agent="+agentID+" issuer="+issuer)); err != nil {
+		if errors.Is(err, store.ErrDenied) {
+			return protocol.Workload{}, ErrForbidden
+		}
 		return protocol.Workload{}, err
 	}
 	return w, nil
+}
+
+// VerifyItem dry-runs an item's credential (WIF jwt-bearer exchange, OAuth
+// refresh, or provider rotator Verify) without revealing the secret. Owner-only.
+func (a *App) VerifyItem(ctx context.Context, actor protocol.Principal, name string) (string, error) {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return "", err
+	}
+	if !own {
+		return "", ErrForbidden
+	}
+	item, err := a.Store.Item(name)
+	if err != nil {
+		return "", err
+	}
+	if item.OrgID != actor.OrgID {
+		return "", ErrForbidden
+	}
+	if item.Archived {
+		return "", fmt.Errorf("app: item archived")
+	}
+	raw, err := a.Store.Secret(item.ID)
+	if err != nil {
+		return "", err
+	}
+	env := material.Unpack(raw)
+	recordVerify := func(decision protocol.Decision, reason string) {
+		ev := adminEvent(actor.ID, item.OrgID, item.ID, protocol.ActionItemUpdated, reason)
+		ev.Decision = decision
+		_ = a.Store.AppendAudit(ev)
+	}
+	if env.FederationRuleID != "" {
+		if _, _, _, err := material.AccessTokenWithMetadata(ctx, env, a.Broker.HTTP); err != nil {
+			recordVerify(protocol.DecisionDeny, "verify=wif_failed")
+			return "failed", fmt.Errorf("verify: WIF exchange failed")
+		}
+		recordVerify(protocol.DecisionAllow, "verify=wif_ok")
+		return "wif_ok", nil
+	}
+	if env.Refresh != "" {
+		_, nextRefresh, _, err := material.AccessTokenWithMetadata(ctx, env, a.Broker.HTTP)
+		if err != nil {
+			recordVerify(protocol.DecisionDeny, "verify=oauth_failed")
+			return "failed", fmt.Errorf("verify: OAuth refresh failed")
+		}
+		if nextRefresh != "" && nextRefresh != env.Refresh {
+			if rotated, rerr := material.WithRefresh(raw, nextRefresh); rerr == nil {
+				_ = a.Store.PutItem(item, store.Secret(rotated))
+			}
+		}
+		recordVerify(protocol.DecisionAllow, "verify=oauth_ok")
+		return "oauth_ok", nil
+	}
+	for _, u := range item.URIs {
+		if r, ok := rotate.ForHost(u); ok {
+			if err := r.Verify(ctx, []byte(env.Token)); err != nil {
+				recordVerify(protocol.DecisionDeny, "verify=provider_failed")
+				return "failed", fmt.Errorf("verify: provider rejected credential")
+			}
+			recordVerify(protocol.DecisionAllow, "verify=provider_ok")
+			return "provider_ok", nil
+		}
+	}
+	if strings.TrimSpace(env.Token) != "" {
+		recordVerify(protocol.DecisionAllow, "verify=sealed_ok")
+		return "sealed_ok", nil
+	}
+	recordVerify(protocol.DecisionDeny, "verify=empty")
+	return "failed", fmt.Errorf("verify: empty credential")
 }
 
 // VerifyIssuer dry-runs an OIDC issuer discovery for actor (owner-only).

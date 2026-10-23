@@ -820,6 +820,22 @@ func originRotateProviders(cmd *cobra.Command) error {
 	return encode(cmd, out)
 }
 
+func originItemVerify(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+url.PathEscape(name)+"/verify", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.VerifyItemResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
 func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string, claims map[string][]string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {

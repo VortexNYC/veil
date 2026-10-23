@@ -48,6 +48,7 @@ export {
   useItem,
   vaultReport,
   verifyIssuer,
+  verifyItem,
 } from "./sdk.gen";
 export type {
   AddGroupMemberData,
@@ -275,6 +276,11 @@ export type {
   VerifyIssuerResponse,
   VerifyIssuerResponse2,
   VerifyIssuerResponses,
+  VerifyItemData,
+  VerifyItemErrors,
+  VerifyItemResponse,
+  VerifyItemResponse2,
+  VerifyItemResponses,
   WifItemFields,
   WorkloadsResponse,
   WorkloadView,

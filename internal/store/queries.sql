@@ -485,20 +485,21 @@ SELECT id, org_id FROM humans WHERE id = @id::text;
 -- name: ListHumans :many
 SELECT id, org_id FROM humans ORDER BY id LIMIT @max_results::bigint;
 
--- name: PutWorkload :exec
-INSERT INTO workloads(issuer, subject, agent_id, audience, claims)
-VALUES(@issuer::text, @subject::text, @agent_id::text, @audience::text, @claims::text)
+-- name: PutWorkload :execrows
+INSERT INTO workloads(issuer, subject, org_id, agent_id, audience, claims)
+VALUES(@issuer::text, @subject::text, @org_id::text, @agent_id::text, @audience::text, @claims::text)
 ON CONFLICT(issuer, subject) DO UPDATE SET
-    agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims;
+    org_id=excluded.org_id, agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims
+WHERE workloads.org_id = '' OR workloads.org_id = excluded.org_id;
 
 -- name: WorkloadByKey :one
-SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text AND subject = @subject::text;
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text AND subject = @subject::text;
 
 -- name: WorkloadsForIssuer :many
-SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text ORDER BY subject LIMIT @max_results::bigint;
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text ORDER BY subject LIMIT @max_results::bigint;
 
 -- name: WorkloadsForAgent :many
-SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE agent_id = @agent_id::text ORDER BY issuer, subject LIMIT @max_results::bigint;
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE agent_id = @agent_id::text ORDER BY issuer, subject LIMIT @max_results::bigint;
 
 -- name: DeleteWorkload :exec
 DELETE FROM workloads WHERE issuer = @issuer::text AND subject = @subject::text;

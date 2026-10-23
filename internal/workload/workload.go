@@ -75,6 +75,9 @@ func (c *Checker) Agent(ctx context.Context, rawToken string) (protocol.Principa
 		if err != nil {
 			return protocol.Principal{}, err
 		}
+		if hit.OrgID != "" && agent.OrgID != hit.OrgID {
+			return protocol.Principal{}, fmt.Errorf("workload: org mismatch")
+		}
 		return agent, nil
 	}
 	if last != nil {

@@ -141,9 +141,9 @@ var migrateTables = []migrateTable{
 	},
 	{
 		name:       "workloads",
-		selectCols: []string{"issuer", "subject", "agent_id", "audience", "claims"},
-		insertCols: []string{"issuer", "subject", "agent_id", "audience", "claims"},
-		convs:      []col{keep, keep, keep, keep, keep},
+		selectCols: []string{"issuer", "subject", "org_id", "agent_id", "audience", "claims"},
+		insertCols: []string{"issuer", "subject", "org_id", "agent_id", "audience", "claims"},
+		convs:      []col{keep, keep, keep, keep, keep, keep},
 	},
 	{
 		name:       "owner_keys",
@@ -201,6 +201,7 @@ func MigrateSQLiteToPostgres(ctx context.Context, sqlitePath, dsn string) (*Migr
 
 	report := &MigrateReport{}
 	for _, mt := range migrateTables {
+		mt.selectCols = append([]string(nil), mt.selectCols...)
 		// The source can be a vault from before the table/column existed —
 		// the migrator opens the file read-only, so no ensure-schema ran.
 		// Skip absent tables; an absent grants.subject_kind backfills
@@ -234,6 +235,17 @@ func MigrateSQLiteToPostgres(ctx context.Context, sqlitePath, dsn string) (*Migr
 				for i, c := range mt.selectCols {
 					if c == "claims" {
 						mt.selectCols[i] = `'{}' AS claims`
+					}
+				}
+			}
+			hasOrg, err := sqliteHasColumn(src, "workloads", "org_id")
+			if err != nil {
+				return report, err
+			}
+			if !hasOrg {
+				for i, c := range mt.selectCols {
+					if c == "org_id" {
+						mt.selectCols[i] = `'' AS org_id`
 					}
 				}
 			}
