@@ -623,7 +623,7 @@
       return active;
     }
     const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
-    return fields.password || (fields.newPassword && fields.newPassword[0]) || fields.username || fields.number || null;
+    return fields.password || (fields.newPassword && fields.newPassword[0]) || fields.totp || fields.username || fields.number || null;
   }
 
   document.addEventListener(
@@ -684,8 +684,22 @@
     true,
   );
 
+  function autoFocusTotpIfReady() {
+    const active = document.activeElement;
+    if (!active || active === focusEl) {
+      return;
+    }
+    if (
+      (veilFields.isTotpField && veilFields.isTotpField(active)) ||
+      (veilFields.isSingleDigitBox && veilFields.isSingleDigitBox(active))
+    ) {
+      sendFocus(active);
+    }
+  }
+
   scanOTPAuth(document);
   scanQR();
+  autoFocusTotpIfReady();
   if (typeof MutationObserver === "function") {
     const obs = new MutationObserver(function (muts) {
       for (let i = 0; i < muts.length; i++) {
@@ -693,6 +707,7 @@
         for (let j = 0; j < nodes.length; j++) {
           if (nodes[j].nodeType === 1) {
             scanOTPAuth(nodes[j]);
+            autoFocusTotpIfReady();
           }
         }
       }

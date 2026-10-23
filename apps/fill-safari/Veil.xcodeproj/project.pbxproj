@@ -35,6 +35,7 @@
 		E3AB00000000000000001C /* FillBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E133AF65306B28A7009E9FC3 /* FillBridge.swift */; };
 		E3AB00000000000000001E /* IdentitySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AB00000000000000001D /* IdentitySync.swift */; };
 		E3AB000000000000000029 /* Veil AutoFill.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E3AB000000000000000021 /* Veil AutoFill.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E4AB000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = E4AB000000000000000002 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -110,6 +111,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E4AB000000000000000003 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -231,6 +233,7 @@
 			);
 			name = Veil;
 			packageProductDependencies = (
+				E4AB000000000000000002 /* Sparkle */,
 			);
 			productName = Veil;
 			productReference = E133AF1E306B28A6009E9FC3 /* Veil.app */;
@@ -304,6 +307,9 @@
 			);
 			mainGroup = E133AF15306B28A6009E9FC3;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E4AB000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E133AF1F306B28A6009E9FC3 /* Products */;
 			projectDirPath = "";
@@ -807,6 +813,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E4AB000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E4AB000000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E4AB000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E133AF16306B28A6009E9FC3 /* Project object */;
 }

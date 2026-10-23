@@ -10,11 +10,13 @@
 import Cocoa
 import SafariServices
 import ServiceManagement
+import Sparkle
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem!
+    private var updaterController: SPUStandardUpdaterController!
 
     // No storyboard: NSApplicationDelegate.main() alone only creates the
     // delegate from NSMainNibFile/NSMainStoryboardFile — both are gone.
@@ -37,6 +39,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // A windowless accessory gets reaped by Automatic Termination —
         // the helper must survive idle to keep its hotkey live.
         ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
         installMainMenu()
         installStatusItem()
         UniversalFill.shared.install()
@@ -130,6 +137,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.target = self
         menu.addItem(settings)
 
+        let updates = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: "",
+        )
+        updates.target = updaterController
+        menu.addItem(updates)
+
         #if DEBUG
         let probe = NSMenuItem(
             title: "Type Probe",
@@ -163,6 +178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu(title: "Veil")
         let items: [(String, Selector?, String)] = [
             ("About Veil", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+            ("Check for Updates…", #selector(SPUStandardUpdaterController.checkForUpdates(_:)), ""),
             ("", nil, ""),
             ("Fill with Veil", #selector(fillNow), "\\"),
             ("Open Veil", #selector(openVault), "o"),
@@ -176,7 +192,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 continue
             }
             let item = appMenu.addItem(withTitle: title, action: sel, keyEquivalent: key)
-            item.target = sel == #selector(fillNow) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
+            if sel == #selector(SPUStandardUpdaterController.checkForUpdates(_:)) {
+                item.target = updaterController
+            } else {
+                item.target = sel == #selector(fillNow) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
+            }
         }
         appItem.submenu = appMenu
         main.addItem(appItem)

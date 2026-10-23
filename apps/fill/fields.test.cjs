@@ -300,3 +300,23 @@ test("findOTPAuth empty in iframe", () => {
     global.window = prev;
   }
 });
+
+test("totp field by name/placeholder isFillTarget, fillContext=totp, and 6-box split write", () => {
+  const { isFillTarget, isTotpField, fillContext, writeLogin, pickFields } = require("./fields.js");
+  const namedTotp = writable({ tagName: "INPUT", name: "totp_code" });
+  assert.equal(isFillTarget(namedTotp), true);
+  assert.equal(fillContext(namedTotp, pickFields([namedTotp])), "totp");
+  assert.equal(isTotpField(writable({ tagName: "INPUT", name: "footprint_field" })), false);
+
+  const boxes = Array.from({ length: 6 }, (_, i) =>
+    writable({ tagName: "INPUT", name: "digit_" + i, maxLength: 1 }),
+  );
+  const picked = pickFields(boxes);
+  assert.equal(picked.totpDigits.length, 6);
+  assert.equal(fillContext(boxes[0], picked), "totp");
+  writeLogin(docOf(boxes), { kind: "login", login: "ada", totp: "482910" });
+  assert.deepEqual(
+    boxes.map((b) => b.value),
+    ["4", "8", "2", "9", "1", "0"],
+  );
+});

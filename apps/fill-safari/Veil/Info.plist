@@ -15,5 +15,13 @@
 	</array>
 	<key>SFSafariWebExtensionConverterVersion</key>
 	<string>26.5</string>
+	<key>SUFeedURL</key>
+	<string>https://veil.nyc/releases/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>QFpn84Z7FgTWnIPf+KNRfvhjO7Upig1Exp4WOo72Ig0=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
 </dict>
 </plist>

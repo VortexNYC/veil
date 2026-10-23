@@ -7,6 +7,7 @@
 //
 
 import Cocoa
+import LocalAuthentication
 import WebKit
 
 final class VaultWindowController: NSObject, NSWindowDelegate {
@@ -57,37 +58,31 @@ final class VaultWindowController: NSObject, NSWindowDelegate {
             return
         }
         showSplash()
-        DispatchQueue.global().async {
-            let ok = self.unlock()
+        promptUnlock()
+    }
+
+    @objc private func promptUnlock() {
+        let ctx = LAContext()
+        var err: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+            return
+        }
+        ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "unlock Veil") { ok, _ in
             DispatchQueue.main.async {
                 if ok {
                     self.unlocked = true
                     self.loadVault()
-                } else {
-                    // close() releases the window mid-animation and AppKit
-                    // crashes in _NSWindowTransformAnimation — hide it
-                    // instead; a denied vault simply never exists.
-                    self.window?.orderOut(nil)
-                    self.window = nil
                 }
             }
         }
     }
 
-    /// The broker's own biometric confirm — same eval as a fill, through
-    /// the bridge. LA called from this app's own context is not
-    /// interactive enough to present (-1004); the daemon's is.
-    private func unlock() -> Bool {
-        do {
-            let reply = try FillBridge.shared.roundTrip(["action": "unlock"], timeout: 95)
-            return reply["ok"] as? Bool ?? false
-        } catch {
-            NSLog("veil: vault gate err %@", error.localizedDescription)
-            return false
-        }
-    }
-
     private func showSplash() {
+        if let window {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
         let frame = NSRect(x: 0, y: 0, width: 1200, height: 820)
         let win = NSWindow(
             contentRect: frame,
@@ -103,13 +98,36 @@ final class VaultWindowController: NSObject, NSWindowDelegate {
         win.delegate = self
 
         let splash = NSView()
-        let label = NSTextField(labelWithString: "Veil — confirm it's you to continue")
-        label.textColor = .secondaryLabelColor
-        splash.addSubview(label)
-        label.translatesAutoresizingMaskIntoConstraints = false
+        let lockIcon = NSImageView()
+        lockIcon.image = NSImage(
+            systemSymbolName: "lock.fill",
+            accessibilityDescription: "Locked"
+        )?.withSymbolConfiguration(.init(pointSize: 36, weight: .medium))
+        lockIcon.contentTintColor = .secondaryLabelColor
+
+        let title = NSTextField(labelWithString: "Veil is locked")
+        title.font = .systemFont(ofSize: 18, weight: .semibold)
+        title.textColor = .labelColor
+
+        let subtitle = NSTextField(labelWithString: "Authenticate with Touch ID to view your vault.")
+        subtitle.font = .systemFont(ofSize: 13)
+        subtitle.textColor = .secondaryLabelColor
+
+        let btn = NSButton(title: "Unlock with Touch ID", target: self, action: #selector(promptUnlock))
+        btn.bezelStyle = .rounded
+        btn.controlSize = .large
+        btn.keyEquivalent = "\r"
+
+        let stack = NSStackView(views: [lockIcon, title, subtitle, btn])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 12
+        stack.setCustomSpacing(20, after: subtitle)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        splash.addSubview(stack)
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: splash.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: splash.centerYAnchor),
+            stack.centerXAnchor.constraint(equalTo: splash.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: splash.centerYAnchor),
         ])
         win.contentView = splash
         window = win

@@ -109,11 +109,12 @@ fill-safari:
 # the local bridge and Veil.app.
 macos-app:
 	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
-	killall Veil 2>/dev/null || true
-	xcodebuild -project apps/fill-safari/Veil.xcodeproj -scheme Veil -configuration Release -derivedDataPath /tmp/VeilBuild CONFIGURATION_BUILD_DIR=/Applications build ENABLE_USER_SCRIPT_SANDBOXING=NO
+	killall Veil veil-bin native-host 2>/dev/null || true
+	xcodebuild -project apps/fill-safari/Veil.xcodeproj -scheme Veil -configuration Release -derivedDataPath /tmp/VeilBuild build ENABLE_USER_SCRIPT_SANDBOXING=NO
+	rm -rf /Applications/Veil.app && ditto /tmp/VeilBuild/Build/Products/Release/Veil.app /Applications/Veil.app
 	cp /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
 	launchctl kickstart -k gui/$$(id -u)/nyc.veil.fill.bridge 2>/dev/null || true
-	open /Applications/Veil.app
+	open -g /Applications/Veil.app
 
 # Store payloads: zips the two installed extension dirs for CWS / AMO
 # upload. Run `veil fill install` first so ~/.veil/extension* is current.

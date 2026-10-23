@@ -84,6 +84,21 @@ test("focusPlan filters entries to the focused form context", () => {
   assert.equal(focusPlan(entries, false, "identity").entries[0].uuid, "i1");
   // a login form with no matching logins stays quiet — no card spam
   assert.equal(focusPlan([{ kind: "card" }], false, "login").action, "quiet");
+  // totp context prefers logins with hasTotp=true
+  const totpPlan = focusPlan(
+    [
+      { kind: "login", uuid: "no-totp", hasTotp: false },
+      { kind: "login", uuid: "with-totp", hasTotp: true },
+      { kind: "card", uuid: "c1" },
+    ],
+    false,
+    "totp",
+  );
+  assert.equal(totpPlan.action, "menu");
+  assert.deepEqual(
+    totpPlan.entries.map((e) => e.uuid),
+    ["with-totp"],
+  );
 });
 
 test("savePlan falls back to inline when the popup cannot open (Safari)", () => {

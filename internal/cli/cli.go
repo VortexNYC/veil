@@ -93,6 +93,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(auditExportCmd())
 	root.AddCommand(reportCmd(&home))
 	root.AddCommand(keyCmd())
+	root.AddCommand(updateCmd(&home, version))
 	return root
 }
 
@@ -2280,6 +2281,7 @@ func fillCmd(home *string) *cobra.Command {
 				attachFillConfirm(h)
 			}
 			if bridge {
+				_ = syncLocalExtensions(dir)
 				user, err := os.UserHomeDir()
 				if err != nil {
 					return err
