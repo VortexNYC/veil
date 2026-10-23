@@ -65,14 +65,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .veilSettingsChanged, object: nil)
         // Menu-bar helper should outlive the session — relaunch at login.
         try? SMAppService.mainApp.register()
-        // A manual launch (double-click, Spotlight, `open`) activates the
-        // app; the login-item relaunch does not. Opening the vault on an
-        // active launch is what a tapped app icon should do.
-        DispatchQueue.main.async {
-            if NSApp.isActive {
-                VaultWindowController.shared.open()
-            }
-        }
     }
 
     private func installStatusItem() {

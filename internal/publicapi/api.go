@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/VortexNYC/veil/identity/glue"
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
@@ -220,6 +221,14 @@ type WorkloadsResponse struct {
 	Workloads []WorkloadView `json:"workloads"`
 }
 
+type HydraAgentResponse struct {
+	AgentID  string `json:"agent_id"`
+	ClientID string `json:"client_id"`
+	Secret   string `json:"secret,omitempty"`
+	Issuer   string `json:"issuer"`
+	Audience string `json:"audience"`
+}
+
 type AgentsResponse struct {
 	Agents []protocol.Principal `json:"agents"`
 }
@@ -368,6 +377,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/agents", s.listAgents)
 	mux.HandleFunc("POST /v1/agents", s.createAgent)
 	mux.HandleFunc("POST /v1/agents/{name}/bind", s.bindWorkload)
+	mux.HandleFunc("POST /v1/agents/{name}/hydra", s.hydraAgent)
 	mux.HandleFunc("GET /v1/agents/{name}/workloads", s.listAgentWorkloads)
 	mux.HandleFunc("DELETE /v1/agents/{name}/workloads", s.unbindWorkload)
 	mux.HandleFunc("POST /v1/workloads/verify-issuer", s.verifyIssuer)
@@ -872,6 +882,57 @@ func (s *Server) bindWorkload(w http.ResponseWriter, r *http.Request) {
 		Subject:  bound.Subject,
 		Audience: bound.Audience,
 		Claims:   bound.Claims,
+	})
+}
+
+func (s *Server) hydraAgent(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	name := strings.TrimSpace(r.PathValue("name"))
+	agent, err := s.App.Store.Agent(name)
+	if err != nil || agent.OrgID != owner.OrgID {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	hydraAdmin := strings.TrimSpace(os.Getenv("VEIL_HYDRA_ADMIN"))
+	if hydraAdmin == "" {
+		hydraAdmin = "http://127.0.0.1:4445"
+	}
+	issuer := strings.TrimSpace(os.Getenv("VEIL_HYDRA_ISSUER"))
+	if issuer == "" {
+		issuer = "https://id.veil.nyc"
+	}
+	audience := strings.TrimSpace(os.Getenv("VEIL_HYDRA_CLIENT_ID"))
+	if audience == "" {
+		audience = glue.DefaultClientID
+	}
+	g, err := glue.NewHydra(hydraAdmin)
+	if err != nil {
+		http.Error(w, "hydra unavailable", http.StatusBadGateway)
+		return
+	}
+	clientID := glue.AgentClientID(name)
+	bound, err := s.App.BindWorkloadFor(owner, name, issuer, clientID, audience)
+	if err != nil {
+		http.Error(w, "bind failed", http.StatusBadRequest)
+		return
+	}
+	cred, err := g.EnsureAgent(r.Context(), glue.AgentClient{
+		ID:       clientID,
+		Audience: audience,
+	})
+	if err != nil {
+		http.Error(w, "hydra provision failed", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, HydraAgentResponse{
+		AgentID:  name,
+		ClientID: cred.ID,
+		Secret:   cred.Secret,
+		Issuer:   bound.Issuer,
+		Audience: bound.Audience,
 	})
 }
 
