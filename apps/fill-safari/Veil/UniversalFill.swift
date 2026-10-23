@@ -60,12 +60,6 @@ final class UniversalFill: NSObject {
     private var targetApp: NSRunningApplication?
     private var picker: FillPanel?
     private var generation = 0
-    /// Field-focus watcher. AXObserver notifications do not reach a
-    /// sandboxed process for other apps — this polls the front app's
-    /// focused element at 300ms instead. Three AX reads a second, nothing
-    /// else: the cheap path to the browser-extension behavior.
-    private var focusTimer: Timer?
-    private var lastFocus: (pid: pid_t, role: String, pos: CGPoint)?
     /// Suppresses the auto dropdown while a pick's eval is in flight —
     /// the Touch ID prompt pulls focus and would kill itself.
     private var fillInFlight = false
@@ -119,116 +113,6 @@ final class UniversalFill: NSObject {
         } else {
             NSLog("veil: key tap refused — Input Monitoring not granted")
         }
-        if !AXIsProcessTrusted() {
-            NSLog("veil: ax untrusted — prompting")
-            AXIsProcessTrustedWithOptions(
-                [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
-        }
-        focusTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            self?.pollFocus()
-        }
-        NSLog("veil: focus watch polling 300ms (trusted=%d)", AXIsProcessTrusted() ? 1 : 0)
-    }
-
-    /// Front app's focused element, ~3x a second. Only transitions do work:
-    /// the same field under the same app is free. Credential fields get the
-    /// anchored dropdown; everything else closes it.
-    private func pollFocus() {
-        guard AXIsProcessTrusted(), !fillInFlight else { return }
-        guard let front = NSWorkspace.shared.frontmostApplication,
-              let bundleID = front.bundleIdentifier,
-              bundleID != Bundle.main.bundleIdentifier
-        else { if picker?.mode == .anchored { picker?.dismiss(); picker = nil }; lastFocus = nil; return }
-
-        let app = AXUIElementCreateApplication(front.processIdentifier)
-        var ref: CFTypeRef?
-        let err = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &ref)
-        guard let el = ref else {
-            if err == .apiDisabled {
-                // Electron/Chromium apps keep their AX tree off until a
-                // client asks — flip it once per app switch.
-                AXUIElementSetAttributeValue(
-                    app, "AXEnhancedUserInterface" as CFString,
-                    kCFBooleanTrue)
-                AXUIElementSetAttributeValue(
-                    app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-            } else if err != .success, err != .noValue {
-                NSLog("veil: focus read err=%d in %@", err.rawValue, bundleID)
-            }
-            if picker?.mode == .anchored { picker?.dismiss(); picker = nil }
-            lastFocus = nil
-            return
-        }
-        let field = el as! AXUIElement
-        var roleRef: CFTypeRef?
-        var posRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(field, kAXRoleAttribute as CFString, &roleRef)
-        AXUIElementCopyAttributeValue(field, kAXPositionAttribute as CFString, &posRef)
-        let role = roleRef as? String ?? ""
-        var pos = CGPoint.zero
-        if let p = posRef { AXValueGetValue(p as! AXValue, .cgPoint, &pos) }
-
-        let cur = (pid: front.processIdentifier, role: role, pos: pos)
-        if let last = lastFocus, last == cur { return }
-        lastFocus = cur
-
-        // Secure fields always qualify. A plain text field only qualifies
-        // when its own metadata reads credential-ish — an omnibox, a find
-        // bar, or a notes field does not get a password dropdown.
-        let credentialish = role == "AXSecureTextField" ||
-            (role == "AXTextField" && credentialHint(field))
-        NSLog("veil: focusEvent role=%@ in %@", role, bundleID)
-        guard credentialish else {
-            if picker?.mode == .anchored { picker?.dismiss(); picker = nil }
-            return
-        }
-        targetApp = front
-        let gen = { self.generation += 1; return self.generation }()
-        DispatchQueue.global().async { [self] in
-            let entries: [[String: Any]]
-            do {
-                entries = try FillBridge.shared.match(app: bundleID)
-            } catch {
-                NSLog("veil: focus match err %@", error.localizedDescription)
-                return
-            }
-            NSLog("veil: focus match=%d", entries.count)
-            DispatchQueue.main.async { [self] in
-                guard gen == generation, !fillInFlight else { return }
-                picker?.dismiss()
-                picker = nil
-                if entries.isEmpty { return }
-                let panel = FillPanel(entries: entries, at: field, mode: .anchored) { [weak self] uuid in
-                    self?.fillAndType(uuid: uuid, passwordOnly: role == "AXSecureTextField", panel: nil)
-                }
-                picker = panel
-                panel.show()
-            }
-        }
-    }
-
-    /// Reads the field's own identity strings — identifier, description,
-    /// placeholder, title — and answers whether it looks like a credential
-    /// input. Secure fields skip this entirely; this gates plain text fields.
-    private func credentialHint(_ field: AXUIElement) -> Bool {
-        let names = [
-            kAXIdentifierAttribute,
-            kAXDescriptionAttribute,
-            kAXTitleAttribute,
-            kAXPlaceholderValueAttribute,
-            "AXDOMIdentifier",
-            "AXAutocompleteValue",
-        ]
-        var any = ""
-        for name in names {
-            var v: CFTypeRef?
-            if AXUIElementCopyAttributeValue(field, name as CFString, &v) == .success,
-               let s = v as? String {
-                any += s.lowercased() + " "
-            }
-        }
-        if any.isEmpty { return false }
-        return any.range(of: #"(user|email|login|passwd|password|sign ?in|cred)"#, options: .regularExpression) != nil
     }
 
     func trigger() {
@@ -264,9 +148,17 @@ final class UniversalFill: NSObject {
 
         let app = AXUIElementCreateApplication(front.processIdentifier)
         var ref: CFTypeRef?
-        AXUIElementCopyAttributeValue(
+        let axErr = AXUIElementCopyAttributeValue(
             app, kAXFocusedUIElementAttribute as CFString, &ref,
         )
+        if axErr == .apiDisabled, !Self.browsers.contains(bundleID) {
+            AXUIElementSetAttributeValue(
+                app, "AXManualAccessibility" as CFString, kCFBooleanTrue,
+            )
+            AXUIElementCopyAttributeValue(
+                app, kAXFocusedUIElementAttribute as CFString, &ref,
+            )
+        }
         let field = ref as! AXUIElement?
         var roleRef: CFTypeRef?
         var role = ""
