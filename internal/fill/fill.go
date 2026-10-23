@@ -340,20 +340,20 @@ func (h *Host) encryptedPeer(env envelope, peer *Peer) []byte {
 		if !h.knownKey(inner.Keys) {
 			return h.reply(s, nonce, action, mustJSON(failMap("not associated")))
 		}
-		got := h.logins(inner.URL)
-		if len(got.Entries) > 0 {
-			if err := h.confirm("Veil wants to fill a password", grant.Registrable(inner.URL), true, peer); err != nil {
-				got = loginReply{Count: "0", Entries: []loginEntry{}, Success: "false", Hash: h.hash(), Version: Version}
-			}
+		if h.App != nil && len(h.jsonMatch(inner.URL)) == 0 {
+			return h.reply(s, nonce, action, mustJSON(loginReply{Count: "0", Entries: []loginEntry{}, Success: "true", Hash: h.hash(), Version: Version}))
 		}
+		if err := h.confirm("Veil wants to fill a password", grant.Registrable(inner.URL), true, peer); err != nil {
+			return h.reply(s, nonce, action, mustJSON(loginReply{Count: "0", Entries: []loginEntry{}, Success: "false", Hash: h.hash(), Version: Version}))
+		}
+		got := h.logins(inner.URL)
 		return h.reply(s, nonce, action, mustJSON(got))
 	case "get-totp":
-		body = h.totp(inner.UUID)
-		if body["success"] == "true" {
-			if err := h.confirm("Veil wants to fill a verification code", h.lastConfirmScope(), true, peer); err != nil {
-				body = failMap("canceled")
-			}
+		if err := h.confirm("Veil wants to fill a verification code", h.lastConfirmScope(), true, peer); err != nil {
+			body = failMap("canceled")
+			break
 		}
+		body = h.totp(inner.UUID)
 	case "passkeys-register":
 		if !h.knownKey(inner.Keys) {
 			return h.reply(s, nonce, action, mustJSON(failMap("not associated")))
@@ -368,12 +368,22 @@ func (h *Host) encryptedPeer(env envelope, peer *Peer) []byte {
 		if !h.knownKey(inner.Keys) {
 			return h.reply(s, nonce, action, mustJSON(failMap("not associated")))
 		}
-		raw := h.passkeysGet(inner.Origin, inner.PublicKey)
-		if !passkeyIsError(raw) {
-			if err := h.confirm("Veil wants to use a passkey", grant.Registrable(inner.Origin), true, peer); err != nil {
-				raw = h.passkeyErr(passkeysCanceled)
+		if h.App != nil {
+			hasPasskey := false
+			for _, e := range h.jsonMatch(inner.Origin) {
+				if e.Kind == "passkey" {
+					hasPasskey = true
+					break
+				}
+			}
+			if !hasPasskey {
+				return h.reply(s, nonce, action, h.passkeyErr(15))
 			}
 		}
+		if err := h.confirm("Veil wants to use a passkey", grant.Registrable(inner.Origin), true, peer); err != nil {
+			return h.reply(s, nonce, action, h.passkeyErr(passkeysCanceled))
+		}
+		raw := h.passkeysGet(inner.Origin, inner.PublicKey)
 		return h.reply(s, nonce, action, raw)
 	default:
 		body = failMap("unknown action")

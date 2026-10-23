@@ -127,7 +127,7 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "unlock":
 		// The app's vault gate — the same Touch ID confirm fills use, one
 		// auth path for every surface.
-		err := h.confirm("unlock the vault", "", false, in.peer)
+		err := h.confirm("unlock the vault", "veil.nyc", true, in.peer)
 		out := struct {
 			OK    bool   `json:"ok"`
 			Error string `json:"error,omitempty"`
@@ -139,17 +139,21 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 	case "token":
 		// Post-unlock the app wants the human's ID token to inject into the
 		// vault webview — same bearer the SPA would mint itself. Local
-		// transport only; never an agent surface. If the cached JWT expired,
-		// remint via h.Refresh so opening Veil.app never lands on an expired
-		// session.
-		tok, err := h.bearer()
-		if err != nil && h.Refresh != nil {
-			tok, err = h.Refresh()
-		}
+		// transport only; never an agent surface. Gated by h.confirm (reusing
+		// the 30s peer-scoped window from unlock) so no peer can read the
+		// human JWT without Touch ID.
 		out := struct {
 			Token string `json:"token,omitempty"`
 			Error string `json:"error,omitempty"`
 		}{}
+		if err := h.confirm("unlock the vault", "veil.nyc", true, in.peer); err != nil {
+			out.Error = "denied"
+			return jsonBytes(out)
+		}
+		tok, err := h.bearer()
+		if err != nil && h.Refresh != nil {
+			tok, err = h.Refresh()
+		}
 		if err != nil {
 			out.Error = "need_login"
 		} else {

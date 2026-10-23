@@ -4,7 +4,9 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -22,6 +24,18 @@ import (
 	"github.com/VortexNYC/veil/internal/fill"
 )
 
+const (
+	defaultUpdateRepo    = "VortexNYC/veil"
+	defaultUpdateAPIBase = "https://api.github.com"
+	// Pinned Ed25519 release signing public key (same key as Sparkle SUPublicEDKey).
+	defaultUpdatePubKeyB64 = "QFpn84Z7FgTWnIPf+KNRfvhjO7Upig1Exp4WOo72Ig0="
+)
+
+var (
+	updateAPIBase      = defaultUpdateAPIBase
+	updateVerifyPubB64 = defaultUpdatePubKeyB64
+)
+
 type ghRelease struct {
 	TagName string `json:"tag_name"`
 	HTMLURL string `json:"html_url"`
@@ -33,10 +47,9 @@ type ghRelease struct {
 
 func updateCmd(home *string, currentVersion string) *cobra.Command {
 	var checkOnly, syncOnly bool
-	var repo, apiBase string
 	c := &cobra.Command{
 		Use:   "update",
-		Short: "Update the veil CLI binary and local browser extension payloads from GitHub Releases",
+		Short: "Update the veil CLI binary and local browser extension payloads from signed GitHub Releases",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if syncOnly {
@@ -51,7 +64,7 @@ func updateCmd(home *string, currentVersion string) *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 			defer cancel()
-			rel, err := fetchLatestRelease(ctx, apiBase, repo)
+			rel, err := fetchLatestRelease(ctx, updateAPIBase, defaultUpdateRepo)
 			if err != nil {
 				return fmt.Errorf("update check failed: %w", err)
 			}
@@ -96,8 +109,6 @@ func updateCmd(home *string, currentVersion string) *cobra.Command {
 	}
 	c.Flags().BoolVar(&checkOnly, "check", false, "only check if a newer release is available without updating")
 	c.Flags().BoolVar(&syncOnly, "sync-only", false, "only refresh local unpacked browser extensions in ~/.veil")
-	c.Flags().StringVar(&repo, "repo", "VortexNYC/veil", "GitHub owner/repo slug")
-	c.Flags().StringVar(&apiBase, "api-base", "https://api.github.com", "GitHub API base URL")
 	return c
 }
 
@@ -124,22 +135,38 @@ func fetchLatestRelease(ctx context.Context, apiBase, repo string) (*ghRelease, 
 }
 
 func applyReleaseUpdate(ctx context.Context, rel *ghRelease, exePath string) error {
+	pubRaw, err := base64.StdEncoding.DecodeString(updateVerifyPubB64)
+	if err != nil || len(pubRaw) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid pinned release public key")
+	}
+	pubKey := ed25519.PublicKey(pubRaw)
+
 	wantAsset := fmt.Sprintf("veil_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
-	var assetURL, sumsURL string
+	var assetURL, sumsURL, sigURL string
 	for _, a := range rel.Assets {
 		switch a.Name {
 		case wantAsset:
 			assetURL = a.BrowserDownloadURL
 		case "checksums.txt":
 			sumsURL = a.BrowserDownloadURL
+		case "checksums.txt.sig":
+			sigURL = a.BrowserDownloadURL
 		}
 	}
-	if assetURL == "" || sumsURL == "" {
-		return fmt.Errorf("release %s missing %s or checksums.txt", rel.TagName, wantAsset)
+	if assetURL == "" || sumsURL == "" || sigURL == "" {
+		return fmt.Errorf("release %s missing %s, checksums.txt, or checksums.txt.sig", rel.TagName, wantAsset)
 	}
 	sumsRaw, err := downloadBytes(ctx, sumsURL, 1<<20)
 	if err != nil {
 		return fmt.Errorf("download checksums.txt: %w", err)
+	}
+	sigRaw, err := downloadBytes(ctx, sigURL, 64*1024)
+	if err != nil {
+		return fmt.Errorf("download checksums.txt.sig: %w", err)
+	}
+	sigBytes, err := decodeSignature(sigRaw)
+	if err != nil || !ed25519.Verify(pubKey, sumsRaw, sigBytes) {
+		return fmt.Errorf("checksums.txt.sig Ed25519 signature verification failed")
 	}
 	wantHex := ""
 	for line := range strings.Lines(string(sumsRaw)) {
@@ -181,6 +208,20 @@ func applyReleaseUpdate(ctx context.Context, rel *ghRelease, exePath string) err
 		return err
 	}
 	return nil
+}
+
+func decodeSignature(raw []byte) ([]byte, error) {
+	if len(raw) == ed25519.SignatureSize {
+		return raw, nil
+	}
+	s := strings.TrimSpace(string(raw))
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil && len(b) == ed25519.SignatureSize {
+		return b, nil
+	}
+	if b, err := hex.DecodeString(s); err == nil && len(b) == ed25519.SignatureSize {
+		return b, nil
+	}
+	return nil, fmt.Errorf("invalid signature encoding")
 }
 
 func downloadBytes(ctx context.Context, url string, maxBytes int64) ([]byte, error) {

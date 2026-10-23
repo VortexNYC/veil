@@ -33,10 +33,22 @@ final class RequestWatcher {
         timer?.fire()
     }
 
+    private var tokenPath: String {
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: FillSettingsModel.path)),
+           let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+           let p = o["human_token_file"] as? String, !p.isEmpty {
+            return p
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/veil/human.jwt").path
+    }
+
     private func poll() {
         let baseOrigin = self.origin
+        let path = self.tokenPath
         DispatchQueue.global().async { [weak self] in
-            guard let tok = try? FillBridge.shared.token(),
+            guard let tok = try? String(contentsOfFile: path)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
                   !tok.isEmpty else { return }
             var req = URLRequest(url: URL(string: baseOrigin + "/v1/requests")!)
             req.setValue("Bearer " + tok, forHTTPHeaderField: "Authorization")

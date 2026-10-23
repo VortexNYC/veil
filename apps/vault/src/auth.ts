@@ -158,7 +158,8 @@ export async function finishLogin(href: string): Promise<void> {
   if (typeof idToken !== "string" || idToken === "") {
     throw new Error("token")
   }
-  if (!amrOf(idToken).includes("totp")) {
+  const amr = amrOf(idToken)
+  if (!amr.includes("totp") && !amr.includes("webauthn") && !amr.includes("lookup_secret")) {
     throw new Error("aal2")
   }
   sessionStorage.setItem(tokenKey, idToken)

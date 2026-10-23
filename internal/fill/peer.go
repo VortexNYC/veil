@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -76,16 +77,29 @@ var (
 	attestedCache = map[string]attestedEntry{}
 )
 
+const veilTeamID = "VFWGNKKT4G"
+
+func allowedPeerPath(path string) bool {
+	clean := filepath.Clean(path)
+	if strings.HasPrefix(clean, "/Applications/Veil.app/Contents/") {
+		return true
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if clean == filepath.Join(home, ".veil", "native-host") {
+			return true
+		}
+	}
+	return false
+}
+
 // attested reports whether the peer executable is a code-signed Veil
-// process. `codesign -d` prints the CFBundleIdentifier — every Veil
-// surface (app, extension appex, AutoFill appex, bundled binaries) signs
-// under the nyc.veil.* tree; anything else connecting to the socket is
-// not us. Cached by (path, mtime, size) so repeated socket connects do
-// not fork `codesign` on every frame.
+// process. `codesign -d` prints the CFBundleIdentifier and TeamIdentifier —
+// every Veil surface (app, extension appex, AutoFill appex, bundled binaries)
+// signs under the nyc.veil.* tree and TeamIdentifier VFWGNKKT4G; ad-hoc or
+// third-party binaries are rejected. Cached by (path, mtime, size) so repeated
+// socket connects do not fork `codesign` on every frame.
 func attested(path string) bool {
-	if !strings.Contains(path, "Veil.app/Contents/") &&
-		!strings.Contains(path, "/veil-bin") &&
-		!strings.Contains(path, "/native-host") {
+	if !allowedPeerPath(path) {
 		return false
 	}
 	st, err := os.Stat(path)
@@ -105,13 +119,17 @@ func attested(path string) bool {
 	if err != nil {
 		return false
 	}
-	ok := false
+	hasID := false
+	hasTeam := false
 	for line := range strings.Lines(string(out)) {
+		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "Identifier=") {
-			ok = strings.HasPrefix(strings.TrimPrefix(line, "Identifier="), "nyc.veil")
-			break
+			hasID = strings.HasPrefix(strings.TrimPrefix(line, "Identifier="), "nyc.veil")
+		} else if strings.HasPrefix(line, "TeamIdentifier=") {
+			hasTeam = strings.TrimPrefix(line, "TeamIdentifier=") == veilTeamID
 		}
 	}
+	ok := hasID && hasTeam
 	attestedMu.Lock()
 	attestedCache[path] = attestedEntry{mtimeNs: mtimeNs, size: size, ok: ok}
 	attestedMu.Unlock()

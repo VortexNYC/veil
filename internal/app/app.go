@@ -511,15 +511,23 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 	if name == "" {
 		return protocol.Item{}, fmt.Errorf("app: empty item name")
 	}
+	org := opts.OrgID
+	if org == "" {
+		org = a.OrgID
+	}
 	itemID := strings.TrimSpace(opts.ID)
 	if itemID == "" {
-		itemID = name
-		if !id.Valid(name) {
-			generated, err := id.NewItem()
-			if err != nil {
-				return protocol.Item{}, err
+		if existing, err := a.Store.ItemByName(org, name); err == nil {
+			itemID = existing.ID
+		} else {
+			itemID = name
+			if !id.Valid(name) {
+				generated, err := id.NewItem()
+				if err != nil {
+					return protocol.Item{}, err
+				}
+				itemID = generated
 			}
-			itemID = generated
 		}
 	}
 	if len(opts.Token) == 0 && len(opts.TOTPSeed) == 0 && len(opts.Refresh) == 0 && len(opts.File) == 0 && len(opts.Passkey) == 0 && opts.WIF == nil && opts.Kind != protocol.ItemHoney {
@@ -541,10 +549,6 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 	uris := opts.URIs
 	if opts.URI != "" {
 		uris = append([]string{opts.URI}, uris...)
-	}
-	org := opts.OrgID
-	if org == "" {
-		org = a.OrgID
 	}
 	owner := opts.Owner
 	if owner.Kind == "" {
@@ -587,9 +591,9 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 	}
 	// The store upserts — the event name must match what actually happened.
 	action := protocol.ActionItemCreated
-	if _, err := a.Store.Item(item.ID); err == nil {
+	if existing, err := a.Store.Item(item.ID); err == nil && existing.OrgID == org {
 		action = protocol.ActionItemUpdated
-	} else if !errors.Is(err, store.ErrNotFound) {
+	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return protocol.Item{}, err
 	}
 	if err := a.Store.PutItem(item, store.Secret(blob), adminEvent(actor, org, item.ID, action, "name="+name)); err != nil {
