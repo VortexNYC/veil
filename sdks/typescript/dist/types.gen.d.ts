@@ -110,6 +110,7 @@ export type CreateItemRequest = {
     login?: string;
     card?: CardFields;
     identity?: IdentityFields;
+    wif?: WifItemFields;
 };
 export type UpdateItemRequest = {
     /**
@@ -460,6 +461,34 @@ export type VerifyIssuerResponse = {
     code: 'ok' | 'invalid-issuer' | 'discovery-failed';
     issuer: string;
     message: string;
+};
+export type WorkloadsResponse = {
+    workloads: Array<WorkloadView>;
+};
+export type WifItemFields = {
+    token_url: string;
+    assertion_token_url: string;
+    assertion_client_id: string;
+    assertion_secret: string;
+    assertion_audience?: string;
+    federation_rule_id: string;
+    organization_id?: string;
+    service_account_id?: string;
+    workspace_id?: string;
+};
+export type RotateItemRequest = {
+    /**
+     * separate vault item holding the provider management credential
+     */
+    management_item?: string;
+    /**
+     * auto-rotation interval (e.g. 24h)
+     */
+    interval?: string;
+    /**
+     * replacement credential for assisted rotation
+     */
+    secret?: string;
 };
 export type GetHealthData = {
     body?: never;
@@ -1549,7 +1578,7 @@ export type RegisterDeviceResponses = {
 };
 export type RegisterDeviceResponse = RegisterDeviceResponses[keyof RegisterDeviceResponses];
 export type RotateItemData = {
-    body?: never;
+    body?: RotateItemRequest;
     path: {
         name: string;
     };
@@ -1640,3 +1669,64 @@ export type VerifyIssuerResponses = {
     200: VerifyIssuerResponse;
 };
 export type VerifyIssuerResponse2 = VerifyIssuerResponses[keyof VerifyIssuerResponses];
+export type UnbindWorkloadData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query: {
+        issuer: string;
+        subject: string;
+    };
+    url: '/v1/agents/{name}/workloads';
+};
+export type UnbindWorkloadErrors = {
+    /**
+     * unbind failed
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+export type UnbindWorkloadResponses = {
+    /**
+     * Unbound
+     */
+    204: void;
+};
+export type UnbindWorkloadResponse = UnbindWorkloadResponses[keyof UnbindWorkloadResponses];
+export type ListAgentWorkloadsData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/agents/{name}/workloads';
+};
+export type ListAgentWorkloadsErrors = {
+    /**
+     * list workloads failed
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+export type ListAgentWorkloadsResponses = {
+    /**
+     * Workload bindings
+     */
+    200: WorkloadsResponse;
+};
+export type ListAgentWorkloadsResponse = ListAgentWorkloadsResponses[keyof ListAgentWorkloadsResponses];

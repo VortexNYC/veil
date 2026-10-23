@@ -476,6 +476,7 @@ type ItemOpts struct {
 	MIME         string
 	File         []byte
 	Passkey      []byte
+	WIF          *material.WIFOpts
 	Owner        protocol.Owner
 	// OrgID is the caller's org. Empty falls back to the deployment default —
 	// the local vault path; the origin always sets it from the principal.
@@ -521,7 +522,7 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 			itemID = generated
 		}
 	}
-	if len(opts.Token) == 0 && len(opts.TOTPSeed) == 0 && len(opts.Refresh) == 0 && len(opts.File) == 0 && len(opts.Passkey) == 0 && opts.Kind != protocol.ItemHoney {
+	if len(opts.Token) == 0 && len(opts.TOTPSeed) == 0 && len(opts.Refresh) == 0 && len(opts.File) == 0 && len(opts.Passkey) == 0 && opts.WIF == nil && opts.Kind != protocol.ItemHoney {
 		return protocol.Item{}, fmt.Errorf("app: empty secret")
 	}
 	kind := opts.Kind
@@ -531,7 +532,7 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 			kind = protocol.ItemPasskey
 		case len(opts.File) > 0:
 			kind = protocol.ItemFile
-		case len(opts.Refresh) > 0:
+		case len(opts.Refresh) > 0 || opts.WIF != nil:
 			kind = protocol.ItemOAuth
 		default:
 			kind = protocol.ItemAPIKey
@@ -568,6 +569,8 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 		blob = opts.Passkey
 	case len(opts.File) > 0:
 		blob, err = material.PackFile(opts.FileName, opts.MIME, opts.File)
+	case opts.WIF != nil:
+		blob, err = material.PackWIF(*opts.WIF)
 	case len(opts.Refresh) > 0:
 		blob, err = material.PackOAuth(opts.Refresh, []byte(opts.TokenURL), []byte(opts.ClientID), opts.ClientSecret)
 	case len(opts.TOTPSeed) > 0:
@@ -758,8 +761,9 @@ func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []stri
 // RotateOpts configures optional separate management-credential authority and
 // automatic rotation interval for an item.
 type RotateOpts struct {
-	ManagementItem string
-	Interval       time.Duration
+	ManagementItem    string
+	Interval          time.Duration
+	ReplacementSecret []byte
 }
 
 // RotateItem swaps an item's credential server-side: the provider's
@@ -800,7 +804,7 @@ func (a *App) rotateItemInternal(actorID string, item protocol.Item, opts Rotate
 			break
 		}
 	}
-	if rot == nil {
+	if rot == nil && len(opts.ReplacementSecret) == 0 {
 		return protocol.Item{}, rotate.ErrNoRotator()
 	}
 	raw, err := a.Store.Secret(item.ID)
@@ -837,25 +841,37 @@ func (a *App) rotateItemInternal(actorID string, item protocol.Item, opts Rotate
 		nextRotateAt = time.Now().UTC().Add(d).Unix()
 	}
 	ctx := context.Background()
-	next, keyID, err := rot.Create(ctx, item.Name, live)
-	if err != nil {
-		return protocol.Item{}, fmt.Errorf("rotate: %w", err)
-	}
-	// The new key id is the only breadcrumb to an orphan — log it the moment
-	// it exists so a mid-rotation failure never strands an unaccounted key.
-	rollback := func() {
-		slog.Warn("rotate: retiring orphaned new key", "item", name, "key_id", keyID)
-		retireAuth := next
-		if mgmtID != "" {
-			retireAuth = live
+	var next []byte
+	var keyID string
+	rollback := func() {}
+	if len(opts.ReplacementSecret) > 0 {
+		next = opts.ReplacementSecret
+		if rot != nil {
+			if err := rot.Verify(ctx, next); err != nil {
+				return protocol.Item{}, fmt.Errorf("rotate: replacement credential failed verify: %w", err)
+			}
 		}
-		if err := rot.Retire(ctx, keyID, retireAuth); err != nil {
-			slog.Warn("rotate: orphan not retired", "item", name, "key_id", keyID, "err", err)
+	} else {
+		next, keyID, err = rot.Create(ctx, item.Name, live)
+		if err != nil {
+			return protocol.Item{}, fmt.Errorf("rotate: %w", err)
 		}
-	}
-	if err := rot.Verify(ctx, next); err != nil {
-		rollback()
-		return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
+		// The new key id is the only breadcrumb to an orphan — log it the moment
+		// it exists so a mid-rotation failure never strands an unaccounted key.
+		rollback = func() {
+			slog.Warn("rotate: retiring orphaned new key", "item", name, "key_id", keyID)
+			retireAuth := next
+			if mgmtID != "" {
+				retireAuth = live
+			}
+			if err := rot.Retire(ctx, keyID, retireAuth); err != nil {
+				slog.Warn("rotate: orphan not retired", "item", name, "key_id", keyID, "err", err)
+			}
+		}
+		if err := rot.Verify(ctx, next); err != nil {
+			rollback()
+			return protocol.Item{}, fmt.Errorf("rotate: new credential failed verify: %w", err)
+		}
 	}
 	// Dual-phase state lives inside the sealed material.Envelope, never in
 	// item.Tags — agent-facing list paths never see provider key IDs.
@@ -874,7 +890,7 @@ func (a *App) rotateItemInternal(actorID string, item protocol.Item, opts Rotate
 		rollback()
 		return protocol.Item{}, err
 	}
-	if pendingID != "" {
+	if pendingID != "" && rot != nil {
 		if err := rot.Retire(ctx, pendingID, live); err != nil {
 			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
 		}
@@ -1205,6 +1221,56 @@ func (a *App) VerifyIssuer(ctx context.Context, actor protocol.Principal, issuer
 		return workload.VerifyResult{}, ErrForbidden
 	}
 	return a.Workload.VerifyIssuer(ctx, issuer), nil
+}
+
+func (a *App) WorkloadsForAgent(actor protocol.Principal, agentID string) ([]protocol.Workload, error) {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return nil, err
+	}
+	if !own {
+		return nil, ErrForbidden
+	}
+	agent, err := a.Store.Agent(agentID)
+	if err != nil {
+		return nil, err
+	}
+	if agent.OrgID != actor.OrgID {
+		return nil, ErrForbidden
+	}
+	out, err := a.Store.WorkloadsForAgent(agentID)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []protocol.Workload{}
+	}
+	return out, nil
+}
+
+func (a *App) UnbindWorkloadFor(actor protocol.Principal, agentID, issuer, subject string) error {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return err
+	}
+	if !own {
+		return ErrForbidden
+	}
+	agent, err := a.Store.Agent(agentID)
+	if err != nil {
+		return err
+	}
+	if agent.OrgID != actor.OrgID {
+		return ErrForbidden
+	}
+	existing, err := a.Store.Workload(issuer, subject)
+	if err != nil {
+		return err
+	}
+	if existing == nil || existing.AgentID != agentID {
+		return store.ErrNotFound
+	}
+	return a.Store.DeleteWorkload(issuer, subject, adminEvent(actor.ID, agent.OrgID, "", protocol.ActionWorkloadBound, "unbind agent="+agentID+" issuer="+issuer))
 }
 
 func (a *App) AgentFromOIDC(ctx context.Context, rawToken string) (protocol.Principal, error) {

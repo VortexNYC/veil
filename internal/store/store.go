@@ -242,6 +242,8 @@ type Store interface {
 	PutWorkload(protocol.Workload, ...protocol.AuditEvent) error
 	Workload(issuer, subject string) (*protocol.Workload, error)
 	WorkloadsForIssuer(issuer string) ([]protocol.Workload, error)
+	WorkloadsForAgent(agentID string) ([]protocol.Workload, error)
+	DeleteWorkload(issuer, subject string, events ...protocol.AuditEvent) error
 
 	PutSession(s protocol.Session, secretHash []byte, events ...protocol.AuditEvent) error
 	SessionByHash(secretHash []byte) (protocol.Session, error)

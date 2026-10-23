@@ -1574,6 +1574,16 @@
           "422": {
             "description": "provider has no key-management API"
           }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateItemRequest"
+              }
+            }
+          }
         }
       }
     },
@@ -1657,6 +1667,93 @@
           },
           "400": {
             "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
+    },
+    "/v1/agents/{name}/workloads": {
+      "get": {
+        "operationId": "listAgentWorkloads",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "List bound OIDC workload policies for an agent. Owner-only.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workload bindings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "list workloads failed"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unbindWorkload",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Remove an OIDC workload binding from an agent. Owner-only.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issuer",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unbound"
+          },
+          "400": {
+            "description": "unbind failed"
           },
           "401": {
             "description": "missing or invalid bearer"
@@ -1979,6 +2076,9 @@
           },
           "identity": {
             "$ref": "#/components/schemas/IdentityFields"
+          },
+          "wif": {
+            "$ref": "#/components/schemas/WIFItemFields"
           }
         }
       },
@@ -2961,6 +3061,76 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "WorkloadsResponse": {
+        "type": "object",
+        "required": [
+          "workloads"
+        ],
+        "properties": {
+          "workloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkloadView"
+            }
+          }
+        }
+      },
+      "WIFItemFields": {
+        "type": "object",
+        "required": [
+          "token_url",
+          "assertion_token_url",
+          "assertion_client_id",
+          "assertion_secret",
+          "federation_rule_id"
+        ],
+        "properties": {
+          "token_url": {
+            "type": "string"
+          },
+          "assertion_token_url": {
+            "type": "string"
+          },
+          "assertion_client_id": {
+            "type": "string"
+          },
+          "assertion_secret": {
+            "type": "string"
+          },
+          "assertion_audience": {
+            "type": "string"
+          },
+          "federation_rule_id": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "service_account_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RotateItemRequest": {
+        "type": "object",
+        "properties": {
+          "management_item": {
+            "type": "string",
+            "description": "separate vault item holding the provider management credential"
+          },
+          "interval": {
+            "type": "string",
+            "description": "auto-rotation interval (e.g. 24h)"
+          },
+          "secret": {
+            "type": "string",
+            "description": "replacement credential for assisted rotation"
           }
         }
       }

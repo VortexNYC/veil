@@ -1294,6 +1294,31 @@ func (p *Postgres) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error
 	return out, nil
 }
 
+func (p *Postgres) WorkloadsForAgent(agentID string) ([]protocol.Workload, error) {
+	rows, err := p.sqlc.WorkloadsForAgent(context.Background(), sqlc.WorkloadsForAgentParams{AgentID: agentID, MaxResults: maxListResults})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.Workload, 0, len(rows))
+	for i := range rows {
+		out = append(out, protocol.Workload{
+			Issuer:   rows[i].Issuer,
+			Subject:  rows[i].Subject,
+			AgentID:  rows[i].AgentID,
+			Audience: rows[i].Audience,
+			Claims:   decodeWorkloadClaims(rows[i].Claims),
+		})
+	}
+	return out, nil
+}
+
+func (p *Postgres) DeleteWorkload(issuer, subject string, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.DeleteWorkload(ctx, sqlc.DeleteWorkloadParams{Issuer: issuer, Subject: subject})
+	})
+}
+
 func (p *Postgres) AppendAudit(e protocol.AuditEvent) error {
 	// Single events take a plain INSERT on the request path — no COPY stream
 	// setup for one row.

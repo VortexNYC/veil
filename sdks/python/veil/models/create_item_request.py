@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
 from veil.models.card_fields import CardFields
 from veil.models.identity_fields import IdentityFields
+from veil.models.wif_item_fields import WIFItemFields
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
@@ -39,7 +40,8 @@ class CreateItemRequest(BaseModel):
     login: Optional[StrictStr] = Field(default=None, description="Fill username. Metadata on the item. Also sealed in the envelope. Not a secret.")
     card: Optional[CardFields] = None
     identity: Optional[IdentityFields] = None
-    __properties: ClassVar[List[str]] = ["name", "uri", "uris", "tags", "kind", "secret", "totp_seed", "login", "card", "identity"]
+    wif: Optional[WIFItemFields] = None
+    __properties: ClassVar[List[str]] = ["name", "uri", "uris", "tags", "kind", "secret", "totp_seed", "login", "card", "identity", "wif"]
 
     @field_validator('kind')
     def kind_validate_enum(cls, value):
@@ -96,6 +98,9 @@ class CreateItemRequest(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of identity
         if self.identity:
             _dict['identity'] = self.identity.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of wif
+        if self.wif:
+            _dict['wif'] = self.wif.to_dict()
         return _dict
 
     @classmethod
@@ -117,7 +122,8 @@ class CreateItemRequest(BaseModel):
             "totp_seed": obj.get("totp_seed"),
             "login": obj.get("login"),
             "card": CardFields.from_dict(obj["card"]) if obj.get("card") is not None else None,
-            "identity": IdentityFields.from_dict(obj["identity"]) if obj.get("identity") is not None else None
+            "identity": IdentityFields.from_dict(obj["identity"]) if obj.get("identity") is not None else None,
+            "wif": WIFItemFields.from_dict(obj["wif"]) if obj.get("wif") is not None else None
         })
         return _obj
 

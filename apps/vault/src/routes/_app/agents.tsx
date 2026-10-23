@@ -10,8 +10,15 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageChrome } from "../../page-chrome";
-import { addAgent, agents, bindAgentWorkload, verifyWorkloadIssuer } from "../../origin";
-import type { Agent, BindWorkloadRequest } from "@vortex-api/veil";
+import {
+  addAgent,
+  agents,
+  agentWorkloads,
+  bindAgentWorkload,
+  unbindAgentWorkload,
+  verifyWorkloadIssuer,
+} from "../../origin";
+import type { Agent, BindWorkloadRequest, WorkloadView } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/agents")({
   component: Agents,
@@ -84,6 +91,7 @@ function compilePresetPolicy(
 
 function Agents() {
   const [rows, setRows] = useState<Agent[] | null>(null);
+  const [byAgent, setByAgent] = useState<Record<string, WorkloadView[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [bindTarget, setBindTarget] = useState<string | null>(null);
@@ -99,6 +107,16 @@ function Agents() {
     }
     setError(null);
     setRows(res.data.agents);
+    const nextMap: Record<string, WorkloadView[]> = {};
+    await Promise.all(
+      res.data.agents.map(async (a) => {
+        const wres = await agentWorkloads(a.id);
+        if (wres.data) {
+          nextMap[a.id] = wres.data.workloads;
+        }
+      }),
+    );
+    setByAgent(nextMap);
   }
 
   useEffect(() => {
@@ -314,16 +332,36 @@ function Agents() {
                     <Table.Cell>{a.id}</Table.Cell>
                     <Table.Cell>{a.kind}</Table.Cell>
                     <Table.Cell>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => {
-                          setBindTarget(a.id);
-                          setVerifyMsg(null);
-                        }}
-                      >
-                        Bind OIDC
-                      </Button>
+                      <div className="flex flex-col gap-2">
+                        {(byAgent[a.id] ?? []).map((w) => (
+                          <div key={`${w.issuer}|${w.subject}`} className="flex items-center gap-2">
+                            <Text variant="secondary">
+                              {w.issuer} → {w.subject}
+                            </Text>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => {
+                                void unbindAgentWorkload(a.id, w.issuer, w.subject).then(() => reload());
+                              }}
+                            >
+                              Unbind
+                            </Button>
+                          </div>
+                        ))}
+                        <div>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              setBindTarget(a.id);
+                              setVerifyMsg(null);
+                            }}
+                          >
+                            Bind OIDC
+                          </Button>
+                        </div>
+                      </div>
                     </Table.Cell>
                   </Table.Row>
                 ))}

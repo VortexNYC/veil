@@ -11,6 +11,7 @@ import {
   denyRequest,
   getBilling,
   listAgents,
+  listAgentWorkloads as sdkListAgentWorkloads,
   listEvents,
   listGrants,
   listGroupMembers,
@@ -18,6 +19,7 @@ import {
   listItems,
   listRequests,
   removeGroupMember,
+  unbindWorkload as sdkUnbindWorkload,
   vaultReport,
   verifyIssuer as sdkVerifyIssuer,
 } from "@vortex-api/veil"
@@ -139,6 +141,14 @@ export function bindAgentWorkload(name: string, body: BindWorkloadRequest) {
 
 export function verifyWorkloadIssuer(issuer: string) {
   return sdkVerifyIssuer({ client: client(), body: { issuer } })
+}
+
+export function agentWorkloads(name: string) {
+  return sdkListAgentWorkloads({ client: client(), path: { name } })
+}
+
+export function unbindAgentWorkload(name: string, issuer: string, subject: string) {
+  return sdkUnbindWorkload({ client: client(), path: { name }, query: { issuer, subject } })
 }
 
 export function events() {

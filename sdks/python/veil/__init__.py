@@ -72,6 +72,7 @@ __all__ = [
     "RemoveMember200Response",
     "RequestsResponse",
     "RotateItem200Response",
+    "RotateItemRequest",
     "Session",
     "SessionsResponse",
     "UpdateItemRequest",
@@ -81,7 +82,9 @@ __all__ = [
     "VaultReportFinding",
     "VerifyIssuerRequest",
     "VerifyIssuerResponse",
+    "WIFItemFields",
     "WorkloadView",
+    "WorkloadsResponse",
 ]
 
 # import apis into sdk package
@@ -143,6 +146,7 @@ from veil.models.provision_response import ProvisionResponse as ProvisionRespons
 from veil.models.remove_member200_response import RemoveMember200Response as RemoveMember200Response
 from veil.models.requests_response import RequestsResponse as RequestsResponse
 from veil.models.rotate_item200_response import RotateItem200Response as RotateItem200Response
+from veil.models.rotate_item_request import RotateItemRequest as RotateItemRequest
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest
@@ -152,5 +156,7 @@ from veil.models.vault_report import VaultReport as VaultReport
 from veil.models.vault_report_finding import VaultReportFinding as VaultReportFinding
 from veil.models.verify_issuer_request import VerifyIssuerRequest as VerifyIssuerRequest
 from veil.models.verify_issuer_response import VerifyIssuerResponse as VerifyIssuerResponse
+from veil.models.wif_item_fields import WIFItemFields as WIFItemFields
 from veil.models.workload_view import WorkloadView as WorkloadView
+from veil.models.workloads_response import WorkloadsResponse as WorkloadsResponse
 

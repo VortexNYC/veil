@@ -2048,6 +2048,32 @@ func (s *SQLite) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) 
 	return out, rows.Err()
 }
 
+func (s *SQLite) WorkloadsForAgent(agentID string) ([]protocol.Workload, error) {
+	rows, err := s.db.Query(`SELECT agent_id, issuer, subject, audience, claims FROM workloads WHERE agent_id=? ORDER BY issuer, subject LIMIT ?`, agentID, maxListResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.Workload
+	for rows.Next() {
+		var w protocol.Workload
+		var claimsJSON string
+		if err := rows.Scan(&w.AgentID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON); err != nil {
+			return nil, err
+		}
+		w.Claims = decodeWorkloadClaims(claimsJSON)
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) DeleteWorkload(issuer, subject string, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(`DELETE FROM workloads WHERE issuer=? AND subject=?`, issuer, subject)
+		return err
+	})
+}
+
 func (s *SQLite) putSessionSQL(sess protocol.Session, secretHash []byte) (string, []any) {
 	return `INSERT INTO sessions(id, org_id, agent_id, secret_hash, expires_at, created_at, revoked_at, renewed_at, ttl, max_ttl, max_uses, uses)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)

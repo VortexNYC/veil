@@ -1025,7 +1025,11 @@ var registerDevice = (options) => (options.client ?? client).post({
 var rotateItem = (options) => (options.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/items/{name}/rotate",
-  ...options
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
 });
 var bindWorkload = (options) => (options.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
@@ -1044,6 +1048,16 @@ var verifyIssuer = (options) => (options.client ?? client).post({
     "Content-Type": "application/json",
     ...options.headers
   }
+});
+var unbindWorkload = (options) => (options.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/agents/{name}/workloads",
+  ...options
+});
+var listAgentWorkloads = (options) => (options.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/agents/{name}/workloads",
+  ...options
 });
 
 // sdks/typescript/ambient-oidc.ts
@@ -1137,6 +1151,7 @@ export {
   getHealth,
   getOpenApi,
   importItems,
+  listAgentWorkloads,
   listAgents,
   listEvents,
   listGrants,
@@ -1153,6 +1168,7 @@ export {
   revokeAgent,
   rotateItem,
   streamRequests,
+  unbindWorkload,
   unregisterDevice,
   updateItem,
   useItem,
