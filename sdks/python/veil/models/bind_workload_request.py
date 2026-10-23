@@ -18,7 +18,7 @@ import re  # noqa: F401
 import json
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
@@ -30,7 +30,8 @@ class BindWorkloadRequest(BaseModel):
     issuer: StrictStr = Field(description="OIDC issuer URL")
     subject: StrictStr = Field(description="expected token sub claim")
     audience: StrictStr = Field(description="expected token aud claim")
-    __properties: ClassVar[List[str]] = ["issuer", "subject", "audience"]
+    claims: Optional[Dict[str, List[StrictStr]]] = Field(default=None, description="optional OidcPolicy claim rules (every key must match at least one allowed value)")
+    __properties: ClassVar[List[str]] = ["issuer", "subject", "audience", "claims"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -85,7 +86,8 @@ class BindWorkloadRequest(BaseModel):
         _obj = cls.model_validate({
             "issuer": obj.get("issuer"),
             "subject": obj.get("subject"),
-            "audience": obj.get("audience")
+            "audience": obj.get("audience"),
+            "claims": obj.get("claims")
         })
         return _obj
 

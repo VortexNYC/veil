@@ -44,6 +44,7 @@ export {
   updateItem,
   useItem,
   vaultReport,
+  verifyIssuer,
 } from "./sdk.gen";
 export type {
   AddGroupMemberData,
@@ -251,7 +252,15 @@ export type {
   VaultReportFinding,
   VaultReportResponse,
   VaultReportResponses,
+  VerifyIssuerData,
+  VerifyIssuerErrors,
+  VerifyIssuerRequest,
+  VerifyIssuerResponse,
+  VerifyIssuerResponse2,
+  VerifyIssuerResponses,
   WorkloadView,
 } from "./types.gen";
 export { createClient } from "./client";
 export type { Config } from "./client";
+export { ambientOidcToken, createAmbientClient } from "./ambient-oidc";
+export type { AmbientOidcOptions } from "./ambient-oidc";

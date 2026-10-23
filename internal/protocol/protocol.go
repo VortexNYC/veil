@@ -326,10 +326,11 @@ type ApprovalRequest struct {
 // from someone else's issuer and map (issuer, subject) to an existing agent.
 // We do not issue tokens.
 type Workload struct {
-	AgentID  string
-	Issuer   string
-	Subject  string
-	Audience string
+	AgentID  string              `json:"agent_id"`
+	Issuer   string              `json:"issuer"`
+	Subject  string              `json:"subject"`
+	Audience string              `json:"audience"`
+	Claims   map[string][]string `json:"claims,omitempty"`
 }
 
 type Fetch struct {

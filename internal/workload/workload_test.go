@@ -65,18 +65,26 @@ func newTestIssuer(tb testing.TB) *testIssuer {
 }
 
 func (i *testIssuer) token(tb testing.TB, sub, aud string, exp time.Time) string {
+	return i.tokenWithClaims(tb, sub, aud, exp, nil)
+}
+
+func (i *testIssuer) tokenWithClaims(tb testing.TB, sub, aud string, exp time.Time, extra map[string]any) string {
 	tb.Helper()
 	sig, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: i.key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test"))
 	if err != nil {
 		tb.Fatal(err)
 	}
-	raw, err := jwt.Signed(sig).Claims(jwt.Claims{
+	b := jwt.Signed(sig).Claims(jwt.Claims{
 		Issuer:   i.URL,
 		Subject:  sub,
 		Audience: jwt.Audience{aud},
 		Expiry:   jwt.NewNumericDate(exp),
 		IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
-	}).Serialize()
+	})
+	if len(extra) > 0 {
+		b = b.Claims(extra)
+	}
+	raw, err := b.Serialize()
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -395,5 +403,76 @@ func TestValidateBindingBlocksGlobalImpersonationAndSSRF(t *testing.T) {
 		if err := ValidateBinding(tc[0], tc[1]); err != nil {
 			t.Fatalf("ValidateBinding(%q, %q) rejected valid binding: %v", tc[0], tc[1], err)
 		}
+	}
+}
+
+func TestClaimsMatchingAndRenameResilientBareWildcard(t *testing.T) {
+	iss := newTestIssuer(t)
+	mem := store.NewMemory()
+	if err := mem.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: "vercel-prod", OrgID: "org"}); err != nil {
+		t.Fatal(err)
+	}
+	// Bare '*' subject is rejected without claims, accepted with immutable claims.
+	if err := ValidateBindingWithClaims("https://oidc.vercel.com/acme", "*", nil); err == nil {
+		t.Fatal("unscoped bare '*' accepted")
+	}
+	claims := map[string][]string{
+		"owner_id":    {"team_abc123"},
+		"project_id":  {"prj_xyz789"},
+		"environment": {"production"},
+	}
+	if err := ValidateBindingWithClaims("https://oidc.vercel.com/acme", "*", claims); err != nil {
+		t.Fatalf("claims-scoped '*' rejected: %v", err)
+	}
+	if err := mem.PutWorkload(protocol.Workload{
+		AgentID:  "vercel-prod",
+		Issuer:   iss.URL,
+		Subject:  "*",
+		Audience: "https://vercel.com/acme",
+		Claims:   claims,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := New(mem)
+	ctx := context.Background()
+
+	// Renamed team/project slug in sub still matches via immutable owner_id/project_id.
+	tok := iss.tokenWithClaims(t, "owner:new_slug:project:new_name:environment:production", "https://vercel.com/acme", time.Now().Add(time.Hour), map[string]any{
+		"owner_id":    "team_abc123",
+		"project_id":  "prj_xyz789",
+		"environment": "production",
+	})
+	got, err := c.Agent(ctx, tok)
+	if err != nil || got.ID != "vercel-prod" {
+		t.Fatalf("claims match failed: %+v %v", got, err)
+	}
+
+	// Wrong environment claim is denied.
+	previewTok := iss.tokenWithClaims(t, "owner:new_slug:project:new_name:environment:preview", "https://vercel.com/acme", time.Now().Add(time.Hour), map[string]any{
+		"owner_id":    "team_abc123",
+		"project_id":  "prj_xyz789",
+		"environment": "preview",
+	})
+	if _, err := c.Agent(ctx, previewTok); err == nil {
+		t.Fatal("mismatched environment claim accepted")
+	}
+}
+
+func TestVerifyIssuer(t *testing.T) {
+	iss := newTestIssuer(t)
+	c := New(store.NewMemory())
+	ctx := context.Background()
+
+	res := c.VerifyIssuer(ctx, iss.URL)
+	if res.Code != CodeOK {
+		t.Fatalf("VerifyIssuer valid: %+v", res)
+	}
+	bad := c.VerifyIssuer(ctx, "https://169.254.169.254")
+	if bad.Code != CodeInvalidIssuer {
+		t.Fatalf("VerifyIssuer SSRF literal: %+v", bad)
+	}
+	down := c.VerifyIssuer(ctx, "http://127.0.0.1:1")
+	if down.Code != CodeDiscoveryFailed {
+		t.Fatalf("VerifyIssuer unreachable: %+v", down)
 	}
 }

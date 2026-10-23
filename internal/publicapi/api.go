@@ -178,16 +178,28 @@ type CreateAgentRequest struct {
 }
 
 type BindWorkloadRequest struct {
-	Issuer   string `json:"issuer"`
-	Subject  string `json:"subject"`
-	Audience string `json:"audience"`
+	Issuer   string              `json:"issuer"`
+	Subject  string              `json:"subject"`
+	Audience string              `json:"audience"`
+	Claims   map[string][]string `json:"claims,omitempty"`
 }
 
 type WorkloadView struct {
-	AgentID  string `json:"agent_id"`
-	Issuer   string `json:"issuer"`
-	Subject  string `json:"subject"`
-	Audience string `json:"audience"`
+	AgentID  string              `json:"agent_id"`
+	Issuer   string              `json:"issuer"`
+	Subject  string              `json:"subject"`
+	Audience string              `json:"audience"`
+	Claims   map[string][]string `json:"claims,omitempty"`
+}
+
+type VerifyIssuerRequest struct {
+	Issuer string `json:"issuer"`
+}
+
+type VerifyIssuerResponse struct {
+	Code    string `json:"code"`
+	Issuer  string `json:"issuer"`
+	Message string `json:"message"`
 }
 
 type AgentsResponse struct {
@@ -336,6 +348,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/agents", s.listAgents)
 	mux.HandleFunc("POST /v1/agents", s.createAgent)
 	mux.HandleFunc("POST /v1/agents/{name}/bind", s.bindWorkload)
+	mux.HandleFunc("POST /v1/workloads/verify-issuer", s.verifyIssuer)
 	mux.HandleFunc("POST /v1/agents/{name}/revoke", s.revokeAgent)
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
@@ -753,12 +766,13 @@ func (s *Server) bindWorkload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	bound, err := s.App.BindWorkloadFor(
+	bound, err := s.App.BindWorkloadForWithClaims(
 		owner,
 		strings.TrimSpace(r.PathValue("name")),
 		strings.TrimSpace(in.Issuer),
 		strings.TrimSpace(in.Subject),
 		strings.TrimSpace(in.Audience),
+		in.Claims,
 	)
 	if err != nil {
 		if errors.Is(err, app.ErrForbidden) {
@@ -773,6 +787,33 @@ func (s *Server) bindWorkload(w http.ResponseWriter, r *http.Request) {
 		Issuer:   bound.Issuer,
 		Subject:  bound.Subject,
 		Audience: bound.Audience,
+		Claims:   bound.Claims,
+	})
+}
+
+func (s *Server) verifyIssuer(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in VerifyIssuerRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	res, err := s.App.VerifyIssuer(r.Context(), owner, in.Issuer)
+	if err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "verify failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, VerifyIssuerResponse{
+		Code:    string(res.Code),
+		Issuer:  res.Issuer,
+		Message: res.Message,
 	})
 }
 

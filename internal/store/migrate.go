@@ -141,9 +141,9 @@ var migrateTables = []migrateTable{
 	},
 	{
 		name:       "workloads",
-		selectCols: []string{"issuer", "subject", "agent_id", "audience"},
-		insertCols: []string{"issuer", "subject", "agent_id", "audience"},
-		convs:      []col{keep, keep, keep, keep},
+		selectCols: []string{"issuer", "subject", "agent_id", "audience", "claims"},
+		insertCols: []string{"issuer", "subject", "agent_id", "audience", "claims"},
+		convs:      []col{keep, keep, keep, keep, keep},
 	},
 	{
 		name:       "owner_keys",
@@ -221,6 +221,19 @@ func MigrateSQLiteToPostgres(ctx context.Context, sqlitePath, dsn string) (*Migr
 				for i, c := range mt.selectCols {
 					if c == "subject_kind" {
 						mt.selectCols[i] = `'agent' AS subject_kind`
+					}
+				}
+			}
+		}
+		if mt.name == "workloads" {
+			hasClaims, err := sqliteHasColumn(src, "workloads", "claims")
+			if err != nil {
+				return report, err
+			}
+			if !hasClaims {
+				for i, c := range mt.selectCols {
+					if c == "claims" {
+						mt.selectCols[i] = `'{}' AS claims`
 					}
 				}
 			}

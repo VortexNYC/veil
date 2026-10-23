@@ -1097,6 +1097,32 @@ paths:
         \ agent is a grant-adjacent write."
       tags:
       - Owner
+  /v1/workloads/verify-issuer:
+    post:
+      operationId: verifyIssuer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyIssuerRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyIssuerResponse"
+          description: Verification result
+        "400":
+          description: bad request
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: Dry-run OIDC discovery against an issuer URL before saving a workload
+        binding. Owner-only — never mounted on /mcp.
+      tags:
+      - Owner
 components:
   schemas:
     Item:
@@ -2372,6 +2398,10 @@ components:
         issuer: issuer
         subject: subject
         audience: audience
+        claims:
+          key:
+          - claims
+          - claims
       properties:
         issuer:
           description: OIDC issuer URL
@@ -2382,6 +2412,12 @@ components:
         audience:
           description: expected token aud claim
           type: string
+        claims:
+          additionalProperties:
+            items:
+              type: string
+          description: optional OidcPolicy claim rules (every key must match at least
+            one allowed value)
       required:
       - audience
       - issuer
@@ -2392,6 +2428,10 @@ components:
         issuer: issuer
         subject: subject
         audience: audience
+        claims:
+          key:
+          - claims
+          - claims
       properties:
         agent_id:
           type: string
@@ -2401,11 +2441,46 @@ components:
           type: string
         audience:
           type: string
+        claims:
+          additionalProperties:
+            items:
+              type: string
+          description: optional OidcPolicy claim rules (every key must match at least
+            one allowed value)
       required:
       - agent_id
       - audience
       - issuer
       - subject
+    VerifyIssuerRequest:
+      example:
+        issuer: issuer
+      properties:
+        issuer:
+          description: OIDC issuer URL to dry-run
+          type: string
+      required:
+      - issuer
+    VerifyIssuerResponse:
+      example:
+        code: ok
+        issuer: issuer
+        message: message
+      properties:
+        code:
+          enum:
+          - ok
+          - invalid-issuer
+          - discovery-failed
+          type: string
+        issuer:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - issuer
+      - message
     removeMember_200_response:
       example:
         removed: true

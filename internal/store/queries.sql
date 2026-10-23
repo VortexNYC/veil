@@ -486,16 +486,16 @@ SELECT id, org_id FROM humans WHERE id = @id::text;
 SELECT id, org_id FROM humans ORDER BY id LIMIT @max_results::bigint;
 
 -- name: PutWorkload :exec
-INSERT INTO workloads(issuer, subject, agent_id, audience)
-VALUES(@issuer::text, @subject::text, @agent_id::text, @audience::text)
+INSERT INTO workloads(issuer, subject, agent_id, audience, claims)
+VALUES(@issuer::text, @subject::text, @agent_id::text, @audience::text, @claims::text)
 ON CONFLICT(issuer, subject) DO UPDATE SET
-    agent_id=excluded.agent_id, audience=excluded.audience;
+    agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims;
 
 -- name: WorkloadByKey :one
-SELECT issuer, subject, agent_id, audience FROM workloads WHERE issuer = @issuer::text AND subject = @subject::text;
+SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text AND subject = @subject::text;
 
 -- name: WorkloadsForIssuer :many
-SELECT issuer, subject, agent_id, audience FROM workloads WHERE issuer = @issuer::text ORDER BY subject LIMIT @max_results::bigint;
+SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text ORDER BY subject LIMIT @max_results::bigint;
 
 -- name: InsertAudit :exec
 INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
