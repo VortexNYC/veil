@@ -8,15 +8,18 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/mcpserver"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/publicapi"
 )
 
-// originMCPServer is the laptop Cursor adapter. Same tools as origin MCP.
+// originMCPServer is the laptop stdio MCP adapter (for Grok CLI, Cursor,
+// Claude Code, and Devin CLI). Exposes the exact same 5-tool surface as
+// origin HTTP MCP (list_items, match_items, check, fetch, approval_status).
 // Bearer is re-read from the token file on every call. Secrets never return.
 func originMCPServer() *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "veil", Version: "0.0.1"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "veil", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_items",
 		Description: "List items this agent may Use. Names and URIs only. Never secrets.",
@@ -37,6 +40,30 @@ func originMCPServer() *mcp.Server {
 			out.Items = []protocol.Item{}
 		}
 		return nil, mcpserver.ListOut{Items: out.Items}, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "match_items",
+		Description: "List items this agent may Use whose URIs match a URL — which item to name in fetch. Names and URIs only, never secrets.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpserver.MatchIn) (*mcp.CallToolResult, mcpserver.ListOut, error) {
+		tok, err := originTokenLive(ctx, "")
+		if err != nil {
+			return nil, mcpserver.ListOut{}, err
+		}
+		raw, err := originDo(ctx, http.MethodGet, "/v1/items", tok, nil)
+		if err != nil {
+			return nil, mcpserver.ListOut{}, err
+		}
+		var listed publicapi.ItemsResponse
+		if err := json.Unmarshal(raw, &listed); err != nil {
+			return nil, mcpserver.ListOut{}, err
+		}
+		out := make([]protocol.Item, 0, len(listed.Items))
+		for _, item := range listed.Items {
+			if !item.Archived && grant.HostAllowed(item, in.URL) {
+				out = append(out, item)
+			}
+		}
+		return nil, mcpserver.ListOut{Items: out}, nil
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "fetch",
@@ -66,15 +93,90 @@ func originMCPServer() *mcp.Server {
 			return nil, mcpserver.FetchOut{}, err
 		}
 		return nil, mcpserver.FetchOut{
-			Decision: string(got.Decision),
-			Reason:   got.Reason,
-			Status:   got.Status,
-			Headers:  got.Headers,
-			Body:     got.Body,
-			BodyB64:  got.BodyB64,
+			Decision:         string(got.Decision),
+			Reason:           got.Reason,
+			Status:           got.Status,
+			Headers:          got.Headers,
+			Body:             got.Body,
+			BodyB64:          got.BodyB64,
+			RequestID:        got.RequestID,
+			RequestExpiresAt: got.RequestExpiresAt,
 		}, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "check",
+		Description: "Dry-run a fetch: evaluates the grant decision without calling the URL, claiming a use, or touching the secret. On need_approval it files the ask and returns request_id — also how an agent explicitly requests approval.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpserver.FetchIn) (*mcp.CallToolResult, mcpserver.FetchOut, error) {
+		var out mcpserver.FetchOut
+		if err := callOriginMCPTool(ctx, "check", in, &out); err != nil {
+			return nil, mcpserver.FetchOut{}, err
+		}
+		return nil, out, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "approval_status",
+		Description: "Poll one of this agent's approval requests after fetch returned decision=need_approval — open, approved, denied, or expired. Retry fetch once approved.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpserver.ApprovalStatusIn) (*mcp.CallToolResult, mcpserver.ApprovalStatusOut, error) {
+		var out mcpserver.ApprovalStatusOut
+		if err := callOriginMCPTool(ctx, "approval_status", in, &out); err != nil {
+			return nil, mcpserver.ApprovalStatusOut{}, err
+		}
+		return nil, out, nil
+	})
 	return server
+}
+
+func callOriginMCPTool(ctx context.Context, toolName string, args any, dst any) error {
+	tok, err := originTokenLive(ctx, "")
+	if err != nil {
+		return err
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "veil-stdio", Version: "0.1.0"}, nil)
+	tr := &mcp.StreamableClientTransport{
+		Endpoint: originBase() + "/mcp",
+		HTTPClient: &http.Client{
+			Transport: bearerRoundTripper{tok: tok, base: http.DefaultTransport},
+		},
+	}
+	sess, err := client.Connect(ctx, tr, nil)
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name:      toolName,
+		Arguments: args,
+	})
+	if err != nil {
+		return err
+	}
+	if res.IsError {
+		return fmt.Errorf("mcp %s failed", toolName)
+	}
+	if res.StructuredContent != nil {
+		raw, err := json.Marshal(res.StructuredContent)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(raw, dst)
+	}
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok && tc.Text != "" {
+			return json.Unmarshal([]byte(tc.Text), dst)
+		}
+	}
+	return fmt.Errorf("mcp %s: empty response", toolName)
+}
+
+type bearerRoundTripper struct {
+	tok  string
+	base http.RoundTripper
+}
+
+func (b bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Header.Set("Authorization", "Bearer "+b.tok)
+	return b.base.RoundTrip(clone)
 }
 
 func runOriginMCPStdio(ctx context.Context) error {

@@ -728,6 +728,45 @@ func originRequestResolve(cmd *cobra.Command, id, verb string, ttl time.Duration
 	return encode(cmd, out)
 }
 
+func originAgentAdd(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(publicapi.CreateAgentRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/agents", tok, payload)
+	if err != nil {
+		return err
+	}
+	var agent protocol.Principal
+	if err := json.Unmarshal(raw, &agent); err != nil {
+		return err
+	}
+	return encode(cmd, agent)
+}
+
+func originAgentList(cmd *cobra.Command) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, "/v1/agents", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.AgentsResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	if out.Agents == nil {
+		out.Agents = []protocol.Principal{}
+	}
+	return encode(cmd, out.Agents)
+}
+
 func originAgentRevoke(cmd *cobra.Command, id string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
@@ -908,4 +947,65 @@ func originAgentUnbind(cmd *cobra.Command, name, issuer, subject string) error {
 		return err
 	}
 	return encode(cmd, map[string]bool{"unbound": true})
+}
+
+func originAgentHydra(cmd *cobra.Command, name, issuer, clientID, audience, secretFile string, existing hydraCred, verified bool) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	if verified {
+		payload, err := json.Marshal(publicapi.BindWorkloadRequest{
+			Issuer:   issuer,
+			Subject:  clientID,
+			Audience: audience,
+		})
+		if err != nil {
+			return err
+		}
+		raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/agents/"+url.PathEscape(name)+"/bind", tok, payload)
+		if err != nil {
+			return err
+		}
+		var out publicapi.WorkloadView
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return err
+		}
+		existing.Audience = out.Audience
+		existing.Issuer = out.Issuer
+		if err := writeHydraCred(secretFile, existing); err != nil {
+			return err
+		}
+		return encode(cmd, hydraAgentDTO{
+			AgentID:  name,
+			ClientID: clientID,
+			Issuer:   out.Issuer,
+			Audience: out.Audience,
+		})
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/agents/"+url.PathEscape(name)+"/hydra", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.HydraAgentResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	if out.Secret != "" {
+		existing.Secret = out.Secret
+	}
+	if existing.Secret == "" {
+		return fmt.Errorf("agent hydra: no client secret to record")
+	}
+	existing.Audience = out.Audience
+	existing.Issuer = out.Issuer
+	if err := writeHydraCred(secretFile, existing); err != nil {
+		return err
+	}
+	return encode(cmd, hydraAgentDTO{
+		AgentID:  name,
+		ClientID: out.ClientID,
+		Issuer:   out.Issuer,
+		Audience: out.Audience,
+	})
 }

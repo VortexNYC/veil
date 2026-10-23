@@ -1109,6 +1109,9 @@ func agentCmd(home *string) *cobra.Command {
 		Short: "Register an agent principal",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originAgentAdd(cmd, args[0])
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err
@@ -1125,6 +1128,9 @@ func agentCmd(home *string) *cobra.Command {
 		Use:   "list",
 		Short: "List agents",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originAgentList(cmd)
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err
@@ -1337,6 +1343,9 @@ func agentCmd(home *string) *cobra.Command {
 				default:
 					return fmt.Errorf("agent hydra: cannot verify existing secret (%v); refusing to rotate — --force overrides", verr)
 				}
+			}
+			if originBase() != "" {
+				return originAgentHydra(cmd, name, issuer, clientID, audience, secretFile, existing, verified)
 			}
 			a, err := openApp(*home)
 			if err != nil {
