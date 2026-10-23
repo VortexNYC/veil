@@ -175,6 +175,7 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS workloads (
 			issuer TEXT NOT NULL,
 			subject TEXT NOT NULL,
+			org_id TEXT NOT NULL DEFAULT '',
 			agent_id TEXT NOT NULL,
 			audience TEXT NOT NULL,
 			claims TEXT NOT NULL DEFAULT '{}',
@@ -250,6 +251,7 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN has_file INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN login TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE workloads ADD COLUMN claims TEXT NOT NULL DEFAULT '{}'`)
+	_, _ = s.db.Exec(`ALTER TABLE workloads ADD COLUMN org_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN revoked_at TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN renewed_at TEXT`)
@@ -2005,20 +2007,27 @@ func decodeWorkloadClaims(raw string) map[string][]string {
 func (s *SQLite) PutWorkload(w protocol.Workload, events ...protocol.AuditEvent) error {
 	claimsJSON := encodeWorkloadClaims(w.Claims)
 	return s.writeAudited(events, func(ex sqlExecer) error {
-		_, err := ex.Exec(`INSERT INTO workloads(issuer, subject, agent_id, audience, claims)
-			VALUES(?,?,?,?,?)
+		res, err := ex.Exec(`INSERT INTO workloads(issuer, subject, org_id, agent_id, audience, claims)
+			VALUES(?,?,?,?,?,?)
 			ON CONFLICT(issuer, subject) DO UPDATE SET
-				agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims`,
-			w.Issuer, w.Subject, w.AgentID, w.Audience, claimsJSON)
-		return err
+				org_id=excluded.org_id, agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims
+			WHERE workloads.org_id = '' OR workloads.org_id = excluded.org_id`,
+			w.Issuer, w.Subject, w.OrgID, w.AgentID, w.Audience, claimsJSON)
+		if err != nil {
+			return err
+		}
+		if n, rerr := res.RowsAffected(); rerr == nil && n == 0 {
+			return ErrDenied
+		}
+		return nil
 	})
 }
 
 func (s *SQLite) Workload(issuer, subject string) (*protocol.Workload, error) {
 	var w protocol.Workload
 	var claimsJSON string
-	err := s.db.QueryRow(`SELECT agent_id, issuer, subject, audience, claims FROM workloads WHERE issuer=? AND subject=?`, issuer, subject).
-		Scan(&w.AgentID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON)
+	err := s.db.QueryRow(`SELECT agent_id, org_id, issuer, subject, audience, claims FROM workloads WHERE issuer=? AND subject=?`, issuer, subject).
+		Scan(&w.AgentID, &w.OrgID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -2030,7 +2039,7 @@ func (s *SQLite) Workload(issuer, subject string) (*protocol.Workload, error) {
 }
 
 func (s *SQLite) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) {
-	rows, err := s.db.Query(`SELECT agent_id, issuer, subject, audience, claims FROM workloads WHERE issuer=? ORDER BY subject LIMIT ?`, issuer, maxListResults)
+	rows, err := s.db.Query(`SELECT agent_id, org_id, issuer, subject, audience, claims FROM workloads WHERE issuer=? ORDER BY subject LIMIT ?`, issuer, maxListResults)
 	if err != nil {
 		return nil, err
 	}
@@ -2039,7 +2048,7 @@ func (s *SQLite) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) 
 	for rows.Next() {
 		var w protocol.Workload
 		var claimsJSON string
-		if err := rows.Scan(&w.AgentID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON); err != nil {
+		if err := rows.Scan(&w.AgentID, &w.OrgID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON); err != nil {
 			return nil, err
 		}
 		w.Claims = decodeWorkloadClaims(claimsJSON)
@@ -2049,7 +2058,7 @@ func (s *SQLite) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) 
 }
 
 func (s *SQLite) WorkloadsForAgent(agentID string) ([]protocol.Workload, error) {
-	rows, err := s.db.Query(`SELECT agent_id, issuer, subject, audience, claims FROM workloads WHERE agent_id=? ORDER BY issuer, subject LIMIT ?`, agentID, maxListResults)
+	rows, err := s.db.Query(`SELECT agent_id, org_id, issuer, subject, audience, claims FROM workloads WHERE agent_id=? ORDER BY issuer, subject LIMIT ?`, agentID, maxListResults)
 	if err != nil {
 		return nil, err
 	}
@@ -2058,7 +2067,7 @@ func (s *SQLite) WorkloadsForAgent(agentID string) ([]protocol.Workload, error) 
 	for rows.Next() {
 		var w protocol.Workload
 		var claimsJSON string
-		if err := rows.Scan(&w.AgentID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON); err != nil {
+		if err := rows.Scan(&w.AgentID, &w.OrgID, &w.Issuer, &w.Subject, &w.Audience, &claimsJSON); err != nil {
 			return nil, err
 		}
 		w.Claims = decodeWorkloadClaims(claimsJSON)

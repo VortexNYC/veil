@@ -494,6 +494,11 @@ export type RotateProvidersResponse = {
     zero_touch_hosts: Array<string>;
     assisted: boolean;
 };
+export type VerifyItemResponse = {
+    item: string;
+    verified: boolean;
+    mode: 'wif_ok' | 'oauth_ok' | 'provider_ok' | 'sealed_ok';
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1757,3 +1762,32 @@ export type ListRotateProvidersResponses = {
     200: RotateProvidersResponse;
 };
 export type ListRotateProvidersResponse = ListRotateProvidersResponses[keyof ListRotateProvidersResponses];
+export type VerifyItemData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/items/{name}/verify';
+};
+export type VerifyItemErrors = {
+    /**
+     * verify failed
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+export type VerifyItemResponses = {
+    /**
+     * Item verified
+     */
+    200: VerifyItemResponse;
+};
+export type VerifyItemResponse2 = VerifyItemResponses[keyof VerifyItemResponses];

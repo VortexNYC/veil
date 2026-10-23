@@ -354,6 +354,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /v1/items/{name}", s.updateItem)
 	mux.HandleFunc("POST /v1/items/{name}/archive", s.archiveItem)
 	mux.HandleFunc("POST /v1/items/{name}/rotate", s.rotateItem)
+	mux.HandleFunc("POST /v1/items/{name}/verify", s.verifyItem)
 	mux.HandleFunc("GET /v1/rotate/providers", s.listRotateProviders)
 	mux.HandleFunc("DELETE /v1/items/{name}", s.deleteItem)
 	mux.HandleFunc("GET /v1/grants", s.listGrants)
@@ -596,6 +597,34 @@ func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
 type RotateProvidersResponse struct {
 	ZeroTouchHosts []string `json:"zero_touch_hosts"`
 	Assisted       bool     `json:"assisted"`
+}
+
+type VerifyItemResponse struct {
+	Item     string `json:"item"`
+	Verified bool   `json:"verified"`
+	Mode     string `json:"mode"`
+}
+
+func (s *Server) verifyItem(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	name := strings.TrimSpace(r.PathValue("name"))
+	mode, err := s.App.VerifyItem(r.Context(), p, name)
+	if err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "verify failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, VerifyItemResponse{
+		Item:     name,
+		Verified: true,
+		Mode:     mode,
+	})
 }
 
 func (s *Server) listRotateProviders(w http.ResponseWriter, r *http.Request) {

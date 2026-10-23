@@ -1210,6 +1210,34 @@ paths:
         Owner-only.
       tags:
       - Owner
+  /v1/items/{name}/verify:
+    post:
+      operationId: verifyItem
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyItemResponse"
+          description: Item verified
+        "400":
+          description: verify failed
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: "Dry-run an item's credential (outbound WIF exchange, OAuth refresh,\
+        \ or provider rotator verify) without revealing the secret. Owner-only."
+      tags:
+      - Owner
 components:
   schemas:
     Item:
@@ -2675,6 +2703,27 @@ components:
       required:
       - assisted
       - zero_touch_hosts
+    VerifyItemResponse:
+      example:
+        item: item
+        verified: true
+        mode: wif_ok
+      properties:
+        item:
+          type: string
+        verified:
+          type: boolean
+        mode:
+          enum:
+          - wif_ok
+          - oauth_ok
+          - provider_ok
+          - sealed_ok
+          type: string
+      required:
+      - item
+      - mode
+      - verified
     removeMember_200_response:
       example:
         removed: true

@@ -1064,6 +1064,11 @@ var listRotateProviders = (options) => (options?.client ?? client).get({
   url: "/v1/rotate/providers",
   ...options
 });
+var verifyItem = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/items/{name}/verify",
+  ...options
+});
 
 // sdks/typescript/ambient-oidc.ts
 function getProc() {
@@ -1179,5 +1184,6 @@ export {
   updateItem,
   useItem,
   vaultReport,
-  verifyIssuer
+  verifyIssuer,
+  verifyItem
 };

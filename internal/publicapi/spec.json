@@ -1790,6 +1790,46 @@
           }
         }
       }
+    },
+    "/v1/items/{name}/verify": {
+      "post": {
+        "operationId": "verifyItem",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Dry-run an item's credential (outbound WIF exchange, OAuth refresh, or provider rotator verify) without revealing the secret. Owner-only.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Item verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verify failed"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3176,6 +3216,31 @@
           },
           "assisted": {
             "type": "boolean"
+          }
+        }
+      },
+      "VerifyItemResponse": {
+        "type": "object",
+        "required": [
+          "item",
+          "verified",
+          "mode"
+        ],
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "wif_ok",
+              "oauth_ok",
+              "provider_ok",
+              "sealed_ok"
+            ]
           }
         }
       }

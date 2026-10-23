@@ -64,6 +64,7 @@ from veil.models.vault_report import VaultReport
 from veil.models.vault_report_finding import VaultReportFinding
 from veil.models.verify_issuer_request import VerifyIssuerRequest
 from veil.models.verify_issuer_response import VerifyIssuerResponse
+from veil.models.verify_item_response import VerifyItemResponse
 from veil.models.wif_item_fields import WIFItemFields
 from veil.models.workload_view import WorkloadView
 from veil.models.workloads_response import WorkloadsResponse

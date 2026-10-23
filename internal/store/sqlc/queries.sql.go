@@ -1953,30 +1953,36 @@ func (q *Queries) PutSession(ctx context.Context, arg PutSessionParams) error {
 	return err
 }
 
-const putWorkload = `-- name: PutWorkload :exec
-INSERT INTO workloads(issuer, subject, agent_id, audience, claims)
-VALUES($1::text, $2::text, $3::text, $4::text, $5::text)
+const putWorkload = `-- name: PutWorkload :execrows
+INSERT INTO workloads(issuer, subject, org_id, agent_id, audience, claims)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text)
 ON CONFLICT(issuer, subject) DO UPDATE SET
-    agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims
+    org_id=excluded.org_id, agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims
+WHERE workloads.org_id = '' OR workloads.org_id = excluded.org_id
 `
 
 type PutWorkloadParams struct {
 	Issuer   string
 	Subject  string
+	OrgID    string
 	AgentID  string
 	Audience string
 	Claims   string
 }
 
-func (q *Queries) PutWorkload(ctx context.Context, arg PutWorkloadParams) error {
-	_, err := q.db.Exec(ctx, putWorkload,
+func (q *Queries) PutWorkload(ctx context.Context, arg PutWorkloadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, putWorkload,
 		arg.Issuer,
 		arg.Subject,
+		arg.OrgID,
 		arg.AgentID,
 		arg.Audience,
 		arg.Claims,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const recoveryWrap = `-- name: RecoveryWrap :one
@@ -2612,7 +2618,7 @@ func (q *Queries) UseAuthSession(ctx context.Context, arg UseAuthSessionParams) 
 }
 
 const workloadByKey = `-- name: WorkloadByKey :one
-SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = $1::text AND subject = $2::text
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE issuer = $1::text AND subject = $2::text
 `
 
 type WorkloadByKeyParams struct {
@@ -2626,6 +2632,7 @@ func (q *Queries) WorkloadByKey(ctx context.Context, arg WorkloadByKeyParams) (W
 	err := row.Scan(
 		&i.Issuer,
 		&i.Subject,
+		&i.OrgID,
 		&i.AgentID,
 		&i.Audience,
 		&i.Claims,
@@ -2634,7 +2641,7 @@ func (q *Queries) WorkloadByKey(ctx context.Context, arg WorkloadByKeyParams) (W
 }
 
 const workloadsForIssuer = `-- name: WorkloadsForIssuer :many
-SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = $1::text ORDER BY subject LIMIT $2::bigint
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE issuer = $1::text ORDER BY subject LIMIT $2::bigint
 `
 
 type WorkloadsForIssuerParams struct {
@@ -2654,6 +2661,7 @@ func (q *Queries) WorkloadsForIssuer(ctx context.Context, arg WorkloadsForIssuer
 		if err := rows.Scan(
 			&i.Issuer,
 			&i.Subject,
+			&i.OrgID,
 			&i.AgentID,
 			&i.Audience,
 			&i.Claims,
@@ -2669,7 +2677,7 @@ func (q *Queries) WorkloadsForIssuer(ctx context.Context, arg WorkloadsForIssuer
 }
 
 const workloadsForAgent = `-- name: WorkloadsForAgent :many
-SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE agent_id = $1::text ORDER BY issuer, subject LIMIT $2::bigint
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE agent_id = $1::text ORDER BY issuer, subject LIMIT $2::bigint
 `
 
 type WorkloadsForAgentParams struct {
@@ -2689,6 +2697,7 @@ func (q *Queries) WorkloadsForAgent(ctx context.Context, arg WorkloadsForAgentPa
 		if err := rows.Scan(
 			&i.Issuer,
 			&i.Subject,
+			&i.OrgID,
 			&i.AgentID,
 			&i.Audience,
 			&i.Claims,

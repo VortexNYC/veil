@@ -327,6 +327,7 @@ type ApprovalRequest struct {
 // We do not issue tokens.
 type Workload struct {
 	AgentID  string              `json:"agent_id"`
+	OrgID    string              `json:"org_id,omitempty"`
 	Issuer   string              `json:"issuer"`
 	Subject  string              `json:"subject"`
 	Audience string              `json:"audience"`

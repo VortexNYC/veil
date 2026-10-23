@@ -1058,7 +1058,11 @@ func workloadKey(issuer, subject string) string { return issuer + "\x00" + subje
 func (m *Memory) PutWorkload(w protocol.Workload, events ...protocol.AuditEvent) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.workloads[workloadKey(w.Issuer, w.Subject)] = w
+	k := workloadKey(w.Issuer, w.Subject)
+	if existing, ok := m.workloads[k]; ok && existing.OrgID != "" && existing.OrgID != w.OrgID {
+		return ErrDenied
+	}
+	m.workloads[k] = w
 	m.audit = append(m.audit, events...)
 	return nil
 }
