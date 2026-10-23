@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -64,6 +65,34 @@ type Broker struct {
 	// the check resolves to false (the local denial stands).
 	AccessCheck func(ctx context.Context, orgID, customerID string) bool
 	useLimit    *semaphore.Weighted
+	refreshMu   sync.Mutex
+}
+
+// persistRotatedRefresh serializes OAuth refresh-token updates so concurrent
+// Use/ChildEnv calls on a rotating-refresh-token item never clobber the newest
+// refresh token.
+func (b *Broker) persistRotatedRefresh(item protocol.Item, priorRefresh, nextRefresh string) bool {
+	if nextRefresh == "" || nextRefresh == priorRefresh {
+		return false
+	}
+	b.refreshMu.Lock()
+	defer b.refreshMu.Unlock()
+	cur, err := b.Store.Secret(item.ID)
+	if err != nil {
+		return false
+	}
+	if material.Unpack(cur).Refresh != priorRefresh {
+		return false
+	}
+	rotated, err := material.WithRefresh(cur, nextRefresh)
+	if err != nil {
+		return false
+	}
+	if err := b.Store.PutItem(item, store.Secret(rotated)); err != nil {
+		slog.Warn("oauth refresh persist failed", "item", item.ID, "err", err)
+		return false
+	}
+	return true
 }
 
 func New(s store.Store) *Broker {
@@ -350,14 +379,8 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 	env := material.Unpack(secret)
 	oldRefresh := env.Refresh
 	fr, code, access, nextRefresh, extraScrub, err := b.fetch(ctx, req.Fetch, env, now)
-	if nextRefresh != "" && nextRefresh != env.Refresh {
-		if rotated, rerr := material.WithRefresh(secret, nextRefresh); rerr == nil {
-			if perr := b.Store.PutItem(item, store.Secret(rotated)); perr != nil {
-				slog.Warn("oauth refresh persist failed", "item", item.ID, "err", perr)
-			} else {
-				env.Refresh = nextRefresh
-			}
-		}
+	if b.persistRotatedRefresh(item, oldRefresh, nextRefresh) {
+		env.Refresh = nextRefresh
 	}
 	// The allow row is already durable — it records the authorization and the
 	// credential release, which happened regardless of the upstream outcome.

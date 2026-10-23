@@ -162,16 +162,16 @@
 
   <div class="flow">
     <div class="step">
-      <h3>01 — Bind the agent</h3>
-      <p><b>veil agent hydra</b> issues a workload credential — no shared keys, no pasted tokens. Cursor, Claude Code, Grok, devin-cli, custom runners.</p>
+      <h3>01 — Bind the workload</h3>
+      <p><b>veil agent bind</b> trusts short-lived OIDC tokens from <b>Vercel</b>, <b>GitHub Actions</b>, <b>Fly.io</b>, <b>Better Auth</b>, <b>Clerk</b>, or <b>WorkOS</b> — and <b>veil agent hydra</b> issues a dedicated client credential for Cursor, Claude Code, Grok, and devin-cli. Zero static API keys in environment variables.</p>
     </div>
     <div class="step flow-alt">
-      <h3>02 — Grant the item</h3>
-      <p>The owner grants <b>use</b>, not possession. An agent sees item names and URIs via <b>list_items</b> and <b>match_items</b> — never plaintext.</p>
+      <h3>02 — Grant &amp; rotate</h3>
+      <p>The owner grants <b>use</b>, not possession. Agents see item names and URIs via <b>list_items</b> and <b>match_items</b> — never plaintext. <b>veil rotate</b> rolls keys with dual-phase overlap (or exchanges short-lived RFC 7523 assertions for <b>Anthropic WIF</b> so Veil never stores a static provider API key).</p>
     </div>
     <div class="step">
       <h3>03 — Brokered use</h3>
-      <p><b>fetch</b> calls the URL with the credential injected upstream — the response comes back, the secret doesn't. On Mac, fill writes into the page after Touch ID. Level-1 grants page a human; the agent polls <b>approval_status</b> and retries.</p>
+      <p><b>fetch</b> calls the URL with the credential injected upstream and blocks provider key-management endpoints. On Mac, fill writes into the page after Touch ID. Level-1 grants page a human; the agent polls <b>approval_status</b> and retries.</p>
     </div>
   </div>
 
@@ -179,9 +179,9 @@
     <h2>The boundary</h2>
     <ul>
       <li><b>Agents never receive secrets.</b> Not in JSON, MCP, logs, or audit records — the transport doesn't carry them.</li>
-      <li><b>The grant is the object.</b> Per-item, per-level, per-principal. Revocable. Audited.</li>
-      <li><b>Humans stay in the loop.</b> Remote approval for level-1 use; Touch ID before anything leaves your Mac.</li>
-      <li><b>Identity is Ory.</b> Kratos for humans, Hydra for tokens, Keto for membership — no hand-rolled auth.</li>
+      <li><b>Death to static env keys.</b> Authenticate from Vercel Functions, GitHub Actions, or Fly via ambient OIDC (<code>createAmbientClient</code>), or run <code>veil mcp --self-host</code> as a single binary on your own box.</li>
+      <li><b>The grant is the object.</b> Per-item, per-level, per-principal. Honey tripwires (<code>veil:honey-revoke</code>) auto-revoke compromised agents on first touch.</li>
+      <li><b>Humans stay in the loop.</b> Remote approval for level-1 use; Touch ID before anything leaves your Mac; Ory Kratos + Hydra + Keto for identity.</li>
     </ul>
   </div>
 

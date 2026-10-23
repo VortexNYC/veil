@@ -1459,3 +1459,31 @@ func TestAnthropicWIFJWTBearerExchangeInjectsAccessTokenNeverLeaksAssertion(t *t
 		t.Fatal(err)
 	}
 }
+
+func TestPersistRotatedRefreshCASRejectsStalePrior(t *testing.T) {
+	mem := store.NewMemory()
+	blob, err := material.PackOAuth([]byte("r1"), []byte("https://oauth.test/token"), []byte("cid"), []byte("csec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := protocol.Item{ID: "oauth-cas", OrgID: "org-1", Name: "oauth-cas", Kind: protocol.ItemOAuth}
+	if err := mem.PutItem(item, store.Secret(blob)); err != nil {
+		t.Fatal(err)
+	}
+	b := New(mem)
+	// First caller advances r1 -> r2.
+	if !b.persistRotatedRefresh(item, "r1", "r2") {
+		t.Fatal("first CAS r1->r2 should succeed")
+	}
+	// Late caller still holding priorRefresh=r1 must not clobber r2 with stale r_stale.
+	if b.persistRotatedRefresh(item, "r1", "r_stale") {
+		t.Fatal("stale CAS with priorRefresh=r1 should be rejected")
+	}
+	cur, err := mem.Secret(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := material.Unpack(cur).Refresh; got != "r2" {
+		t.Fatalf("refresh token clobbered: got %q, want r2", got)
+	}
+}
