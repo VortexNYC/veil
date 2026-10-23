@@ -62,14 +62,34 @@ final class VaultWindowController: NSObject, NSWindowDelegate {
     }
 
     @objc private func promptUnlock() {
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
         let ctx = LAContext()
-        var err: NSError?
-        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+        var canErr: NSError?
+        if ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &canErr) {
+            ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "unlock Veil") { ok, evalErr in
+                if ok {
+                    DispatchQueue.main.async {
+                        self.unlocked = true
+                        self.loadVault()
+                    }
+                    return
+                }
+                if let laErr = evalErr as? LAError, laErr.code == .notInteractive {
+                    self.unlockViaBridge()
+                }
+            }
             return
         }
-        ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "unlock Veil") { ok, _ in
-            DispatchQueue.main.async {
-                if ok {
+        unlockViaBridge()
+    }
+
+    private func unlockViaBridge() {
+        DispatchQueue.global().async {
+            let reply = try? FillBridge.shared.roundTrip(["action": "unlock"], timeout: 95)
+            let ok = reply?["ok"] as? Bool ?? false
+            if ok {
+                DispatchQueue.main.async {
                     self.unlocked = true
                     self.loadVault()
                 }

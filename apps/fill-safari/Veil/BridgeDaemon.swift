@@ -28,8 +28,11 @@ final class BridgeDaemon {
 
     func ensure() {
         syncBundledHostAndExtensions()
-        if alive() {
-            return
+        for _ in 0..<10 {
+            if alive() {
+                return
+            }
+            usleep(100_000)
         }
         // Stale socket from a dead daemon — the file masks respawn.
         try? FileManager.default.removeItem(atPath: socketPath)
@@ -86,6 +89,7 @@ final class BridgeDaemon {
                     syncProc.executableURL = bin
                     syncProc.arguments = ["update", "--sync-only"]
                     try? syncProc.run()
+                    syncProc.waitUntilExit()
                     let killOld = Process()
                     killOld.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
                     killOld.arguments = ["veil-bin", "native-host"]
@@ -95,6 +99,7 @@ final class BridgeDaemon {
                     kick.executableURL = URL(fileURLWithPath: "/bin/launchctl")
                     kick.arguments = ["kickstart", "-k", "gui/\(getuid())/nyc.veil.fill.bridge"]
                     try? kick.run()
+                    kick.waitUntilExit()
                 }
             }
         }

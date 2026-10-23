@@ -160,13 +160,21 @@ func applyReleaseUpdate(ctx context.Context, rel *ghRelease, exePath string) err
 	if gotHex := hex.EncodeToString(sum[:]); gotHex != wantHex {
 		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", wantAsset, gotHex, wantHex)
 	}
-	binBytes, err := extractBinaryFromTarGz(tarRaw, "veil")
+	binName := "veil"
+	if runtime.GOOS == "windows" {
+		binName = "veil.exe"
+	}
+	binBytes, err := extractBinaryFromTarGz(tarRaw, binName)
 	if err != nil {
 		return err
 	}
 	tmp := exePath + ".new"
 	if err := os.WriteFile(tmp, binBytes, 0o755); err != nil {
 		return err
+	}
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(exePath + ".old")
+		_ = os.Rename(exePath, exePath+".old")
 	}
 	if err := os.Rename(tmp, exePath); err != nil {
 		_ = os.Remove(tmp)
