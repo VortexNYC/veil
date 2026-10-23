@@ -3,6 +3,7 @@ package oidchttp
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 )
 
@@ -28,6 +29,7 @@ func TestRejectPrivateOrMetadataPeer(t *testing.T) {
 	for _, blocked := range []string{
 		"169.254.169.254:80",
 		"10.0.0.1:443",
+		"100.64.0.1:443",
 		"172.16.0.1:443",
 		"192.168.1.1:443",
 		"0.0.0.0:443",
@@ -48,5 +50,8 @@ func TestRejectPrivateOrMetadataPeer(t *testing.T) {
 		if err := rejectPrivateOrMetadataPeer("tcp", allowed, nil); err != nil {
 			t.Fatalf("rejectPrivateOrMetadataPeer(%q) rejected valid peer: %v", allowed, err)
 		}
+	}
+	if err := checkResolvedIP(netip.MustParseAddr("127.0.0.1"), false); err == nil {
+		t.Fatal("checkResolvedIP allowed loopback for non-loopback hostname")
 	}
 }

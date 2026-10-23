@@ -24,6 +24,7 @@ import {
   unbindWorkload as sdkUnbindWorkload,
   vaultReport,
   verifyIssuer as sdkVerifyIssuer,
+  verifyItem as sdkVerifyItem,
 } from "@vortex-api/veil"
 import type { BindWorkloadRequest, RotateItemRequest } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
@@ -170,6 +171,10 @@ export function rotateVaultItem(name: string, body?: RotateItemRequest) {
 
 export function rotateProviders() {
   return sdkListRotateProviders({ client: client() })
+}
+
+export function verifyVaultItem(name: string) {
+  return sdkVerifyItem({ client: client(), path: { name } })
 }
 
 export function events() {

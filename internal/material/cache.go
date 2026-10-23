@@ -10,7 +10,10 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-const tokenCacheHeadroom = 60 * time.Second
+const (
+	tokenCacheHeadroom   = 60 * time.Second
+	maxTokenCacheEntries = 1024
+)
 
 type cachedToken struct {
 	access     string
@@ -71,6 +74,23 @@ func (c *TokenCache) put(key, access, extraScrub string, expiresAt time.Time, no
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= maxTokenCacheEntries {
+		var oldestKey string
+		var oldestExp time.Time
+		for k, v := range c.entries {
+			if !now.Add(tokenCacheHeadroom).Before(v.expiresAt) {
+				delete(c.entries, k)
+				continue
+			}
+			if oldestKey == "" || v.expiresAt.Before(oldestExp) {
+				oldestKey = k
+				oldestExp = v.expiresAt
+			}
+		}
+		if len(c.entries) >= maxTokenCacheEntries && oldestKey != "" {
+			delete(c.entries, oldestKey)
+		}
+	}
 	c.entries[key] = cachedToken{
 		access:     access,
 		extraScrub: extraScrub,

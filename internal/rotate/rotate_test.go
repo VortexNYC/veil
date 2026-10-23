@@ -209,3 +209,15 @@ func TestSpecRotatorAndRedirectRefusal(t *testing.T) {
 		t.Fatal("spec with uncovered create/retire path should be rejected")
 	}
 }
+
+func TestPostHogCoverageAndManagementEndpoint(t *testing.T) {
+	if _, ok := ForHost("https://us.posthog.com"); !ok {
+		t.Fatal("expected us.posthog.com rotator registered")
+	}
+	if !ManagementEndpoint("https://us.posthog.com/api/personal_api_keys/") {
+		t.Fatal("expected PostHog /api/personal_api_keys/ blocked as management endpoint")
+	}
+	if ManagementEndpoint("https://us.posthog.com/api/projects/") {
+		t.Fatal("expected PostHog /api/projects/ allowed")
+	}
+}

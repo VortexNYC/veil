@@ -2,11 +2,13 @@ package material
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTokenCacheAvoidsRepeatedWIFExchangeUntilInvalidated(t *testing.T) {
@@ -57,5 +59,22 @@ func TestTokenCacheAvoidsRepeatedWIFExchangeUntilInvalidated(t *testing.T) {
 	}
 	if idpHits.Load() != 2 || wifHits.Load() != 2 {
 		t.Fatalf("expected cache miss on secret rotation, got idp=%d wif=%d", idpHits.Load(), wifHits.Load())
+	}
+}
+
+func TestTokenCacheBoundedEviction(t *testing.T) {
+	c := NewTokenCache()
+	now := time.Now().UTC()
+	for i := 0; i < maxTokenCacheEntries+50; i++ {
+		c.put(fmt.Sprintf("k-%d", i), "tok", "", now.Add(time.Duration(i+120)*time.Second), now)
+	}
+	c.mu.Lock()
+	n := len(c.entries)
+	c.mu.Unlock()
+	if n != maxTokenCacheEntries {
+		t.Fatalf("expected capped len %d, got %d", maxTokenCacheEntries, n)
+	}
+	if _, ok := c.get("k-0", now); ok {
+		t.Fatal("oldest entry k-0 should have been evicted")
 	}
 }

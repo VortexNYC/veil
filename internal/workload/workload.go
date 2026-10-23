@@ -24,6 +24,10 @@ import (
 	"github.com/VortexNYC/veil/internal/store"
 )
 
+const maxCachedOIDCProviders = 256
+
+var cgnatPrefix = netip.MustParsePrefix("100.64.0.0/10")
+
 type Checker struct {
 	Store store.Store
 
@@ -193,7 +197,7 @@ func ValidateBindingWithClaims(issuer, subject string, claims map[string][]strin
 		ip = ip.Unmap()
 		if ip.IsLoopback() {
 			isLoopbackHost = true
-		} else if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		} else if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || cgnatPrefix.Contains(ip) {
 			return fmt.Errorf("workload: issuer IP literal %s is not a public address", host)
 		}
 	}
@@ -279,7 +283,7 @@ func (c *Checker) VerifyIssuer(ctx context.Context, issuer string) VerifyResult 
 	if err := ValidateBinding(issuer, "verify-probe"); err != nil {
 		return VerifyResult{Code: CodeInvalidIssuer, Issuer: issuer, Message: err.Error()}
 	}
-	if _, err := c.provider(ctx, issuer); err != nil {
+	if _, err := oidc.NewProvider(oidchttp.Context(ctx), issuer); err != nil {
 		return VerifyResult{Code: CodeDiscoveryFailed, Issuer: issuer, Message: "OIDC discovery failed for issuer"}
 	}
 	return VerifyResult{Code: CodeOK, Issuer: issuer, Message: "OIDC discovery verified"}
@@ -331,6 +335,12 @@ func (c *Checker) provider(ctx context.Context, issuer string) (*oidc.Provider, 
 			return nil, err
 		}
 		c.mu.Lock()
+		if _, exists := c.providers[issuer]; !exists && len(c.providers) >= maxCachedOIDCProviders {
+			for k := range c.providers {
+				delete(c.providers, k)
+				break
+			}
+		}
 		c.providers[issuer] = p
 		c.mu.Unlock()
 		return p, nil
