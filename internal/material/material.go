@@ -341,35 +341,67 @@ func AccessTokenWithRefresh(ctx context.Context, env Envelope, client *http.Clie
 // secret material (such as a minted WIF assertion JWT) that the caller must
 // include in response scrubbing.
 func AccessTokenWithMetadata(ctx context.Context, env Envelope, client *http.Client) (access, nextRefresh, extraScrub string, err error) {
-	if env.FederationRuleID != "" {
-		tok, assertion, err := exchangeWIFJWTBearer(ctx, env, client)
-		return tok, "", assertion, err
-	}
-	if env.Refresh == "" {
+	if env.FederationRuleID == "" && env.Refresh == "" {
 		return env.Token, "", "", nil
 	}
-	if env.TokenURL == "" || env.ClientID == "" {
-		return "", "", "", errOAuth
+	now := time.Now()
+	key := tokenCacheKey(env)
+	if hit, ok := defaultTokenCache.get(key, now); ok {
+		return hit.access, "", hit.extraScrub, nil
 	}
-	cfg := &oauth2.Config{
-		ClientID:     env.ClientID,
-		ClientSecret: env.ClientSec,
-		Endpoint:     oauth2.Endpoint{TokenURL: env.TokenURL},
+	type exchangeResult struct {
+		access      string
+		nextRefresh string
+		extraScrub  string
 	}
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
-	tok, err := cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: env.Refresh}).Token()
+	v, err, _ := defaultTokenCache.group.Do(key, func() (any, error) {
+		if hit, ok := defaultTokenCache.get(key, time.Now()); ok {
+			return exchangeResult{access: hit.access, extraScrub: hit.extraScrub}, nil
+		}
+		if env.FederationRuleID != "" {
+			tok, assertion, exp, err := exchangeWIFJWTBearer(ctx, env, client)
+			if err != nil {
+				return nil, err
+			}
+			defaultTokenCache.put(key, tok, assertion, exp, time.Now())
+			return exchangeResult{access: tok, extraScrub: assertion}, nil
+		}
+		if env.TokenURL == "" || env.ClientID == "" {
+			return nil, errOAuth
+		}
+		cfg := &oauth2.Config{
+			ClientID:     env.ClientID,
+			ClientSecret: env.ClientSec,
+			Endpoint:     oauth2.Endpoint{TokenURL: env.TokenURL},
+		}
+		tctx := context.WithValue(ctx, oauth2.HTTPClient, client)
+		tok, err := cfg.TokenSource(tctx, &oauth2.Token{RefreshToken: env.Refresh}).Token()
+		if err != nil {
+			return nil, err
+		}
+		if tok.AccessToken == "" {
+			return nil, errOAuth
+		}
+		next := strings.TrimSpace(tok.RefreshToken)
+		if next == "" || next == env.Refresh {
+			exp := tok.Expiry
+			if exp.IsZero() {
+				exp = time.Now().Add(5 * time.Minute)
+			}
+			defaultTokenCache.put(key, tok.AccessToken, "", exp, time.Now())
+		}
+		return exchangeResult{access: tok.AccessToken, nextRefresh: next}, nil
+	})
 	if err != nil {
 		return "", "", "", err
 	}
-	if tok.AccessToken == "" {
-		return "", "", "", errOAuth
-	}
-	return tok.AccessToken, strings.TrimSpace(tok.RefreshToken), "", nil
+	res := v.(exchangeResult)
+	return res.access, res.nextRefresh, res.extraScrub, nil
 }
 
-func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client) (access, assertion string, err error) {
+func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client) (access, assertion string, expiresAt time.Time, err error) {
 	if env.TokenURL == "" || env.AssertionTokenURL == "" || env.AssertionClientID == "" || env.AssertionClientSec == "" {
-		return "", "", errOAuth
+		return "", "", time.Time{}, errOAuth
 	}
 	if client == nil {
 		client = http.DefaultClient
@@ -389,7 +421,7 @@ func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client
 	}
 	assertionTok, err := cc.Token(context.WithValue(ctx, oauth2.HTTPClient, client))
 	if err != nil || strings.TrimSpace(assertionTok.AccessToken) == "" {
-		return "", "", errOAuth
+		return "", "", time.Time{}, errOAuth
 	}
 	assertion = strings.TrimSpace(assertionTok.AccessToken)
 	body := map[string]string{
@@ -408,29 +440,34 @@ func exchangeWIFJWTBearer(ctx context.Context, env Envelope, client *http.Client
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", assertion, err
+		return "", assertion, time.Time{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.TokenURL, bytes.NewReader(payload))
 	if err != nil {
-		return "", assertion, err
+		return "", assertion, time.Time{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
-		return "", assertion, err
+		return "", assertion, time.Time{}, err
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil || res.StatusCode != http.StatusOK {
-		return "", assertion, errOAuth
+		return "", assertion, time.Time{}, errOAuth
 	}
 	var out struct {
 		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil || strings.TrimSpace(out.AccessToken) == "" {
-		return "", assertion, errOAuth
+		return "", assertion, time.Time{}, errOAuth
 	}
-	return strings.TrimSpace(out.AccessToken), assertion, nil
+	ttl := 5 * time.Minute
+	if out.ExpiresIn > 0 {
+		ttl = time.Duration(out.ExpiresIn) * time.Second
+	}
+	return strings.TrimSpace(out.AccessToken), assertion, time.Now().Add(ttl), nil
 }
 
 var errOAuth = errString("material: oauth refresh failed")

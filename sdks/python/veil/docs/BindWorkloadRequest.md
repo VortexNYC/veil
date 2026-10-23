@@ -8,6 +8,7 @@ Name | Type | Description | Notes
 **issuer** | **str** | OIDC issuer URL | 
 **subject** | **str** | expected token sub claim | 
 **audience** | **str** | expected token aud claim | 
+**claims** | **Dict[str, List[str]]** | optional OidcPolicy claim rules (every key must match at least one allowed value) | [optional] 
 
 ## Example
 

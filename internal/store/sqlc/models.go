@@ -175,4 +175,5 @@ type Workload struct {
 	Subject  string
 	AgentID  string
 	Audience string
+	Claims   string
 }

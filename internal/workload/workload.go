@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 
@@ -61,12 +62,12 @@ func (c *Checker) Agent(ctx context.Context, rawToken string) (protocol.Principa
 		byAudience[w.Audience] = append(byAudience[w.Audience], w)
 	}
 	for _, aud := range audiences {
-		sub, err := c.subject(ctx, iss, aud, rawToken)
+		sub, rawClaims, err := c.verify(ctx, iss, aud, rawToken)
 		if err != nil {
 			last = err
 			continue
 		}
-		hit := bestMatch(byAudience[aud], sub)
+		hit := bestMatch(byAudience[aud], sub, rawClaims)
 		if hit == nil {
 			continue
 		}
@@ -82,20 +83,28 @@ func (c *Checker) Agent(ctx context.Context, rawToken string) (protocol.Principa
 	return protocol.Principal{}, fmt.Errorf("workload: subject not bound")
 }
 
-// bestMatch picks the governing workload binding for sub among candidates
-// sharing an (issuer, audience): exact subject match always wins; otherwise
-// the longest trailing-* prefix match wins. Two prefixes of equal length can
-// never both match sub because (issuer, subject) is the primary key.
-func bestMatch(cands []protocol.Workload, sub string) *protocol.Workload {
+// bestMatch picks the governing workload binding for (sub, rawClaims) among
+// candidates sharing an (issuer, audience): candidates whose Claims policy
+// does not match are skipped first; among matching candidates, exact subject
+// match always wins, otherwise the longest trailing-* prefix match wins. Two
+// prefixes of equal length can never both match sub because (issuer, subject)
+// is the primary key.
+func bestMatch(cands []protocol.Workload, sub string, rawClaims map[string]json.RawMessage) *protocol.Workload {
 	var best *protocol.Workload
 	bestLen := -1
 	for i := range cands {
 		w := &cands[i]
+		if !claimsMatch(w.Claims, rawClaims) {
+			continue
+		}
 		if w.Subject == sub {
 			return w
 		}
-		if strings.HasSuffix(w.Subject, "*") && len(w.Subject) > 1 {
+		if strings.HasSuffix(w.Subject, "*") {
 			prefix := w.Subject[:len(w.Subject)-1]
+			if prefix == "" && len(w.Claims) == 0 {
+				continue
+			}
 			if strings.HasPrefix(sub, prefix) && len(prefix) > bestLen {
 				best = w
 				bestLen = len(prefix)
@@ -105,16 +114,63 @@ func bestMatch(cands []protocol.Workload, sub string) *protocol.Workload {
 	return best
 }
 
-// ValidateBinding enforces Anthropic-style WIF safety rules at bind time:
+// claimsMatch evaluates shadcn @oidc/policy claim rules: every listed claim
+// key must be present in the token and match at least one allowed value
+// (exact string equality for string claims, intersection for string-array
+// claims).
+func claimsMatch(policy map[string][]string, rawClaims map[string]json.RawMessage) bool {
+	if len(policy) == 0 {
+		return true
+	}
+	for k, allowed := range policy {
+		if len(allowed) == 0 {
+			return false
+		}
+		raw, ok := rawClaims[k]
+		if !ok || len(raw) == 0 {
+			return false
+		}
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			if !slices.Contains(allowed, s) {
+				return false
+			}
+			continue
+		}
+		var arr []string
+		if err := json.Unmarshal(raw, &arr); err == nil {
+			hit := false
+			for _, v := range arr {
+				if slices.Contains(allowed, v) {
+					hit = true
+					break
+				}
+			}
+			if !hit {
+				return false
+			}
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// ValidateBinding enforces Anthropic-style WIF safety rules at bind time.
+func ValidateBinding(issuer, subject string) error {
+	return ValidateBindingWithClaims(issuer, subject, nil)
+}
+
+// ValidateBindingWithClaims enforces WIF safety rules for (issuer, subject,
+// claims):
 //   - issuer must be https:// (or http:// on loopback for local dev/tests),
 //     with no userinfo, query, or fragment, and must not target private,
 //     link-local, multicast, or cloud-metadata (169.254.0.0/16) IP literals.
-//   - subject may be an exact claim or a trailing-* prefix pattern whose
-//     prefix is >= 4 chars and ends on a delimiter (':', '/', '-', '.').
-//     On https://token.actions.githubusercontent.com, a wildcard subject must
-//     include the owner/ substring (repo:<owner>/...) so 'repo:*' can never
-//     trust every public repository on GitHub.
-func ValidateBinding(issuer, subject string) error {
+//   - subject may be an exact claim, a trailing-* prefix pattern whose prefix
+//     is >= 4 chars and ends on a delimiter (':', '/', '-', '.'), or bare "*"
+//     ONLY when claims is non-empty (e.g. Vercel immutable owner_id/project_id
+//     bindings that survive team/project slug renames).
+func ValidateBindingWithClaims(issuer, subject string, claims map[string][]string) error {
 	issuer = strings.TrimSpace(issuer)
 	subject = strings.TrimSpace(subject)
 	if issuer == "" || subject == "" {
@@ -148,11 +204,38 @@ func ValidateBinding(issuer, subject string) error {
 		return fmt.Errorf("workload: issuer must use https")
 	}
 
+	hasClaims := false
+	for k, vals := range claims {
+		k = strings.TrimSpace(k)
+		if k == "" || len(vals) == 0 {
+			return fmt.Errorf("workload: claim %q must have at least one non-empty value", k)
+		}
+		switch k {
+		case "iss", "sub", "aud", "exp", "nbf", "iat", "jti":
+			return fmt.Errorf("workload: reserved claim %q must use top-level binding fields", k)
+		}
+		for _, v := range vals {
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("workload: claim %q contains empty value", k)
+			}
+		}
+		hasClaims = true
+	}
+
 	if strings.Contains(subject, "*") {
 		if strings.Count(subject, "*") != 1 || !strings.HasSuffix(subject, "*") {
 			return fmt.Errorf("workload: wildcard '*' is only allowed at the end of subject")
 		}
+		if host == "oidc.vercel.com" && strings.Trim(u.Path, "/") == "" {
+			return fmt.Errorf("workload: vercel wildcard subject requires team issuer mode (https://oidc.vercel.com/<team>)")
+		}
 		prefix := strings.TrimSuffix(subject, "*")
+		if prefix == "" {
+			if !hasClaims || host == "token.actions.githubusercontent.com" {
+				return fmt.Errorf("workload: bare '*' subject requires non-empty claims on a tenant-scoped issuer")
+			}
+			return nil
+		}
 		if len(prefix) < 4 {
 			return fmt.Errorf("workload: subject prefix before '*' is too short")
 		}
@@ -169,25 +252,57 @@ func ValidateBinding(issuer, subject string) error {
 	return nil
 }
 
-func (c *Checker) subject(ctx context.Context, issuer, audience, raw string) (string, error) {
+// VerifyCode is a structured diagnostic code for OIDC issuer dry-runs and
+// policy checks (matching @oidc/verify and Anthropic WIF Connect Workload).
+type VerifyCode string
+
+const (
+	CodeOK              VerifyCode = "ok"
+	CodeInvalidIssuer   VerifyCode = "invalid-issuer"
+	CodeDiscoveryFailed VerifyCode = "discovery-failed"
+)
+
+type VerifyResult struct {
+	Code    VerifyCode `json:"code"`
+	Issuer  string     `json:"issuer"`
+	Message string     `json:"message"`
+}
+
+// VerifyIssuer dry-runs an OIDC issuer URL: validates static SSRF/scheme rules
+// and performs the live /.well-known/openid-configuration discovery round-trip
+// through oidchttp.Context, reusing Checker.provider's singleflight cache.
+func (c *Checker) VerifyIssuer(ctx context.Context, issuer string) VerifyResult {
+	issuer = strings.TrimSpace(issuer)
+	if err := ValidateBinding(issuer, "verify-probe"); err != nil {
+		return VerifyResult{Code: CodeInvalidIssuer, Issuer: issuer, Message: err.Error()}
+	}
+	if _, err := c.provider(ctx, issuer); err != nil {
+		return VerifyResult{Code: CodeDiscoveryFailed, Issuer: issuer, Message: "OIDC discovery failed for issuer"}
+	}
+	return VerifyResult{Code: CodeOK, Issuer: issuer, Message: "OIDC discovery verified"}
+}
+
+func (c *Checker) verify(ctx context.Context, issuer, audience, raw string) (string, map[string]json.RawMessage, error) {
 	p, err := c.provider(ctx, issuer)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	tok, err := p.Verifier(&oidc.Config{ClientID: audience}).Verify(ctx, raw)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	var claims struct {
-		Sub string `json:"sub"`
+	var rawClaims map[string]json.RawMessage
+	if err := tok.Claims(&rawClaims); err != nil {
+		return "", nil, err
 	}
-	if err := tok.Claims(&claims); err != nil {
-		return "", err
+	var sub string
+	if subRaw, ok := rawClaims["sub"]; ok {
+		_ = json.Unmarshal(subRaw, &sub)
 	}
-	if claims.Sub == "" {
-		return "", fmt.Errorf("workload: empty subject")
+	if sub == "" {
+		return "", nil, fmt.Errorf("workload: empty subject")
 	}
-	return claims.Sub, nil
+	return sub, rawClaims, nil
 }
 
 // provider resolves the issuer's OIDC provider, discovering on first use.

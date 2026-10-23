@@ -1036,14 +1036,91 @@ var bindWorkload = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var verifyIssuer = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/workloads/verify-issuer",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+
+// sdks/typescript/ambient-oidc.ts
+function getProc() {
+  const g = globalThis;
+  return g.process;
+}
+function readTokenFile(path) {
+  const fs = getProc()?.getBuiltinModule?.("node:fs");
+  if (!fs?.readFileSync) {
+    throw new Error("ambientOidcToken: file reading requires a Node.js runtime");
+  }
+  const value = fs.readFileSync(path, "utf8").trim();
+  if (!value) {
+    throw new Error(`ambientOidcToken: empty token file ${path}`);
+  }
+  return value;
+}
+async function ambientOidcToken(opts) {
+  const headerToken = opts?.request?.headers?.get("x-vercel-oidc-token")?.trim();
+  if (headerToken) {
+    return headerToken;
+  }
+  const env = getProc()?.env ?? {};
+  const vercelFile = env.VERCEL_OIDC_TOKEN_FILE?.trim();
+  if (vercelFile) {
+    return readTokenFile(vercelFile);
+  }
+  const vercelToken = env.VERCEL_OIDC_TOKEN?.trim();
+  if (vercelToken) {
+    return vercelToken;
+  }
+  const actionsUrl = env.ACTIONS_ID_TOKEN_REQUEST_URL?.trim();
+  const actionsBearer = env.ACTIONS_ID_TOKEN_REQUEST_TOKEN?.trim();
+  if (actionsUrl && actionsBearer) {
+    const aud = encodeURIComponent(opts?.audience ?? "veil");
+    const sep = actionsUrl.includes("?") ? "&" : "?";
+    const res = await fetch(`${actionsUrl}${sep}audience=${aud}`, {
+      headers: { Authorization: `bearer ${actionsBearer}` }
+    });
+    if (!res.ok) {
+      throw new Error(`ambientOidcToken: GitHub Actions OIDC request failed (${res.status})`);
+    }
+    const data = await res.json();
+    const tok = data.value?.trim();
+    if (!tok) {
+      throw new Error("ambientOidcToken: empty GitHub Actions OIDC token");
+    }
+    return tok;
+  }
+  const veilFile = env.VEIL_OIDC_TOKEN_FILE?.trim();
+  if (veilFile) {
+    return readTokenFile(veilFile);
+  }
+  const veilToken = env.VEIL_OIDC_TOKEN?.trim();
+  if (veilToken) {
+    return veilToken;
+  }
+  return void 0;
+}
+function createAmbientClient(config) {
+  return createClient({
+    baseUrl: "https://veil.nyc",
+    ...config,
+    auth: async () => await ambientOidcToken(config) ?? ""
+  });
+}
 export {
   addGroupMember,
+  ambientOidcToken,
   approveRequest,
   archiveItem,
   auditFeed,
   billingWebhook,
   bindWorkload,
   createAgent,
+  createAmbientClient,
   createBillingCheckout,
   createClient,
   createGrant,
@@ -1079,5 +1156,6 @@ export {
   unregisterDevice,
   updateItem,
   useItem,
-  vaultReport
+  vaultReport,
+  verifyIssuer
 };

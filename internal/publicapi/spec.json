@@ -1626,6 +1626,46 @@
           }
         }
       }
+    },
+    "/v1/workloads/verify-issuer": {
+      "post": {
+        "operationId": "verifyIssuer",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Dry-run OIDC discovery against an issuer URL before saving a workload binding. Owner-only — never mounted on /mcp.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyIssuerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyIssuerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "bad request"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2842,6 +2882,16 @@
           "audience": {
             "type": "string",
             "description": "expected token aud claim"
+          },
+          "claims": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "optional OidcPolicy claim rules (every key must match at least one allowed value)"
           }
         }
       },
@@ -2864,6 +2914,52 @@
             "type": "string"
           },
           "audience": {
+            "type": "string"
+          },
+          "claims": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "optional OidcPolicy claim rules (every key must match at least one allowed value)"
+          }
+        }
+      },
+      "VerifyIssuerRequest": {
+        "type": "object",
+        "required": [
+          "issuer"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string",
+            "description": "OIDC issuer URL to dry-run"
+          }
+        }
+      },
+      "VerifyIssuerResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "issuer",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "invalid-issuer",
+              "discovery-failed"
+            ]
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "message": {
             "type": "string"
           }
         }

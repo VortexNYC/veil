@@ -800,7 +800,7 @@ func originRotateItem(cmd *cobra.Command, name, mgmtItem string, interval time.D
 	return encode(cmd, out)
 }
 
-func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string) error {
+func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string, claims map[string][]string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
@@ -809,6 +809,7 @@ func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string)
 		Issuer:   issuer,
 		Subject:  subject,
 		Audience: audience,
+		Claims:   claims,
 	})
 	if err != nil {
 		return err
@@ -826,5 +827,26 @@ func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string)
 		Issuer:   out.Issuer,
 		Subject:  out.Subject,
 		Audience: out.Audience,
+		Claims:   out.Claims,
 	})
+}
+
+func originVerifyIssuer(cmd *cobra.Command, issuer string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(publicapi.VerifyIssuerRequest{Issuer: issuer})
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/workloads/verify-issuer", tok, payload)
+	if err != nil {
+		return err
+	}
+	var out publicapi.VerifyIssuerResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
 }

@@ -1078,11 +1078,16 @@ func agentCmd(home *string) *cobra.Command {
 	_ = revoke.MarkFlagRequired("id")
 	c.AddCommand(revoke)
 	var issuer, subject, audience, preset, repo, ref, flyOrg, flyApp, vercelEnv string
+	var claimPairs []string
 	bind := &cobra.Command{
 		Use:   "bind NAME",
 		Short: "Bind an existing agent to an external OIDC issuer and subject (or --preset vercel|github-actions|fly|better-auth|clerk|workos)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			claims, err := parseClaimPairs(claimPairs)
+			if err != nil {
+				return err
+			}
 			iss, sub, aud, err := workload.ResolvePreset(workload.PresetOpts{
 				Preset:   preset,
 				Issuer:   issuer,
@@ -1098,14 +1103,14 @@ func agentCmd(home *string) *cobra.Command {
 				return err
 			}
 			if originBase() != "" {
-				return originAgentBind(cmd, args[0], iss, sub, aud)
+				return originAgentBind(cmd, args[0], iss, sub, aud, claims)
 			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err
 			}
 			defer a.Close()
-			w, err := a.BindWorkload(args[0], iss, sub, aud)
+			w, err := a.BindWorkloadWithClaims(args[0], iss, sub, aud, claims)
 			if err != nil {
 				return err
 			}
@@ -1121,7 +1126,34 @@ func agentCmd(home *string) *cobra.Command {
 	bind.Flags().StringVar(&flyOrg, "org", "", "vercel / fly preset: team or org slug")
 	bind.Flags().StringVar(&flyApp, "app", "", "vercel / fly preset: project or app name")
 	bind.Flags().StringVar(&vercelEnv, "env", "", "vercel preset: production, preview, development, or * (default production)")
+	bind.Flags().StringArrayVar(&claimPairs, "claim", nil, "additional OIDC claim match key=value (repeatable, e.g. --claim owner_id=team_abc)")
 	c.AddCommand(bind)
+
+	var verifyIss string
+	verifyCmd := &cobra.Command{
+		Use:   "verify-issuer",
+		Short: "Dry-run OIDC discovery against an issuer URL before binding",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originVerifyIssuer(cmd, verifyIss)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			res, err := a.VerifyIssuer(cmd.Context(), actor, verifyIss)
+			if err != nil {
+				return err
+			}
+			return encode(cmd, res)
+		},
+	}
+	verifyCmd.Flags().StringVar(&verifyIss, "issuer", "", "OIDC issuer URL to verify")
+	_ = verifyCmd.MarkFlagRequired("issuer")
+	c.AddCommand(verifyCmd)
 
 	var secretFile string
 	var forceRotate bool
@@ -2668,4 +2700,20 @@ func rotateCmd(home *string) *cobra.Command {
 	c.Flags().StringVar(&mgmtItem, "management-item", "", "separate vault item holding the provider management credential")
 	c.Flags().DurationVar(&interval, "interval", 0, "auto-rotation interval (e.g. 24h, 168h)")
 	return c
+}
+
+func parseClaimPairs(pairs []string) (map[string][]string, error) {
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	out := map[string][]string{}
+	for _, p := range pairs {
+		k, v, ok := strings.Cut(p, "=")
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if !ok || k == "" || v == "" {
+			return nil, fmt.Errorf("agent bind: invalid --claim %q (want key=value)", p)
+		}
+		out[k] = append(out[k], v)
+	}
+	return out, nil
 }

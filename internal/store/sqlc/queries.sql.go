@@ -1954,10 +1954,10 @@ func (q *Queries) PutSession(ctx context.Context, arg PutSessionParams) error {
 }
 
 const putWorkload = `-- name: PutWorkload :exec
-INSERT INTO workloads(issuer, subject, agent_id, audience)
-VALUES($1::text, $2::text, $3::text, $4::text)
+INSERT INTO workloads(issuer, subject, agent_id, audience, claims)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::text)
 ON CONFLICT(issuer, subject) DO UPDATE SET
-    agent_id=excluded.agent_id, audience=excluded.audience
+    agent_id=excluded.agent_id, audience=excluded.audience, claims=excluded.claims
 `
 
 type PutWorkloadParams struct {
@@ -1965,6 +1965,7 @@ type PutWorkloadParams struct {
 	Subject  string
 	AgentID  string
 	Audience string
+	Claims   string
 }
 
 func (q *Queries) PutWorkload(ctx context.Context, arg PutWorkloadParams) error {
@@ -1973,6 +1974,7 @@ func (q *Queries) PutWorkload(ctx context.Context, arg PutWorkloadParams) error 
 		arg.Subject,
 		arg.AgentID,
 		arg.Audience,
+		arg.Claims,
 	)
 	return err
 }
@@ -2610,7 +2612,7 @@ func (q *Queries) UseAuthSession(ctx context.Context, arg UseAuthSessionParams) 
 }
 
 const workloadByKey = `-- name: WorkloadByKey :one
-SELECT issuer, subject, agent_id, audience FROM workloads WHERE issuer = $1::text AND subject = $2::text
+SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = $1::text AND subject = $2::text
 `
 
 type WorkloadByKeyParams struct {
@@ -2626,12 +2628,13 @@ func (q *Queries) WorkloadByKey(ctx context.Context, arg WorkloadByKeyParams) (W
 		&i.Subject,
 		&i.AgentID,
 		&i.Audience,
+		&i.Claims,
 	)
 	return i, err
 }
 
 const workloadsForIssuer = `-- name: WorkloadsForIssuer :many
-SELECT issuer, subject, agent_id, audience FROM workloads WHERE issuer = $1::text ORDER BY subject LIMIT $2::bigint
+SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = $1::text ORDER BY subject LIMIT $2::bigint
 `
 
 type WorkloadsForIssuerParams struct {
@@ -2653,6 +2656,7 @@ func (q *Queries) WorkloadsForIssuer(ctx context.Context, arg WorkloadsForIssuer
 			&i.Subject,
 			&i.AgentID,
 			&i.Audience,
+			&i.Claims,
 		); err != nil {
 			return nil, err
 		}

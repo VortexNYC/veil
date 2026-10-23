@@ -9,6 +9,7 @@ Name | Type | Description | Notes
 **issuer** | **str** |  | 
 **subject** | **str** |  | 
 **audience** | **str** |  | 
+**claims** | **Dict[str, List[str]]** | optional OidcPolicy claim rules (every key must match at least one allowed value) | [optional] 
 
 ## Example
 

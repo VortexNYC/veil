@@ -17,8 +17,8 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr
-from typing import Any, ClassVar, Dict, List
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
@@ -31,7 +31,8 @@ class WorkloadView(BaseModel):
     issuer: StrictStr
     subject: StrictStr
     audience: StrictStr
-    __properties: ClassVar[List[str]] = ["agent_id", "issuer", "subject", "audience"]
+    claims: Optional[Dict[str, List[StrictStr]]] = Field(default=None, description="optional OidcPolicy claim rules (every key must match at least one allowed value)")
+    __properties: ClassVar[List[str]] = ["agent_id", "issuer", "subject", "audience", "claims"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -87,7 +88,8 @@ class WorkloadView(BaseModel):
             "agent_id": obj.get("agent_id"),
             "issuer": obj.get("issuer"),
             "subject": obj.get("subject"),
-            "audience": obj.get("audience")
+            "audience": obj.get("audience"),
+            "claims": obj.get("claims")
         })
         return _obj
 
