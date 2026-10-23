@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -179,7 +183,76 @@ func (b bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return b.base.RoundTrip(clone)
 }
 
+func applyMCPStdioDefaults() {
+	if originBase() == "" {
+		return
+	}
+	if strings.TrimSpace(os.Getenv("VEIL_HYDRA_ISSUER")) == "" {
+		_ = os.Setenv("VEIL_HYDRA_ISSUER", "https://id.veil.nyc")
+	}
+	if strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN_FILE")) != "" ||
+		strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN")) != "" ||
+		strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE")) != "" {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	credDir := filepath.Join(home, ".config", "vortex", "veil")
+	agent := strings.TrimSpace(os.Getenv("VEIL_AGENT"))
+	if agent == "" {
+		agent = inferCallerAgent()
+	}
+	if agent == "" {
+		return
+	}
+	sec := filepath.Join(credDir, agent+".hydra")
+	if _, err := os.Stat(sec); err == nil {
+		_ = os.Setenv("VEIL_AGENT", agent)
+		_ = os.Setenv("VEIL_HYDRA_SECRET_FILE", sec)
+		_ = os.Setenv("VEIL_OIDC_TOKEN_FILE", filepath.Join(credDir, agent+".jwt"))
+	}
+}
+
+func inferCallerAgent() string {
+	pid := os.Getppid()
+	for range 6 {
+		if pid <= 1 {
+			break
+		}
+		out, err := exec.Command("ps", "-p", fmt.Sprint(pid), "-o", "ppid=,comm=").Output()
+		if err != nil {
+			break
+		}
+		fields := strings.Fields(strings.TrimSpace(string(out)))
+		if len(fields) < 2 {
+			break
+		}
+		comm := strings.ToLower(strings.Join(fields[1:], " "))
+		switch {
+		case strings.Contains(comm, "grok"):
+			return "grok"
+		case strings.Contains(comm, "cursor"):
+			return "cursor"
+		case strings.Contains(comm, "claude"):
+			return "claude"
+		case strings.Contains(comm, "devin"):
+			return "devin"
+		case strings.Contains(comm, "codex"):
+			return "codex"
+		}
+		var next int
+		if _, err := fmt.Sscan(fields[0], &next); err != nil || next == pid {
+			break
+		}
+		pid = next
+	}
+	return ""
+}
+
 func runOriginMCPStdio(ctx context.Context) error {
+	applyMCPStdioDefaults()
 	if originBase() == "" {
 		return fmt.Errorf("mcp stdio: VEIL_ORIGIN is required")
 	}

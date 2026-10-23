@@ -1,0 +1,26 @@
+{
+  "name": "veil",
+  "displayName": "Veil",
+  "version": "1.0.0",
+  "description": "Agent-first credential broker for Cursor, Grok, Claude Code, and Devin: 5 MCP tools (list_items, match_items, check, fetch, approval_status) that inject credentials at the edge so agents never hold plaintext secrets.",
+  "author": {
+    "name": "Vortex",
+    "url": "https://veil.nyc"
+  },
+  "homepage": "https://veil.nyc",
+  "repository": "https://github.com/VortexNYC/veil",
+  "license": "MIT",
+  "keywords": [
+    "veil",
+    "credentials",
+    "secrets",
+    "security",
+    "oidc",
+    "dpop",
+    "passkeys",
+    "mcp",
+    "1password"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.cursor-plugin/mcp.json"
+}

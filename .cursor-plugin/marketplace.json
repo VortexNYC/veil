@@ -1,0 +1,14 @@
+{
+  "name": "veil",
+  "owner": {
+    "name": "Vortex",
+    "url": "https://veil.nyc"
+  },
+  "plugins": [
+    {
+      "name": "veil",
+      "source": "./",
+      "description": "Agent-first credential broker for Cursor, Grok, Claude Code, and Devin"
+    }
+  ]
+}
