@@ -14,7 +14,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/VortexNYC/veil/internal/audit"
 	"github.com/VortexNYC/veil/internal/billing"
@@ -130,6 +133,13 @@ type App struct {
 	inviteLim            inviteLimiter
 	usageStop, usageDone chan struct{}
 	rotStop, rotDone     chan struct{}
+
+	// hydraIssuer is VEIL_HYDRA_ISSUER as seen at attachHydra — the issuer
+	// whose token endpoint credential bearers exchange against. credSrcs
+	// caches the client_credentials TokenSources behind credMu.
+	hydraIssuer string
+	credMu      sync.Mutex
+	credSrcs    map[string]oauth2.TokenSource
 }
 
 func Init(dir string) (*App, error) {
@@ -426,6 +436,7 @@ func (a *App) attachHydra() error {
 		return err
 	}
 	a.Human = v
+	a.hydraIssuer = iss
 	return nil
 }
 
@@ -1354,6 +1365,13 @@ func (a *App) UnbindWorkloadFor(actor protocol.Principal, agentID, issuer, subje
 func (a *App) AgentFromOIDC(ctx context.Context, rawToken string) (protocol.Principal, error) {
 	if IsSessionToken(rawToken) {
 		return a.PrincipalFromSession(rawToken)
+	}
+	if cid, secret, ok := splitCredentialBearer(rawToken); ok {
+		minted, err := a.exchangeAgentCredential(ctx, cid, secret)
+		if err != nil {
+			return protocol.Principal{}, err
+		}
+		rawToken = minted
 	}
 	w := a.Workload
 	if w == nil {
