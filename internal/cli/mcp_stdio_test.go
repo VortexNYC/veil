@@ -51,6 +51,9 @@ func TestMCPHTTPBlockEmitsCredentialBearer(t *testing.T) {
 	t.Setenv("VEIL_ORIGIN", "https://veil.nyc")
 	t.Setenv("VEIL_AGENT", "grok")
 	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_ISSUER", "")
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", "")
+	t.Setenv("VEIL_OIDC_TOKEN", "")
 
 	cfg, err := mcpHTTPBlock("https://veil.nyc")
 	if err != nil {
@@ -72,6 +75,9 @@ func TestMCPHTTPBlockRequiresAgent(t *testing.T) {
 	t.Setenv("VEIL_ORIGIN", "https://veil.nyc")
 	t.Setenv("VEIL_AGENT", "")
 	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_ISSUER", "")
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", "")
+	t.Setenv("VEIL_OIDC_TOKEN", "")
 	if _, err := mcpHTTPBlock("https://veil.nyc"); err == nil {
 		t.Fatal("expected error without VEIL_AGENT")
 	}
