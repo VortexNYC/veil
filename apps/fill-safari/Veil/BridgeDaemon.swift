@@ -42,6 +42,7 @@ final class BridgeDaemon {
         var env = ProcessInfo.processInfo.environment
         env["VEIL_HOME"] = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".veil").path
+        env["VEIL_REPLICA_KEYSTORE"] = "mem"
         p.environment = env
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice

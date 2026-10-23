@@ -160,6 +160,12 @@ final class FillBridge {
         return reply["entries"] as? [[String: Any]] ?? []
     }
 
+    /// Fresh human JWT from the bridge (auto-remints when expired).
+    func token() throws -> String {
+        let reply = try roundTrip(["action": "token"], timeout: 30)
+        return reply["token"] as? String ?? ""
+    }
+
     /// Confirm-gated: the host runs its own Touch ID step before answering.
     func fill(app bundleID: String, uuid: String) throws -> (entries: [[String: Any]], error: String) {
         let reply = try roundTrip(["action": "fill", "url": "app://" + bundleID, "app": bundleID, "uuid": uuid], timeout: 95)

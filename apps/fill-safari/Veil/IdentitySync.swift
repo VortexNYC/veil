@@ -16,19 +16,7 @@ final class IdentitySync {
     static let shared = IdentitySync()
 
     private var timer: Timer?
-
-    /// NSLog is not reliably observable from a launched accessory app —
-    /// drop a line in the container instead (readable unsandboxed).
-    private func vlog(_ msg: String) {
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("veil-sync.log")
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg)\n"
-        if let h = try? FileHandle(forWritingTo: path) {
-            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
-        } else {
-            try? line.write(to: path, atomically: true, encoding: .utf8)
-        }
-    }
+    private var lastSyncedKeys: Set<String>? = nil
 
     /// Host sends unpadded base64url for credId/userHandle.
     private static func data(b64url: String) -> Data? {
@@ -50,21 +38,17 @@ final class IdentitySync {
     }
 
     func sync() {
-        vlog("sync begin")
         Task {
             let state = await ASCredentialIdentityStore.shared.state()
-            vlog("state enabled=\(state.isEnabled)")
             guard state.isEnabled else {
-                NSLog("veil: autofill provider not enabled — skipping identity sync")
                 return
             }
+            let prevKeys = self.lastSyncedKeys
             await Task.detached {
                 let entries: [[String: Any]]
                 do {
                     entries = try await FillBridge.shared.list()
-                    self.vlog("list ok entries=\(entries.count)")
                 } catch {
-                    self.vlog("list failed \(error.localizedDescription)")
                     return
                 }
                 var seen = Set<String>()
@@ -94,27 +78,34 @@ final class IdentitySync {
                     } else if kind == "passkey" {
                         // rpId + credId + userHandle come from the replica's
                         // sealed material — metadata only, never the key.
+                        let rawCredID = e["credId"] as? String ?? ""
+                        let rawHandle = e["userHandle"] as? String ?? ""
+                        let user = e["login"] as? String ?? ""
                         guard let rpID = e["rpId"] as? String, !rpID.isEmpty,
-                              let credID = Self.data(b64url: e["credId"] as? String ?? ""),
-                              let handle = Self.data(b64url: e["userHandle"] as? String ?? "")
+                              let credID = Self.data(b64url: rawCredID),
+                              let handle = Self.data(b64url: rawHandle)
                         else { continue }
-                        guard seen.insert(rpID + "|" + uuid).inserted else { continue }
+                        let key = "\(rpID)|\(uuid)|\(user)|\(rawCredID)|\(rawHandle)"
+                        guard seen.insert(key).inserted else { continue }
                         identities.append(ASPasskeyCredentialIdentity(
                             relyingPartyIdentifier: rpID,
-                            userName: e["login"] as? String ?? "",
+                            userName: user,
                             credentialID: credID,
                             userHandle: handle,
                             recordIdentifier: uuid,
                         ))
                     }
                 }
-                self.vlog("pushing identities=\(identities.count)")
+                if let prevKeys, seen == prevKeys {
+                    return
+                }
                 ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { ok, err in
                     if let err {
-                        self.vlog("sync failed \(err.localizedDescription)")
                         NSLog("veil: identity sync failed %@", err.localizedDescription)
                     } else {
-                        self.vlog("sync wrote \(identities.count) enabled=\(ok ? 1 : 0)")
+                        Task { @MainActor in
+                            IdentitySync.shared.lastSyncedKeys = seen
+                        }
                         NSLog("veil: identity sync wrote %d (enabled=%d)", identities.count, ok ? 1 : 0)
                     }
                 }

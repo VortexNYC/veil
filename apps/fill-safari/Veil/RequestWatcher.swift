@@ -23,11 +23,6 @@ final class RequestWatcher {
         return u
     }
 
-    private var tokenPath: String {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/vortex/pwm-human.jwt").path
-    }
-
     func start() {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -39,28 +34,33 @@ final class RequestWatcher {
     }
 
     private func poll() {
-        guard let tok = try? String(contentsOfFile: tokenPath)
-            .trimmingCharacters(in: .whitespacesAndNewlines), !tok.isEmpty else { return }
-        var req = URLRequest(url: URL(string: origin + "/v1/requests")!)
-        req.setValue("Bearer " + tok, forHTTPHeaderField: "Authorization")
-        req.timeoutInterval = 10
-        URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
-            guard let self, let data,
-                  (resp as? HTTPURLResponse)?.statusCode == 200,
-                  let out = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let reqs = out["requests"] as? [[String: Any]] else { return }
-            var fresh: [[String: Any]] = []
-            var ids = Set<String>()
-            for r in reqs where (r["status"] as? String) == "open" {
-                let id = r["id"] as? String ?? ""
-                ids.insert(id)
-                if !self.seen.contains(id) { fresh.append(r) }
-            }
-            DispatchQueue.main.async {
-                self.seen = ids
-                for r in fresh { self.notify(r) }
-            }
-        }.resume()
+        let baseOrigin = self.origin
+        DispatchQueue.global().async { [weak self] in
+            guard let tok = try? FillBridge.shared.token(),
+                  !tok.isEmpty else { return }
+            var req = URLRequest(url: URL(string: baseOrigin + "/v1/requests")!)
+            req.setValue("Bearer " + tok, forHTTPHeaderField: "Authorization")
+            req.timeoutInterval = 10
+            URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
+                guard let data,
+                      (resp as? HTTPURLResponse)?.statusCode == 200,
+                      let out = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let reqs = out["requests"] as? [[String: Any]] else { return }
+                let openReqs = reqs.filter { ($0["status"] as? String) == "open" }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    var fresh: [[String: Any]] = []
+                    var ids = Set<String>()
+                    for r in openReqs {
+                        let id = r["id"] as? String ?? ""
+                        ids.insert(id)
+                        if !self.seen.contains(id) { fresh.append(r) }
+                    }
+                    self.seen = ids
+                    for r in fresh { self.notify(r) }
+                }
+            }.resume()
+        }
     }
 
     private func notify(_ r: [String: Any]) {
