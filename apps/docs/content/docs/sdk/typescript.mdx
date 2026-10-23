@@ -10,12 +10,11 @@ pnpm add @vortex-api/veil
 ```
 
 ```ts
-import { createClient, listItems, useItem } from "@vortex-api/veil";
+import { createAmbientClient, listItems, useItem } from "@vortex-api/veil";
 
-const client = createClient({
-  baseUrl: "https://veil.nyc",
-  headers: { Authorization: `Bearer ${process.env.VEIL_OIDC_TOKEN}` },
-});
+// Zero static keys in env vars: resolves Vercel OIDC (x-vercel-oidc-token /
+// VERCEL_OIDC_TOKEN_FILE), GitHub Actions OIDC, or VEIL_OIDC_TOKEN.
+const client = createAmbientClient();
 
 const { data } = await listItems({ client });
 await useItem({

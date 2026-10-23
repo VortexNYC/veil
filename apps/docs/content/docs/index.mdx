@@ -10,14 +10,23 @@ Agents reference an item. Something outside the model injects the secret.
 ## Start here
 
 <CardGroup>
-  <Card title="Agents" href="/guides/agents" icon="bot">
-    MCP, Bearer JWT, listItems and useItem. Never GetSecret.
+  <Card title="Agents & MCP" href="/guides/agents" icon="bot">
+    MCP tools (list_items, match_items, check, fetch, approval_status) for Cursor, Claude Code, Devin, and Grok.
   </Card>
-  <Card title="SDK quickstart" href="/sdk/quickstart" icon="box">
-    TypeScript, Python, and Go from the same OpenAPI contract.
+  <Card title="OIDC Federation" href="/guides/oidc" icon="shield">
+    Zero static env keys on Vercel, GitHub Actions, Fly.io, Better Auth, Clerk, and WorkOS.
   </Card>
-  <Card title="API reference" href="/reference" icon="code">
-    The OpenAPI contract. Source of truth for CLI, MCP, and SDKs.
+  <Card title="Outbound WIF" href="/guides/wif" icon="key">
+    Mint ephemeral Anthropic tokens via RFC 7523 jwt-bearer exchange so not even Veil stores a static API key.
+  </Card>
+  <Card title="Rotation & Containment" href="/guides/rotation" icon="refresh-cw">
+    Dual-phase broker-side key rotation, management-endpoint blocking, and honey auto-revocation.
+  </Card>
+  <Card title="Self-Host Mode" href="/guides/self-host" icon="server">
+    Run Veil as a single binary on SQLite or Postgres with veil mcp --self-host.
+  </Card>
+  <Card title="SDK & API Reference" href="/sdk/quickstart" icon="code">
+    TypeScript (createAmbientClient), Python, and Go SDKs generated from the OpenAPI contract.
   </Card>
 </CardGroup>
 

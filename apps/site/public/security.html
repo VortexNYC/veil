@@ -95,8 +95,18 @@
 
   <h2>What agents can see</h2>
   <ul>
-    <li>Agents never receive plaintext secrets — not in API responses, MCP, logs, or audit. Secrets are injected into the request/fill path.</li>
+    <li>Agents never receive plaintext secrets — not in API responses, MCP, logs, or audit. Secrets are injected into the request/fill path and scrubbed from upstream response bodies and headers.</li>
     <li>Grants are use-scoped and bounded: item, level, expiry, and max uses. Every use consumes a session use and writes an audit row in the same transaction — a secret never leaves unaudited.</li>
+    <li>Provider key-management endpoints (such as <code>/api-keys</code> on Resend, <code>/v3/api_keys</code> on SendGrid, and <code>/api/personal_api_keys</code> on PostHog) are blocked at grant evaluation (<code>reason="management_endpoint"</code>) so an agent granted <code>use</code> cannot mint or delete provider keys.</li>
+    <li>Honey tripwires (<code>--honey --tag veil:honey-revoke</code>) deny and audit on touch, and immediately revoke the offending agent principal (<code>reason="honey_tripwire agent=&lt;id&gt;"</code>), invalidating all of its sessions and grants.</li>
+  </ul>
+
+  <h2>Workload Federation, Outbound WIF &amp; Rotation</h2>
+  <ul>
+    <li>Agents and cloud functions authenticate to Veil using short-lived OIDC tokens from Vercel, GitHub Actions, Fly.io, Better Auth, Clerk, WorkOS, or Ory Hydra — eliminating long-lived static tokens in environment variables.</li>
+    <li>OIDC discovery and JWKS fetches enforce a dial-time SSRF guard that resolves DNS once, blocks RFC1918 private networks, CGNAT (<code>100.64.0.0/10</code>), link-local/cloud metadata (<code>169.254.0.0/16</code>), and non-explicit loopback rebinds, and dials the validated IP directly.</li>
+    <li>For providers supporting RFC 7523 <code>jwt-bearer</code> Workload Identity Federation (such as Anthropic), Veil mints short-lived assertions and exchanges them for ephemeral access tokens — so Veil never stores a static upstream provider API key.</li>
+    <li>Broker-side rotation (<code>veil rotate</code>) runs a dual-phase state machine inside the sealed envelope: mints and verifies the replacement key, commits the new ciphertext and <code>rotate</code> audit row locally, and only then retires the previous pending key.</li>
   </ul>
 
   <h2>Identity</h2>

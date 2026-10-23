@@ -1,0 +1,42 @@
+---
+title: Single-Binary Self-Host
+description: Run Veil as a single binary on SQLite or Postgres without Ory Hydra, Kratos, or Keto.
+---
+
+# Single-Binary Self-Host (`veil mcp --self-host`)
+
+Hosted Veil (`https://veil.nyc`) runs Ory Kratos, Hydra, and Keto for multi-user organizations, WebAuthn/TOTP login, and managed OIDC issuance.
+
+For indie projects, homelabs, and air-gapped CI runners that only need the **agent credential broker, encrypted vault, grants, rotation, and audit log**, you can run `veil` as a single binary with zero external identity containers:
+
+```bash
+# Local SQLite vault (~/.veil) — zero containers
+veil mcp --self-host --listen 127.0.0.1:4461
+
+# Or with Postgres (`VEIL_POSTGRES_DSN`) and VEIL_SELF_HOST=1
+VEIL_SELF_HOST=1 VEIL_POSTGRES_DSN="postgres://..." veil mcp --listen :4461
+```
+
+## How Authentication Works in `--self-host` Mode
+
+When `--self-host` (`VEIL_SELF_HOST=1`) is enabled:
+
+1. **External OIDC Workload Federation (`veil agent bind`)**: Your agents on GitHub Actions, Vercel, Fly.io, or any OIDC issuer authenticate directly via `Checker.Agent` against the issuer's public JWKS—no Hydra instance required.
+2. **Sandbox Sessions (`veil session create AGENT`)**: Mint bounded, revocable bearer tokens (`ses_...`) for local or cloud agents with `--ttl` and `--max-uses` caps.
+3. **Health & Readiness (`/ready`)**: Verifies database connectivity without probing an Ory Hydra discovery URL.
+
+## Managing Your Local or Self-Hosted Vault
+
+Use the `veil` CLI directly against the same `--home` directory (or `VEIL_POSTGRES_DSN`):
+
+```bash
+# Add an item from a file
+veil item add resend --uri https://api.resend.com --secret-file ./resend.key
+
+# Register an agent and bind GitHub Actions OIDC
+veil agent add ci-runner
+veil agent bind ci-runner --preset github-actions --repo owner/repo --ref refs/heads/main
+
+# Grant level2 (autonomous agent) use on resend
+veil grant add --agent ci-runner --item resend --level level2
+```

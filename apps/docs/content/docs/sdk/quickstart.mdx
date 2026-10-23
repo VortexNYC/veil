@@ -8,19 +8,18 @@ description: Generated TypeScript, Python, and Go clients. Use injects. Never Ge
 Generated from the same OpenAPI contract as the [API reference](/reference).
 Do not handwrite clients. `pnpm run sdk:generate`.
 
-## TypeScript
+## TypeScript (Zero-Env Ambient OIDC on Vercel / GitHub Actions)
 
 ```bash
 pnpm add @vortex-api/veil
 ```
 
 ```ts
-import { createClient, listItems, useItem } from "@vortex-api/veil";
+import { createAmbientClient, listItems, useItem } from "@vortex-api/veil";
 
-const client = createClient({
-  baseUrl: "https://veil.nyc",
-  headers: { Authorization: `Bearer ${process.env.VEIL_OIDC_TOKEN}` },
-});
+// Automatically resolves x-vercel-oidc-token, VERCEL_OIDC_TOKEN_FILE,
+// GitHub Actions ACTIONS_ID_TOKEN_REQUEST_URL, or VEIL_OIDC_TOKEN.
+const client = createAmbientClient();
 
 const listed = await listItems({ client });
 const used = await useItem({
@@ -32,6 +31,17 @@ const used = await useItem({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "bot@veil.nyc" }),
   },
+});
+```
+
+Or pass an explicit bearer token via `createClient`:
+
+```ts
+import { createClient } from "@vortex-api/veil";
+
+const client = createClient({
+  baseUrl: "https://veil.nyc",
+  headers: { Authorization: `Bearer ${process.env.VEIL_OIDC_TOKEN}` },
 });
 ```
 

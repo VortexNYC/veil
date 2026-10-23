@@ -1,0 +1,57 @@
+---
+title: Outbound WIF (Anthropic & RFC 7523)
+description: Mint short-lived upstream provider tokens via RFC 7523 jwt-bearer exchange so not even Veil stores a static provider API key.
+---
+
+# Outbound WIF (Anthropic & RFC 7523)
+
+Inbound OIDC federation eliminates static keys between **your workload and Veil**. **Outbound Workload Identity Federation (WIF)** eliminates static keys between **Veil and the upstream API provider**.
+
+When an item is configured for Outbound WIF (RFC 7523 `urn:ietf:params:oauth:grant-type:jwt-bearer`), Veil never stores a static upstream API key (like `sk-ant-api03-...`). Instead, when an authorized agent calls `fetch` / `useItem`:
+
+1. Veil mints a short-lived OIDC assertion JWT from its Hydra issuer (`https://id.veil.nyc/oauth2/token`).
+2. Veil exchanges that assertion at the upstream provider's token endpoint (e.g. `https://api.anthropic.com/v1/oauth/token`) for a short-lived access token (`sk-ant-oat01-...`).
+3. Veil caches the exchanged access token in memory (`material.TokenCache`, `singleflight`-deduped) until 60 seconds before expiry—so steady-state `fetch` calls add **0ms** of token-exchange latency.
+4. Veil injects `Authorization: Bearer <access_token>` into the upstream request and scrubs both the assertion JWT and the access token from the response body and headers.
+
+## Configure Anthropic WIF
+
+### 1. Create the Federation Rule in Anthropic Console
+
+In the Anthropic Console under **Workload Identity Federation**, register a federation rule trusting your Veil issuer:
+
+- **Issuer URL**: `https://id.veil.nyc` (publishes `/.well-known/openid-configuration` and JWKS)
+- **Subject**: Your dedicated Hydra assertion client ID (e.g. `agent-claude`)
+- Copy the resulting **Federation Rule ID** (`fdrl_...`), and optionally **Service Account ID** (`svac_...`), **Workspace ID** (`wrkspc_...`), or **Organization ID**.
+
+### 2. Add the WIF Item in Veil
+
+From the CLI (secrets are always read from files, never `argv`):
+
+```bash
+veil item add anthropic \
+  --uri https://api.anthropic.com \
+  --federation-rule-id fdrl_01ABC... \
+  --service-account-id svac_01XYZ... \
+  --assertion-client-id agent-claude \
+  --assertion-secret-file ./agent-claude.secret
+```
+
+Or in the Vault UI at `https://app.veil.nyc/items` → **Add** → **Kind: Outbound WIF (Anthropic / RFC 7523)**.
+
+### 3. Dry-Run Verification (`veil item verify`)
+
+Verify the 2-hop assertion + token exchange end-to-end before an agent uses it:
+
+```bash
+veil item verify anthropic
+# {
+#   "item": "anthropic",
+#   "verified": true,
+#   "mode": "wif_ok"
+# }
+```
+
+### 4. Grant and Use
+
+Grant your agent permission to use `anthropic` as usual—the agent calls `https://api.anthropic.com/v1/messages` through Veil `fetch` / `useItem` without ever knowing whether the upstream credential is a static key, an OAuth refresh token, or an ephemeral WIF token.

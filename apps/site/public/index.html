@@ -131,6 +131,50 @@
     color: var(--secondary);
   }
   .bound li b { color: var(--foreground); font-weight: 500; }
+  .codeblock {
+    margin-top: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--secondary);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .codeblock .c { color: var(--subtle); }
+  .codeblock .k { color: var(--bright); }
+  .matrix {
+    margin-top: 40px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .matrix table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .matrix th, .matrix td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--secondary);
+  }
+  .matrix th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--subtle);
+    background: var(--void);
+  }
+  .matrix tr:last-child td { border-bottom: none; }
+  .matrix td:first-child { color: var(--foreground); font-weight: 500; }
+  .matrix td.yes { color: var(--bright); font-weight: 500; }
   nav {
     margin-top: 40px;
     display: flex;
@@ -160,6 +204,14 @@
 
   <div class="install"><span class="c">$</span> curl -fsSL https://veil.nyc/install.sh | sh</div>
 
+  <div class="codeblock"><span class="c"># 1. Trust your Vercel / GitHub Actions / Fly workload — zero static env keys</span>
+<span class="k">veil agent bind</span> web --preset vercel --org acme --app web --claim owner_id=team_abc123
+
+<span class="c"># 2. Call any upstream API from your agent or function — Veil injects &amp; scrubs at the edge</span>
+<span class="k">import</span> { createAmbientClient, useItem } <span class="k">from</span> "@vortex-api/veil";
+<span class="k">const</span> client = createAmbientClient({ request: req });
+<span class="k">await</span> useItem({ client, body: { item: "resend", url: "https://api.resend.com/emails", method: "POST" } });</div>
+
   <div class="flow">
     <div class="step">
       <h3>01 — Bind the workload</h3>
@@ -183,6 +235,57 @@
       <li><b>The grant is the object.</b> Per-item, per-level, per-principal. Honey tripwires (<code>veil:honey-revoke</code>) auto-revoke compromised agents on first touch.</li>
       <li><b>Humans stay in the loop.</b> Remote approval for level-1 use; Touch ID before anything leaves your Mac; Ory Kratos + Hydra + Keto for identity.</li>
     </ul>
+  </div>
+
+  <div class="matrix">
+    <table>
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th>Static .env</th>
+          <th>Vault / 1Password</th>
+          <th>Veil Broker</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Agent sees plaintext secret</td>
+          <td>Yes (in process)</td>
+          <td>Yes (after read)</td>
+          <td class="yes">Never (injected at edge)</td>
+        </tr>
+        <tr>
+          <td>Workload auth (Vercel / GitHub / Fly OIDC)</td>
+          <td>Static key</td>
+          <td>Service token</td>
+          <td class="yes">Short-lived OIDC + claims</td>
+        </tr>
+        <tr>
+          <td>Works with both static-key &amp; OIDC SaaS APIs</td>
+          <td>Manual paste</td>
+          <td>Manual paste</td>
+          <td class="yes">Brokered + outbound WIF</td>
+        </tr>
+        <tr>
+          <td>Key rotation blast radius</td>
+          <td>Redeploy every app</td>
+          <td>Resync consumers</td>
+          <td class="yes">0-downtime dual-phase swap</td>
+        </tr>
+        <tr>
+          <td>Blocks agent calls to <code>/api-keys</code> endpoints</td>
+          <td>No</td>
+          <td>No</td>
+          <td class="yes">Enforced in grant engine</td>
+        </tr>
+        <tr>
+          <td>Prompt-injection tripwire</td>
+          <td>None</td>
+          <td>None</td>
+          <td class="yes"><code>veil:honey-revoke</code></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <nav>
