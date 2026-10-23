@@ -103,6 +103,18 @@ fill-safari:
 	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
 	cd apps/fill-safari && xcodebuild -project Veil.xcodeproj -scheme Veil -configuration Debug build
 
+# macos-app builds a Release /Applications/Veil.app with bundled veil-bin,
+# vault UI, Safari extension, and AutoFill appex signed under the active
+# Xcode provisioning profile, updates ~/.veil/native-host, and restarts
+# the local bridge and Veil.app.
+macos-app:
+	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
+	killall Veil 2>/dev/null || true
+	xcodebuild -project apps/fill-safari/Veil.xcodeproj -scheme Veil -configuration Release -derivedDataPath /tmp/VeilBuild CONFIGURATION_BUILD_DIR=/Applications build ENABLE_USER_SCRIPT_SANDBOXING=NO
+	cp /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
+	launchctl kickstart -k gui/$$(id -u)/nyc.veil.fill.bridge 2>/dev/null || true
+	open /Applications/Veil.app
+
 # Store payloads: zips the two installed extension dirs for CWS / AMO
 # upload. Run `veil fill install` first so ~/.veil/extension* is current.
 # CWS rejects the dev-pinned manifest "key" — the store signature owns the ID,
