@@ -431,12 +431,35 @@ export type BindWorkloadRequest = {
      * expected token aud claim
      */
     audience: string;
+    /**
+     * optional OidcPolicy claim rules (every key must match at least one allowed value)
+     */
+    claims?: {
+        [key: string]: Array<string>;
+    };
 };
 export type WorkloadView = {
     agent_id: string;
     issuer: string;
     subject: string;
     audience: string;
+    /**
+     * optional OidcPolicy claim rules (every key must match at least one allowed value)
+     */
+    claims?: {
+        [key: string]: Array<string>;
+    };
+};
+export type VerifyIssuerRequest = {
+    /**
+     * OIDC issuer URL to dry-run
+     */
+    issuer: string;
+};
+export type VerifyIssuerResponse = {
+    code: 'ok' | 'invalid-issuer' | 'discovery-failed';
+    issuer: string;
+    message: string;
 };
 export type GetHealthData = {
     body?: never;
@@ -1590,3 +1613,30 @@ export type BindWorkloadResponses = {
     200: WorkloadView;
 };
 export type BindWorkloadResponse = BindWorkloadResponses[keyof BindWorkloadResponses];
+export type VerifyIssuerData = {
+    body: VerifyIssuerRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/workloads/verify-issuer';
+};
+export type VerifyIssuerErrors = {
+    /**
+     * bad request
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+export type VerifyIssuerResponses = {
+    /**
+     * Verification result
+     */
+    200: VerifyIssuerResponse;
+};
+export type VerifyIssuerResponse2 = VerifyIssuerResponses[keyof VerifyIssuerResponses];

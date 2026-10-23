@@ -1,6 +1,7 @@
 import {
   addGroupMember,
   approveRequest,
+  bindWorkload as sdkBindWorkload,
   createAgent,
   createBillingCheckout,
   createClient,
@@ -18,7 +19,9 @@ import {
   listRequests,
   removeGroupMember,
   vaultReport,
+  verifyIssuer as sdkVerifyIssuer,
 } from "@vortex-api/veil"
+import type { BindWorkloadRequest } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
 
 function client() {
@@ -128,6 +131,14 @@ export function agents() {
 
 export function addAgent(name: string) {
   return createAgent({ client: client(), body: { name } })
+}
+
+export function bindAgentWorkload(name: string, body: BindWorkloadRequest) {
+  return sdkBindWorkload({ client: client(), path: { name }, body })
+}
+
+export function verifyWorkloadIssuer(issuer: string) {
+  return sdkVerifyIssuer({ client: client(), body: { issuer } })
 }
 
 export function events() {

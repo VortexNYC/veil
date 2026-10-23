@@ -1134,17 +1134,25 @@ func (a *App) BindWorkload(agentID, issuer, subject, audience string) (protocol.
 	return a.BindWorkloadFor(a.vaultHuman(), agentID, issuer, subject, audience)
 }
 
+func (a *App) BindWorkloadWithClaims(agentID, issuer, subject, audience string, claims map[string][]string) (protocol.Workload, error) {
+	return a.BindWorkloadForWithClaims(a.vaultHuman(), agentID, issuer, subject, audience, claims)
+}
+
 // BindWorkloadFor enrolls a workload identity on behalf of actor — owner
 // only, same bar as grants: binding an auth method to a foreign agent is a
 // grant-adjacent write.
 func (a *App) BindWorkloadFor(actor protocol.Principal, agentID, issuer, subject, audience string) (protocol.Workload, error) {
+	return a.BindWorkloadForWithClaims(actor, agentID, issuer, subject, audience, nil)
+}
+
+func (a *App) BindWorkloadForWithClaims(actor protocol.Principal, agentID, issuer, subject, audience string, claims map[string][]string) (protocol.Workload, error) {
 	if !id.Valid(agentID) {
 		return protocol.Workload{}, fmt.Errorf("app: invalid agent name %q", agentID)
 	}
 	if issuer == "" || subject == "" || audience == "" {
 		return protocol.Workload{}, fmt.Errorf("app: issuer, subject, and audience are required")
 	}
-	if err := workload.ValidateBinding(issuer, subject); err != nil {
+	if err := workload.ValidateBindingWithClaims(issuer, subject, claims); err != nil {
 		return protocol.Workload{}, err
 	}
 	own, err := a.ownsVault(actor)
@@ -1164,16 +1172,39 @@ func (a *App) BindWorkloadFor(actor protocol.Principal, agentID, issuer, subject
 	if agent.RevokedAt != nil {
 		return protocol.Workload{}, ErrAgentRevoked
 	}
+	// Prevent cross-org takeover of an existing (issuer, subject) binding:
+	// workloads PK is (issuer, subject), so rebinding an already-claimed pair
+	// is only allowed when the existing target agent belongs to actor's org.
+	if existing, err := a.Store.Workload(issuer, subject); err != nil {
+		return protocol.Workload{}, err
+	} else if existing != nil && existing.AgentID != agentID {
+		if prevAgent, aerr := a.Store.Agent(existing.AgentID); aerr == nil && prevAgent.OrgID != actor.OrgID {
+			return protocol.Workload{}, ErrForbidden
+		}
+	}
 	w := protocol.Workload{
 		AgentID:  agentID,
 		Issuer:   issuer,
 		Subject:  subject,
 		Audience: audience,
+		Claims:   claims,
 	}
 	if err := a.Store.PutWorkload(w, adminEvent(actor.ID, agent.OrgID, "", protocol.ActionWorkloadBound, "agent="+agentID+" issuer="+issuer)); err != nil {
 		return protocol.Workload{}, err
 	}
 	return w, nil
+}
+
+// VerifyIssuer dry-runs an OIDC issuer discovery for actor (owner-only).
+func (a *App) VerifyIssuer(ctx context.Context, actor protocol.Principal, issuer string) (workload.VerifyResult, error) {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return workload.VerifyResult{}, err
+	}
+	if !own {
+		return workload.VerifyResult{}, ErrForbidden
+	}
+	return a.Workload.VerifyIssuer(ctx, issuer), nil
 }
 
 func (a *App) AgentFromOIDC(ctx context.Context, rawToken string) (protocol.Principal, error) {

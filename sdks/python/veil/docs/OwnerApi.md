@@ -27,6 +27,7 @@ Method | HTTP request | Description
 [**rotate_item**](OwnerApi.md#rotate_item) | **POST** /v1/items/{name}/rotate | Rotate an item&#39;s credential via the provider&#39;s key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
 [**stream_requests**](OwnerApi.md#stream_requests) | **GET** /v1/requests/stream | Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.
 [**update_item**](OwnerApi.md#update_item) | **PATCH** /v1/items/{name} | Replace URIs, tags, and fill username. No secret.
+[**verify_issuer**](OwnerApi.md#verify_issuer) | **POST** /v1/workloads/verify-issuer | Dry-run OIDC discovery against an issuer URL before saving a workload binding. Owner-only — never mounted on /mcp.
 
 
 # **add_group_member**
@@ -1831,6 +1832,86 @@ Name | Type | Description  | Notes
 **400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | agent cannot update items |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **verify_issuer**
+> VerifyIssuerResponse verify_issuer(verify_issuer_request)
+
+Dry-run OIDC discovery against an issuer URL before saving a workload binding. Owner-only — never mounted on /mcp.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.verify_issuer_request import VerifyIssuerRequest
+from veil.models.verify_issuer_response import VerifyIssuerResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    verify_issuer_request = veil.VerifyIssuerRequest() # VerifyIssuerRequest | 
+
+    try:
+        # Dry-run OIDC discovery against an issuer URL before saving a workload binding. Owner-only — never mounted on /mcp.
+        api_response = api_instance.verify_issuer(verify_issuer_request)
+        print("The response of OwnerApi->verify_issuer:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->verify_issuer: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **verify_issuer_request** | [**VerifyIssuerRequest**](VerifyIssuerRequest.md)|  | 
+
+### Return type
+
+[**VerifyIssuerResponse**](VerifyIssuerResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Verification result |  -  |
+**400** | bad request |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

@@ -1251,9 +1251,10 @@ func (p *Postgres) ListHumans() ([]protocol.Principal, error) {
 
 func (p *Postgres) PutWorkload(w protocol.Workload, events ...protocol.AuditEvent) error {
 	ctx := context.Background()
+	claimsJSON := encodeWorkloadClaims(w.Claims)
 	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
 		return q.PutWorkload(ctx, sqlc.PutWorkloadParams{
-			Issuer: w.Issuer, Subject: w.Subject, AgentID: w.AgentID, Audience: w.Audience,
+			Issuer: w.Issuer, Subject: w.Subject, AgentID: w.AgentID, Audience: w.Audience, Claims: claimsJSON,
 		})
 	})
 }
@@ -1266,7 +1267,13 @@ func (p *Postgres) Workload(issuer, subject string) (*protocol.Workload, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &protocol.Workload{Issuer: r.Issuer, Subject: r.Subject, AgentID: r.AgentID, Audience: r.Audience}, nil
+	return &protocol.Workload{
+		Issuer:   r.Issuer,
+		Subject:  r.Subject,
+		AgentID:  r.AgentID,
+		Audience: r.Audience,
+		Claims:   decodeWorkloadClaims(r.Claims),
+	}, nil
 }
 
 func (p *Postgres) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) {
@@ -1276,7 +1283,13 @@ func (p *Postgres) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error
 	}
 	out := make([]protocol.Workload, 0, len(rows))
 	for i := range rows {
-		out = append(out, protocol.Workload{Issuer: rows[i].Issuer, Subject: rows[i].Subject, AgentID: rows[i].AgentID, Audience: rows[i].Audience})
+		out = append(out, protocol.Workload{
+			Issuer:   rows[i].Issuer,
+			Subject:  rows[i].Subject,
+			AgentID:  rows[i].AgentID,
+			Audience: rows[i].Audience,
+			Claims:   decodeWorkloadClaims(rows[i].Claims),
+		})
 	}
 	return out, nil
 }

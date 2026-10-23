@@ -126,6 +126,7 @@ CREATE TABLE workloads (
     subject TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     audience TEXT NOT NULL,
+    claims TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (issuer, subject)
 );
 

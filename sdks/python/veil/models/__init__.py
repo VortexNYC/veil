@@ -60,5 +60,7 @@ from veil.models.use_request import UseRequest
 from veil.models.use_response import UseResponse
 from veil.models.vault_report import VaultReport
 from veil.models.vault_report_finding import VaultReportFinding
+from veil.models.verify_issuer_request import VerifyIssuerRequest
+from veil.models.verify_issuer_response import VerifyIssuerResponse
 from veil.models.workload_view import WorkloadView
 

@@ -820,6 +820,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			subject TEXT NOT NULL,
 			agent_id TEXT NOT NULL,
 			audience TEXT NOT NULL,
+			claims TEXT NOT NULL DEFAULT '{}',
 			PRIMARY KEY (issuer, subject)
 		)`,
 		`CREATE TABLE IF NOT EXISTS owner_keys (
@@ -993,6 +994,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		// VEIL-20: grants widen to agent/human/group subjects. Existing rows
 		// are all agent grants; agent_id stays the subject id column.
 		`ALTER TABLE grants ADD COLUMN IF NOT EXISTS subject_kind TEXT NOT NULL DEFAULT 'agent'`,
+		`ALTER TABLE workloads ADD COLUMN IF NOT EXISTS claims TEXT NOT NULL DEFAULT '{}'`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err

@@ -79,6 +79,8 @@ __all__ = [
     "UseResponse",
     "VaultReport",
     "VaultReportFinding",
+    "VerifyIssuerRequest",
+    "VerifyIssuerResponse",
     "WorkloadView",
 ]
 
@@ -148,5 +150,7 @@ from veil.models.use_request import UseRequest as UseRequest
 from veil.models.use_response import UseResponse as UseResponse
 from veil.models.vault_report import VaultReport as VaultReport
 from veil.models.vault_report_finding import VaultReportFinding as VaultReportFinding
+from veil.models.verify_issuer_request import VerifyIssuerRequest as VerifyIssuerRequest
+from veil.models.verify_issuer_response import VerifyIssuerResponse as VerifyIssuerResponse
 from veil.models.workload_view import WorkloadView as WorkloadView
 

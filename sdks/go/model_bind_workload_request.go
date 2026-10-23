@@ -27,6 +27,8 @@ type BindWorkloadRequest struct {
 	Subject string `json:"subject"`
 	// expected token aud claim
 	Audience string `json:"audience"`
+	// optional OidcPolicy claim rules (every key must match at least one allowed value)
+	Claims map[string][]string `json:"claims,omitempty"`
 }
 
 type _BindWorkloadRequest BindWorkloadRequest
@@ -123,6 +125,38 @@ func (o *BindWorkloadRequest) SetAudience(v string) {
 	o.Audience = v
 }
 
+// GetClaims returns the Claims field value if set, zero value otherwise.
+func (o *BindWorkloadRequest) GetClaims() map[string][]string {
+	if o == nil || IsNil(o.Claims) {
+		var ret map[string][]string
+		return ret
+	}
+	return o.Claims
+}
+
+// GetClaimsOk returns a tuple with the Claims field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *BindWorkloadRequest) GetClaimsOk() (map[string][]string, bool) {
+	if o == nil || IsNil(o.Claims) {
+		return map[string][]string{}, false
+	}
+	return o.Claims, true
+}
+
+// HasClaims returns a boolean if a field has been set.
+func (o *BindWorkloadRequest) HasClaims() bool {
+	if o != nil && !IsNil(o.Claims) {
+		return true
+	}
+
+	return false
+}
+
+// SetClaims gets a reference to the given map[string][]string and assigns it to the Claims field.
+func (o *BindWorkloadRequest) SetClaims(v map[string][]string) {
+	o.Claims = v
+}
+
 func (o BindWorkloadRequest) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -136,6 +170,9 @@ func (o BindWorkloadRequest) ToMap() (map[string]interface{}, error) {
 	toSerialize["issuer"] = o.Issuer
 	toSerialize["subject"] = o.Subject
 	toSerialize["audience"] = o.Audience
+	if !IsNil(o.Claims) {
+		toSerialize["claims"] = o.Claims
+	}
 	return toSerialize, nil
 }
 
