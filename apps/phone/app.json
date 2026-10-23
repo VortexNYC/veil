@@ -3,6 +3,15 @@
     "name": "Veil",
     "slug": "veil-phone",
     "version": "0.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "url": "https://veil.nyc/releases/phone-manifest",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "default",
     "scheme": "veil",
     "userInterfaceStyle": "dark",
@@ -43,6 +52,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       "expo-secure-store",
       "expo-local-authentication",
       "expo-web-browser",

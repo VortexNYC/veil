@@ -3,11 +3,12 @@ import "../../global.css";
 import { router } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, Text, View } from "react-native";
+import { AppState, Pressable, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect } from "react";
 import { armErrorReporting } from "../lib/report";
 import { registerForPush, wireNotificationTap } from "../lib/push";
+import { checkAndApplyOTAUpdate } from "../lib/updates";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -19,6 +20,13 @@ export default function Layout() {
   useEffect(() => {
     wireNotificationTap();
     void registerForPush();
+    void checkAndApplyOTAUpdate();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void checkAndApplyOTAUpdate();
+      }
+    });
+    return () => sub.remove();
   }, []);
   return (
     <SafeAreaProvider>

@@ -48,6 +48,33 @@
   function ident(el) {
     return String(el.name || el.id || "");
   }
+  function isSingleDigitBox(el) {
+    if (!el || (el.tagName && el.tagName !== "INPUT")) {
+      return false;
+    }
+    if (typ(el) === "password" || typ(el) === "hidden" || typ(el) === "checkbox" || typ(el) === "radio") {
+      return false;
+    }
+    const ml = el.maxLength === 1 || (typeof el.getAttribute === "function" && el.getAttribute("maxlength") === "1");
+    return !!ml;
+  }
+  function isTotpField(el) {
+    if (!el || (el.tagName && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) {
+      return false;
+    }
+    if (typ(el) === "password" || typ(el) === "email" || typ(el) === "hidden") {
+      return false;
+    }
+    if (auto(el) === "one-time-code") {
+      return true;
+    }
+    const ph = typeof el.getAttribute === "function" ? el.getAttribute("placeholder") || "" : el.placeholder || "";
+    const aria = typeof el.getAttribute === "function" ? el.getAttribute("aria-label") || "" : "";
+    const hay = ident(el) + " " + ph + " " + aria + " " + auto(el);
+    return /(?:^|[\s_.-])(otp|totp|one-time|2fa|mfa|two.?factor|verification.?code|auth.?code|security.?code|passcode)(?:$|[\s_.-])/i.test(
+      hay
+    );
+  }
   function visible(el) {
     if (el.hidden || el.disabled) {
       return false;
@@ -106,11 +133,23 @@
     const newPassword = live.filter(function (el) {
       return auto(el) === "new-password";
     });
+    const singleDigits = live.filter(isSingleDigitBox);
+    let totpDigits = [];
+    if (singleDigits.length >= 6) {
+      const firstScope = singleDigits[0].form || singleDigits[0].parentElement || null;
+      const scoped = firstScope
+        ? singleDigits.filter(function (el) {
+            return (el.form || el.parentElement || null) === firstScope;
+          })
+        : singleDigits;
+      if (scoped.length >= 6) {
+        totpDigits = scoped.slice(0, 6);
+      }
+    }
     const totp =
       byAuto(["one-time-code"]) ||
-      live.find(function (el) {
-        return /otp|totp|one-time|2fa/i.test(ident(el) + " " + auto(el));
-      }) ||
+      live.find(isTotpField) ||
+      (totpDigits.length ? totpDigits[0] : null) ||
       null;
     const number =
       byAuto(["cc-number"]) ||
@@ -137,6 +176,7 @@
       password: current || null,
       newPassword: newPassword,
       totp: totp || null,
+      totpDigits: totpDigits,
       number: number || null,
       expMonth: expMonth || null,
       expYear: expYear || null,
@@ -191,7 +231,14 @@
         writeField(el, entry.password);
       });
     }
-    writeField(fields.totp, entry.totp);
+    if (entry.totp && fields.totpDigits && fields.totpDigits.length >= 6) {
+      const code = String(entry.totp);
+      for (let i = 0; i < fields.totpDigits.length && i < code.length; i++) {
+        writeField(fields.totpDigits[i], code[i]);
+      }
+    } else {
+      writeField(fields.totp, entry.totp);
+    }
   }
 
   function writeCard(doc, entry) {
@@ -254,6 +301,9 @@
     if (t === "password" || t === "email") {
       return true;
     }
+    if (isTotpField(el) || isSingleDigitBox(el)) {
+      return true;
+    }
     const a = auto(el);
     return (
       a === "username" ||
@@ -290,12 +340,18 @@
     ) {
       return "identity";
     }
+    if (isTotpField(el) || isSingleDigitBox(el)) {
+      return "totp";
+    }
     if (typ(el) === "password" || a === "username" || a === "email" || typ(el) === "email") {
       return "login";
     }
     if (fields) {
       if (fields.number || fields.cvv || fields.exp || fields.expMonth || fields.expYear) {
         return "card";
+      }
+      if (fields.totp && !fields.password && !fields.username) {
+        return "totp";
       }
       if (fields.password || fields.username) {
         return "login";
@@ -388,6 +444,8 @@
     writeIdentity: writeIdentity,
     writeEntry: writeEntry,
     isFillTarget: isFillTarget,
+    isTotpField: isTotpField,
+    isSingleDigitBox: isSingleDigitBox,
     fillContext: fillContext,
     canSave: canSave,
     findOTPAuth: findOTPAuth,

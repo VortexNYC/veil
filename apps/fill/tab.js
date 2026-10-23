@@ -22,7 +22,16 @@
   // logins, never a card pile.
   function focusPlan(entries, generate, context) {
     let list = entries || [];
-    if (context === "login" || context === "card" || context === "identity") {
+    if (context === "totp") {
+      const withTotp = list.filter(function (e) {
+        return e && e.kind === "login" && e.hasTotp;
+      });
+      list = withTotp.length
+        ? withTotp
+        : list.filter(function (e) {
+            return e && e.kind === "login";
+          });
+    } else if (context === "login" || context === "card" || context === "identity") {
       list = list.filter(function (e) {
         return e && e.kind === context;
       });
