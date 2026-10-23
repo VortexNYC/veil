@@ -3,8 +3,6 @@ title: DPoP Proof-of-Possession (RFC 9449)
 description: Sender-constrain short-lived OIDC and session tokens with RFC 9449 ES256 DPoP proofs on /v1/use and /mcp.
 ---
 
-# DPoP Proof-of-Possession (RFC 9449)
-
 Short-lived OIDC and session tokens (`15m`–`1h`) eliminate static keys in `.env`, but a plain `Authorization: Bearer` token can still be replayed during its validity window if stolen from process memory or logs.
 
 Veil supports **RFC 9449 OAuth 2.0 Demonstrating Proof-of-Possession (`DPoP`)** on `/v1/use`, `/mcp`, and principal-authenticated `/v1/*` vault routes (`internal/dpop`).

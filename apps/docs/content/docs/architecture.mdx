@@ -1,0 +1,29 @@
+---
+title: Architecture & Security Model
+description: How Veil separates the identity plane, grant engine, and credential broker so agents can act without ever holding a secret.
+---
+
+Veil is an **agent-first credential broker** paired with a human vault and native autofill provider. It is designed around one invariant: **agents get the ability to use a credential—they never receive the credential itself.**
+
+## System Planes
+
+| Plane | Component | Responsibility |
+| --- | --- | --- |
+| **Identity Plane** | Ory Kratos, Hydra, Keto (`identity/`) | Kratos manages human identities, password + TOTP/WebAuthn sessions, and recovery. Hydra issues and verifies OAuth2/OIDC tokens (`https://id.veil.nyc`). Keto enforces org owner/member tuples. |
+| **Broker Plane** | `internal/broker`, `internal/grant`, `internal/material` | Evaluates per-principal grants (`level1`, `level2`, `deny`), unseals material inside the broker boundary, injects credentials at the HTTP/fill edge, blocks provider key-management paths, and scrubs secrets from upstream responses. |
+| **Workload & PoP Plane** | `internal/workload`, `internal/dpop`, `internal/oidchttp` | Verifies external OIDC tokens (Vercel, GitHub Actions, Fly.io, Better Auth, Clerk, WorkOS) with dial-time DNS-rebind SSRF protection and optional RFC 9449 `DPoP` ES256 proof-of-possession. |
+| **Rotation Plane** | `internal/rotate` | Dual-phase (`KeyID` / `PendingKeyID`) zero-touch rotation (`Resend`, `SendGrid`, `PostHog`, `rotate.Spec`) and assisted rotation (`--secret-file`) with automatic orphan-key rollback. |
+| **Human Fill Plane** | `internal/fill`, `apps/fill`, `apps/fill-safari`, `apps/phone` | Browser extension (Chrome/Firefox/Safari), macOS AutoFill & `UniversalFill` (`⌘\`), and iOS/Android AutoFill gated by local biometrics (Touch ID / Face ID) or remote device approval (`POST /v1/fill/request`). |
+
+## Encryption & Custody Hierarchy
+
+1. **Per-Organization Master Keys (`org_keys`)**: Every organization's items are encrypted with a dedicated 256-bit key (`golang.org/x/crypto/chacha20poly1305`, XChaCha20-Poly1305), wrapped at rest under a deployment Key Encryption Key (`VEIL_KEK`) stored in a separate failure domain from the database.
+2. **Sealed Envelope (`material.Envelope`)**: Secrets, OAuth refresh tokens, Outbound RFC 7523 WIF assertion credentials, passkey P-256 private keys, and dual-phase rotation metadata (`KeyID`, `PendingKeyID`) live inside the encrypted envelope—never in plaintext columns or agent-visible tags.
+3. **Transactional Audit (`audit`)**: Every `fetch`, `fill`, `item_rotated`, and `revoke` event is committed in the same database transaction as the state change or session consumption (`GET /v1/audit/events`).
+
+## Request Lifecycle (`POST /v1/use` & MCP `fetch`)
+
+1. **Authenticate Principal**: The caller's token is verified via Hydra JWKS, external OIDC federation (`workload.Checker`), or session hash (`ses_...`). If a `DPoP` header is present, `dpop.VerifyRequest` verifies the ES256 proof (`htm`, `htu`, `iat`, `ath`, `jti`, and `cnf.jkt` / pinned key).
+2. **Honey Tripwire Check**: If the target item is a `--honey` decoy, the broker immediately denies and audits (`reason="honey"`). If tagged `veil:honey-revoke`, the broker revokes the offending agent (`agents.revoked_at`, `reason="honey_tripwire agent=<id>"`).
+3. **Grant & Management-Endpoint Evaluation**: `grant.Evaluate` checks the principal's grant (`level2` autonomous or `level1` with an active human approval), verifies the target URL host matches the item's allowed URIs, and rejects any path matching `rotate.ManagementEndpoint` (`reason="management_endpoint"`).
+4. **Token Resolution & Injection**: The broker unpacks the sealed envelope (or exchanges/caches an OAuth refresh token or Outbound RFC 7523 WIF assertion via `material.TokenCache`), attaches the credential to the outbound request, and scrubs all secret material from the response body and headers before returning `UseResult` to the agent.

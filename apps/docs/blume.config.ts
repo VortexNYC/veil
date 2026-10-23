@@ -25,6 +25,39 @@ export default defineConfig({
       { label: "Docs", path: "/" },
       { label: "API", path: "/reference" },
     ],
+    sidebar: [
+      {
+        label: "Overview",
+        items: ["index", "architecture", "changelog"],
+      },
+      {
+        label: "Authentication & Identity",
+        items: [
+          "guides/principal-separation",
+          "guides/oidc",
+          "guides/wif",
+          "guides/dpop",
+        ],
+      },
+      {
+        label: "Broker & Vault Features",
+        items: [
+          "guides/agents",
+          "guides/rotation",
+          "guides/passkeys",
+          "guides/self-host",
+        ],
+      },
+      {
+        label: "SDKs & Clients",
+        items: [
+          "sdk/quickstart",
+          "sdk/typescript",
+          "sdk/python",
+          "sdk/go",
+        ],
+      },
+    ],
   },
   openapi: {
     enabled: true,
