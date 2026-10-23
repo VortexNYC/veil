@@ -322,20 +322,19 @@ func reportOpsFindings(ctx context.Context, findings []string) {
 			"findings":    strings.Join(list, "; "),
 		},
 	})
-	go func() {
-		c, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(c, http.MethodPost,
-			"https://us.i.posthog.com/capture/", bytes.NewReader(body))
-		if err != nil {
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		res, err := http.DefaultClient.Do(req)
-		if err == nil {
-			res.Body.Close()
-		}
-	}()
+	c, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(c, http.MethodPost,
+		"https://us.i.posthog.com/capture/", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err == nil {
+		_, _ = io.Copy(io.Discard, res.Body)
+		res.Body.Close()
+	}
 }
 
 // pushOpsPage fans monitor findings to registered phone devices — the

@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/VortexNYC/veil/identity/glue"
 )
@@ -39,5 +41,14 @@ func main() {
 	}
 	addr := listenAddr()
 	log.Printf("identity glue consent %s", addr)
-	log.Fatal(http.ListenAndServe(addr, g))
+	srv := &http.Server{Addr: addr, Handler: g}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		_ = srv.Shutdown(context.Background())
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
 }

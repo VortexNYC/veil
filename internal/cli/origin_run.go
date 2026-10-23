@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ func originProxyWait(cmd *cobra.Command, home, agent, tokenFile, listen string) 
 	for _, e := range pairs {
 		fmt.Fprintln(cmd.OutOrStdout(), e)
 	}
-	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-ctx.Done()
 	return nil
