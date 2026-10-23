@@ -63,6 +63,9 @@ If the agent lost its secret file, re-run `veil agent hydra cursor --secret-file
 Workloads that already have an OIDC identity (GitHub Actions, Fly.io machines, or apps signed in through Better Auth, Clerk, or WorkOS) do not need a Hydra client secret or any `VEIL_*` secret in environment variables. Bind the agent to the external issuer:
 
 ```
+# Vercel OIDC (team issuer mode + immutable owner_id/project_id claims that survive renames)
+veil agent bind web --preset vercel --org acme --app acme-web --claim owner_id=team_abc123 --claim project_id=prj_xyz789
+
 # GitHub Actions (binds https://token.actions.githubusercontent.com + repo:org/repo:ref:refs/heads/main)
 veil agent bind ci --preset github-actions --repo VortexNYC/veil
 
@@ -71,9 +74,26 @@ veil agent bind worker --preset fly --org vortex --app worker
 
 # Better Auth / Clerk / WorkOS / custom OIDC issuer
 veil agent bind web --preset better-auth --issuer https://auth.example.com --subject service-web
+
+# Dry-run OIDC discovery before binding
+veil agent verify-issuer --issuer https://oidc.vercel.com/acme
 ```
 
 `veil agent bind` works against both a local vault and `VEIL_ORIGIN` (`POST /v1/agents/{name}/bind`).
+
+In TypeScript (`@vortex-api/veil`), `createAmbientClient` resolves ambient OIDC tokens automatically (`x-vercel-oidc-token` header → `VERCEL_OIDC_TOKEN_FILE` → `VERCEL_OIDC_TOKEN` → GitHub Actions `ACTIONS_ID_TOKEN_REQUEST_URL` → `VEIL_OIDC_TOKEN_FILE` → `VEIL_OIDC_TOKEN`):
+
+```ts
+import { createAmbientClient, useItem } from "@vortex-api/veil";
+
+export async function POST(request: Request) {
+  const client = createAmbientClient({ request });
+  await useItem({
+    client,
+    body: { item: "resend", url: "https://api.resend.com/emails", method: "POST" },
+  });
+}
+```
 
 ## Self-Host (Single Binary, No Docker)
 

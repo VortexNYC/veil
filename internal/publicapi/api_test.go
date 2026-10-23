@@ -2137,4 +2137,64 @@ func TestBindWorkloadAPI(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatalf("agent bind want 403, got %d", code)
 	}
+
+	// Owner can list bound workloads for the agent and unbind them.
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/agents/ci-runner/workloads", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list workloads want 200, got %d: %s", code, raw)
+	}
+	var listed WorkloadsResponse
+	if err := json.Unmarshal(raw, &listed); err != nil || len(listed.Workloads) != 1 || listed.Workloads[0].Subject != "repo:VortexNYC/veil:ref:refs/heads/main" {
+		t.Fatalf("unexpected workloads list: %+v %v", listed, err)
+	}
+
+	// Negative test: unbinding ci-runner's binding via a different agent's path must fail and leave the binding intact.
+	if _, err := a.AddAgent("other-agent"); err != nil {
+		t.Fatal(err)
+	}
+	code, _ = doJSON(t, srv, http.MethodDelete, "/v1/agents/other-agent/workloads?issuer=https%3A%2F%2Ftoken.actions.githubusercontent.com&subject=repo%3AVortexNYC%2Fveil%3Aref%3Arefs%2Fheads%2Fmain", "human", nil)
+	if code == http.StatusNoContent {
+		t.Fatal("cross-agent unbind succeeded")
+	}
+
+	code, raw = doJSON(t, srv, http.MethodDelete, "/v1/agents/ci-runner/workloads?issuer=https%3A%2F%2Ftoken.actions.githubusercontent.com&subject=repo%3AVortexNYC%2Fveil%3Aref%3Arefs%2Fheads%2Fmain", "human", nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("unbind want 204, got %d: %s", code, raw)
+	}
+	bound, err = a.Store.WorkloadsForIssuer("https://token.actions.githubusercontent.com")
+	if err != nil || len(bound) != 0 {
+		t.Fatalf("workload still bound after delete: %+v %v", bound, err)
+	}
+
+	// WIF item creation via POST /v1/items never leaks assertion_secret in create or list responses.
+	const wifSec = "wif_assertion_secret_DO_NOT_LEAK"
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+		Name: "claude-wif",
+		URI:  "https://api.anthropic.com",
+		WIF: &WIFItemFields{
+			TokenURL:          "https://api.anthropic.com/v1/oauth/token",
+			AssertionTokenURL: "https://id.veil.nyc/oauth2/token",
+			AssertionClientID: "agent-claude",
+			AssertionSecret:   wifSec,
+			FederationRuleID:  "fdrl_01",
+		},
+	})
+	if code != http.StatusOK || strings.Contains(string(raw), wifSec) {
+		t.Fatalf("create WIF item: code=%d leaked=%v", code, strings.Contains(string(raw), wifSec))
+	}
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/items", "human", nil)
+	if code != http.StatusOK || strings.Contains(string(raw), wifSec) {
+		t.Fatalf("list items after WIF create: code=%d leaked=%v", code, strings.Contains(string(raw), wifSec))
+	}
+
+	// Assisted rotation on a dashboard-only provider via POST /v1/items/{name}/rotate {"secret": "..."}
+	if _, err := a.AddItem("linear", "https://api.linear.app", []byte("lin_old")); err != nil {
+		t.Fatal(err)
+	}
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/items/linear/rotate", "human", RotateItemRequest{
+		Secret: "lin_replacement",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("assisted rotate want 200, got %d: %s", code, raw)
+	}
 }

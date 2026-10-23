@@ -2667,3 +2667,52 @@ func (q *Queries) WorkloadsForIssuer(ctx context.Context, arg WorkloadsForIssuer
 	}
 	return items, nil
 }
+
+const workloadsForAgent = `-- name: WorkloadsForAgent :many
+SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE agent_id = $1::text ORDER BY issuer, subject LIMIT $2::bigint
+`
+
+type WorkloadsForAgentParams struct {
+	AgentID    string
+	MaxResults int64
+}
+
+func (q *Queries) WorkloadsForAgent(ctx context.Context, arg WorkloadsForAgentParams) ([]Workload, error) {
+	rows, err := q.db.Query(ctx, workloadsForAgent, arg.AgentID, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Workload
+	for rows.Next() {
+		var i Workload
+		if err := rows.Scan(
+			&i.Issuer,
+			&i.Subject,
+			&i.AgentID,
+			&i.Audience,
+			&i.Claims,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteWorkload = `-- name: DeleteWorkload :exec
+DELETE FROM workloads WHERE issuer = $1::text AND subject = $2::text
+`
+
+type DeleteWorkloadParams struct {
+	Issuer  string
+	Subject string
+}
+
+func (q *Queries) DeleteWorkload(ctx context.Context, arg DeleteWorkloadParams) error {
+	_, err := q.db.Exec(ctx, deleteWorkload, arg.Issuer, arg.Subject)
+	return err
+}

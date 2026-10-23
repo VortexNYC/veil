@@ -53,6 +53,7 @@ from veil.models.provision_response import ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response
 from veil.models.requests_response import RequestsResponse
 from veil.models.rotate_item200_response import RotateItem200Response
+from veil.models.rotate_item_request import RotateItemRequest
 from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
 from veil.models.update_item_request import UpdateItemRequest
@@ -62,5 +63,7 @@ from veil.models.vault_report import VaultReport
 from veil.models.vault_report_finding import VaultReportFinding
 from veil.models.verify_issuer_request import VerifyIssuerRequest
 from veil.models.verify_issuer_response import VerifyIssuerResponse
+from veil.models.wif_item_fields import WIFItemFields
 from veil.models.workload_view import WorkloadView
+from veil.models.workloads_response import WorkloadsResponse
 

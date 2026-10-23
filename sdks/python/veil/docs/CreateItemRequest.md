@@ -15,6 +15,7 @@ Name | Type | Description | Notes
 **login** | **str** | Fill username. Metadata on the item. Also sealed in the envelope. Not a secret. | [optional] 
 **card** | [**CardFields**](CardFields.md) |  | [optional] 
 **identity** | [**IdentityFields**](IdentityFields.md) |  | [optional] 
+**wif** | [**WIFItemFields**](WIFItemFields.md) |  | [optional] 
 
 ## Example
 

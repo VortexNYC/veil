@@ -1089,6 +1089,35 @@ func (m *Memory) WorkloadsForIssuer(issuer string) ([]protocol.Workload, error) 
 	return out, nil
 }
 
+func (m *Memory) WorkloadsForAgent(agentID string) ([]protocol.Workload, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []protocol.Workload
+	for _, w := range m.workloads {
+		if w.AgentID == agentID {
+			out = append(out, w)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Issuer != out[j].Issuer {
+			return out[i].Issuer < out[j].Issuer
+		}
+		return out[i].Subject < out[j].Subject
+	})
+	if len(out) > maxListResults {
+		out = out[:maxListResults]
+	}
+	return out, nil
+}
+
+func (m *Memory) DeleteWorkload(issuer, subject string, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.workloads, workloadKey(issuer, subject))
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
 func sessionHashKey(secretHash []byte) string { return hex.EncodeToString(secretHash) }
 
 func (m *Memory) PutSession(s protocol.Session, secretHash []byte, events ...protocol.AuditEvent) error {

@@ -351,7 +351,7 @@ func originItemList(cmd *cobra.Command) error {
 	return encode(cmd, out.Items)
 }
 
-func originItemAdd(cmd *cobra.Command, name, uri string, tags []string, kind protocol.ItemKind, token, totpSeed []byte, login string) error {
+func originItemAdd(cmd *cobra.Command, name, uri string, tags []string, kind protocol.ItemKind, token, totpSeed []byte, login string, wif *publicapi.WIFItemFields) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
@@ -364,6 +364,7 @@ func originItemAdd(cmd *cobra.Command, name, uri string, tags []string, kind pro
 		Secret:   string(token),
 		TOTPSeed: string(totpSeed),
 		Login:    login,
+		WIF:      wif,
 	}
 	payload, err := json.Marshal(in)
 	if err != nil {
@@ -773,14 +774,17 @@ func originReport(cmd *cobra.Command, hibp bool) error {
 
 // originRotateItem POSTs the rotate route — the origin owns the secret and
 // the provider call; the CLI never sees either key.
-func originRotateItem(cmd *cobra.Command, name, mgmtItem string, interval time.Duration) error {
+func originRotateItem(cmd *cobra.Command, name, mgmtItem string, interval time.Duration, replacement []byte) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
 	}
 	var payload []byte
-	if mgmtItem != "" || interval > 0 {
-		in := publicapi.RotateItemRequest{ManagementItem: mgmtItem}
+	if mgmtItem != "" || interval > 0 || len(replacement) > 0 {
+		in := publicapi.RotateItemRequest{
+			ManagementItem: mgmtItem,
+			Secret:         string(replacement),
+		}
 		if interval > 0 {
 			in.Interval = interval.String()
 		}
@@ -849,4 +853,32 @@ func originVerifyIssuer(cmd *cobra.Command, issuer string) error {
 		return err
 	}
 	return encode(cmd, out)
+}
+
+func originAgentWorkloads(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, "/v1/agents/"+url.PathEscape(name)+"/workloads", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.WorkloadsResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out.Workloads)
+}
+
+func originAgentUnbind(cmd *cobra.Command, name, issuer, subject string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	q := "/v1/agents/" + url.PathEscape(name) + "/workloads?issuer=" + url.QueryEscape(issuer) + "&subject=" + url.QueryEscape(subject)
+	if _, err := originDo(cmd.Context(), http.MethodDelete, q, tok, nil); err != nil {
+		return err
+	}
+	return encode(cmd, map[string]bool{"unbound": true})
 }

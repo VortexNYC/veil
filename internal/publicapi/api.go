@@ -98,6 +98,19 @@ type CreateItemRequest struct {
 	Login    string          `json:"login,omitempty"`
 	Card     *CardFields     `json:"card,omitempty"`
 	Identity *IdentityFields `json:"identity,omitempty"`
+	WIF      *WIFItemFields  `json:"wif,omitempty"`
+}
+
+type WIFItemFields struct {
+	TokenURL          string `json:"token_url"`
+	AssertionTokenURL string `json:"assertion_token_url"`
+	AssertionClientID string `json:"assertion_client_id"`
+	AssertionSecret   string `json:"assertion_secret"`
+	AssertionAudience string `json:"assertion_audience,omitempty"`
+	FederationRuleID  string `json:"federation_rule_id"`
+	OrganizationID    string `json:"organization_id,omitempty"`
+	ServiceAccountID  string `json:"service_account_id,omitempty"`
+	WorkspaceID       string `json:"workspace_id,omitempty"`
 }
 
 type CardFields struct {
@@ -200,6 +213,10 @@ type VerifyIssuerResponse struct {
 	Code    string `json:"code"`
 	Issuer  string `json:"issuer"`
 	Message string `json:"message"`
+}
+
+type WorkloadsResponse struct {
+	Workloads []WorkloadView `json:"workloads"`
 }
 
 type AgentsResponse struct {
@@ -348,6 +365,8 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/agents", s.listAgents)
 	mux.HandleFunc("POST /v1/agents", s.createAgent)
 	mux.HandleFunc("POST /v1/agents/{name}/bind", s.bindWorkload)
+	mux.HandleFunc("GET /v1/agents/{name}/workloads", s.listAgentWorkloads)
+	mux.HandleFunc("DELETE /v1/agents/{name}/workloads", s.unbindWorkload)
 	mux.HandleFunc("POST /v1/workloads/verify-issuer", s.verifyIssuer)
 	mux.HandleFunc("POST /v1/agents/{name}/revoke", s.revokeAgent)
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
@@ -434,6 +453,20 @@ func (s *Server) createItem(w http.ResponseWriter, r *http.Request) {
 			token = blob
 		}
 	}
+	var wifOpts *material.WIFOpts
+	if in.WIF != nil {
+		wifOpts = &material.WIFOpts{
+			TokenURL:          in.WIF.TokenURL,
+			AssertionTokenURL: in.WIF.AssertionTokenURL,
+			AssertionClientID: in.WIF.AssertionClientID,
+			AssertionSecret:   in.WIF.AssertionSecret,
+			AssertionAudience: in.WIF.AssertionAudience,
+			FederationRuleID:  in.WIF.FederationRuleID,
+			OrganizationID:    in.WIF.OrganizationID,
+			ServiceAccountID:  in.WIF.ServiceAccountID,
+			WorkspaceID:       in.WIF.WorkspaceID,
+		}
+	}
 	item, err := s.App.PutItemFor(p, app.ItemOpts{
 		Name:     in.Name,
 		URI:      in.URI,
@@ -443,6 +476,7 @@ func (s *Server) createItem(w http.ResponseWriter, r *http.Request) {
 		Token:    token,
 		Login:    in.Login,
 		TOTPSeed: []byte(in.TOTPSeed),
+		WIF:      wifOpts,
 	})
 	if err != nil {
 		http.Error(w, "create failed", http.StatusBadRequest)
@@ -515,6 +549,7 @@ func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {
 type RotateItemRequest struct {
 	ManagementItem string `json:"management_item,omitempty"`
 	Interval       string `json:"interval,omitempty"`
+	Secret         string `json:"secret,omitempty"`
 }
 
 // rotateItem swaps the item's credential via the provider's key-management
@@ -534,6 +569,9 @@ func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
 	}
 	var opts app.RotateOpts
 	opts.ManagementItem = strings.TrimSpace(in.ManagementItem)
+	if strings.TrimSpace(in.Secret) != "" {
+		opts.ReplacementSecret = []byte(strings.TrimSpace(in.Secret))
+	}
 	if strings.TrimSpace(in.Interval) != "" {
 		d, err := time.ParseDuration(strings.TrimSpace(in.Interval))
 		if err != nil || d <= 0 {
@@ -815,6 +853,55 @@ func (s *Server) verifyIssuer(w http.ResponseWriter, r *http.Request) {
 		Issuer:  res.Issuer,
 		Message: res.Message,
 	})
+}
+
+func (s *Server) listAgentWorkloads(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	rows, err := s.App.WorkloadsForAgent(owner, strings.TrimSpace(r.PathValue("name")))
+	if err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "list workloads failed", http.StatusBadRequest)
+		return
+	}
+	views := make([]WorkloadView, 0, len(rows))
+	for _, row := range rows {
+		views = append(views, WorkloadView{
+			AgentID:  row.AgentID,
+			Issuer:   row.Issuer,
+			Subject:  row.Subject,
+			Audience: row.Audience,
+			Claims:   row.Claims,
+		})
+	}
+	writeJSON(w, WorkloadsResponse{Workloads: views})
+}
+
+func (s *Server) unbindWorkload(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	issuer := strings.TrimSpace(r.URL.Query().Get("issuer"))
+	subject := strings.TrimSpace(r.URL.Query().Get("subject"))
+	if issuer == "" || subject == "" {
+		http.Error(w, "issuer and subject required", http.StatusBadRequest)
+		return
+	}
+	if err := s.App.UnbindWorkloadFor(owner, strings.TrimSpace(r.PathValue("name")), issuer, subject); err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "unbind failed", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) revokeAgent(w http.ResponseWriter, r *http.Request) {

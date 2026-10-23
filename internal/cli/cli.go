@@ -692,6 +692,7 @@ func itemCmd(home *string) *cobra.Command {
 	c := &cobra.Command{Use: "item", Short: "Items (metadata only on list)"}
 	var uri, secretFile, totpFile, refreshFile, clientSecretFile, tokenURL, clientID, sshFile, attachFile, mime, login string
 	var numberFile, cvvFile, expMonth, expYear, holder string
+	var wifRuleID, wifOrgID, wifServiceAccountID, wifWorkspaceID, wifAssertionTokenURL, wifAssertionClientID, wifAssertionSecretFile, wifAssertionAudience string
 	var updateURIs []string
 	var tags []string
 	var honey bool
@@ -701,10 +702,48 @@ func itemCmd(home *string) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var token, totpSeed, refresh, clientSecret, fileBody []byte
+			var wifOpts *material.WIFOpts
+			var wifAPI *publicapi.WIFItemFields
 			var kind protocol.ItemKind
 			var err error
 			fileName := ""
-			if honey {
+			if wifRuleID != "" {
+				assertSec, rerr := readFileMaterial(wifAssertionSecretFile)
+				if rerr != nil {
+					return rerr
+				}
+				tURL := strings.TrimSpace(tokenURL)
+				if tURL == "" {
+					tURL = "https://api.anthropic.com/v1/oauth/token"
+				}
+				aURL := strings.TrimSpace(wifAssertionTokenURL)
+				if aURL == "" {
+					aURL = strings.TrimRight(envOr("VEIL_HYDRA_ISSUER", "https://id.veil.nyc"), "/") + "/oauth2/token"
+				}
+				wifOpts = &material.WIFOpts{
+					TokenURL:          tURL,
+					AssertionTokenURL: aURL,
+					AssertionClientID: wifAssertionClientID,
+					AssertionSecret:   string(assertSec),
+					AssertionAudience: wifAssertionAudience,
+					FederationRuleID:  wifRuleID,
+					OrganizationID:    wifOrgID,
+					ServiceAccountID:  wifServiceAccountID,
+					WorkspaceID:       wifWorkspaceID,
+				}
+				wifAPI = &publicapi.WIFItemFields{
+					TokenURL:          wifOpts.TokenURL,
+					AssertionTokenURL: wifOpts.AssertionTokenURL,
+					AssertionClientID: wifOpts.AssertionClientID,
+					AssertionSecret:   wifOpts.AssertionSecret,
+					AssertionAudience: wifOpts.AssertionAudience,
+					FederationRuleID:  wifOpts.FederationRuleID,
+					OrganizationID:    wifOpts.OrganizationID,
+					ServiceAccountID:  wifOpts.ServiceAccountID,
+					WorkspaceID:       wifOpts.WorkspaceID,
+				}
+				kind = protocol.ItemOAuth
+			} else if honey {
 				if attachFile != "" || sshFile != "" || numberFile != "" || refreshFile != "" {
 					return fmt.Errorf("--honey is a decoy tripwire. not --file/--ssh-file/--number-file/--refresh-file")
 				}
@@ -782,9 +821,9 @@ func itemCmd(home *string) *cobra.Command {
 			}
 			if originBase() != "" {
 				if attachFile != "" || sshFile != "" || refreshFile != "" {
-					return fmt.Errorf("origin: item add is --secret-file/--totp-file")
+					return fmt.Errorf("origin: item add is --secret-file/--totp-file/--federation-rule-id")
 				}
-				return originItemAdd(cmd, args[0], uri, tags, kind, token, totpSeed, login)
+				return originItemAdd(cmd, args[0], uri, tags, kind, token, totpSeed, login, wifAPI)
 			}
 			a, err := openApp(*home)
 			if err != nil {
@@ -806,6 +845,7 @@ func itemCmd(home *string) *cobra.Command {
 				FileName:     fileName,
 				MIME:         mime,
 				File:         fileBody,
+				WIF:          wifOpts,
 			})
 			if err != nil {
 				return err
@@ -831,6 +871,14 @@ func itemCmd(home *string) *cobra.Command {
 	add.Flags().StringVar(&expMonth, "exp-month", "", "card expiry month")
 	add.Flags().StringVar(&expYear, "exp-year", "", "card expiry year")
 	add.Flags().StringVar(&holder, "holder", "", "card holder name")
+	add.Flags().StringVar(&wifRuleID, "federation-rule-id", "", "outbound RFC 7523 WIF federation rule ID (e.g. fdrl_... for Anthropic)")
+	add.Flags().StringVar(&wifOrgID, "organization-id", "", "outbound WIF organization ID")
+	add.Flags().StringVar(&wifServiceAccountID, "service-account-id", "", "outbound WIF service account ID (e.g. svac_...)")
+	add.Flags().StringVar(&wifWorkspaceID, "workspace-id", "", "outbound WIF workspace ID (e.g. wrkspc_...)")
+	add.Flags().StringVar(&wifAssertionTokenURL, "assertion-token-url", "", "OIDC token URL used to mint the WIF assertion (default $VEIL_HYDRA_ISSUER/oauth2/token)")
+	add.Flags().StringVar(&wifAssertionClientID, "assertion-client-id", "", "OIDC client ID used to mint the WIF assertion")
+	add.Flags().StringVar(&wifAssertionSecretFile, "assertion-secret-file", "", "file containing the OIDC client secret used to mint the WIF assertion")
+	add.Flags().StringVar(&wifAssertionAudience, "assertion-audience", "", "OIDC audience for the WIF assertion")
 	imp := &cobra.Command{
 		Use:   "import FILE",
 		Short: "One-shot import onto this vault or origin: 1Password .1pux, Bitwarden CSV/JSON, Apple Passwords, LastPass, Dashlane, or Google Passwords CSV. Not MCP.",
@@ -1154,6 +1202,56 @@ func agentCmd(home *string) *cobra.Command {
 	verifyCmd.Flags().StringVar(&verifyIss, "issuer", "", "OIDC issuer URL to verify")
 	_ = verifyCmd.MarkFlagRequired("issuer")
 	c.AddCommand(verifyCmd)
+
+	workloadsCmd := &cobra.Command{
+		Use:   "workloads NAME",
+		Short: "List OIDC workload bindings for an agent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originAgentWorkloads(cmd, args[0])
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			rows, err := a.WorkloadsForAgent(actor, args[0])
+			if err != nil {
+				return err
+			}
+			return encode(cmd, rows)
+		},
+	}
+	c.AddCommand(workloadsCmd)
+
+	var unbindIss, unbindSub string
+	unbindCmd := &cobra.Command{
+		Use:   "unbind NAME",
+		Short: "Remove an OIDC workload binding from an agent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originAgentUnbind(cmd, args[0], unbindIss, unbindSub)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			if err := a.UnbindWorkloadFor(actor, args[0], unbindIss, unbindSub); err != nil {
+				return err
+			}
+			return encode(cmd, map[string]bool{"unbound": true})
+		},
+	}
+	unbindCmd.Flags().StringVar(&unbindIss, "issuer", "", "OIDC issuer URL")
+	unbindCmd.Flags().StringVar(&unbindSub, "subject", "", "bound subject pattern")
+	_ = unbindCmd.MarkFlagRequired("issuer")
+	_ = unbindCmd.MarkFlagRequired("subject")
+	c.AddCommand(unbindCmd)
 
 	var secretFile string
 	var forceRotate bool
@@ -2671,15 +2769,23 @@ func reportCmd(home *string) *cobra.Command {
 }
 
 func rotateCmd(home *string) *cobra.Command {
-	var mgmtItem string
+	var mgmtItem, secretFile string
 	var interval time.Duration
 	c := &cobra.Command{
 		Use:   "rotate ITEM",
-		Short: "Rotate an item's credential at its provider. Owner only; grants and item id are untouched.",
+		Short: "Rotate an item's credential at its provider (or seal a replacement via --secret-file). Owner only; grants and item id are untouched.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var replacement []byte
+			if secretFile != "" {
+				var err error
+				replacement, err = readFileMaterial(secretFile)
+				if err != nil {
+					return err
+				}
+			}
 			if originBase() != "" {
-				return originRotateItem(cmd, args[0], mgmtItem, interval)
+				return originRotateItem(cmd, args[0], mgmtItem, interval, replacement)
 			}
 			a, err := openApp(*home)
 			if err != nil {
@@ -2688,8 +2794,9 @@ func rotateCmd(home *string) *cobra.Command {
 			defer a.Close()
 			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
 			item, err := a.RotateItemWith(actor, args[0], app.RotateOpts{
-				ManagementItem: mgmtItem,
-				Interval:       interval,
+				ManagementItem:    mgmtItem,
+				Interval:          interval,
+				ReplacementSecret: replacement,
 			})
 			if err != nil {
 				return err
@@ -2699,6 +2806,7 @@ func rotateCmd(home *string) *cobra.Command {
 	}
 	c.Flags().StringVar(&mgmtItem, "management-item", "", "separate vault item holding the provider management credential")
 	c.Flags().DurationVar(&interval, "interval", 0, "auto-rotation interval (e.g. 24h, 168h)")
+	c.Flags().StringVar(&secretFile, "secret-file", "", "assisted rotation: replacement credential file for dashboard-only providers")
 	return c
 }
 

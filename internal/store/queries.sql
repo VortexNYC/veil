@@ -497,6 +497,12 @@ SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer =
 -- name: WorkloadsForIssuer :many
 SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE issuer = @issuer::text ORDER BY subject LIMIT @max_results::bigint;
 
+-- name: WorkloadsForAgent :many
+SELECT issuer, subject, agent_id, audience, claims FROM workloads WHERE agent_id = @agent_id::text ORDER BY issuer, subject LIMIT @max_results::bigint;
+
+-- name: DeleteWorkload :exec
+DELETE FROM workloads WHERE issuer = @issuer::text AND subject = @subject::text;
+
 -- name: InsertAudit :exec
 INSERT INTO audit(at, org_id, agent_id, item_id, action, decision, reason, approval_id)
 VALUES(@at::timestamptz, @org_id::text, @agent_id::text, @item_id::text, @action::text, @decision::text, @reason::text, @approval_id::text);

@@ -1285,6 +1285,107 @@ func (a *OwnerAPIService) ImportItemsExecute(r OwnerAPIImportItemsRequest) (*Imp
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type OwnerAPIListAgentWorkloadsRequest struct {
+	ctx context.Context
+	ApiService *OwnerAPIService
+	name string
+}
+
+func (r OwnerAPIListAgentWorkloadsRequest) Execute() (*WorkloadsResponse, *http.Response, error) {
+	return r.ApiService.ListAgentWorkloadsExecute(r)
+}
+
+/*
+ListAgentWorkloads List bound OIDC workload policies for an agent. Owner-only.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param name
+ @return OwnerAPIListAgentWorkloadsRequest
+*/
+func (a *OwnerAPIService) ListAgentWorkloads(ctx context.Context, name string) OwnerAPIListAgentWorkloadsRequest {
+	return OwnerAPIListAgentWorkloadsRequest{
+		ApiService: a,
+		ctx: ctx,
+		name: name,
+	}
+}
+
+// Execute executes the request
+//  @return WorkloadsResponse
+func (a *OwnerAPIService) ListAgentWorkloadsExecute(r OwnerAPIListAgentWorkloadsRequest) (*WorkloadsResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *WorkloadsResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListAgentWorkloads")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/agents/{name}/workloads"
+	localVarPath = strings.Replace(localVarPath, "{"+"name"+"}", url.PathEscape(parameterValueToString(r.name, "name")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type OwnerAPIListAgentsRequest struct {
 	ctx context.Context
 	ApiService *OwnerAPIService
@@ -2087,6 +2188,12 @@ type OwnerAPIRotateItemRequest struct {
 	ctx context.Context
 	ApiService *OwnerAPIService
 	name string
+	rotateItemRequest *RotateItemRequest
+}
+
+func (r OwnerAPIRotateItemRequest) RotateItemRequest(rotateItemRequest RotateItemRequest) OwnerAPIRotateItemRequest {
+	r.rotateItemRequest = &rotateItemRequest
+	return r
 }
 
 func (r OwnerAPIRotateItemRequest) Execute() (*RotateItem200Response, *http.Response, error) {
@@ -2131,7 +2238,7 @@ func (a *OwnerAPIService) RotateItemExecute(r OwnerAPIRotateItemRequest) (*Rotat
 	localVarFormParams := url.Values{}
 
 	// to determine the Content-Type header
-	localVarHTTPContentTypes := []string{}
+	localVarHTTPContentTypes := []string{"application/json"}
 
 	// set Content-Type header
 	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
@@ -2147,6 +2254,8 @@ func (a *OwnerAPIService) RotateItemExecute(r OwnerAPIRotateItemRequest) (*Rotat
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
+	// body params
+	localVarPostBody = r.rotateItemRequest
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {
 		return localVarReturnValue, nil, err
@@ -2279,6 +2388,116 @@ func (a *OwnerAPIService) StreamRequestsExecute(r OwnerAPIStreamRequestsRequest)
 	}
 
 	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type OwnerAPIUnbindWorkloadRequest struct {
+	ctx context.Context
+	ApiService *OwnerAPIService
+	name string
+	issuer *string
+	subject *string
+}
+
+func (r OwnerAPIUnbindWorkloadRequest) Issuer(issuer string) OwnerAPIUnbindWorkloadRequest {
+	r.issuer = &issuer
+	return r
+}
+
+func (r OwnerAPIUnbindWorkloadRequest) Subject(subject string) OwnerAPIUnbindWorkloadRequest {
+	r.subject = &subject
+	return r
+}
+
+func (r OwnerAPIUnbindWorkloadRequest) Execute() (*http.Response, error) {
+	return r.ApiService.UnbindWorkloadExecute(r)
+}
+
+/*
+UnbindWorkload Remove an OIDC workload binding from an agent. Owner-only.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param name
+ @return OwnerAPIUnbindWorkloadRequest
+*/
+func (a *OwnerAPIService) UnbindWorkload(ctx context.Context, name string) OwnerAPIUnbindWorkloadRequest {
+	return OwnerAPIUnbindWorkloadRequest{
+		ApiService: a,
+		ctx: ctx,
+		name: name,
+	}
+}
+
+// Execute executes the request
+func (a *OwnerAPIService) UnbindWorkloadExecute(r OwnerAPIUnbindWorkloadRequest) (*http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodDelete
+		localVarPostBody     interface{}
+		formFiles            []formFile
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.UnbindWorkload")
+	if err != nil {
+		return nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/agents/{name}/workloads"
+	localVarPath = strings.Replace(localVarPath, "{"+"name"+"}", url.PathEscape(parameterValueToString(r.name, "name")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.issuer == nil {
+		return nil, reportError("issuer is required and must be specified")
+	}
+	if r.subject == nil {
+		return nil, reportError("subject is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "issuer", r.issuer, "form", "")
+	parameterAddToHeaderOrQuery(localVarQueryParams, "subject", r.subject, "form", "")
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarHTTPResponse, newErr
+	}
+
+	return localVarHTTPResponse, nil
 }
 
 type OwnerAPIUpdateItemRequest struct {

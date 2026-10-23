@@ -16,6 +16,7 @@ Method | HTTP request | Description
 [**delete_item**](OwnerApi.md#delete_item) | **DELETE** /v1/items/{name} | Remove the item and its grants. Not MCP.
 [**deny_request**](OwnerApi.md#deny_request) | **POST** /v1/requests/{id}/deny | Deny an open request. First write wins; the agent&#39;s next use files a fresh ask.
 [**import_items**](OwnerApi.md#import_items) | **POST** /v1/import | One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.
+[**list_agent_workloads**](OwnerApi.md#list_agent_workloads) | **GET** /v1/agents/{name}/workloads | List bound OIDC workload policies for an agent. Owner-only.
 [**list_agents**](OwnerApi.md#list_agents) | **GET** /v1/agents | Agents in this org. Ids only. Never secrets. Not MCP.
 [**list_grants**](OwnerApi.md#list_grants) | **GET** /v1/grants | Grants in this org. No secrets. Not MCP.
 [**list_group_members**](OwnerApi.md#list_group_members) | **GET** /v1/groups/{name}/members | Members of the group — agent or human edges. Not MCP.
@@ -26,6 +27,7 @@ Method | HTTP request | Description
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
 [**rotate_item**](OwnerApi.md#rotate_item) | **POST** /v1/items/{name}/rotate | Rotate an item&#39;s credential via the provider&#39;s key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
 [**stream_requests**](OwnerApi.md#stream_requests) | **GET** /v1/requests/stream | Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.
+[**unbind_workload**](OwnerApi.md#unbind_workload) | **DELETE** /v1/agents/{name}/workloads | Remove an OIDC workload binding from an agent. Owner-only.
 [**update_item**](OwnerApi.md#update_item) | **PATCH** /v1/items/{name} | Replace URIs, tags, and fill username. No secret.
 [**verify_issuer**](OwnerApi.md#verify_issuer) | **POST** /v1/workloads/verify-issuer | Dry-run OIDC discovery against an issuer URL before saving a workload binding. Owner-only — never mounted on /mcp.
 
@@ -987,6 +989,85 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **list_agent_workloads**
+> WorkloadsResponse list_agent_workloads(name)
+
+List bound OIDC workload policies for an agent. Owner-only.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.workloads_response import WorkloadsResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+
+    try:
+        # List bound OIDC workload policies for an agent. Owner-only.
+        api_response = api_instance.list_agent_workloads(name)
+        print("The response of OwnerApi->list_agent_workloads:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_agent_workloads: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+
+### Return type
+
+[**WorkloadsResponse**](WorkloadsResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Workload bindings |  -  |
+**400** | list workloads failed |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **list_agents**
 > AgentsResponse list_agents()
 
@@ -1601,7 +1682,7 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **rotate_item**
-> RotateItem200Response rotate_item(name)
+> RotateItem200Response rotate_item(name, rotate_item_request=rotate_item_request)
 
 Rotate an item's credential via the provider's key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
 
@@ -1612,6 +1693,7 @@ Rotate an item's credential via the provider's key-management API. The new secre
 ```python
 import veil
 from veil.models.rotate_item200_response import RotateItem200Response
+from veil.models.rotate_item_request import RotateItemRequest
 from veil.rest import ApiException
 from pprint import pprint
 
@@ -1636,10 +1718,11 @@ with veil.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = veil.OwnerApi(api_client)
     name = 'name_example' # str | 
+    rotate_item_request = veil.RotateItemRequest() # RotateItemRequest |  (optional)
 
     try:
         # Rotate an item's credential via the provider's key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
-        api_response = api_instance.rotate_item(name)
+        api_response = api_instance.rotate_item(name, rotate_item_request=rotate_item_request)
         print("The response of OwnerApi->rotate_item:\n")
         pprint(api_response)
     except Exception as e:
@@ -1654,6 +1737,7 @@ with veil.ApiClient(configuration) as api_client:
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **name** | **str**|  | 
+ **rotate_item_request** | [**RotateItemRequest**](RotateItemRequest.md)|  | [optional] 
 
 ### Return type
 
@@ -1665,7 +1749,7 @@ Name | Type | Description  | Notes
 
 ### HTTP request headers
 
- - **Content-Type**: Not defined
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 ### HTTP response details
@@ -1750,6 +1834,86 @@ This endpoint does not need any parameter.
 **200** | text/event-stream; stays open until the client disconnects |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **unbind_workload**
+> unbind_workload(name, issuer, subject)
+
+Remove an OIDC workload binding from an agent. Owner-only.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+    issuer = 'issuer_example' # str | 
+    subject = 'subject_example' # str | 
+
+    try:
+        # Remove an OIDC workload binding from an agent. Owner-only.
+        api_instance.unbind_workload(name, issuer, subject)
+    except Exception as e:
+        print("Exception when calling OwnerApi->unbind_workload: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+ **issuer** | **str**|  | 
+ **subject** | **str**|  | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**204** | Unbound |  -  |
+**400** | unbind failed |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

@@ -34,6 +34,7 @@ type CreateItemRequest struct {
 	Login *string `json:"login,omitempty"`
 	Card *CardFields `json:"card,omitempty"`
 	Identity *IdentityFields `json:"identity,omitempty"`
+	Wif *WIFItemFields `json:"wif,omitempty"`
 }
 
 type _CreateItemRequest CreateItemRequest
@@ -368,6 +369,38 @@ func (o *CreateItemRequest) SetIdentity(v IdentityFields) {
 	o.Identity = &v
 }
 
+// GetWif returns the Wif field value if set, zero value otherwise.
+func (o *CreateItemRequest) GetWif() WIFItemFields {
+	if o == nil || IsNil(o.Wif) {
+		var ret WIFItemFields
+		return ret
+	}
+	return *o.Wif
+}
+
+// GetWifOk returns a tuple with the Wif field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *CreateItemRequest) GetWifOk() (*WIFItemFields, bool) {
+	if o == nil || IsNil(o.Wif) {
+		return nil, false
+	}
+	return o.Wif, true
+}
+
+// HasWif returns a boolean if a field has been set.
+func (o *CreateItemRequest) HasWif() bool {
+	if o != nil && !IsNil(o.Wif) {
+		return true
+	}
+
+	return false
+}
+
+// SetWif gets a reference to the given WIFItemFields and assigns it to the Wif field.
+func (o *CreateItemRequest) SetWif(v WIFItemFields) {
+	o.Wif = &v
+}
+
 func (o CreateItemRequest) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -405,6 +438,9 @@ func (o CreateItemRequest) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Identity) {
 		toSerialize["identity"] = o.Identity
+	}
+	if !IsNil(o.Wif) {
+		toSerialize["wif"] = o.Wif
 	}
 	return toSerialize, nil
 }

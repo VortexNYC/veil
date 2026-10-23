@@ -1041,6 +1041,12 @@ paths:
         schema:
           type: string
         style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateItemRequest"
+        required: false
       responses:
         "200":
           content:
@@ -1121,6 +1127,69 @@ paths:
           description: not the owner
       summary: Dry-run OIDC discovery against an issuer URL before saving a workload
         binding. Owner-only — never mounted on /mcp.
+      tags:
+      - Owner
+  /v1/agents/{name}/workloads:
+    delete:
+      operationId: unbindWorkload
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      - explode: true
+        in: query
+        name: issuer
+        required: true
+        schema:
+          type: string
+        style: form
+      - explode: true
+        in: query
+        name: subject
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "204":
+          description: Unbound
+        "400":
+          description: unbind failed
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: Remove an OIDC workload binding from an agent. Owner-only.
+      tags:
+      - Owner
+    get:
+      operationId: listAgentWorkloads
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkloadsResponse"
+          description: Workload bindings
+        "400":
+          description: list workloads failed
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: List bound OIDC workload policies for an agent. Owner-only.
       tags:
       - Owner
 components:
@@ -1438,6 +1507,16 @@ components:
           country: country
           phone: phone
           email: email
+        wif:
+          token_url: token_url
+          assertion_token_url: assertion_token_url
+          assertion_client_id: assertion_client_id
+          assertion_secret: assertion_secret
+          assertion_audience: assertion_audience
+          federation_rule_id: federation_rule_id
+          organization_id: organization_id
+          service_account_id: service_account_id
+          workspace_id: workspace_id
       properties:
         name:
           type: string
@@ -1478,6 +1557,8 @@ components:
           $ref: "#/components/schemas/CardFields"
         identity:
           $ref: "#/components/schemas/IdentityFields"
+        wif:
+          $ref: "#/components/schemas/WIFItemFields"
       required:
       - name
     UpdateItemRequest:
@@ -2481,6 +2562,84 @@ components:
       - code
       - issuer
       - message
+    WorkloadsResponse:
+      example:
+        workloads:
+        - agent_id: agent_id
+          issuer: issuer
+          subject: subject
+          audience: audience
+          claims:
+            key:
+            - claims
+            - claims
+        - agent_id: agent_id
+          issuer: issuer
+          subject: subject
+          audience: audience
+          claims:
+            key:
+            - claims
+            - claims
+      properties:
+        workloads:
+          items:
+            $ref: "#/components/schemas/WorkloadView"
+          type: array
+          default: null
+      required:
+      - workloads
+    WIFItemFields:
+      example:
+        token_url: token_url
+        assertion_token_url: assertion_token_url
+        assertion_client_id: assertion_client_id
+        assertion_secret: assertion_secret
+        assertion_audience: assertion_audience
+        federation_rule_id: federation_rule_id
+        organization_id: organization_id
+        service_account_id: service_account_id
+        workspace_id: workspace_id
+      properties:
+        token_url:
+          type: string
+        assertion_token_url:
+          type: string
+        assertion_client_id:
+          type: string
+        assertion_secret:
+          type: string
+        assertion_audience:
+          type: string
+        federation_rule_id:
+          type: string
+        organization_id:
+          type: string
+        service_account_id:
+          type: string
+        workspace_id:
+          type: string
+      required:
+      - assertion_client_id
+      - assertion_secret
+      - assertion_token_url
+      - federation_rule_id
+      - token_url
+    RotateItemRequest:
+      example:
+        management_item: management_item
+        interval: interval
+        secret: secret
+      properties:
+        management_item:
+          description: separate vault item holding the provider management credential
+          type: string
+        interval:
+          description: auto-rotation interval (e.g. 24h)
+          type: string
+        secret:
+          description: replacement credential for assisted rotation
+          type: string
     removeMember_200_response:
       example:
         removed: true
