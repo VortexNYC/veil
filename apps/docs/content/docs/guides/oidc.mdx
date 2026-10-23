@@ -3,8 +3,6 @@ title: OIDC Workload Federation
 description: Authenticate agents and cloud functions to Veil using short-lived platform OIDC tokens — zero static secrets in environment variables.
 ---
 
-# OIDC Workload Federation
-
 Long-lived static credentials in environment variables leak through logs, compromised dependencies, and prompt injection. With **OIDC Workload Federation**, your runtime (Vercel Functions, GitHub Actions, Fly.io machines, or a Better Auth / Clerk / WorkOS issuer) presents a short-lived signed OIDC token directly to Veil.
 
 Veil verifies the token against the issuer's JWKS and maps `(issuer, subject, audience, claims)` to an existing agent principal in your organization.

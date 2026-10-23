@@ -3,8 +3,6 @@ title: Passkeys, TOTP & 1Password Migration
 description: How Veil handles WebAuthn passkeys (local Touch ID or remote approval), TOTP authenticators, and one-command migration from 1Password CLI and Google Authenticator.
 ---
 
-# Passkeys, TOTP & 1Password Migration
-
 ## 1. How Passkeys Work in Veil (`passkeyCreate` / `passkeyGet`)
 
 Passkeys (`WebAuthn` ECDSA P-256 credentials) require **User Presence / User Verification (`UV`)** on every sign-in. Veil seals the passkey's P-256 private key inside the vault (`material.PackPasskey`) and signs WebAuthn assertions on the human fill path (`passkeyCreate` / `passkeyGet`, never exposed on MCP) after human verification:

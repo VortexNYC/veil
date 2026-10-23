@@ -3,8 +3,6 @@ title: Outbound WIF (Anthropic & RFC 7523)
 description: Mint short-lived upstream provider tokens via RFC 7523 jwt-bearer exchange so not even Veil stores a static provider API key.
 ---
 
-# Outbound WIF (Anthropic & RFC 7523)
-
 Inbound OIDC federation eliminates static keys between **your workload and Veil**. **Outbound Workload Identity Federation (WIF)** eliminates static keys between **Veil and the upstream API provider**.
 
 When an item is configured for Outbound WIF (RFC 7523 `urn:ietf:params:oauth:grant-type:jwt-bearer`), Veil never stores a static upstream API key (like `sk-ant-api03-...`). Instead, when an authorized agent calls `fetch` / `useItem`:

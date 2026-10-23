@@ -1,105 +1,186 @@
 # Veil
 
-Agent-first credential broker. Agents reference an item. Something outside the model injects the secret. The model never holds it.
+**Veil** is an agent-first credential broker and human vault (`https://veil.nyc`).
 
-The product is Veil. This repo and the CLI stay `veil` in the VeilNYC org for now.
+Agents get the **ability to use** a credential—they never receive the plaintext secret. Grants decide which items an agent may use (`level2` autonomous or `level1` human-approved); the broker injects the credential at the edge and scrubs secrets from upstream responses; humans in the same organization use Veil to autofill passwords, TOTP codes, cards, and WebAuthn passkeys across macOS, iOS, Android, and browsers.
 
-Open source under Veil NYC. Not a 1Password clone and not an auth company.
+- **Hosted Origin & MCP**: `https://veil.nyc` · `https://veil.nyc/mcp`
+- **Web Vault**: `https://app.veil.nyc`
+- **Documentation & OpenAPI Reference**: `https://veil.nyc/docs` · `https://veil.nyc/openapi.json`
+- **Security Architecture**: `https://veil.nyc/security`
 
-**Ory \*** — the identity vendor, not us. **Kratos** = humans (email, login, invite). **Hydra** = tokens. **Keto** = org owner/member. **Glue** talks to those three. **This repo** is the broker (secrets, grants, inject). Cheatsheet: `AGENTS.md` and `docs/SPEC.md`.
+---
 
-## What this is
+## Architecture Overview
 
-Two principals (human, agent). Two grant levels:
-
-- **Level 1** — agent does the work; a human does the last unlock.
-- **Level 2** — this identity was donated to agents (service accounts, CI, a mailbox the bots own).
-
-Same protocol on a laptop and in Codex Cloud / Flue / Cloudflare Agents. An agent is a principal. Cloud and laptop prove it with the same OIDC token we verify. The laptop socket is transport, not a second identity.
-
-## Status
-
-Engine + local SQLite vault + CLI + MCP. Covered by tests.
-
-## Hosted quickstart
-
-Origin is `https://veil.nyc`. Accounts are invite-only during alpha — an org owner runs `veil human invite EMAIL`, which issues a recovery link that is the invitee's account setup. The hosted vault is Postgres — your laptop keeps no second store when `VEIL_ORIGIN` is set.
-
+```text
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              Callers & Surfaces                            │
+│  • Cloud Workloads (Vercel, GitHub Actions, Fly, Better Auth/Clerk/WorkOS) │
+│  • Coding & AI Agents (Cursor, Claude Code, Devin, Grok, Muse via MCP/SDK) │
+│  • Humans (macOS Veil.app, Chrome/Firefox/Safari Extension, iOS/Android)   │
+└──────────────────────────────────────┬─────────────────────────────────────┘
+                                       │
+                    Short-lived OIDC / Hydra JWT / Session
+                     (+ optional RFC 9449 DPoP ES256 proof)
+                                       ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          Veil Broker & Vault Origin                        │
+│                                                                            │
+│  1. Principal Resolution (PrincipalAgent vs PrincipalHuman — never shared) │
+│  2. Honey Tripwire Check (--honey / veil:honey-revoke instant revocation)  │
+│  3. Grant Engine (level1 human-approved, level2 autonomous, deny)          │
+│     └─ Blocks provider key-management paths (/api-keys, /v3/api_keys, ...) │
+│  4. Sealed Material Unpack (XChaCha20-Poly1305 under per-org master key)   │
+│     ├─ Static API Keys / Logins + TOTP (pquerna/otp)                       │
+│     ├─ OAuth Refresh Tokens + Outbound RFC 7523 WIF (TokenCache)           │
+│     ├─ Dual-Phase Provider Auto-Rotation (Resend, SendGrid, PostHog, Spec) │
+│     └─ Sealed WebAuthn P-256 Passkeys (Touch ID / remote approval gated)   │
+│  5. Edge Injection + Response Scrubbing + Transactional Audit Row          │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
-# 1. CLI
-go install github.com/VortexNYC/veil/cmd/veil@latest
 
-# 2. Human token — browser flow, or VEIL_LOGIN_EMAIL + VEIL_KRATOS_PASSWORD_FILE
-#    (+ VEIL_KRATOS_TOTP_FILE) for headless. Writes a file, never stdout.
+### Load-Bearing Invariants
+
+1. **Agents never receive secrets**: No API route, MCP tool, SDK method, log line, or audit record ever returns a vault secret.
+2. **Principal separation (`PrincipalAgent` vs `PrincipalHuman`)**: Agents do not log in as you or share your personal session. Every agent has its own principal ID, its own grants, and forensic attribution (`agent_id`, `approval_id`) in `GET /v1/audit/events`.
+3. **Identity is Ory**: Humans authenticate through **Ory Kratos** (password + TOTP/WebAuthn), tokens through **Ory Hydra** (`https://id.veil.nyc`), and org owner/member checks through **Ory Keto** (`identity/glue`). Or run `veil mcp --self-host` as a single binary on SQLite/Postgres with zero Ory containers.
+
+---
+
+## Feature Matrix
+
+| Category | Capabilities |
+| --- | --- |
+| **Agent MCP & HTTP Broker** | Streamable HTTP MCP (`https://veil.nyc/mcp`) and stdio bridge (`veil mcp stdio`). Tools: `list_items`, `match_items`, `check`, `fetch`, `approval_status`. HTTP: `POST /v1/use`, `veil run` (MITM injection with dummy placeholders). |
+| **OIDC Workload Federation** | `veil agent bind` with presets for **Vercel** (`--preset vercel`, immutable `owner_id`/`project_id` claims), **GitHub Actions** (`--preset github-actions`), **Fly.io** (`--preset fly`), **Better Auth**, **Clerk**, **WorkOS**, and custom HTTPS OIDC issuers. Includes `veil agent verify-issuer`, `veil agent workloads`, `veil agent unbind`, and dial-time DNS-rebind/CGNAT SSRF protection. |
+| **Zero-Env TypeScript SDK** | `@vortex-api/veil` (`createAmbientClient`, `ambientOidcToken`) automatically resolves `x-vercel-oidc-token`, `VERCEL_OIDC_TOKEN_FILE`, `VERCEL_OIDC_TOKEN`, GitHub Actions `ACTIONS_ID_TOKEN_REQUEST_URL`, or `VEIL_OIDC_TOKEN`. |
+| **Outbound RFC 7523 WIF** | `veil item add --federation-rule-id fdrl_...` mints short-lived OIDC assertions from `https://id.veil.nyc` and exchanges them for ephemeral upstream tokens (such as **Anthropic** `sk-ant-oat01-...`) with `singleflight` caching (`material.TokenCache`), so Veil never stores a static upstream API key. |
+| **RFC 9449 DPoP PoP** | Optional sender-constrained `DPoP` (`dpop+jwt` ES256) verification on `/v1/use`, `/mcp`, and principal-authenticated `/v1/*` routes (`htm`, `htu`, `iat`, `ath`, `jti` replay cache, `cnf.jkt` + bind-on-first-use key pinning). |
+| **Dual-Phase Key Rotation** | `veil rotate ITEM` runs a 4-step state machine (`Create → Verify → Commit → Retire`) inside the sealed envelope. Built-in zero-touch rotators for **Resend**, **SendGrid** (scope-preserving), **PostHog** (`us`, `eu`, `app`), and declarative `rotate.Spec`, plus assisted rotation (`--secret-file`), separate `--management-item`, scheduled `--interval`, and `veil item verify`. |
+| **Breach Containment** | `grant.Evaluate` blocks agent calls to provider key-management endpoints (`reason="management_endpoint"`). Decoy `--honey` items tagged `veil:honey-revoke` revoke the offending agent principal on first touch (`reason="honey_tripwire agent=<id>"`). |
+| **Human Fill, Passkeys & Migration** | Browser extension (Chrome/Firefox/Safari), macOS `/Applications/Veil.app` (`UniversalFill` `⌘\` + AutoFill appex + single native Touch ID prompt), iOS/Android AutoFill, sealed WebAuthn P-256 passkeys with local Touch ID or remote device approval (`POST /v1/fill/request`), and one-command migration (`veil item import --from-op` or `.1pux` / Bitwarden / Apple Passwords / KeePass / `otpauth://`). |
+
+---
+
+## Quickstarts
+
+### 1. Install CLI & Migrate from 1Password
+
+```bash
+# Install the veil binary
+curl -fsSL https://veil.nyc/install.sh | sh
+
+# Authenticate your human owner session
 veil human login --out-file ~/.config/veil/human.jwt
+export VEIL_ORIGIN=https://veil.nyc VEIL_HUMAN_TOKEN_FILE=~/.config/veil/human.jwt
 
-# 3. Provision your org on the origin (idempotent)
-VEIL_ORIGIN=https://veil.nyc veil init --oidc-token-file ~/.config/veil/human.jwt
+# Import logins, API keys, TOTP seeds, and cards directly from your signed-in 1Password CLI
+veil item import --from-op
+```
 
-# 4. First item + agent + grant (owner verbs take the human JWT as bearer)
-export VEIL_ORIGIN=https://veil.nyc VEIL_OIDC_TOKEN_FILE=~/.config/veil/human.jwt
-veil item add stripe --uri https://api.stripe.com --secret-file ./sk_live
+### 2. Bind a Cloud Workload (Vercel / GitHub Actions / Fly.io) — Zero Static Env Keys
+
+```bash
+# Register an agent and bind Vercel OIDC with rename-resilient team/project ID claims
+veil agent add web-agent
+veil agent bind web-agent \
+  --preset vercel \
+  --org acme \
+  --app acme-web \
+  --env production \
+  --claim owner_id=team_abc123 \
+  --claim project_id=prj_xyz789
+
+# Grant autonomous (level2) use on an item
+veil grant add --agent web-agent --item resend --level level2
+```
+
+Call from your Vercel Function or GitHub Action using `@vortex-api/veil`:
+
+```ts
+import { createAmbientClient, useItem } from "@vortex-api/veil";
+
+export async function POST(req: Request) {
+  const client = createAmbientClient({ request: req });
+  const { data } = await useItem({
+    client,
+    body: {
+      item: "resend",
+      url: "https://api.resend.com/emails",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "agent@veil.nyc",
+        to: ["ops@veil.nyc"],
+        subject: "Hello from Veil",
+        text: "Injected at the broker edge with zero static env keys.",
+      }),
+    },
+  });
+  return Response.json({ status: data?.status });
+}
+```
+
+### 3. Connect Coding Agents (Cursor, Claude Code, Devin, Grok) via MCP
+
+```bash
 veil agent add cursor
 veil agent hydra cursor --secret-file ~/.config/veil/cursor.hydra
-veil grant add --agent cursor --item stripe --level level2
+veil grant add --agent cursor --item github --level level2
 
-# 5. Wire the agent — stdio for Cursor, HTTP Bearer for cloud agents
-veil mcp laptop   # prints the Cursor block; token file path, never the JWT
-```
-
-Cloud agents (Codex Cloud, Flue, Cloudflare) skip step 5's stdio block: mint with `client_credentials` at `https://id.veil.nyc`, send the JWT as Bearer to `https://veil.nyc/mcp`. OpenAPI: `https://veil.nyc/openapi.json`. TS SDK: `npm i @vortex-api/veil`.
-
-## Local vault
-
-```
-make test
-go run ./cmd/veil init --home /tmp/veil
-go run ./cmd/veil item add stripe --home /tmp/veil --uri https://api.stripe.com --secret-file ./key --totp-file ./seed
-go run ./cmd/veil agent add claude --home /tmp/veil
-go run ./cmd/veil agent bind claude --home /tmp/veil --issuer https://token.actions.githubusercontent.com --subject 'repo:VortexNYC/veil:ref:refs/heads/main' --audience veil
-go run ./cmd/veil grant add --home /tmp/veil --agent claude --item stripe --level level2
-go run ./cmd/veil mcp --home /tmp/veil
-go run ./cmd/veil mcp config
-go run ./cmd/veil serve --home /tmp/veil
-go run ./cmd/veil fill install --home /tmp/veil
-go run ./cmd/veil item add github --home /tmp/veil --ssh-file ./id_ed25519
-go run ./cmd/veil ssh --home /tmp/veil
-go run ./cmd/veil run --home /tmp/veil --agent claude -- curl -s https://api.stripe.com/v1/customers
-```
-
-MCP tools: `list_items`, `fetch`. HTTP: `GET /v1/items`, `POST /v1/use`, `GET /v1/events`, owner `POST /v1/items` and `/v1/grants`. Same operations. Streamable HTTP MCP at `https://veil.nyc/mcp`. OpenAPI at `https://veil.nyc/openapi.json`. Bearer is the agent or a Keto member human (`VEIL_OIDC_TOKEN` / Hydra JWT). `VEIL_ORIGIN=https://veil.nyc` makes CLI `use`, `audit`, `item`, `grant`, `fill`, `run`, and `proxy` hit that API and never open a second sqlite. Origin `run` puts dummy `veil-inject` in the child env and MITMs via `POST /v1/use`. Cursor (Dock-launched, no Bearer interpolation) uses `veil mcp stdio` against that origin; token stays in `VEIL_OIDC_TOKEN_FILE`. If that JWT is stale, stdio remints with `client_credentials` from `VEIL_HYDRA_SECRET_FILE` (Hydra public issuer). A human JWT remints with Kratos frontend HTTP when `VEIL_LOGIN_EMAIL`, `VEIL_KRATOS_PASSWORD_FILE`, and `VEIL_KRATOS_TOTP_FILE` are set. The Hydra client secret never enters MCP JSON. The model cannot switch principals and never sees the token. Secrets never appear in tool or SDK output. SDKs are generated: `pnpm run sdk:generate`. Docs: `pnpm run docs:dev`.
-
-Cloud agents (Flue, Cloudflare, Codex) hit the URL with Bearer. The host is not identity. Origin is Railway. Cloudflare is DNS plus Workers (`login.veil.nyc`, `app.veil.nyc`). Cloud agents mint at `https://id.veil.nyc` (`client_credentials`), then send the JWT. Hydra admin stays private.
-
-```
-veil agent add cursor
-veil agent hydra cursor --secret-file ./cursor.hydra
-veil agent token cursor --secret-file ./cursor.hydra --out-file ./cursor.jwt
-veil grant add --agent cursor --item stripe --level level2
-veil mcp
-veil mcp config
+# Print the stdio MCP config for Cursor (uses token file path, never embeds the JWT)
 veil mcp laptop
 ```
 
-Paste `mcp config` as the HTTP server block when the process has `VEIL_OIDC_TOKEN`. Cursor does not: `veil mcp laptop` prints the stdio block with the token-file *path* that is already in the env, never the JWT, never `${file:}`. `mcp config` includes `issuer` when `VEIL_HYDRA_ISSUER` is set (`https://id.veil.nyc`). `.well-known/oauth-protected-resource` points at that issuer. Mint: `agent token` (`POST {issuer}/oauth2/token`). The JWT is `--out-file` only.
+### 4. Single-Binary Self-Host Mode (No Ory Containers Required)
 
-`run` is Infisical `vault run`. Against a local vault, granted item material is in the child's environment (item name → env var, uppercased). Against `VEIL_ORIGIN`, the child gets dummy `veil-inject` and `HTTPS_PROXY`; origin `POST /v1/use` injects. The broker does not print the secret. Level 1 is skipped until a human Approves. SSH keys stay on `ssh.sock`. `--inject` file templates are local vault only.
+```bash
+# Run against a local SQLite vault (~/.veil)
+veil mcp --self-host --listen 127.0.0.1:4461
 
-`run` / `proxy` MITM: unmodified HTTP clients go through `HTTPS_PROXY`. Unknown hosts fail closed. A per-machine CA (`ca.pem`) is used for MITM — not goproxy's public default. Origin MITM with a real (non-dummy) Authorization header passes through, so Wrangler asset-upload JWTs keep working.
+# Or against Postgres
+VEIL_SELF_HOST=1 VEIL_POSTGRES_DSN="postgres://..." veil mcp --listen :4461
+```
 
-`fill` is the native host (native messaging + nacl box). `veil fill install` registers this process and writes the Veil extension (slice 37, MV3, `nyc.veil.fill` JSON) to `~/.veil/extension` — load unpacked at chrome://extensions. Slice 26 dogfoods store KeePassXC-Browser; Slice 31 speaks `passkeys-get` / `passkeys-register` on that host. Fill writes into the page. Agents never receive the secret.
+---
 
-`ssh` is the OpenSSH agent. Export `SSH_AUTH_SOCK` from its output. The broker signs. The private key never leaves. `item add --ssh-file` stores the PEM; never argv.
+## Repository Layout
 
-`human invite EMAIL` is the invite: `POST /v1/invites` mints the Kratos identity plus recovery link and emails it through the mail worker — the invitee's link is their account setup. Owner-gated (`--oidc-token-file` / `VEIL_OIDC_TOKEN_FILE`). With no `VEIL_ORIGIN` the verb talks to Kratos admin directly and `--code-file` writes the code instead. Re-inviting the same email resends. Email stays in Kratos; membership is Keto; there is no invite table.
+| Path | Description |
+| --- | --- |
+| `cmd/veil` | Main `veil` CLI, HTTP origin server, MCP server, and native fill host binary. |
+| `internal/app` | Core application orchestration: items, grants, agents, workloads, rotation, verification, and sessions. |
+| `internal/broker` | Credential injection engine, honey tripwire enforcement, response scrubbing, and child-process `run` env. |
+| `internal/grant` | Grant evaluation (`level1`, `level2`, `deny`), URL host matching, and provider management-endpoint blocking. |
+| `internal/material` | Sealed credential envelopes (`api_key`, `oauth`, Outbound RFC 7523 `wif`, `passkey`, `card`, `identity`) + `TokenCache`. |
+| `internal/workload` | External OIDC token verification (`coreos/go-oidc`), provider presets, custom claim matching, and issuer dry-runs. |
+| `internal/dpop` | RFC 9449 OAuth 2.0 Demonstrating Proof-of-Possession (`DPoP`) ES256 verifier and proof minter. |
+| `internal/rotate` | Dual-phase provider key rotators (`Resend`, `SendGrid`, `PostHog`, and declarative `rotate.Spec`). |
+| `internal/fill` | Browser/OS native fill bridge, passkey WebAuthn ceremony signing, and remote approval polling. |
+| `internal/store` | Storage implementations (`SQLite`, `Postgres` via `pgx`/`sqlc`, `Memory`) and SQLite-to-Postgres migrator. |
+| `identity/glue` | Ory Kratos, Hydra, and Keto integration service. |
+| `apps/vault` | Web Vault SPA (`https://app.veil.nyc`, React + TanStack Router + `@cloudflare/kumo`). |
+| `apps/docs` | Documentation & OpenAPI reference site (`https://veil.nyc/docs`, Blume on Cloudflare Workers). |
+| `apps/site` | Public landing & security pages (`https://veil.nyc`). |
+| `apps/fill` | Cross-browser WebExtension (Chrome, Firefox, Edge, Safari) for autofill and passkeys. |
+| `apps/fill-safari` | macOS `Veil.app` (menu-bar helper, `UniversalFill`, Safari WebExtension, and macOS AutoFill provider). |
+| `sdks/` | Generated Go (`sdks/go`), Python (`sdks/python`), and TypeScript (`sdks/typescript`, `@vortex-api/veil`) SDKs. |
 
-`device offer` wraps master to another machine's public key (`nacl/box`, same as fill). `Init` writes `device.key` and `wraps/`. `device accept` writes those, not plaintext `master.key`. Copy `vault.db` yourself. That is not sync and it does not pair a model.
+## Development & Verification
 
-TOTP is a field on the item, not a tool. `totp enroll --out-file --qr-file` writes the seed and an otpauth PNG. Then `item add --totp-file`. At Use, `pquerna/otp` mints a 6-digit code and the broker sets `X-TOTP`. The model never receives the seed or the code. There is no `get_totp`.
+```bash
+# Run the fast CI contract (SDK freshness, go vet, lint, typecheck) and full test gate
+make ci
 
-There is no `item get`. Secrets are injected at Use, not printed.
+# Build and install the macOS /Applications/Veil.app bundle locally
+make macos-app
 
-See [docs/SPEC.md](docs/SPEC.md) for the capability map and [docs/prior-art.md](docs/prior-art.md) for licensed libraries and the patterns we follow from Infisical, Bitwarden, OneCLI, 1Password, Aside, Entra, and MeowPass.
+# Regenerate Go, Python, and TypeScript SDKs from docs/openapi/veil.openapi.json
+pnpm run sdk:generate
+```
+
+See [`docs/SPEC.md`](docs/SPEC.md) for the slice specification, [`docs/fill.md`](docs/fill.md) for the fill architecture, and [`docs/prior-art.md`](docs/prior-art.md) for prior art and licensed dependencies.
 
 ## License
 
