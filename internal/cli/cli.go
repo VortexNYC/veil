@@ -2234,6 +2234,12 @@ func fillCmd(home *string) *cobra.Command {
 				}
 				return nil
 			}
+			if bridge {
+				// Chrome/Firefox native-host unsets VEIL_FILL_TOUCHID in
+				// NativeHostArgs; the launchd bridge must unset it too so
+				// launchctl setenv cannot disable Touch ID in production.
+				_ = os.Unsetenv("VEIL_FILL_TOUCHID")
+			}
 			dir, err := resolveFillHome(*home)
 			if err != nil {
 				return err

@@ -15,9 +15,17 @@ function Settings() {
     >
       <div className="flex flex-col items-start gap-3">
         <Text as="p">Password, TOTP, WebAuthn, and lookup codes live at login.veil.nyc.</Text>
-        <LinkButton href="https://login.veil.nyc/settings" variant="outline">
-          Open identity settings
-        </LinkButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <LinkButton href="https://login.veil.nyc/settings" variant="outline">
+            Open identity settings
+          </LinkButton>
+          <LinkButton
+            href="https://github.com/VortexNYC/veil/releases/latest/download/Veil.dmg"
+            variant="outline"
+          >
+            Download Veil for macOS (.dmg)
+          </LinkButton>
+        </div>
       </div>
     </PageChrome>
   );
