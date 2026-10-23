@@ -1,6 +1,6 @@
 import { defineMeta } from "blume";
 
 export default defineMeta({
-  pages: ["guides", "sdk"],
+  pages: ["index", "architecture", "changelog", "guides", "sdk"],
   title: "Veil",
 });

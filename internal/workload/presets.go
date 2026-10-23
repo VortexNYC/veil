@@ -97,6 +97,81 @@ func ResolvePreset(opts PresetOpts) (issuer, subject, audience string, err error
 		if audience == "" {
 			audience = DefaultAudience
 		}
+	case "gitlab":
+		if issuer == "" {
+			issuer = "https://gitlab.com"
+		}
+		if subject == "" {
+			repo := strings.TrimSpace(opts.Repo)
+			if repo == "" || !strings.Contains(repo, "/") {
+				return "", "", "", fmt.Errorf("workload: gitlab preset requires --repo group/project (or --subject)")
+			}
+			ref := strings.TrimSpace(opts.Ref)
+			if ref == "" {
+				ref = "main"
+			}
+			subject = "project_path:" + repo + ":ref_type:branch:ref:" + ref
+		}
+		if audience == "" {
+			audience = DefaultAudience
+		}
+	case "google":
+		if issuer == "" {
+			issuer = "https://accounts.google.com"
+		}
+		if subject == "" {
+			return "", "", "", fmt.Errorf("workload: google preset requires --subject <unique-id-or-*>")
+		}
+		if audience == "" {
+			audience = DefaultAudience
+		}
+	case "bitbucket":
+		ws := strings.TrimSpace(opts.Org)
+		if issuer == "" {
+			if ws == "" {
+				return "", "", "", fmt.Errorf("workload: bitbucket preset requires --org <workspace> (or --issuer)")
+			}
+			issuer = "https://api.bitbucket.org/2.0/workspaces/" + ws + "/pipelines-config/identity/oidc"
+		}
+		if subject == "" {
+			return "", "", "", fmt.Errorf("workload: bitbucket preset requires --subject")
+		}
+		if audience == "" {
+			if ws != "" {
+				audience = "ari:cloud:bitbucket::workspace/" + ws
+			} else {
+				audience = DefaultAudience
+			}
+		}
+	case "aws-eks", "aws":
+		if issuer == "" {
+			return "", "", "", fmt.Errorf("workload: aws-eks preset requires --issuer https://oidc.eks.<region>.amazonaws.com/id/<id>")
+		}
+		if subject == "" {
+			ns := strings.TrimSpace(opts.Org)
+			sa := strings.TrimSpace(opts.App)
+			if ns == "" || sa == "" {
+				return "", "", "", fmt.Errorf("workload: aws-eks preset requires --org <namespace> and --app <service-account> (or --subject)")
+			}
+			subject = "system:serviceaccount:" + ns + ":" + sa
+		}
+		if audience == "" {
+			audience = DefaultAudience
+		}
+	case "azure":
+		tenant := strings.ToLower(strings.TrimSpace(opts.Org))
+		if issuer == "" {
+			if tenant == "" {
+				return "", "", "", fmt.Errorf("workload: azure preset requires --org <tenant-id> (or --issuer)")
+			}
+			issuer = "https://login.microsoftonline.com/" + tenant + "/v2.0"
+		}
+		if subject == "" {
+			return "", "", "", fmt.Errorf("workload: azure preset requires --subject")
+		}
+		if audience == "" {
+			audience = DefaultAudience
+		}
 	case "better-auth", "clerk", "workos":
 		if issuer == "" || subject == "" {
 			return "", "", "", fmt.Errorf("workload: %s preset requires --issuer and --subject", p)
@@ -105,7 +180,7 @@ func ResolvePreset(opts PresetOpts) (issuer, subject, audience string, err error
 			audience = DefaultAudience
 		}
 	default:
-		return "", "", "", fmt.Errorf("workload: unknown preset %q (want vercel, github-actions, fly, better-auth, clerk, or workos)", p)
+		return "", "", "", fmt.Errorf("workload: unknown preset %q (want vercel, github-actions, gitlab, google, bitbucket, aws-eks, azure, fly, better-auth, clerk, or workos)", p)
 	}
 
 	if issuer == "" || subject == "" || audience == "" {

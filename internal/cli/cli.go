@@ -1210,7 +1210,7 @@ func agentCmd(home *string) *cobra.Command {
 			return encode(cmd, w)
 		},
 	}
-	bind.Flags().StringVar(&preset, "preset", "", "issuer preset: vercel, github-actions, fly, better-auth, clerk, workos")
+	bind.Flags().StringVar(&preset, "preset", "", "issuer preset: vercel, github-actions, gitlab, google, bitbucket, aws-eks, azure, fly, better-auth, clerk, workos")
 	bind.Flags().StringVar(&issuer, "issuer", "", "OIDC issuer URL we verify, not one we run")
 	bind.Flags().StringVar(&subject, "subject", "", "token sub claim for this agent")
 	bind.Flags().StringVar(&audience, "audience", "", "expected token aud (defaults to 'veil' or https://vercel.com/<org> with --preset)")

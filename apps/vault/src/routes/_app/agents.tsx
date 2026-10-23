@@ -24,10 +24,29 @@ export const Route = createFileRoute("/_app/agents")({
   component: Agents,
 });
 
-type Preset = "vercel" | "github-actions" | "fly" | "custom";
+type Preset =
+  | "vercel"
+  | "github-actions"
+  | "gitlab"
+  | "google"
+  | "bitbucket"
+  | "aws-eks"
+  | "azure"
+  | "fly"
+  | "custom";
 
 function isPreset(v: string): v is Preset {
-  return v === "vercel" || v === "github-actions" || v === "fly" || v === "custom";
+  return (
+    v === "vercel" ||
+    v === "github-actions" ||
+    v === "gitlab" ||
+    v === "google" ||
+    v === "bitbucket" ||
+    v === "aws-eks" ||
+    v === "azure" ||
+    v === "fly" ||
+    v === "custom"
+  );
 }
 
 function compilePresetPolicy(
@@ -79,6 +98,66 @@ function compilePresetPolicy(
       subject: `${org}:${app}`,
       audience: String(fd.get("audience") ?? "").trim() || "veil",
       ...(hasClaims ? { claims } : {}),
+    };
+  }
+  if (preset === "gitlab") {
+    const repo = String(fd.get("repo") ?? "").trim();
+    const ref = String(fd.get("ref") ?? "main").trim() || "main";
+    return {
+      issuer: "https://gitlab.com",
+      subject: `project_path:${repo}:ref_type:branch:ref:${ref}`,
+      audience: String(fd.get("audience") ?? "").trim() || "veil",
+      ...(hasClaims ? { claims } : {}),
+    };
+  }
+  if (preset === "google") {
+    const email = String(fd.get("org") ?? "").trim();
+    const sub = String(fd.get("subject") ?? "*").trim() || "*";
+    if (email) {
+      claims.email = [...(claims.email ?? []), email];
+    }
+    return {
+      issuer: "https://accounts.google.com",
+      subject: sub,
+      audience: String(fd.get("audience") ?? "").trim() || "veil",
+      ...(Object.keys(claims).length > 0 ? { claims } : {}),
+    };
+  }
+  if (preset === "bitbucket") {
+    const ws = String(fd.get("org") ?? "").trim();
+    const sub = String(fd.get("subject") ?? "").trim();
+    return {
+      issuer: `https://api.bitbucket.org/2.0/workspaces/${ws}/pipelines-config/identity/oidc`,
+      subject: sub,
+      audience:
+        String(fd.get("audience") ?? "").trim() ||
+        `ari:cloud:bitbucket::workspace/${ws}`,
+      ...(hasClaims ? { claims } : {}),
+    };
+  }
+  if (preset === "aws-eks") {
+    const iss = String(fd.get("issuer") ?? "").trim();
+    const ns = String(fd.get("org") ?? "").trim();
+    const sa = String(fd.get("app") ?? "").trim();
+    return {
+      issuer: iss,
+      subject: `system:serviceaccount:${ns}:${sa}`,
+      audience: String(fd.get("audience") ?? "").trim() || "veil",
+      ...(hasClaims ? { claims } : {}),
+    };
+  }
+  if (preset === "azure") {
+    const tenant = String(fd.get("org") ?? "").trim().toLowerCase();
+    const oid = String(fd.get("app") ?? "").trim().toLowerCase();
+    const sub = String(fd.get("subject") ?? "*").trim() || "*";
+    if (oid) {
+      claims.oid = [...(claims.oid ?? []), oid];
+    }
+    return {
+      issuer: `https://login.microsoftonline.com/${tenant}/v2.0`,
+      subject: sub,
+      audience: String(fd.get("audience") ?? "").trim() || "veil",
+      ...(Object.keys(claims).length > 0 ? { claims } : {}),
     };
   }
   return {
@@ -211,8 +290,13 @@ function Agents() {
                 >
                   <Select.Option value="vercel">Vercel</Select.Option>
                   <Select.Option value="github-actions">GitHub Actions</Select.Option>
+                  <Select.Option value="gitlab">GitLab CI</Select.Option>
+                  <Select.Option value="google">Google Cloud</Select.Option>
+                  <Select.Option value="bitbucket">Bitbucket Pipelines</Select.Option>
+                  <Select.Option value="aws-eks">AWS EKS</Select.Option>
+                  <Select.Option value="azure">Azure Entra ID</Select.Option>
                   <Select.Option value="fly">Fly.io</Select.Option>
-                  <Select.Option value="custom">Custom OIDC (Better Auth / Clerk / WorkOS / EKS)</Select.Option>
+                  <Select.Option value="custom">Custom OIDC (Better Auth / Clerk / WorkOS)</Select.Option>
                 </Select>
                 {preset === "vercel" ? (
                   <>
@@ -251,6 +335,70 @@ function Agents() {
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="app">Fly app name</Label>
                       <Input id="app" name="app" placeholder="worker" required />
+                    </div>
+                  </>
+                ) : null}
+                {preset === "gitlab" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="repo">Project path (group/project)</Label>
+                      <Input id="repo" name="repo" placeholder="acme/platform/web" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="ref">Branch</Label>
+                      <Input id="ref" name="ref" defaultValue="main" required />
+                    </div>
+                  </>
+                ) : null}
+                {preset === "google" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="org">Service account email</Label>
+                      <Input id="org" name="org" placeholder="bot@acme.iam.gserviceaccount.com" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="subject">Numeric unique ID (or *)</Label>
+                      <Input id="subject" name="subject" defaultValue="*" required />
+                    </div>
+                  </>
+                ) : null}
+                {preset === "bitbucket" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="org">Workspace slug</Label>
+                      <Input id="org" name="org" placeholder="acme" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="subject">Subject</Label>
+                      <Input id="subject" name="subject" placeholder="{repo-uuid}" required />
+                    </div>
+                  </>
+                ) : null}
+                {preset === "aws-eks" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="issuer">Cluster OIDC issuer URL</Label>
+                      <Input id="issuer" name="issuer" placeholder="https://oidc.eks.us-east-1.amazonaws.com/id/EX" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="org">Namespace</Label>
+                      <Input id="org" name="org" defaultValue="default" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="app">Service account name</Label>
+                      <Input id="app" name="app" placeholder="deploy-bot" required />
+                    </div>
+                  </>
+                ) : null}
+                {preset === "azure" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="org">Tenant ID (GUID)</Label>
+                      <Input id="org" name="org" placeholder="aaaabbbb-0000-cccc-1111-dddd2222eeee" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="app">Object ID (oid GUID)</Label>
+                      <Input id="app" name="app" placeholder="aaaaaaaa-0000-1111-2222-bbbbbbbbbbbb" required />
                     </div>
                   </>
                 ) : null}
