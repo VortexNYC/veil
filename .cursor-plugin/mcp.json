@@ -1,11 +1,10 @@
 {
   "mcpServers": {
     "veil": {
-      "command": "veil",
-      "args": ["mcp", "stdio"],
-      "env": {
-        "VEIL_ORIGIN": "https://veil.nyc",
-        "VEIL_HYDRA_ISSUER": "https://id.veil.nyc"
+      "type": "http",
+      "url": "https://veil.nyc/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:VEIL_MCP_TOKEN}"
       }
     }
   }

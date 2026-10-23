@@ -7,6 +7,18 @@ description: Use Veil MCP (list_items, match_items, check, fetch, approval_statu
 
 Veil (`https://veil.nyc/mcp`) is mounted as the `veil` MCP server. **Agents never receive secrets.** Instead of reading API keys from `.env` or 1Password, use Veil's 5 MCP tools so the Veil broker injects the credential at the edge and scrubs any echoed secret from the response.
 
+## Connecting an agent
+
+Hosted HTTP (preferred — no local process):
+
+```bash
+veil mcp http   # prints the paste-ready mcpServers block, including your agent's bearer
+```
+
+The bearer is `agent-<name>:<client_secret>` from `veil agent hydra`. The broker exchanges it server-side at Hydra (cached), so the header never expires. For env-interpolated configs, set `VEIL_MCP_TOKEN=agent-<name>:<secret>` and use `Authorization: Bearer ${env:VEIL_MCP_TOKEN}`.
+
+Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints the stdio block — the same deployed origin underneath.
+
 ## Available MCP Tools
 
 1. **`list_items`** (`mcp__veil__list_items` / `veil__list_items`):

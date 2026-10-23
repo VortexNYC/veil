@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/VortexNYC/veil/identity/glue"
 	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/mcpserver"
 	"github.com/VortexNYC/veil/internal/protocol"
@@ -249,6 +250,49 @@ func inferCallerAgent() string {
 		pid = next
 	}
 	return ""
+}
+
+// mcpHTTPBlock prints the hosted HTTP MCP block for the current agent —
+// "type": "http" against <origin>/mcp with the client_id:client_secret
+// bearer the broker exchanges server-side. The secret is in the output by
+// design: this is the paste-ready config for a local MCP client file, the
+// same trust boundary as the .hydra file it came from.
+func mcpHTTPBlock(origin string) (map[string]any, error) {
+	if os.Getenv("VEIL_ORIGIN") == "" {
+		_ = os.Setenv("VEIL_ORIGIN", origin)
+	}
+	applyMCPStdioDefaults()
+	agent := strings.TrimSpace(os.Getenv("VEIL_AGENT"))
+	if agent == "" {
+		return nil, fmt.Errorf("mcp http: VEIL_AGENT is required")
+	}
+	secretFile := strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE"))
+	if secretFile == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		secretFile = filepath.Join(home, ".config", "vortex", "veil", agent+".hydra")
+	}
+	cred, err := readHydraCred(secretFile)
+	if err != nil {
+		return nil, err
+	}
+	if cred.Secret == "" {
+		return nil, fmt.Errorf("mcp http: empty hydra secret file %s", secretFile)
+	}
+	bearer := glue.AgentClientID(agent) + ":" + cred.Secret
+	return map[string]any{
+		"mcpServers": map[string]any{
+			"veil": map[string]any{
+				"type": "http",
+				"url":  strings.TrimRight(strings.TrimSpace(origin), "/") + "/mcp",
+				"headers": map[string]string{
+					"Authorization": "Bearer " + bearer,
+				},
+			},
+		},
+	}, nil
 }
 
 func runOriginMCPStdio(ctx context.Context) error {

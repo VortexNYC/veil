@@ -2556,6 +2556,21 @@ func mcpCmd(home *string) *cobra.Command {
 			return encode(cmd, mcpserver.LaptopConfig(origin))
 		},
 	})
+	c.AddCommand(&cobra.Command{
+		Use:   "http",
+		Short: "Print hosted HTTP MCP block for this agent. Contains the client secret — keep private.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			origin := originBase()
+			if origin == "" {
+				origin = "https://veil.nyc"
+			}
+			cfg, err := mcpHTTPBlock(origin)
+			if err != nil {
+				return err
+			}
+			return encode(cmd, cfg)
+		},
+	})
 	return c
 }
 
