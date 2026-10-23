@@ -49,7 +49,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSNotification.Name("com.apple.screenIsLocked"),
             object: nil, queue: .main,
         ) { _ in
-            FillBridge.shared.relock()
+            VaultWindowController.shared.lock()
+            DispatchQueue.global().async { FillBridge.shared.relock() }
         }
         // Settings writes fill.json — the tap's chord set reloads.
         NotificationCenter.default.addObserver(
@@ -239,6 +240,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func settingsChanged() {
         UniversalFill.reloadChords()
+        DispatchQueue.global().async { FillBridge.shared.relock() }
     }
 
     @objc private func quit() {

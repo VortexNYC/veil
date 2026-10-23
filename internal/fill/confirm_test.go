@@ -224,3 +224,19 @@ func TestRelockActionInvalidates(t *testing.T) {
 		t.Fatalf("relock reply: %s", out)
 	}
 }
+
+func TestApplyConfigAndReloadOnRelock(t *testing.T) {
+	dir := t.TempDir()
+	h := &Host{Dir: dir}
+	h.ApplyConfig(HostConfig{Policy: "strict"})
+	if h.ConfirmMode != "strict" || !h.IconsOff {
+		t.Fatalf("strict preset clobbered: mode=%q iconsOff=%v", h.ConfirmMode, h.IconsOff)
+	}
+	if err := WriteHostConfig(dir, HostConfig{Policy: "relaxed", RemoteApprove: "tagged"}); err != nil {
+		t.Fatal(err)
+	}
+	h.handleJSON([]byte(`{"action":"relock"}`), TrustedPeer)
+	if h.ConfirmMode != "session" || h.ConfirmTTL != 5*time.Minute || h.RemoteApproveMode != "tagged" {
+		t.Fatalf("relock did not reload fill.json: mode=%q ttl=%v remote=%q", h.ConfirmMode, h.ConfirmTTL, h.RemoteApproveMode)
+	}
+}

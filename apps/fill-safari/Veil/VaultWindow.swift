@@ -9,11 +9,24 @@
 import Cocoa
 import WebKit
 
-final class VaultWindowController: NSObject {
+final class VaultWindowController: NSObject, NSWindowDelegate {
     static let shared = VaultWindowController()
     private var window: NSWindow?
     private var web: WKWebView?
     private var unlocked = false
+
+    func lock() {
+        unlocked = false
+        web?.evaluateJavaScript("try{sessionStorage.removeItem('veil.id_token');}catch(e){}", completionHandler: nil)
+        web?.configuration.userContentController.removeAllUserScripts()
+        web = nil
+        window?.orderOut(nil)
+        window = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        lock()
+    }
 
     /// Gated entry — the broker's confirm first, then the vault loads.
     /// Repeat opens on an unlocked app just show the window. `path` deep-
@@ -87,7 +100,7 @@ final class VaultWindowController: NSObject {
         // A restored window would return with the vault already loaded —
         // past the gate. The window must only ever exist through open().
         win.isRestorable = false
-        win.delegate = nil
+        win.delegate = self
 
         let splash = NSView()
         let label = NSTextField(labelWithString: "Veil — confirm it's you to continue")

@@ -3,8 +3,10 @@ package fill
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"golang.org/x/sys/unix"
 )
@@ -63,27 +65,57 @@ func peerPath(pid int32) string {
 	return strings.TrimSpace(string(out))
 }
 
+type attestedEntry struct {
+	mtimeNs int64
+	size    int64
+	ok      bool
+}
+
+var (
+	attestedMu    sync.Mutex
+	attestedCache = map[string]attestedEntry{}
+)
+
 // attested reports whether the peer executable is a code-signed Veil
 // process. `codesign -d` prints the CFBundleIdentifier — every Veil
 // surface (app, extension appex, AutoFill appex, bundled binaries) signs
 // under the nyc.veil.* tree; anything else connecting to the socket is
-// not us.
+// not us. Cached by (path, mtime, size) so repeated socket connects do
+// not fork `codesign` on every frame.
 func attested(path string) bool {
 	if !strings.Contains(path, "Veil.app/Contents/") &&
 		!strings.Contains(path, "/veil-bin") &&
 		!strings.Contains(path, "/native-host") {
 		return false
 	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	mtimeNs := st.ModTime().UnixNano()
+	size := st.Size()
+	attestedMu.Lock()
+	if cached, found := attestedCache[path]; found && cached.mtimeNs == mtimeNs && cached.size == size {
+		attestedMu.Unlock()
+		return cached.ok
+	}
+	attestedMu.Unlock()
+
 	out, err := exec.Command("codesign", "-dvv", path).CombinedOutput()
 	if err != nil {
 		return false
 	}
+	ok := false
 	for line := range strings.Lines(string(out)) {
 		if strings.HasPrefix(line, "Identifier=") {
-			return strings.HasPrefix(strings.TrimPrefix(line, "Identifier="), "nyc.veil")
+			ok = strings.HasPrefix(strings.TrimPrefix(line, "Identifier="), "nyc.veil")
+			break
 		}
 	}
-	return false
+	attestedMu.Lock()
+	attestedCache[path] = attestedEntry{mtimeNs: mtimeNs, size: size, ok: ok}
+	attestedMu.Unlock()
+	return ok
 }
 
 // peerKey is the reuse-window key — the human's Touch ID covers this

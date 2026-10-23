@@ -23,7 +23,10 @@ import (
 // ~/.veil/icons — the same place the installed app keeps its extension.
 // IconsOff (strict posture) means no directory and no fetches ever.
 func (h *Host) iconsDir() string {
-	if h.IconsOff {
+	h.mu.Lock()
+	off := h.IconsOff
+	h.mu.Unlock()
+	if off {
 		return ""
 	}
 	if h.Dir != "" {

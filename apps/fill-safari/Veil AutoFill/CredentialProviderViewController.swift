@@ -24,18 +24,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private let status = NSTextField(labelWithString: "Veil")
     private var scroll: NSScrollView!
 
-    /// Same deal as the app's IdentitySync vlog — appex NSLog is invisible;
-    /// trace invocations in the container instead.
-    private func vlog(_ msg: String) {
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("veil-appex.log")
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg)\n"
-        if let h = try? FileHandle(forWritingTo: path) {
-            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
-        } else {
-            try? line.write(to: path, atomically: true, encoding: .utf8)
-        }
-    }
+    private func vlog(_ msg: String) {}
 
     private let emptyLabel = NSTextField(labelWithString: "")
 

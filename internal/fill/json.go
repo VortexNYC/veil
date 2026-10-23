@@ -187,6 +187,7 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 		return h.jsonPasskeyGet(in.Origin, in.PublicKey, in.peer)
 	case "relock":
 		h.InvalidateConfirm()
+		h.ReloadConfig()
 		return jsonBytes(struct {
 			OK bool `json:"ok"`
 		}{OK: true})
