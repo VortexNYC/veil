@@ -3,6 +3,7 @@ package oneimport
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -463,5 +464,55 @@ func TestParseProtonPassZip(t *testing.T) {
 	}
 	if string(byName["PP Work"].Token) != "work-pass" {
 		t.Fatalf("%+v", byName["PP Work"])
+	}
+}
+
+func TestParseOPDumpAndOTPAuthLines(t *testing.T) {
+	opRaw, err := json.Marshal(OPDump{
+		Version: "1",
+		Items: []OPItem{
+			{
+				ID:       "it1",
+				Title:    "GitHub",
+				Category: "LOGIN",
+				URLs:     []OPURL{{Href: "https://github.com", Primary: true}},
+				Fields: []OPField{
+					{ID: "username", Type: "STRING", Purpose: "USERNAME", Value: "octocat"},
+					{ID: "password", Type: "CONCEALED", Purpose: "PASSWORD", Value: "pw1"},
+					{ID: "totp", Type: "OTP", Value: "otpauth://totp/GitHub:octocat?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"},
+				},
+			},
+			{
+				ID:       "it2",
+				Title:    "Resend API",
+				Category: "API_CREDENTIAL",
+				Fields: []OPField{
+					{ID: "credential", Type: "CONCEALED", Value: "re_1"},
+					{ID: "hostname", Type: "STRING", Value: "https://api.resend.com"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := Parse("from-op.json", opRaw)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("Parse opDump: rows=%+v err=%v", rows, err)
+	}
+	if rows[0].Name != "GitHub" || rows[0].Login != "octocat" || string(rows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("unexpected login row: %+v", rows[0])
+	}
+	if rows[1].Name != "Resend API" || len(rows[1].URIs) != 1 || rows[1].URIs[0] != "https://api.resend.com" {
+		t.Fatalf("unexpected api_credential row: %+v", rows[1])
+	}
+
+	otpRaw := []byte("# exported authenticators\notpauth://totp/Linear:ada@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Linear\notpauth://totp/Bad?secret=not_base32_!!!\n")
+	otpRows, err := Parse("otpauth.txt", otpRaw)
+	if err != nil || len(otpRows) != 1 {
+		t.Fatalf("Parse otpauth: rows=%+v err=%v", otpRows, err)
+	}
+	if otpRows[0].Name != "Linear" || otpRows[0].Login != "ada@example.com" || string(otpRows[0].TOTPSeed) != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("unexpected otpauth row: %+v", otpRows[0])
 	}
 }

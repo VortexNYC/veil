@@ -1,0 +1,40 @@
+---
+title: Principal Separation (Agents Are Not You)
+description: Why agents in Veil have distinct principal IDs, scoped grants, dedicated service accounts, and cryptographic audit attribution instead of sharing your personal login.
+---
+
+# Principal Separation: Agents Are Not You
+
+When a personal password manager fills your personal login into an agent's session, the agent acts **as you**—every commit, API call, email, or mutation is attributed to your human identity, with no way to distinguish what you did from what the agent did.
+
+Veil enforces **first-class principal separation** across the identity plane, grant engine, and append-only audit log:
+
+## 1. Distinct Principal Kinds (`PrincipalHuman` vs `PrincipalAgent`)
+
+In Veil (`internal/protocol/protocol.go`), humans and agents are distinct principal types (`protocol.PrincipalHuman` vs `protocol.PrincipalAgent`), never a boolean role flag on a shared user account:
+
+- **Humans (`PrincipalHuman`)** authenticate via Ory Kratos + Hydra (password + TOTP/WebAuthn) and administer grants, items, and approvals.
+- **Agents (`PrincipalAgent`)** are registered explicitly (`veil agent add <name>`) and authenticate via OIDC workload federation (`veil agent bind`), dedicated Hydra client credentials (`veil agent hydra`), or bounded sandbox sessions (`veil session create`).
+
+An agent token can **never** call human/owner endpoints (`POST /v1/grants`, `POST /v1/items`, `POST /v1/agents/{name}/bind`, `POST /v1/items/{name}/rotate`), and a human session is never shared with an agent.
+
+## 2. Per-Principal Grants & Dedicated Service Accounts
+
+Instead of handing an agent your personal login:
+
+1. **Scoped Grants (`veil grant add`)**: Each agent receives an explicit grant (`level1` human-approved or `level2` autonomous) on specific items:
+   ```bash
+   veil grant add --agent cursor --item github-bot --level level2
+   veil grant add --agent support-bot --item resend --level level1
+   ```
+2. **Dedicated Service Accounts via Outbound WIF**: With [Outbound WIF](/guides/wif), an item can mint tokens for a dedicated upstream service account (`--service-account-id svac_...`) rather than a human's personal account.
+
+## 3. Forensic Audit Attribution (`GET /v1/audit/events`)
+
+Every credential release (`fetch`, `fill`), grant change, rotation (`item_rotated`), and honey tripwire (`revoke`) writes an immutable row in the same database transaction, recording:
+
+- `agent_id`: The exact principal ID (`cursor`, `ci-runner`, or the human's ID)
+- `item_id`: The target credential item
+- `action` & `decision`: `fetch` / `fill` / `item_rotated` / `revoke` and `allow` / `deny` / `need_approval`
+- `reason`: Target host/method or denial reason (`management_endpoint`, `honey`, `honey_tripwire agent=<id>`)
+- `approval_id`: When a `level1` request was approved by a human, the exact approval request ID linking the human approver to the agent's execution

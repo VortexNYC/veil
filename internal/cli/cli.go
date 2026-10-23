@@ -880,19 +880,36 @@ func itemCmd(home *string) *cobra.Command {
 	add.Flags().StringVar(&wifAssertionClientID, "assertion-client-id", "", "OIDC client ID used to mint the WIF assertion")
 	add.Flags().StringVar(&wifAssertionSecretFile, "assertion-secret-file", "", "file containing the OIDC client secret used to mint the WIF assertion")
 	add.Flags().StringVar(&wifAssertionAudience, "assertion-audience", "", "OIDC audience for the WIF assertion")
+	var fromOP bool
+	var opVault string
 	imp := &cobra.Command{
-		Use:   "import FILE",
-		Short: "One-shot import onto this vault or origin: 1Password .1pux, Bitwarden CSV/JSON, Apple Passwords, LastPass, Dashlane, or Google Passwords CSV. Not MCP.",
-		Args:  cobra.ExactArgs(1),
+		Use:   "import [FILE]",
+		Short: "One-shot import onto this vault or origin: 1Password (--from-op or .1pux), otpauth:// list, Bitwarden CSV/JSON, Apple Passwords, LastPass, Dashlane, or Google Passwords CSV. Not MCP.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var name string
+			var raw []byte
+			var err error
+			if fromOP {
+				name = "from-op.json"
+				raw, err = dumpFromOPCLI(cmd.Context(), opVault, cmd.ErrOrStderr())
+				if err != nil {
+					return err
+				}
+			} else {
+				if len(args) != 1 {
+					return fmt.Errorf("import: FILE is required (or pass --from-op)")
+				}
+				name = filepath.Base(args[0])
+				raw, err = os.ReadFile(args[0])
+				if err != nil {
+					return err
+				}
+			}
 			if originBase() != "" {
-				return originItemImport(cmd, args[0])
+				return originItemImportBytes(cmd, name, raw)
 			}
-			raw, err := os.ReadFile(args[0])
-			if err != nil {
-				return err
-			}
-			rows, err := oneimport.Parse(filepath.Base(args[0]), raw)
+			rows, err := oneimport.Parse(name, raw)
 			if err != nil {
 				return err
 			}
@@ -908,6 +925,8 @@ func itemCmd(home *string) *cobra.Command {
 			return encode(cmd, got)
 		},
 	}
+	imp.Flags().BoolVar(&fromOP, "from-op", false, "import directly from the local signed-in 1Password CLI (op)")
+	imp.Flags().StringVar(&opVault, "vault", "", "optional 1Password vault name or ID when using --from-op")
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List items (no secrets)",

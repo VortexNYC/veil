@@ -1,0 +1,34 @@
+---
+title: DPoP Proof-of-Possession (RFC 9449)
+description: Sender-constrain short-lived OIDC and session tokens with RFC 9449 ES256 DPoP proofs on /v1/use and /mcp.
+---
+
+# DPoP Proof-of-Possession (RFC 9449)
+
+Short-lived OIDC and session tokens (`15m`–`1h`) eliminate static keys in `.env`, but a plain `Authorization: Bearer` token can still be replayed during its validity window if stolen from process memory or logs.
+
+Veil supports **RFC 9449 OAuth 2.0 Demonstrating Proof-of-Possession (`DPoP`)** on `/v1/use`, `/mcp`, and principal-authenticated `/v1/*` vault routes (`internal/dpop`).
+
+## What Veil Verifies When `DPoP` Is Present
+
+When an agent sends a `DPoP: <proof-jwt>` header (with `Authorization: DPoP <token>` or `Authorization: Bearer <token>`):
+
+1. **Header & Key Check**: `typ == "dpop+jwt"`, `alg == "ES256"`, and a valid public EC P-256 `jwk` (proofs containing a private `"d"` field are rejected).
+2. **Signature Check**: Verifies the ES256 signature over `header.payload`.
+3. **Request Binding (`htm`, `htu`, `ath`)**:
+   - `htm` matches the HTTP method (`POST`, `GET`, etc.).
+   - `htu` matches the scheme, host, and path (`https://veil.nyc/v1/use` or `https://veil.nyc/mcp`, stripping query and fragment per RFC 9449 §4.2).
+   - `ath` equals `base64url(sha256(access_token))`.
+4. **Replay Prevention (`jti` & `iat`)**:
+   - `iat` must be within `±60s` of server time.
+   - `jti` is recorded in a bounded replay cache; replaying the same proof JWT is rejected immediately.
+5. **Key Binding (`cnf.jkt` & Bind-on-First-Use)**:
+   - Computes the RFC 7638 JWK thumbprint (`jkt`) of the P-256 public key.
+   - If the JWT access token carries a `cnf.jkt` claim from the issuer, `jkt` must match `cnf.jkt`.
+   - For tokens whose issuer does not embed `cnf.jkt` at mint time, Veil enforces **bind-on-first-use**: the first verified `DPoP` proof pins `sha256(access_token) -> jkt` in memory. Any subsequent request with that token that omits the `DPoP` header (downgrade attempt) or signs with a different key is rejected with `401 Unauthorized`.
+
+## Compatibility Note
+
+- **Additive rollout**: Callers that do not send a `DPoP` header continue to work with standard `Authorization: Bearer` tokens.
+- **Fail-closed when present**: Any request carrying a `DPoP` header (or using a token already pinned to a `DPoP` key) must pass full RFC 9449 verification or is rejected with `401 Unauthorized`.
+- **Mint-time vs first-use binding**: Full RFC 9449 protection before the very first request requires the OIDC issuer to stamp `cnf.jkt` into the token at mint time; when used with issuers that do not emit `cnf.jkt` (such as platform-minted CI OIDC tokens), Veil's bind-on-first-use pinning locks the token to the caller's ephemeral P-256 key on its first call to Veil.

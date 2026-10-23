@@ -24,6 +24,7 @@ import (
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
+	"github.com/VortexNYC/veil/internal/dpop"
 	"github.com/VortexNYC/veil/internal/health"
 	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/material"
@@ -1197,6 +1198,10 @@ func (s *Server) useItem(w http.ResponseWriter, r *http.Request) {
 		Body:   body,
 	}
 	raw := bearer(r.Header.Get("Authorization"))
+	if err := dpop.VerifyRequest(r, raw); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var got protocol.UseResult
 	var err error
@@ -1778,6 +1783,9 @@ func (s *Server) fillPasskey(w http.ResponseWriter, r *http.Request, register bo
 
 func (s *Server) resolve(r *http.Request) (protocol.Principal, error) {
 	raw := bearer(r.Header.Get("Authorization"))
+	if err := dpop.VerifyRequest(r, raw); err != nil {
+		return protocol.Principal{}, err
+	}
 	if app.IsSessionToken(raw) {
 		return s.App.PrincipalFromSession(raw)
 	}
@@ -1886,11 +1894,12 @@ func grantView(g protocol.Grant) GrantView {
 }
 
 func bearer(h string) string {
-	const p = "Bearer "
-	if !strings.HasPrefix(h, p) {
-		return ""
+	for _, p := range []string{"Bearer ", "DPoP "} {
+		if len(h) >= len(p) && strings.EqualFold(h[:len(p)], p) {
+			return strings.TrimSpace(h[len(p):])
+		}
 	}
-	return strings.TrimSpace(h[len(p):])
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

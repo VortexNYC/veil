@@ -54,7 +54,13 @@ func Parse(name string, raw []byte) ([]Row, error) {
 		strings.HasSuffix(lower, ".xml") || strings.HasSuffix(lower, ".kdbx-export") {
 		return parseKeePassXML(raw)
 	}
+	if isOTPAuthFile(sniff) {
+		return parseOTPAuthLines(sniff)
+	}
 	if len(sniff) > 0 && sniff[0] == '{' || strings.HasSuffix(lower, ".json") {
+		if isOPDump(sniff) {
+			return parseOPJSON(sniff)
+		}
 		return parseBitwardenJSON(raw)
 	}
 	return parseCSV(raw)

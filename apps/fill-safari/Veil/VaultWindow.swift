@@ -23,9 +23,23 @@ final class VaultWindowController: NSObject {
         if unlocked, let window {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
-            if !pendingPath.isEmpty {
-                web?.load(URLRequest(url: URL(string: vaultOrigin + pendingPath)!))
-                pendingPath = ""
+            DispatchQueue.global().async {
+                let tok = self.token()
+                guard !tok.isEmpty else { return }
+                DispatchQueue.main.async {
+                    if let web = self.web, let script = self.injectToken(tok) {
+                        web.configuration.userContentController.removeAllUserScripts()
+                        web.configuration.userContentController.addUserScript(script)
+                        web.evaluateJavaScript(
+                            "try{sessionStorage.setItem('veil.id_token',\"\(tok)\");}catch(e){}",
+                            completionHandler: nil
+                        )
+                        if !self.pendingPath.isEmpty {
+                            web.load(URLRequest(url: URL(string: self.vaultOrigin + self.pendingPath)!))
+                            self.pendingPath = ""
+                        }
+                    }
+                }
             }
             return
         }
