@@ -36,12 +36,17 @@ func NewTokenCache() *TokenCache {
 
 func tokenCacheKey(env Envelope) string {
 	h := sha256.New()
+	write := func(fields ...string) {
+		for _, f := range fields {
+			_, _ = fmt.Fprintf(h, "%d:%s\x00", len(f), f)
+		}
+	}
 	if env.FederationRuleID != "" {
-		_, _ = fmt.Fprintln(h, "wif", env.TokenURL, env.AssertionTokenURL, env.AssertionClientID,
+		write("wif", env.TokenURL, env.AssertionTokenURL, env.AssertionClientID,
 			env.AssertionClientSec, env.AssertionAudience, env.FederationRuleID,
 			env.FederationOrgID, env.ServiceAccountID, env.WorkspaceID)
 	} else {
-		_, _ = fmt.Fprintln(h, "oauth", env.TokenURL, env.ClientID, env.ClientSec, env.Refresh)
+		write("oauth", env.TokenURL, env.ClientID, env.ClientSec, env.Refresh)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

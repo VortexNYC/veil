@@ -206,8 +206,13 @@ func ValidateBindingWithClaims(issuer, subject string, claims map[string][]strin
 
 	hasClaims := false
 	for k, vals := range claims {
-		if strings.TrimSpace(k) == "" || len(vals) == 0 {
+		k = strings.TrimSpace(k)
+		if k == "" || len(vals) == 0 {
 			return fmt.Errorf("workload: claim %q must have at least one non-empty value", k)
+		}
+		switch k {
+		case "iss", "sub", "aud", "exp", "nbf", "iat", "jti":
+			return fmt.Errorf("workload: reserved claim %q must use top-level binding fields", k)
 		}
 		for _, v := range vals {
 			if strings.TrimSpace(v) == "" {
@@ -220,6 +225,9 @@ func ValidateBindingWithClaims(issuer, subject string, claims map[string][]strin
 	if strings.Contains(subject, "*") {
 		if strings.Count(subject, "*") != 1 || !strings.HasSuffix(subject, "*") {
 			return fmt.Errorf("workload: wildcard '*' is only allowed at the end of subject")
+		}
+		if host == "oidc.vercel.com" && strings.Trim(u.Path, "/") == "" {
+			return fmt.Errorf("workload: vercel wildcard subject requires team issuer mode (https://oidc.vercel.com/<team>)")
 		}
 		prefix := strings.TrimSuffix(subject, "*")
 		if prefix == "" {

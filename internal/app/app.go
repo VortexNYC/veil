@@ -1172,6 +1172,16 @@ func (a *App) BindWorkloadForWithClaims(actor protocol.Principal, agentID, issue
 	if agent.RevokedAt != nil {
 		return protocol.Workload{}, ErrAgentRevoked
 	}
+	// Prevent cross-org takeover of an existing (issuer, subject) binding:
+	// workloads PK is (issuer, subject), so rebinding an already-claimed pair
+	// is only allowed when the existing target agent belongs to actor's org.
+	if existing, err := a.Store.Workload(issuer, subject); err != nil {
+		return protocol.Workload{}, err
+	} else if existing != nil && existing.AgentID != agentID {
+		if prevAgent, aerr := a.Store.Agent(existing.AgentID); aerr == nil && prevAgent.OrgID != actor.OrgID {
+			return protocol.Workload{}, ErrForbidden
+		}
+	}
 	w := protocol.Workload{
 		AgentID:  agentID,
 		Issuer:   issuer,

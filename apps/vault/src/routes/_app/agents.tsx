@@ -263,7 +263,7 @@ function Agents() {
                     variant="secondary"
                     onClick={(e) => {
                       const form = e.currentTarget.form;
-                      if (!form) {
+                      if (!form || !form.reportValidity()) {
                         return;
                       }
                       const policy = compilePresetPolicy(preset, new FormData(form));
