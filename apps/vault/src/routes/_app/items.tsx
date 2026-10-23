@@ -17,10 +17,10 @@ export const Route = createFileRoute("/_app/items")({
   component: Items,
 });
 
-type Kind = "api_key" | "card" | "identity";
+type Kind = "api_key" | "wif" | "card" | "identity";
 
 function isKind(value: string): value is Kind {
-  return value === "api_key" || value === "card" || value === "identity";
+  return value === "api_key" || value === "wif" || value === "card" || value === "identity";
 }
 
 function Items() {
@@ -110,7 +110,31 @@ function Items() {
                   const fd = new FormData(e.currentTarget);
                   const name = String(fd.get("name") ?? "");
                   const body =
-                    kind === "card"
+                    kind === "wif"
+                      ? {
+                          name,
+                          kind: "oauth" as const,
+                          uri: String(fd.get("uri") ?? "").trim() || "https://api.anthropic.com",
+                          wif: {
+                            token_url:
+                              String(fd.get("token_url") ?? "").trim() ||
+                              "https://api.anthropic.com/v1/oauth/token",
+                            assertion_token_url:
+                              String(fd.get("assertion_token_url") ?? "").trim() ||
+                              "https://id.veil.nyc/oauth2/token",
+                            assertion_client_id: String(fd.get("assertion_client_id") ?? "").trim(),
+                            assertion_secret: String(fd.get("assertion_secret") ?? "").trim(),
+                            assertion_audience:
+                              String(fd.get("assertion_audience") ?? "").trim() || undefined,
+                            federation_rule_id: String(fd.get("federation_rule_id") ?? "").trim(),
+                            organization_id:
+                              String(fd.get("organization_id") ?? "").trim() || undefined,
+                            service_account_id:
+                              String(fd.get("service_account_id") ?? "").trim() || undefined,
+                            workspace_id: String(fd.get("workspace_id") ?? "").trim() || undefined,
+                          },
+                        }
+                      : kind === "card"
                       ? {
                           name,
                           kind,
@@ -167,9 +191,11 @@ function Items() {
                   renderValue={(value) =>
                     value === "api_key"
                       ? "Password / API key"
-                      : value === "card"
-                        ? "Card"
-                        : "Identity"
+                      : value === "wif"
+                        ? "Outbound WIF (Anthropic / RFC 7523)"
+                        : value === "card"
+                          ? "Card"
+                          : "Identity"
                   }
                   onValueChange={(value) => {
                     if (typeof value === "string" && isKind(value)) {
@@ -178,6 +204,7 @@ function Items() {
                   }}
                 >
                   <Select.Option value="api_key">Password / API key</Select.Option>
+                  <Select.Option value="wif">Outbound WIF (Anthropic / RFC 7523)</Select.Option>
                   <Select.Option value="card">Card</Select.Option>
                   <Select.Option value="identity">Identity</Select.Option>
                 </Select>
@@ -203,6 +230,46 @@ function Items() {
                         type="password"
                         autoComplete="new-password"
                       />
+                    </div>
+                  </>
+                ) : null}
+                {kind === "wif" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="uri">Target API URI</Label>
+                      <Input id="uri" name="uri" defaultValue="https://api.anthropic.com" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="federation_rule_id">Federation rule ID (fdrl_...)</Label>
+                      <Input id="federation_rule_id" name="federation_rule_id" placeholder="fdrl_..." required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="service_account_id">Service account ID (optional, svac_...)</Label>
+                      <Input id="service_account_id" name="service_account_id" placeholder="svac_..." />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="workspace_id">Workspace ID (optional, wrkspc_...)</Label>
+                      <Input id="workspace_id" name="workspace_id" placeholder="wrkspc_..." />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="organization_id">Organization ID (optional UUID)</Label>
+                      <Input id="organization_id" name="organization_id" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="assertion_client_id">Assertion OIDC client ID</Label>
+                      <Input id="assertion_client_id" name="assertion_client_id" placeholder="agent-claude" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="assertion_secret">Assertion OIDC client secret</Label>
+                      <Input id="assertion_secret" name="assertion_secret" type="password" required />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="token_url">Provider WIF token URL (optional override)</Label>
+                      <Input id="token_url" name="token_url" defaultValue="https://api.anthropic.com/v1/oauth/token" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="assertion_token_url">Assertion OIDC token URL (optional override)</Label>
+                      <Input id="assertion_token_url" name="assertion_token_url" defaultValue="https://id.veil.nyc/oauth2/token" />
                     </div>
                   </>
                 ) : null}

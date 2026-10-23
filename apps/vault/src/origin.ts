@@ -48,7 +48,7 @@ export function addItem(body: {
   uri?: string
   secret?: string
   login?: string
-  kind?: "api_key" | "card" | "identity"
+  kind?: "api_key" | "card" | "identity" | "oauth"
   card?: {
     number?: string
     exp_month?: string
@@ -66,6 +66,17 @@ export function addItem(body: {
     country?: string
     phone?: string
     email?: string
+  }
+  wif?: {
+    token_url: string
+    assertion_token_url: string
+    assertion_client_id: string
+    assertion_secret: string
+    assertion_audience?: string
+    federation_rule_id: string
+    organization_id?: string
+    service_account_id?: string
+    workspace_id?: string
   }
 }) {
   return createItem({ client: client(), body })
