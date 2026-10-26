@@ -78,6 +78,56 @@ func TestSessionModeStillPeerScoped(t *testing.T) {
 	}
 }
 
+// The peer's display name is what the Touch ID prompt says after "in" —
+// each signed surface names itself so the human sees who is asking.
+func TestPeerDisplayName(t *testing.T) {
+	var nilPeer *Peer
+	if nilPeer.DisplayName() != "" {
+		t.Fatal("nil peer must name nothing")
+	}
+	for path, want := range map[string]string{
+		"/Applications/Veil.app/Contents/PlugIns/Veil Extension.appex/Contents/MacOS/Veil Extension": "Safari",
+		"/Applications/Veil.app/Contents/PlugIns/Veil AutoFill.appex/Contents/MacOS/Veil AutoFill":   "AutoFill",
+		"/Applications/Veil.app/Contents/MacOS/Veil":                                                 "Veil",
+		"/usr/local/bin/agent": "",
+		"":                     "",
+	} {
+		if got := (&Peer{Path: path}).DisplayName(); got != want {
+			t.Fatalf("DisplayName(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
+// The Touch ID prompt names the requesting surface: "fill github (ada) on
+// github.com in Safari". Veil's own app stays bare — the sheet's icon
+// already says Veil.
+func TestConfirmPromptNamesPeerApp(t *testing.T) {
+	var prompt string
+	h := &Host{Confirm: func(r string) error { prompt = r; return nil }}
+	safari := &Peer{PID: 100, Path: "/Applications/Veil.app/Contents/PlugIns/Veil Extension.appex/Contents/MacOS/Veil Extension"}
+	if err := h.confirm("Veil wants to fill github (ada)", "github.com", true, safari); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Veil wants to fill github (ada) on github.com in Safari"; prompt != want {
+		t.Fatalf("prompt %q, want %q", prompt, want)
+	}
+	veil := &Peer{PID: 200, Path: "/Applications/Veil.app/Contents/MacOS/Veil"}
+	if err := h.confirm("Veil wants to unlock the vault", "veil.nyc", true, veil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prompt, " in ") {
+		t.Fatalf("Veil's own prompt must not name itself, got %q", prompt)
+	}
+	// An unidentified peer names nothing — the site clause still lands.
+	other := &Peer{PID: 300, Path: "/usr/local/bin/agent"}
+	if err := h.confirm("pw", "amazon.com", true, other); err != nil {
+		t.Fatal(err)
+	}
+	if prompt != "pw on amazon.com" {
+		t.Fatalf("prompt %q", prompt)
+	}
+}
+
 // The nacl envelope on the socket: unattested peers cannot open assoc
 // sessions — the prompt-spam path is closed.
 func TestUnattestedPeerDeniedEnvelope(t *testing.T) {

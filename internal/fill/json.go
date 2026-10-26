@@ -325,6 +325,26 @@ func (h *Host) jsonBind(rawURL, uuid string) []byte {
 	return jsonBytes(out)
 }
 
+// quickAccessURL is the Veil.app Quick Access palette's synthetic app
+// context. The human already picked the item in the palette — the uuid is
+// the binding, so a fill here resolves any vault item by uuid instead of
+// requiring an app:// URI on the item.
+const quickAccessURL = "app://nyc.veil.fill"
+
+// fillPrompt names the exact item (and login) a Touch ID prompt is about
+// to release — "fill github (ada)" instead of "fill a saved sign-in" — so
+// the human sees what is being asked for, not just that something is.
+func fillPrompt(verb, fallback string, hit *jsonMatchEntry) string {
+	if hit != nil && strings.TrimSpace(hit.Name) != "" {
+		label := strings.TrimSpace(hit.Name)
+		if login := strings.TrimSpace(hit.Login); login != "" && !strings.EqualFold(login, label) {
+			label = label + " (" + login + ")"
+		}
+		return "Veil wants to " + verb + " " + label
+	}
+	return "Veil wants to " + fallback
+}
+
 func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 	empty := []jsonFillEntry{}
 	rawURL = strings.TrimSpace(rawURL)
@@ -347,12 +367,28 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 				break
 			}
 		}
+		if hit == nil && rawURL == quickAccessURL {
+			// Quick Access names items by uuid — the palette's pick is the
+			// binding, so a web-URI or URI-less item still fills here.
+			for _, e := range h.jsonList() {
+				if e.UUID == uuid {
+					cp := e
+					hit = &cp
+					break
+				}
+			}
+		}
 		if hit == nil {
 			fillDebug("fill miss n=" + strconv.Itoa(len(matches)) + " url=" + rawURL)
 			return empty
 		}
 	}
 	scope := grant.Registrable(rawURL)
+	if rawURL == quickAccessURL {
+		// Palette reveals share the vault-unlock scope — one Touch ID covers
+		// Quick Access the way it covers `unlock`, not a fake app domain.
+		scope = "veil.nyc"
+	}
 	// Remote-approve posture: the gate is another device's human, not a
 	// local eval — file the ask, poll for the resolution, then release.
 	gate := func(reason string, reuse bool) error {
@@ -366,7 +402,7 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 		if hit.Affiliated {
 			return empty
 		}
-		if err := gate("Veil wants to fill a saved sign-in", true); err != nil {
+		if err := gate(fillPrompt("fill", "fill a saved sign-in", hit), true); err != nil {
 			return empty
 		}
 		got, ok := h.unlockJSONFill(hit.UUID, hit.HasTOTP)
@@ -393,7 +429,7 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 			fillDebug("fill empty card")
 			return empty
 		}
-		if err := gate("Veil wants to fill a card", env.CVV == ""); err != nil {
+		if err := gate(fillPrompt("fill card", "fill a card", hit), env.CVV == ""); err != nil {
 			return empty
 		}
 		if err := h.recordFillEvent(item.ID, "card", false); err != nil {
@@ -415,7 +451,7 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 		if !ok {
 			return empty
 		}
-		if err := gate("Veil wants to fill an identity", true); err != nil {
+		if err := gate(fillPrompt("fill identity", "fill an identity", hit), true); err != nil {
 			return empty
 		}
 		if err := h.recordFillEvent(item.ID, "identity", false); err != nil {

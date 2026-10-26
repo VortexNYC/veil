@@ -97,6 +97,14 @@ static NSRunningApplication *veil_client_app(void) {
 static NSImage *veil_veil_mark(void) {
 	static NSImage *img = nil;
 	if (!img) {
+		// The real bundle icon first — the sheet's app badge should be the
+		// shipped art, not the embedded fallback mark.
+		img = [[NSImage alloc] initWithContentsOfFile:@"/Applications/Veil.app/Contents/Resources/AppIcon.icns"];
+		if (!img && [[NSFileManager defaultManager] fileExistsAtPath:@"/Applications/Veil.app"]) {
+			img = [[NSWorkspace sharedWorkspace] iconForFile:@"/Applications/Veil.app"];
+		}
+	}
+	if (!img) {
 		NSData *png = [[NSData alloc] initWithBase64EncodedString:
 		@"iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAABmJLR0QA/wD/AP+gvaeTAAAfVUlE"
 		@"QVR4nO3dd2BUVb4H8O+5M8mkkGQmM6GYhOLSJEFQwOATpCgiiAgIgijYsFEsa30+KaL73q4rWLGh"
@@ -271,15 +279,20 @@ static int veil_access(const char *action, const char *account) {
 		NSRunningApplication *client = veil_client_app();
 		NSString *appName = client.localizedName.length ? client.localizedName : @"";
 		NSString *who = [NSString stringWithUTF8String:account];
+		NSString *act = [NSString stringWithUTF8String:action] ?: @"";
+		// The bridge already names the peer surface ("... in Safari") —
+		// appending the process-tree guess again would double the clause.
+		BOOL named = [act containsString:@" in "];
 		NSString *why = nil;
 		if (appName.length > 0 && who.length > 0) {
-			why = [NSString stringWithFormat:@"%s in %@ (%@)", action, appName, who];
+			why = named ? [NSString stringWithFormat:@"%@ (%@)", act, who]
+					: [NSString stringWithFormat:@"%@ in %@ (%@)", act, appName, who];
 		} else if (appName.length > 0) {
-			why = [NSString stringWithFormat:@"%s in %@", action, appName];
+			why = named ? act : [NSString stringWithFormat:@"%@ in %@", act, appName];
 		} else if (who.length > 0 && ![who isEqualToString:@"Veil"]) {
-			why = [NSString stringWithFormat:@"%s (%@)", action, who];
+			why = [NSString stringWithFormat:@"%@ (%@)", act, who];
 		} else {
-			why = [NSString stringWithFormat:@"%s", action];
+			why = act;
 		}
 		if (getenv("VEIL_CONFIRM_PREVIEW")) {
 			out = 0;

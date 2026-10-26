@@ -100,7 +100,11 @@ final class UniversalFill: NSObject {
                     && flags.contains(.maskAlternate)
                     && flags.intersection([.maskCommand, .maskShift]).isEmpty
                 guard backslash || cmdShiftSpace || ctrlOptSpace else { return Unmanaged.passUnretained(event) }
-                if let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                // ⌘\ belongs to the browser's own fill UI when a browser is
+                // frontmost; the Quick Access chords are always ours — the
+                // palette copies credentials even where it cannot type.
+                if backslash,
+                   let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
                    UniversalFill.browsers.contains(frontBundle) {
                     return Unmanaged.passUnretained(event)
                 }
@@ -121,71 +125,79 @@ final class UniversalFill: NSObject {
 
     func trigger() {
         NSLog("veil: trigger")
-        guard let front = NSWorkspace.shared.frontmostApplication,
-              front.bundleIdentifier != Bundle.main.bundleIdentifier,
-              let bundleID = front.bundleIdentifier,
-              !Self.browsers.contains(bundleID)
-        else {
-            NSLog("veil: no front native app")
-            return
-        }
+        let front = NSWorkspace.shared.frontmostApplication
+        let bundleID = front?.bundleIdentifier ?? ""
+        let isNativeApp = front != nil
+            && !Self.browsers.contains(bundleID)
+            && bundleID != Bundle.main.bundleIdentifier
         // A re-trigger supersedes whatever was up: drop the panel and bump
         // the generation so a fill still awaiting Touch ID types nothing.
         generation += 1
         picker?.dismiss()
         picker = nil
-        targetApp = front
+        targetApp = isNativeApp ? front : nil
         NSLog("veil: front=%@", bundleID)
 
         // Input Monitoring can be granted after launch — retry the tap.
         if keyTap == nil { install() }
 
-        // AX reads need Accessibility trust — prompt once, then bail until
-        // the user grants; without it we cannot tell a password field from
-        // a plain one and blind-typing secrets is not acceptable.
-        guard AXIsProcessTrusted() else {
-            NSLog("veil: ax not trusted, prompting")
-            AXIsProcessTrustedWithOptions(
-                [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary,
-            )
-            return
-        }
-
-        let app = AXUIElementCreateApplication(front.processIdentifier)
-        var ref: CFTypeRef?
-        let axErr = AXUIElementCopyAttributeValue(
-            app, kAXFocusedUIElementAttribute as CFString, &ref,
-        )
-        if axErr == .apiDisabled, !Self.browsers.contains(bundleID) {
-            AXUIElementSetAttributeValue(
-                app, "AXManualAccessibility" as CFString, kCFBooleanTrue,
-            )
-            AXUIElementCopyAttributeValue(
-                app, kAXFocusedUIElementAttribute as CFString, &ref,
-            )
-        }
-        let field = ref as! AXUIElement?
-        var roleRef: CFTypeRef?
+        // AX reads only when a native app could take typed input — the
+        // palette itself works everywhere: in a browser, in Veil.app, or
+        // without Accessibility at all, picks fall back to copy actions.
+        var field: AXUIElement?
         var role = ""
-        if let field {
-            AXUIElementCopyAttributeValue(
-                field, kAXRoleAttribute as CFString, &roleRef,
-            )
-            role = roleRef as? String ?? ""
+        if isNativeApp, let front {
+            if AXIsProcessTrusted() {
+                let app = AXUIElementCreateApplication(front.processIdentifier)
+                var ref: CFTypeRef?
+                let axErr = AXUIElementCopyAttributeValue(
+                    app, kAXFocusedUIElementAttribute as CFString, &ref,
+                )
+                if axErr == .apiDisabled {
+                    AXUIElementSetAttributeValue(
+                        app, "AXManualAccessibility" as CFString, kCFBooleanTrue,
+                    )
+                    AXUIElementCopyAttributeValue(
+                        app, kAXFocusedUIElementAttribute as CFString, &ref,
+                    )
+                }
+                field = ref as! AXUIElement?
+                if let field {
+                    var roleRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(
+                        field, kAXRoleAttribute as CFString, &roleRef,
+                    )
+                    role = roleRef as? String ?? ""
+                }
+            } else {
+                // Ask once — without trust we cannot type, but the palette
+                // and its copy actions still open.
+                NSLog("veil: ax not trusted, prompting")
+                AXIsProcessTrustedWithOptions(
+                    [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary,
+                )
+            }
         }
         let passwordOnly = role == "AXSecureTextField"
+        let canType = isNativeApp && AXIsProcessTrusted()
+            && (role == "AXTextField" || role == "AXSecureTextField"
+                || role == "AXTextArea" || role == "AXComboBox")
         let gen = generation
-        let appName = front.localizedName ?? bundleID
+        let appName = front?.localizedName ?? bundleID
 
         // The socket round-trip blocks — never on main.
         DispatchQueue.global().async { [self] in
             var entries: [[String: Any]] = []
+            var anchoredToApp = false
             do {
-                entries = try FillBridge.shared.match(app: bundleID)
+                if isNativeApp {
+                    entries = try FillBridge.shared.match(app: bundleID)
+                    anchoredToApp = !entries.isEmpty
+                }
                 if entries.isEmpty {
-                    // First fill into this app — nothing bound yet. Offer the
-                    // whole vault; the pick writes app://<bundleID> so the next
-                    // field focus gets the anchored dropdown instead.
+                    // Quick Access is vault-wide: nothing bound to the front
+                    // app (or a browser/Finder/Veil frontmost) still lists
+                    // every item for search + copy.
                     entries = try FillBridge.shared.list()
                 }
             } catch {
@@ -198,19 +210,110 @@ final class UniversalFill: NSObject {
                 NSLog("veil: matches=%d", entries.count)
 
                 if entries.isEmpty {
-                    showNote("No Veil items bound to \(appName)")
+                    showNote(isNativeApp ? "No Veil items bound to \(appName)" : "No Veil items")
                     return
                 }
                 // One match is still offered, not silently filled — the row
                 // stays up naming the credential while Touch ID gates it.
-                let panel = FillPanel(entries: entries, at: field, mode: .palette) { [weak self] uuid in
-                    self?.fillAndType(uuid: uuid, passwordOnly: passwordOnly, panel: nil)
+                let panel = FillPanel(entries: entries, at: field, mode: .palette, canType: canType) {
+                    [weak self] action, entry in
+                    guard let self else { return }
+                    switch action {
+                    case .primary:
+                        if canType, let uuid = entry["uuid"] as? String, !uuid.isEmpty {
+                            self.fillAndType(uuid: uuid, passwordOnly: passwordOnly, panel: nil)
+                        } else {
+                            self.copyPassword(entry: entry)
+                        }
+                    case .copyPassword: self.copyPassword(entry: entry)
+                    case .copyTOTP: self.copyTOTP(entry: entry)
+                    case .copyUsername: self.copyUsername(entry: entry)
+                    case .openURI: self.openURI(entry: entry)
+                    }
                 }
                 picker = panel
                 panel.show()
-                if entries.count == 1, let uuid = entries[0]["uuid"] as? String {
+                // Auto-offer only a single app-bound match — a vault-wide
+                // list always waits for the human to search and pick.
+                if anchoredToApp && entries.count == 1, let uuid = entries[0]["uuid"] as? String {
                     fillAndType(uuid: uuid, passwordOnly: passwordOnly, panel: panel)
                 }
+            }
+        }
+    }
+
+    /// Copy the item's password/secret to the clipboard — the Quick Access
+    /// fill path (`app://nyc.veil.fill` resolves any item by uuid) behind
+    /// the same Touch ID gate, then auto-clears the pasteboard after 30s.
+    private func copyPassword(entry: [String: Any]) {
+        guard let uuid = entry["uuid"] as? String, !uuid.isEmpty else { return }
+        let name = entry["name"] as? String ?? "item"
+        DispatchQueue.global().async {
+            do {
+                let (entries, _) = try FillBridge.shared.fill(url: "app://nyc.veil.fill", uuid: uuid)
+                let first = entries.first ?? [:]
+                let secret = (first["password"] as? String)
+                    ?? (first["number"] as? String) ?? ""
+                guard !secret.isEmpty else { return }
+                DispatchQueue.main.async {
+                    self.clip(secret)
+                    self.showNote("Copied password for \(name)")
+                }
+            } catch {
+                // Fail closed — nothing copied, nothing shown.
+            }
+        }
+    }
+
+    /// Copy the 6-digit verification code for an item that has one —
+    /// same confirm-gated fill, only the TOTP field is used.
+    private func copyTOTP(entry: [String: Any]) {
+        guard let uuid = entry["uuid"] as? String, !uuid.isEmpty,
+              entry["hasTotp"] as? Bool == true else { return }
+        let name = entry["name"] as? String ?? "item"
+        DispatchQueue.global().async {
+            do {
+                let (entries, _) = try FillBridge.shared.fill(url: "app://nyc.veil.fill", uuid: uuid)
+                guard let code = entries.first?["totp"] as? String, !code.isEmpty else { return }
+                DispatchQueue.main.async {
+                    self.clip(code)
+                    self.showNote("Copied verification code for \(name)")
+                }
+            } catch {
+                // Fail closed.
+            }
+        }
+    }
+
+    /// Username is vault metadata — copies straight from the list entry,
+    /// no Touch ID needed (nothing secret crosses the socket).
+    private func copyUsername(entry: [String: Any]) {
+        guard let login = entry["login"] as? String, !login.isEmpty else { return }
+        clip(login)
+        showNote("Copied username for \(entry["name"] as? String ?? "item")")
+    }
+
+    /// Open the item's first web URI in the default browser.
+    private func openURI(entry: [String: Any]) {
+        guard let uris = entry["uris"] as? [String],
+              let raw = uris.first(where: {
+                  $0.lowercased().hasPrefix("http://") || $0.lowercased().hasPrefix("https://")
+              }),
+              let url = URL(string: raw)
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Clipboard write with a 30s auto-clear — a later copy by any app
+    /// bumps the change count and wins, so only our own write is scrubbed.
+    private func clip(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        let stamp = pb.changeCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            if pb.changeCount == stamp {
+                pb.clearContents()
             }
         }
     }
@@ -348,22 +451,29 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
     /// takes key (typing belongs to the field), nav via a session tap.
     enum Mode { case anchored, palette }
 
+    /// What the row pick should do — `primary` is fill-or-copy depending
+    /// on whether the front app's focused field can take typed input.
+    enum PickAction { case primary, copyPassword, copyTOTP, copyUsername, openURI }
+
     let mode: Mode
+    private let canType: Bool
     private let panel: NSPanel
     private let table = NSTableView()
     private let allEntries: [[String: Any]]
     private var shown: [[String: Any]]
     private let search = NSSearchField()
-    private let onPick: (String) -> Void
+    private let onPick: (PickAction, [String: Any]) -> Void
     private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var eventTap: CFMachPort?
     private var tapSource: CFRunLoopSource?
 
-    init(entries: [[String: Any]], at field: AXUIElement?, mode: Mode,
-         onPick: @escaping (String) -> Void) {
+    init(entries: [[String: Any]], at field: AXUIElement?, mode: Mode, canType: Bool = true,
+         onPick: @escaping (PickAction, [String: Any]) -> Void) {
         self.allEntries = entries
         self.shown = entries
         self.mode = mode
+        self.canType = canType
         self.onPick = onPick
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 100),
@@ -408,7 +518,7 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         // Vibrancy card — palette carries a search bar; anchored is just
         // the list and the hint line under the field.
         let searchH: CGFloat = mode == .palette ? 34 : 0
-        let width: CGFloat = mode == .palette ? 340 : 300
+        let width: CGFloat = mode == .palette ? 380 : 300
         let listH = min(CGFloat(entries.count) * 46 + 8, mode == .palette ? 276 : 240)
         let hintH: CGFloat = 24
         let height = searchH + listH + hintH
@@ -444,7 +554,11 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         scroll.frame = NSRect(x: 4, y: hintH, width: width - 8, height: listH)
         card.addSubview(scroll)
 
-        let hint = KeycapHint(items: [
+        let hint = KeycapHint(items: mode == .palette ? [
+            ("↑↓", "pick"), ("⏎", canType ? "fill" : "copy"),
+            ("⌘C", "pass"), ("⌘T", "2fa"), ("⌘U", "user"), ("⌘O", "open"),
+            ("esc", "close"),
+        ] : [
             ("↑↓", "pick"), ("⏎", "fill"), ("esc", "dismiss"),
         ])
         hint.frame = NSRect(x: 0, y: 4, width: width, height: 16)
@@ -484,7 +598,7 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
             } ?? NSScreen.main ?? NSScreen.screens.first
             if let screen {
                 origin = NSPoint(
-                    x: screen.visibleFrame.midX - 170,
+                    x: screen.visibleFrame.midX - width / 2,
                     y: screen.visibleFrame.midY + height * 0.25,
                 )
             }
@@ -502,6 +616,13 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
             // activating Veil — the target app stays front.
             panel.makeKeyAndOrderFront(nil)
             panel.makeFirstResponder(search)
+            // ⌘C/⌘T/⌘U/⌘O are Quick Access actions, not text editing —
+            // a local monitor catches them before the field editor's
+            // key bindings, but only while this panel actually holds key.
+            localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] ev in
+                guard let self, self.panel.isKeyWindow, self.panel.isVisible else { return ev }
+                return self.paletteKey(ev) ? nil : ev
+            }
         } else {
             // Anchored never takes key — arrows/Enter/Esc ride a session
             // tap while the panel's up so the field keeps the keyboard.
@@ -573,6 +694,39 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         return false
     }
 
+    /// Palette-mode keys the search field would otherwise swallow or beep
+    /// on. The monitor sees them first; true = consumed.
+    private func paletteKey(_ ev: NSEvent) -> Bool {
+        let mods = ev.modifierFlags.intersection([.command, .shift, .control, .option])
+        switch mods {
+        case .command:
+            switch ev.charactersIgnoringModifiers?.lowercased() {
+            case "c": act(.copyPassword); return true
+            case "t": act(.copyTOTP); return true
+            case "u": act(.copyUsername); return true
+            case "o": act(.openURI); return true
+            default: return false
+            }
+        case [.command, .shift]:
+            // ⌘⇧C is the copy-username alias next to ⌘U.
+            if ev.charactersIgnoringModifiers?.lowercased() == "c" {
+                act(.copyUsername)
+                return true
+            }
+            return false
+        case []:
+            switch ev.keyCode {
+            case 125: move(1); return true        // down
+            case 126: move(-1); return true       // up
+            case 36, 76: confirm(); return true   // return / keypad enter
+            case 53: dismiss(); return true       // esc
+            default: return false
+            }
+        default:
+            return false
+        }
+    }
+
     /// Arrows/Enter/Esc typed into the search field forward to the table —
     /// everything else stays normal editing keys.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
@@ -596,16 +750,23 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
     }
 
     @objc private func confirm() {
+        act(.primary)
+    }
+
+    /// Row pick — the panel closes first so a Touch ID prompt or a toast
+    /// is never fighting a still-visible palette for focus.
+    private func act(_ action: PickAction) {
         let row = table.selectedRow
-        guard row >= 0, row < shown.count,
-              let uuid = shown[row]["uuid"] as? String, !uuid.isEmpty
-        else { return }
+        guard row >= 0, row < shown.count else { return }
+        let entry = shown[row]
         let pick = onPick
         dismiss()
-        pick(uuid)
+        pick(action, entry)
     }
 
     func dismiss() {
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        localMonitor = nil
         if let tapSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes)
             self.tapSource = nil

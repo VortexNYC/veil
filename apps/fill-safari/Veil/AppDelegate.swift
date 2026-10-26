@@ -99,6 +99,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         fill.target = self
         menu.addItem(fill)
 
+        let quick = NSMenuItem(
+            title: "Quick Access…",
+            action: #selector(quickAccess),
+            keyEquivalent: " ",
+        )
+        quick.keyEquivalentModifierMask = [.command, .shift]
+        quick.target = self
+        menu.addItem(quick)
+
         menu.addItem(.separator())
 
         let setup = NSMenuItem(
@@ -177,6 +186,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Check for Updates…", #selector(SPUStandardUpdaterController.checkForUpdates(_:)), ""),
             ("", nil, ""),
             ("Fill with Veil", #selector(fillNow), "\\"),
+            ("Quick Access…", #selector(quickAccess), " "),
             ("Open Veil", #selector(openVault), "o"),
             ("", nil, ""),
             ("Hide Veil", #selector(NSApplication.hide(_:)), "h"),
@@ -188,10 +198,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 continue
             }
             let item = appMenu.addItem(withTitle: title, action: sel, keyEquivalent: key)
+            if sel == #selector(quickAccess) {
+                item.keyEquivalentModifierMask = [.command, .shift]
+            }
             if sel == #selector(SPUStandardUpdaterController.checkForUpdates(_:)) {
                 item.target = updaterController
             } else {
-                item.target = sel == #selector(fillNow) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
+                item.target = sel == #selector(fillNow) || sel == #selector(quickAccess) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
             }
         }
         appItem.submenu = appMenu
@@ -224,6 +237,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func fillNow() {
+        UniversalFill.shared.trigger()
+    }
+
+    @objc private func quickAccess() {
         UniversalFill.shared.trigger()
     }
 

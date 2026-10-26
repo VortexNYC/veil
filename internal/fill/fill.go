@@ -806,6 +806,12 @@ func (h *Host) confirm(reason, scope string, reuse bool, peer *Peer) error {
 	if scope != "" && !strings.Contains(reason, scope) {
 		prompt = reason + " on " + scope
 	}
+	// Name the requesting surface — "fill github (ada) on github.com in
+	// Safari" reads as one ask. The app's own prompts stay bare: "in Veil"
+	// would restate the icon already on the sheet.
+	if app := peer.DisplayName(); app != "" && app != "Veil" && !strings.Contains(prompt, " in ") {
+		prompt = prompt + " in " + app
+	}
 	if err := h.Confirm(prompt); err != nil {
 		eval()
 		fillDebug("confirm denied")
