@@ -11,6 +11,18 @@ function el(partial) {
     if (name === "data-autocomplete") {
       return this["data-autocomplete"] || "";
     }
+    if (this.attrs && Object.prototype.hasOwnProperty.call(this.attrs, name)) {
+      return this.attrs[name];
+    }
+    if (name === "placeholder") {
+      return this.placeholder || "";
+    }
+    if (name === "aria-label") {
+      return this.ariaLabel || "";
+    }
+    if (name === "title") {
+      return this.title || "";
+    }
     return "";
   };
   return node;
@@ -299,6 +311,101 @@ test("findOTPAuth empty in iframe", () => {
   } finally {
     global.window = prev;
   }
+});
+
+test("username from placeholder, aria-label, or <label> when name/autocomplete are absent", () => {
+  const { isFillTarget } = require("./fields.js");
+  const byPh = el({ tagName: "INPUT", name: "", placeholder: "Username" });
+  assert.equal(pickFields([byPh]).username, byPh);
+  assert.equal(isFillTarget(byPh), true);
+
+  const byAria = el({ tagName: "INPUT", name: "", attrs: { "aria-label": "Account login" } });
+  assert.equal(pickFields([byAria]).username, byAria);
+
+  const byLabels = el({ tagName: "INPUT", name: "" });
+  byLabels.labels = [{ textContent: "Email or phone" }];
+  assert.equal(pickFields([byLabels]).username, byLabels);
+
+  const byFor = el({ tagName: "INPUT", name: "", id: "signin_fld" });
+  byFor.ownerDocument = {
+    querySelector: function (sel) {
+      return sel === 'label[for="signin_fld"]' ? { textContent: "User name" } : null;
+    },
+  };
+  assert.equal(pickFields([byFor]).username, byFor);
+
+  // A bare text field with a non-login label still is not a username.
+  const search = el({ tagName: "INPUT", name: "q", placeholder: "Search users" });
+  assert.equal(pickFields([search]).username, null);
+});
+
+test("card cvv/expMonth/expYear from name and label heuristics without autocomplete", () => {
+  const num = el({ name: "cardNumber" });
+  const mon = el({ name: "expMonth" });
+  const yr = el({ name: "expYear" });
+  const cvc = el({ name: "cvv" });
+  const got = pickFields([num, mon, yr, cvc]);
+  assert.equal(got.number, num);
+  assert.equal(got.expMonth, mon);
+  assert.equal(got.expYear, yr);
+  assert.equal(got.cvv, cvc);
+
+  // Label-only variants: "security code" reads as a TOTP candidate until a
+  // card number field makes the card context clear.
+  const sec = el({ name: "", placeholder: "Security code" });
+  assert.equal(pickFields([sec]).cvv, null);
+  const withCard = pickFields([el({ name: "cardNumber" }), sec]);
+  assert.equal(withCard.cvv, sec);
+
+  const monLabel = el({ name: "", id: "card_m" });
+  monLabel.labels = [{ textContent: "Expiration month" }];
+  const yrLabel = el({ name: "", attrs: { "aria-label": "Expiration year" } });
+  const expCombined = el({ name: "", placeholder: "MM / YY" });
+  const labelled = pickFields([monLabel, yrLabel, expCombined]);
+  assert.equal(labelled.expMonth, monLabel);
+  assert.equal(labelled.expYear, yrLabel);
+  assert.equal(labelled.exp, expCombined);
+});
+
+function sel(partial, values) {
+  const node = writable(Object.assign({ tagName: "SELECT", type: "select-one" }, partial));
+  node.options = values.map(function (v) {
+    return typeof v === "object" ? v : { value: String(v), text: String(v) };
+  });
+  return node;
+}
+
+test("<select> expMonth/expYear fill across option spellings", () => {
+  const { writeCard, isFillTarget } = require("./fields.js");
+  const num = writable({ autocomplete: "cc-number", name: "num" });
+  const mon = sel({ name: "expMonth" }, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]);
+  const yr = sel({ name: "expYear" }, ["29", "30", "31"]);
+  const cvc = writable({ name: "cvv" });
+  assert.equal(isFillTarget(mon), true);
+  writeCard(docOf([num, mon, yr, cvc]), {
+    kind: "card",
+    number: "4111111111111111",
+    expMonth: "04",
+    expYear: "2030",
+    cvv: "123",
+  });
+  assert.equal(num.value, "4111111111111111");
+  assert.equal(mon.value, "4");
+  assert.equal(mon.options[3].selected, true);
+  assert.equal(yr.value, "30");
+  assert.equal(yr.options[1].selected, true);
+  assert.equal(cvc.value, "123");
+});
+
+test("<select> expMonth matches option text when values disagree", () => {
+  const { writeCard } = require("./fields.js");
+  const num = writable({ autocomplete: "cc-number", name: "num" });
+  const mon = sel({ name: "cardMonth" }, [
+    { value: "jan", text: "January" },
+    { value: "apr", text: "April" },
+  ]);
+  writeCard(docOf([num, mon]), { kind: "card", number: "4111111111111111", expMonth: "April" });
+  assert.equal(mon.value, "apr");
 });
 
 test("totp field by name/placeholder isFillTarget, fillContext=totp, and 6-box split write", () => {

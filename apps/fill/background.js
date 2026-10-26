@@ -253,7 +253,12 @@ async function injectWrite(tabId, copy, world) {
     target: { tabId: tabId },
     args: [copy],
     func: function (got) {
-      return { ok: globalThis.veilFields.writeEntry(document, got) };
+      const f = globalThis.veilFields;
+      const fields = f.pickFields(
+        Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")),
+      );
+      const hasTotpField = !!(fields.totp || (fields.totpDigits && fields.totpDigits.length >= 6));
+      return { ok: f.writeEntry(document, got), totpPending: !!(got && got.totp && !hasTotpField) };
     },
   };
   if (world) {
@@ -263,9 +268,36 @@ async function injectWrite(tabId, copy, world) {
   try {
     await chrome.scripting.executeScript(file);
     const inj = await chrome.scripting.executeScript(run);
-    return !!(inj && inj[0] && inj[0].result && inj[0].result.ok);
+    const res = inj && inj[0] && inj[0].result;
+    return { ok: !!(res && res.ok), totpPending: !!(res && res.totpPending) };
   } catch {
-    return false;
+    return { ok: false, totpPending: false };
+  }
+}
+
+// A filled login whose TOTP had nowhere to go still owes the human the
+// code — the next screen asks for it, so park it on the clipboard.
+async function copyTotp(tabId, code) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      args: [code],
+      func: function (c) {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          return navigator.clipboard.writeText(c).then(
+            function () {
+              return true;
+            },
+            function () {
+              return false;
+            },
+          );
+        }
+        return false;
+      },
+    });
+  } catch {
+    /* clipboard unavailable — the vault row still shows the code */
   }
 }
 
@@ -283,18 +315,27 @@ async function primeWrite(tabId) {
 async function writeTab(tabId, entry) {
   const copy = JSON.parse(JSON.stringify(entry || {}));
   let wrote = false;
+  let totpPending = false;
   try {
     try {
       const res = await chrome.tabs.sendMessage(tabId, { type: "write", entry: copy });
       wrote = !!(res && res.ok);
+      totpPending = !!(res && res.totpPending);
     } catch {
       wrote = false;
     }
     if (!wrote) {
-      wrote = await injectWrite(tabId, copy);
+      const res = await injectWrite(tabId, copy);
+      wrote = res.ok;
+      totpPending = res.totpPending;
     }
     if (!wrote && copy.kind === "card") {
-      wrote = await injectWrite(tabId, copy, "MAIN");
+      const res = await injectWrite(tabId, copy, "MAIN");
+      wrote = res.ok;
+      totpPending = res.totpPending;
+    }
+    if (totpPending && copy.totp) {
+      await copyTotp(tabId, copy.totp);
     }
   } finally {
     wipeEntry(copy);
@@ -303,13 +344,26 @@ async function writeTab(tabId, entry) {
   return wrote;
 }
 
-async function fillTab(tabId, url, uuid) {
+async function fillTab(tabId, url, uuid, fromSearch) {
   await primeWrite(tabId);
-  const body = { action: "fill", url: url };
-  if (uuid) {
-    body.uuid = uuid;
+  let msg;
+  if (uuid && fromSearch) {
+    // A vault-search pick is explicit — the uuid is the binding, so the
+    // Quick Access context resolves the item even when its saved URI
+    // doesn't match this tab.
+    msg = await hostSend({ action: "fill", url: "app://nyc.veil.fill", uuid: uuid }, 90000);
+  } else {
+    const body = { action: "fill", url: url };
+    if (uuid) {
+      body.uuid = uuid;
+    }
+    msg = await hostSend(body, 90000);
+    if (!needLogin(msg) && uuid && !((msg && msg.entries) || []).length) {
+      // An explicitly picked item whose URI doesn't match the tab gets the
+      // same by-uuid resolution as a palette pick.
+      msg = await hostSend({ action: "fill", url: "app://nyc.veil.fill", uuid: uuid }, 90000);
+    }
   }
-  const msg = await hostSend(body, 90000);
   if (needLogin(msg)) {
     openLogin();
     return { ok: false, error: "need_login" };
@@ -763,6 +817,16 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     });
     return true;
   }
+  if (msg.type === "popup-catalog") {
+    // The full vault feed for the popup's search field — same `list` the
+    // identity sync uses (metadata + URIs, never secrets).
+    hostSend({ action: "list" }).then(function (res) {
+      sendResponse({ entries: (res && res.entries) || [] });
+    }, function () {
+      sendResponse({ entries: [] });
+    });
+    return true;
+  }
   if (msg.type === "popup-fill") {
     const listed = usable(msg.url) ? tabByURL(msg.url) : Promise.resolve(null);
     listed.then(function (byURL) {
@@ -774,7 +838,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
         sendResponse({ ok: false, error: "empty" });
         return;
       }
-      fillTab(id, url, msg.uuid).then(function (got) {
+      fillTab(id, url, msg.uuid, !!msg.fromSearch).then(function (got) {
         sendResponse(got);
       }, function () {
         sendResponse({ ok: false, error: "host" });

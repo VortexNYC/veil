@@ -20,6 +20,89 @@ function hostOf(url) {
   }
 }
 
+function send(msg) {
+  return new Promise(function (resolve) {
+    try {
+      chrome.runtime.sendMessage(msg, function (res) {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(res || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// Rendered rows in the visible order — keyboard nav and hover share one
+// highlight, Enter activates whichever row it sits on.
+const state = {
+  site: null, // popup-list reply (matched entries + save/generate context)
+  catalog: [], // popup-catalog reply (every fillable item, for search)
+  list: null, // .v-list container
+  rows: [],
+  active: -1,
+};
+
+function highlight(i) {
+  state.active = i;
+  veilUI.setActive(state.rows, i);
+  const row = state.rows[i];
+  if (row && typeof row.scrollIntoView === "function") {
+    row.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// A row that participates in keyboard nav: hover takes the highlight so
+// mouse and arrows never disagree about which row is active.
+function track(b) {
+  const i = state.rows.length;
+  b.addEventListener("mouseenter", function () {
+    highlight(i);
+  });
+  state.rows.push(b);
+  state.list.appendChild(b);
+}
+
+function clearList() {
+  while (state.list.firstChild) {
+    state.list.removeChild(state.list.firstChild);
+  }
+  state.rows = [];
+  state.active = -1;
+}
+
+function pick(e, fromSearch) {
+  const url = (state.site && state.site.url) || "";
+  chrome.tabs.query({}, function (tabs) {
+    const byURL = url ? globalThis.veilTab.tabByURL(tabs, url) : null;
+    const tabId = (state.site && state.site.tabId) || (byURL && byURL.id);
+    chrome.runtime.sendMessage(
+      { type: "popup-fill", uuid: e.uuid, url: url, tabId: tabId, fromSearch: !!fromSearch },
+      function (res) {
+        if (res && res.ok) {
+          window.close();
+          return;
+        }
+        show('<div class="v-err">Fill canceled or failed.</div>');
+      },
+    );
+  });
+}
+
+function entryButton(e, fromSearch) {
+  const b = veilUI.entryRow(
+    { name: e.name || e.uuid || "item", sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""), kind: e.kind, icon: e.icon },
+    "button",
+  );
+  b.addEventListener("click", function () {
+    pick(e, fromSearch);
+  });
+  return b;
+}
+
 function suggestButton(got) {
   const b = veilUI.entryRow({ name: "Suggest a password", sub: "generate and save", kind: "generate" }, "button");
   b.addEventListener("click", function () {
@@ -73,14 +156,76 @@ function saveButton(got) {
   return b;
 }
 
-chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
-  if (chrome.runtime.lastError) {
+// Empty search box: the site view — matched entries plus any save/generate
+// offer, exactly like the popup has always drawn.
+function renderSite() {
+  clearList();
+  const got = state.site || {};
+  const entries = got.entries || [];
+  const offerSave = !!got.canSave;
+  if (!entries.length && !got.canGenerate && !offerSave) {
+    state.list.appendChild(veilUI.el("div", "v-empty", "Nothing saved for this site — type above to search vault."));
+    return;
+  }
+  if (offerSave) {
+    track(saveButton(got));
+  }
+  entries.forEach(function (e) {
+    track(entryButton(e, false));
+  });
+  if (got.canGenerate) {
+    track(suggestButton(got));
+  }
+}
+
+// Typed query: the whole vault, not just this site — name, login, saved-for
+// host, and every URI match case-insensitively.
+function renderSearch(q) {
+  clearList();
+  const ql = q.toLowerCase();
+  const hits = state.catalog.filter(function (e) {
+    if (!e) {
+      return false;
+    }
+    if (String(e.name || "").toLowerCase().indexOf(ql) !== -1) {
+      return true;
+    }
+    if (String(e.login || "").toLowerCase().indexOf(ql) !== -1) {
+      return true;
+    }
+    if (String(e.savedFor || "").toLowerCase().indexOf(ql) !== -1) {
+      return true;
+    }
+    const uris = e.uris || [];
+    for (let i = 0; i < uris.length; i++) {
+      if (String(uris[i] || "").toLowerCase().indexOf(ql) !== -1) {
+        return true;
+      }
+    }
+    return false;
+  });
+  if (!hits.length) {
+    state.list.appendChild(veilUI.el("div", "v-empty", "No matches in vault."));
+    return;
+  }
+  hits.forEach(function (e) {
+    track(entryButton(e, true));
+  });
+  // A query's top hit is the Enter target — arrows start from there.
+  highlight(0);
+}
+
+Promise.all([send({ type: "popup-catalog" }), send({ type: "popup-list" })]).then(function (replies) {
+  const catalog = replies[0];
+  const got = replies[1];
+  if (!got) {
     show('<div class="v-err">Host is not running. veil fill install</div>');
     return;
   }
-  const entries = (got && got.entries) || [];
+  state.catalog = (catalog && catalog.entries) || [];
+  state.site = got;
   root.textContent = "";
-  const host = hostOf((got && got.url) || "");
+  const host = hostOf(got.url || "");
   const head = document.createElement("div");
   head.className = "v-head";
   const mark = document.createElement("div");
@@ -94,43 +239,58 @@ chrome.runtime.sendMessage({ type: "popup-list" }, function (got) {
     head.appendChild(where);
   }
   root.appendChild(head);
-  // A typed credential is an offer whenever the form holds something
-  // savable — matching logins flip it to an update, but unrelated saved
-  // logins on the same site must not hide a new credential.
-  const offerSave = !!(got && got.canSave);
-  if (!entries.length && !(got && got.canGenerate) && !offerSave) {
-    const empty = document.createElement("div");
-    empty.className = "v-empty";
-    empty.textContent = "Nothing saved for this site.";
-    root.appendChild(empty);
-    return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "v-search-wrap";
+  const search = document.createElement("input");
+  search.className = "v-search";
+  search.type = "search";
+  search.placeholder = "Search vault…";
+  search.autocomplete = "off";
+  search.spellcheck = false;
+  wrap.appendChild(search);
+  root.appendChild(wrap);
+
+  const list = document.createElement("div");
+  list.className = "v-list";
+  state.list = list;
+  root.appendChild(list);
+
+  function rerender() {
+    const q = String(search.value || "").trim();
+    if (q) {
+      renderSearch(q);
+    } else {
+      renderSite();
+    }
   }
-  if (offerSave) {
-    root.appendChild(saveButton(got));
-  }
-  entries.forEach(function (e) {
-    const b = veilUI.entryRow(
-      { name: e.name || e.uuid || "item", sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""), kind: e.kind, icon: e.icon },
-      "button",
-    );
-    b.addEventListener("click", function () {
-      chrome.tabs.query({}, function (tabs) {
-        const tab = globalThis.veilTab.tabByURL(tabs, got.url);
-        chrome.runtime.sendMessage(
-          { type: "popup-fill", uuid: e.uuid, url: got.url, tabId: tab && tab.id },
-          function (res) {
-            if (res && res.ok) {
-              window.close();
-              return;
-            }
-            show('<div class="v-err">Fill canceled or failed.</div>');
-          },
-        );
-      });
-    });
-    root.appendChild(b);
+
+  search.addEventListener("input", rerender);
+  search.addEventListener("keydown", function (ev) {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (!state.rows.length) {
+        return;
+      }
+      let next = state.active + (ev.key === "ArrowDown" ? 1 : -1);
+      next = ((next % state.rows.length) + state.rows.length) % state.rows.length;
+      highlight(next);
+      return;
+    }
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      const i = state.active >= 0 ? state.active : 0;
+      if (state.rows[i]) {
+        state.rows[i].click();
+      }
+      return;
+    }
+    if (ev.key === "Escape" && search.value) {
+      search.value = "";
+      rerender();
+    }
   });
-  if (got && got.canGenerate) {
-    root.appendChild(suggestButton(got));
-  }
+
+  renderSite();
+  search.focus();
 });

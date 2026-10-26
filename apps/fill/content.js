@@ -289,7 +289,7 @@
   // password field in the same inline language as the fill menu. Not
   // auto-highlighted: an Enter meant for the page must never save.
   function showSavePrompt(msg) {
-    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")));
     const el = fields.password || (fields.newPassword && fields.newPassword[0]) || focusEl;
     if (!el || !document.contains(el)) {
       return;
@@ -340,7 +340,7 @@
     // only then at a field, so the offer lands where the eye already is.
     let el = document.querySelector('a[href^="otpauth://totp"]');
     if (!el || !document.contains(el)) {
-      const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+      const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")));
       el = fields.password || (fields.newPassword && fields.newPassword[0]) || focusEl;
     }
     if (!el || !document.contains(el)) {
@@ -466,7 +466,7 @@
   });
 
   function probe(target) {
-    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")));
     const el = target || document.activeElement;
     const login = fields.username && fields.username.value ? String(fields.username.value) : "";
     const rules =
@@ -482,7 +482,7 @@
   }
 
   function typed() {
-    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")));
     if (!veilFields.canSave(fields, fields.password)) {
       return { login: "", password: "" };
     }
@@ -540,7 +540,15 @@
     }
     if (msg.type === "write") {
       try {
-        sendResponse({ ok: !!veilFields.writeEntry(document, msg.entry || msg) });
+        const entry = msg.entry || msg;
+        const fields = veilFields.pickFields(
+          Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")),
+        );
+        const hasTotpField = !!(fields.totp || (fields.totpDigits && fields.totpDigits.length >= 6));
+        sendResponse({
+          ok: !!veilFields.writeEntry(document, entry),
+          totpPending: !!(entry && entry.totp && !hasTotpField),
+        });
       } catch {
         sendResponse({ ok: false });
       }
@@ -622,7 +630,7 @@
     if (veilFields.isFillTarget(active)) {
       return active;
     }
-    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea")));
+    const fields = veilFields.pickFields(Array.prototype.slice.call(document.querySelectorAll("input, textarea, select")));
     return fields.password || (fields.newPassword && fields.newPassword[0]) || fields.totp || fields.username || fields.number || null;
   }
 
