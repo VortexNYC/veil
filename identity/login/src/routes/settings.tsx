@@ -1,21 +1,99 @@
 import { createFileRoute } from "@tanstack/react-router"
+import { useEffect, useState } from "react"
 import { Settings } from "@ory/elements-react/theme"
-import { frontend, oryConfig } from "../ory"
+import { frontend, kratosURL, oryConfig } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
 export const Route = createFileRoute("/settings")({
   validateSearch: flowSearch,
   loaderDeps: ({ search }) => ({ flow: search.flow }),
-  loader: ({ deps }) =>
-    loadOrCreateFlow("/settings", deps.flow, () => frontend.createBrowserSettingsFlow(), (id) =>
-      frontend.getSettingsFlow({ id }),
-    ),
-  component: () => (
-    <main>
-      <Settings flow={Route.useLoaderData()} config={oryConfig} />
-      <p>
-        <a href="https://app.veil.nyc">Continue to Veil Vault →</a>
+  loader: async ({ deps }) => {
+    const [flow, aal2] = await Promise.all([
+      loadOrCreateFlow(
+        "/settings",
+        deps.flow,
+        () => frontend.createBrowserSettingsFlow(),
+        (id) => frontend.getSettingsFlow({ id }),
+      ),
+      secondFactorEnrolled(),
+    ])
+    return { flow, aal2 }
+  },
+  component: SettingsPage,
+})
+
+// A second factor is a totp, webauthn (passkey), or lookup_secret credential
+// on the identity — matching the vault's aal2 gate in apps/vault/src/auth.ts.
+// whoami demands the highest available AAL, so a session_aal2_required
+// rejection is itself proof a second factor is paired but unused this login.
+async function secondFactorEnrolled(): Promise<boolean> {
+  try {
+    const session = await frontend.toSession()
+    const creds = session.identity?.credentials ?? {}
+    return (
+      session.authenticator_assurance_level === "aal2" ||
+      "totp" in creds ||
+      "webauthn" in creds ||
+      "lookup_secret" in creds
+    )
+  } catch {
+    try {
+      const res = await fetch(new URL("/sessions/whoami", kratosURL), {
+        credentials: "include",
+      })
+      if (res.status === 403) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { id?: string; redirect_browser_to?: string }
+        } | null
+        const err = body?.error
+        return (
+          err?.id === "session_aal2_required" ||
+          (err?.redirect_browser_to ?? "").includes("aal=aal2")
+        )
+      }
+    } catch {
+      // whoami unreachable — leave the banner up
+    }
+    return false
+  }
+}
+
+function SettingsPage() {
+  const { flow, aal2: enrolled } = Route.useLoaderData()
+  const [aal2, setAal2] = useState(enrolled)
+  useEffect(() => setAal2(enrolled), [enrolled])
+  // The Elements card saves a factor in place without reloading — poll the
+  // session until the second factor lands so the banner flips live.
+  useEffect(() => {
+    if (aal2) {
+      return
+    }
+    let live = true
+    const timer = window.setInterval(() => {
+      void secondFactorEnrolled().then((yes) => {
+        if (live && yes) {
+          setAal2(true)
+        }
+      })
+    }, 2500)
+    return () => {
+      live = false
+      window.clearInterval(timer)
+    }
+  }, [aal2])
+  return (
+    <main className="veil-settings">
+      <p className={aal2 ? "veil-banner veil-banner-done" : "veil-banner"}>
+        {aal2
+          ? "Second factor paired — your Veil Vault is unlocked."
+          : "Step 2 of 2: Pair an Authenticator App (TOTP) or Passkey below to unlock your Veil Vault. Once saved, click Continue to Veil Vault."}
+      </p>
+      <Settings flow={flow} config={oryConfig} />
+      <p className="veil-settings-continue">
+        <a className="veil-continue" href="https://app.veil.nyc">
+          Continue to Veil Vault →
+        </a>
       </p>
     </main>
-  ),
-})
+  )
+}

@@ -17,7 +17,7 @@ export const oryConfig: OryClientConfiguration = {
     verification_enabled: true,
     recovery_enabled: true,
     login_ui_url: "/login",
-    registration_ui_url: "https://login.veil.nyc/registration",
+    registration_ui_url: "/registration",
     recovery_ui_url: "https://login.veil.nyc/recovery",
     verification_ui_url: "https://login.veil.nyc/verification",
     settings_ui_url: "https://login.veil.nyc/settings",

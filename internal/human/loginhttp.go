@@ -168,7 +168,7 @@ func (v *Verifier) LoginHTTP(ctx context.Context, in HTTPLogin) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if err := RequireTOTP(raw); err != nil {
+	if err := RequireMFA(raw); err != nil {
 		return "", err
 	}
 	return raw, nil
