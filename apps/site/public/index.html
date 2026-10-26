@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Veil — the credential broker for agents</title>
-<meta name="description" content="Veil gives agents access to credentials without ever showing them the secret. Items, grants, injectable fills — brokered, approved, audited.">
-<meta property="og:title" content="Veil — the credential broker for agents">
-<meta property="og:description" content="Agents act. Humans approve. Secrets stay sealed.">
+<title>Veil — the 1Password replacement for humans &amp; teams, and the credential broker for AI agents</title>
+<meta name="description" content="Veil replaces 1Password for humans and teams — passwords, passkeys, 2FA codes, cards, identities, and SSH keys in one vault — and brokers credentials to AI agents so they get the ability to use a secret without ever seeing it.">
+<meta property="og:title" content="Veil — the 1Password replacement for humans &amp; teams, and the credential broker for AI agents">
+<meta property="og:description" content="One vault for your passwords, passkeys, 2FA, cards, identities, and SSH keys. Agents get the ability to use a secret — never the secret itself.">
 <style>
   @font-face {
     font-family: "Hedvig Letters Serif";
@@ -70,6 +70,30 @@
     padding: 5px 10px;
     border-radius: 999px;
   }
+  .cta {
+    margin-top: 30px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .cta a {
+    display: inline-block;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--foreground);
+  }
+  .cta a:hover { border-color: var(--subtle); color: var(--bright); }
+  .cta a.primary {
+    background: var(--bright);
+    color: var(--void);
+    border-color: var(--bright);
+  }
+  .cta a.primary:hover { color: var(--void); opacity: 0.9; }
   .install {
     margin-top: 28px;
     background: var(--surface);
@@ -198,9 +222,15 @@
 <body>
 <main>
   <h1>Veil</h1>
-  <p class="tag">The credential broker for agents.<br>
-  Your agent gets the <strong>ability to use</strong> a secret — it never gets the secret. Grants decide what it may use; humans approve the rest; every use is audited.</p>
+  <p class="tag">The credential broker for humans and agents.<br>
+  One vault for your passwords, passkeys, 2FA codes, cards, identities, and SSH keys — and the only broker where AI agents get the <strong>ability to use</strong> a secret without ever seeing it.</p>
   <span class="alpha">Private alpha · invite only</span>
+
+  <div class="cta">
+    <a class="primary" href="https://github.com/VortexNYC/veil/releases/latest/download/Veil.dmg">Download for macOS (.dmg)</a>
+    <a href="https://app.veil.nyc">Open Vault</a>
+    <a href="/docs">Read the Docs</a>
+  </div>
 
   <div class="install"><span class="c">$</span> curl -fsSL https://veil.nyc/install.sh | sh</div>
 
@@ -219,16 +249,20 @@
 
   <div class="flow">
     <div class="step">
-      <h3>01 — Principal separation (agents are not you)</h3>
-      <p><b>veil agent bind</b> trusts short-lived OIDC tokens from <b>Vercel</b>, <b>GitHub Actions</b>, <b>Fly.io</b>, <b>Better Auth</b>, <b>Clerk</b>, or <b>WorkOS</b> — and <b>veil agent hydra</b> issues a dedicated client credential for Cursor, Claude Code, Grok, Muse, and devin-cli. Agents are distinct principals (<code>PrincipalAgent</code> vs <code>PrincipalHuman</code>), never sharing your personal login session.</p>
+      <h3>01 — Native macOS app, Quick Access &amp; AutoFill</h3>
+      <p><b>Veil.app</b> gives you global Quick Access (<code>⌘⇧Space</code> / <code>⌃⌥Space</code>) in any app or browser to fill or copy passwords (<code>⌘C</code>), 2FA codes (<code>⌘T</code>), and usernames (<code>⌘U</code>), native macOS &amp; iOS <b>ASCredentialProvider</b> AutoFill (passwords, WebAuthn P-256 passkeys, and verification codes), and <b>Chrome, Firefox, Edge, and Safari</b> extensions.</p>
     </div>
     <div class="step flow-alt">
-      <h3>02 — Grant, rotate &amp; outbound WIF</h3>
-      <p>The owner grants <b>use</b>, not possession. Agents see item names and URIs via <b>list_items</b> and <b>match_items</b> — never plaintext. <b>veil rotate</b> rolls keys on Resend, SendGrid, and PostHog with dual-phase overlap, or exchanges short-lived RFC 7523 assertions for <b>Anthropic WIF</b> (<code>--service-account-id svac_...</code>) so Veil never stores a static provider API key.</p>
+      <h3>02 — Touch ID SSH agent &amp; 1-click 1Password import</h3>
+      <p><code>~/.veil/ssh.sock</code> serves your SSH keys from a sealed local replica gated by <b>Touch ID</b>. Import <b>.1pux</b> or CSV exports in one click at <b>app.veil.nyc</b>, with built-in k-anonymity <b>HIBP breach</b> and weak/reused password reports.</p>
     </div>
     <div class="step">
-      <h3>03 — Brokered API use, browser fill &amp; passkeys</h3>
-      <p><b>fetch</b> injects credentials at the edge and blocks provider key-management endpoints. For browser &amp; OS sign-ins, Veil fills logins, TOTP codes, and sealed <b>WebAuthn P-256 passkeys</b> after local Touch ID or remote device approval (<code>POST /v1/fill/request</code>).</p>
+      <h3>03 — Principal separation (agents are not you)</h3>
+      <p><b>veil agent bind</b> trusts short-lived OIDC tokens from <b>Vercel</b>, <b>GitHub Actions</b>, <b>GitLab</b>, <b>Google Cloud</b>, <b>AWS EKS</b>, <b>Azure</b>, <b>Fly.io</b>, <b>Better Auth</b>, or <b>WorkOS</b> — and <b>veil agent hydra</b> mints client credentials for <b>Cursor</b>, <b>Devin</b>, and <b>MCP</b> (<code>veil mcp stdio</code> / <code>https://veil.nyc/mcp</code>).</p>
+    </div>
+    <div class="step flow-alt">
+      <h3>04 — Brokered API use, 0-downtime rotation &amp; outbound WIF</h3>
+      <p>Agents call APIs via <b>useItem</b> / MCP <b>fetch</b>; Veil injects credentials at the edge, scrubs responses, blocks <code>/api-keys</code> endpoints, rotates keys on <b>Resend/SendGrid/PostHog</b> with dual-phase overlap, exchanges RFC 7523 assertions for <b>Anthropic WIF</b>, and revokes compromised agents on first touch of a <code>veil:honey-revoke</code> tripwire.</p>
     </div>
   </div>
 
@@ -284,10 +318,22 @@
           <td class="yes">Brokered + outbound WIF</td>
         </tr>
         <tr>
-          <td>Passkeys (WebAuthn) with remote approval</td>
-          <td>N/A</td>
+          <td>macOS Quick Access (<code>⌘⇧Space</code>), OS AutoFill &amp; browser extensions</td>
+          <td>No</td>
+          <td>Yes</td>
+          <td class="yes">Yes (native + offline replica)</td>
+        </tr>
+        <tr>
+          <td>Touch ID OpenSSH agent (<code>~/.veil/ssh.sock</code>)</td>
+          <td>No</td>
+          <td>Yes</td>
+          <td class="yes">Yes</td>
+        </tr>
+        <tr>
+          <td>Passkeys (WebAuthn), 2FA, Cards, Identities &amp; HIBP report</td>
+          <td>No</td>
           <td>Local device only</td>
-          <td class="yes">Touch ID + remote approval</td>
+          <td class="yes">Yes (+ remote approval)</td>
         </tr>
         <tr>
           <td>Key rotation blast radius</td>
