@@ -30,17 +30,27 @@ func AMR(raw string) ([]string, bool) {
 	return claims.Amr, true
 }
 
-// RequireTOTP rejects an id token whose amr skipped TOTP. Opaque test tokens
-// are not JWTs and are left alone.
-func RequireTOTP(raw string) error {
+// secondFactors are the amr values that satisfy aal2 — the same set the
+// vault accepts in apps/vault/src/auth.ts: an authenticator app, a passkey,
+// or a recovery code.
+var secondFactors = map[string]bool{
+	"totp":          true,
+	"webauthn":      true,
+	"lookup_secret": true,
+}
+
+// RequireMFA rejects an id token whose amr skipped a second factor — totp,
+// webauthn (passkey), or lookup_secret. Opaque test tokens are not JWTs and
+// are left alone.
+func RequireMFA(raw string) error {
 	amr, ok := AMR(raw)
 	if !ok {
 		return nil
 	}
 	for _, m := range amr {
-		if m == "totp" {
+		if secondFactors[m] {
 			return nil
 		}
 	}
-	return fmt.Errorf("human: id token amr must include totp")
+	return fmt.Errorf("human: id token amr must include a second factor")
 }

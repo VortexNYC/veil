@@ -178,19 +178,29 @@ func TestExchangeReturnsIDTokenNotAccess(t *testing.T) {
 	}
 }
 
-func TestRequireTOTP(t *testing.T) {
+func TestRequireMFA(t *testing.T) {
 	b64 := func(s string) string {
 		return base64.RawURLEncoding.EncodeToString([]byte(s))
 	}
-	with := "e30." + b64(`{"amr":["password","totp"]}`) + ".x"
-	without := "e30." + b64(`{"amr":["password"]}`) + ".x"
-	if err := RequireTOTP(with); err != nil {
-		t.Fatal(err)
+	jwt := func(amr string) string {
+		return "e30." + b64(`{"amr":`+amr+`}`) + ".x"
 	}
-	if err := RequireTOTP(without); err == nil {
+	for name, amr := range map[string]string{
+		"totp":          `["password","totp"]`,
+		"passkey":       `["password","webauthn"]`,
+		"recovery code": `["password","lookup_secret"]`,
+	} {
+		if err := RequireMFA(jwt(amr)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if err := RequireMFA(jwt(`["password"]`)); err == nil {
 		t.Fatal("accepted aal1")
 	}
-	if err := RequireTOTP("jwt-human-id-token"); err != nil {
+	if err := RequireMFA(jwt(`["password","pwd"]`)); err == nil {
+		t.Fatal("accepted a non-factor method")
+	}
+	if err := RequireMFA("jwt-human-id-token"); err != nil {
 		t.Fatal("opaque test token")
 	}
 }

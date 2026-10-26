@@ -38,6 +38,47 @@
   background: #fff;
 }
 
+/* Settings onboarding — the "pair your second factor" step after signup. */
+.veil-settings {
+  width: 100%;
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.veil-settings .ory-elements {
+  max-width: none;
+}
+.veil-banner {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(99 102 241 / 0.25);
+  background: rgb(99 102 241 / 0.08);
+  color: #3730a3;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.veil-banner-done {
+  border-color: rgb(16 185 129 / 0.35);
+  background: rgb(16 185 129 / 0.1);
+  color: #065f46;
+}
+.veil-settings-continue {
+  margin: 0;
+  text-align: center;
+}
+.veil-continue {
+  display: inline-block;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  background: #4f46e5;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
 /* Elements is a light theme — pin the document so the OS never auto-darkens it. */
 :root {
   color-scheme: light;

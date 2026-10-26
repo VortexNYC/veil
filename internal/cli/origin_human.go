@@ -163,7 +163,7 @@ func humanLogin(cmd *cobra.Command, outFile string, visit func(string) error) er
 	if err != nil {
 		return err
 	}
-	if err := human.RequireTOTP(raw); err != nil {
+	if err := human.RequireMFA(raw); err != nil {
 		return err
 	}
 	if err := os.WriteFile(outFile, []byte(raw+"\n"), 0o600); err != nil {

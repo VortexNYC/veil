@@ -133,7 +133,7 @@ func (h *Host) finishLogin(v *human.Verifier, flow *loginFlow, path string) {
 		fillDebug("login exchange: " + err.Error())
 		return
 	}
-	if err := human.RequireTOTP(raw); err != nil {
+	if err := human.RequireMFA(raw); err != nil {
 		fillDebug("login aal2: " + err.Error())
 		return
 	}
