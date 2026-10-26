@@ -1,7 +1,8 @@
+import { Badge } from "@cloudflare/kumo/components/badge";
 import { Button } from "@cloudflare/kumo/components/button";
 import { Dialog } from "@cloudflare/kumo/components/dialog";
 import { Empty } from "@cloudflare/kumo/components/empty";
-import { Input } from "@cloudflare/kumo/components/input";
+import { Input, Textarea } from "@cloudflare/kumo/components/input";
 import { Label } from "@cloudflare/kumo/components/label";
 import { LayerCard } from "@cloudflare/kumo/components/layer-card";
 import { Select } from "@cloudflare/kumo/components/select";
@@ -12,10 +13,13 @@ import { useEffect, useRef, useState } from "react";
 import { PageChrome } from "../../page-chrome";
 import {
   addItem,
+  archiveVaultItem,
+  deleteVaultItem,
   importItems,
   items,
   rotateProviders,
   rotateVaultItem,
+  updateVaultItem,
   verifyVaultItem,
 } from "../../origin";
 import type { Item } from "@vortex-api/veil";
@@ -24,10 +28,78 @@ export const Route = createFileRoute("/_app/items")({
   component: Items,
 });
 
-type Kind = "api_key" | "wif" | "card" | "identity";
+type Kind = "api_key" | "ssh" | "wif" | "card" | "identity";
 
 function isKind(value: string): value is Kind {
-  return value === "api_key" || value === "wif" || value === "card" || value === "identity";
+  return (
+    value === "api_key" ||
+    value === "ssh" ||
+    value === "wif" ||
+    value === "card" ||
+    value === "identity"
+  );
+}
+
+type KindFilter = "all" | Item["kind"];
+
+function isKindFilter(value: string): value is KindFilter {
+  return (
+    value === "all" ||
+    value === "api_key" ||
+    value === "passkey" ||
+    value === "card" ||
+    value === "identity" ||
+    value === "ssh" ||
+    value === "oauth" ||
+    value === "file"
+  );
+}
+
+const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
+  { value: "all", label: "All kinds" },
+  { value: "api_key", label: "Passwords / API keys" },
+  { value: "passkey", label: "Passkeys" },
+  { value: "card", label: "Cards" },
+  { value: "identity", label: "Identities" },
+  { value: "ssh", label: "SSH keys" },
+  { value: "oauth", label: "OAuth / WIF" },
+  { value: "file", label: "Files" },
+];
+
+// CSPRNG password for the inline Generate buttons — 24 chars from a
+// mixed alphabet, rejection-free via Uint32 modulo.
+function generateSecret(): string {
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+";
+  const buf = new Uint32Array(24);
+  crypto.getRandomValues(buf);
+  let out = "";
+  for (const v of buf) {
+    out += alphabet[v % alphabet.length];
+  }
+  return out;
+}
+
+function parseList(value: string): string[] {
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function itemMatches(item: Item, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  const haystack = [
+    item.name,
+    item.login ?? "",
+    ...(item.uris ?? []),
+    ...(item.tags ?? []),
+  ]
+    .join("\n")
+    .toLowerCase();
+  return haystack.includes(query.toLowerCase());
 }
 
 function Items() {
@@ -36,9 +108,20 @@ function Items() {
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [rotateTarget, setRotateTarget] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<Item | null>(null);
   const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
+  const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [addSecret, setAddSecret] = useState("");
+  const [addSecretVisible, setAddSecretVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const filtered = (rows ?? []).filter(
+    (item) =>
+      (kindFilter === "all" || item.kind === kindFilter) &&
+      itemMatches(item, query),
+  );
 
   async function reload() {
     const res = await items();
@@ -106,6 +189,8 @@ function Items() {
               setOpen(next);
               if (!next) {
                 setKind("api_key");
+                setAddSecret("");
+                setAddSecretVisible(false);
               }
             }}
           >
@@ -116,6 +201,7 @@ function Items() {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
                   const name = String(fd.get("name") ?? "");
+                  const tags = parseList(String(fd.get("tags") ?? ""));
                   const body =
                     kind === "wif"
                       ? {
@@ -169,12 +255,23 @@ function Items() {
                               email: String(fd.get("email") ?? "") || undefined,
                             },
                           }
+                      : kind === "ssh"
+                        ? {
+                            name,
+                            kind: "ssh" as const,
+                            uri: String(fd.get("uri") ?? "").trim() || undefined,
+                            secret: String(fd.get("secret") ?? "") || undefined,
+                            ...(tags.length > 0 ? { tags } : {}),
+                          }
                         : {
                             name,
                             kind,
                             uri: String(fd.get("uri") ?? "") || undefined,
                             login: String(fd.get("login") ?? "") || undefined,
                             secret: String(fd.get("secret") ?? "") || undefined,
+                            totp_seed:
+                              String(fd.get("totp_seed") ?? "").trim() || undefined,
+                            ...(tags.length > 0 ? { tags } : {}),
                           };
                   void addItem(body).then((res) => {
                     if (res.error) {
@@ -183,6 +280,8 @@ function Items() {
                     }
                     setOpen(false);
                     setKind("api_key");
+                    setAddSecret("");
+                    setAddSecretVisible(false);
                     void reload();
                   });
                 }}
@@ -198,11 +297,13 @@ function Items() {
                   renderValue={(value) =>
                     value === "api_key"
                       ? "Password / API key"
-                      : value === "wif"
-                        ? "Outbound WIF (Anthropic / RFC 7523)"
-                        : value === "card"
-                          ? "Card"
-                          : "Identity"
+                      : value === "ssh"
+                        ? "SSH private key"
+                        : value === "wif"
+                          ? "Outbound WIF (Anthropic / RFC 7523)"
+                          : value === "card"
+                            ? "Card"
+                            : "Identity"
                   }
                   onValueChange={(value) => {
                     if (typeof value === "string" && isKind(value)) {
@@ -211,6 +312,7 @@ function Items() {
                   }}
                 >
                   <Select.Option value="api_key">Password / API key</Select.Option>
+                  <Select.Option value="ssh">SSH private key</Select.Option>
                   <Select.Option value="wif">Outbound WIF (Anthropic / RFC 7523)</Select.Option>
                   <Select.Option value="card">Card</Select.Option>
                   <Select.Option value="identity">Identity</Select.Option>
@@ -231,12 +333,63 @@ function Items() {
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="secret">Secret</Label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <Input
+                            id="secret"
+                            name="secret"
+                            type={addSecretVisible ? "text" : "password"}
+                            autoComplete="new-password"
+                            value={addSecret}
+                            onChange={(e) => setAddSecret(e.currentTarget.value)}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            setAddSecret(generateSecret());
+                            setAddSecretVisible(true);
+                          }}
+                        >
+                          Generate
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="totp_seed">TOTP seed or otpauth:// URI (optional)</Label>
                       <Input
-                        id="secret"
-                        name="secret"
-                        type="password"
-                        autoComplete="new-password"
+                        id="totp_seed"
+                        name="totp_seed"
+                        placeholder="otpauth://totp/… or base32 seed"
+                        autoComplete="off"
                       />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="tags">Tags (optional, comma-separated)</Label>
+                      <Input id="tags" name="tags" placeholder="prod, github" autoComplete="off" />
+                    </div>
+                  </>
+                ) : null}
+                {kind === "ssh" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="uri">URI (optional, e.g. ssh://host)</Label>
+                      <Input id="uri" name="uri" placeholder="ssh://git@github.com" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="ssh-secret">Private key (PEM / OpenSSH)</Label>
+                      <Textarea
+                        id="ssh-secret"
+                        name="secret"
+                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                        rows={6}
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="tags">Tags (optional)</Label>
+                      <Input id="tags" name="tags" placeholder="prod, deploy" autoComplete="off" />
                     </div>
                   </>
                 ) : null}
@@ -365,6 +518,36 @@ function Items() {
           {notice}
         </Text>
       ) : null}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <Input
+            aria-label="Search items"
+            placeholder="Search by name, login, URI, or tag…"
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+          />
+        </div>
+        <Select
+          aria-label="Filter by kind"
+          value={kindFilter}
+          onValueChange={(value) => {
+            if (typeof value === "string" && isKindFilter(value)) {
+              setKindFilter(value);
+            }
+          }}
+        >
+          {KIND_FILTER_OPTIONS.map((opt) => (
+            <Select.Option key={opt.value} value={opt.value}>
+              {opt.label}
+            </Select.Option>
+          ))}
+        </Select>
+      </div>
+      {rows !== null ? (
+        <Text as="p" variant="secondary" size="sm">
+          Showing {filtered.length} of {rows.length} items
+        </Text>
+      ) : null}
       <LayerCard>
         <LayerCard.Primary>
           {rows === null ? (
@@ -374,21 +557,44 @@ function Items() {
               title="No items"
               description="Add a password, card, or identity. Import a 1Password export. Chrome fill reads it; this page does not."
             />
+          ) : filtered.length === 0 ? (
+            <Empty
+              title="No matches"
+              description="Nothing matches that search or filter."
+            />
           ) : (
             <Table>
               <Table.Header>
                 <Table.Row>
                   <Table.Head>Name</Table.Head>
+                  <Table.Head>Login</Table.Head>
                   <Table.Head>Kind</Table.Head>
                   <Table.Head>URIs</Table.Head>
-                  <Table.Head>Rotate</Table.Head>
+                  <Table.Head>Actions</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
-                {rows.map((item) => (
+                {filtered.map((item) => (
                   <Table.Row key={item.id}>
-                    <Table.Cell>{item.name}</Table.Cell>
-                    <Table.Cell>{item.has_totp ? "TOTP" : item.kind}</Table.Cell>
+                    <Table.Cell>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Text as="span">{item.name}</Text>
+                        {(item.tags ?? []).map((tag) => (
+                          <Badge key={tag} variant="neutral">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text as="span" variant="secondary" size="sm">
+                        {item.login || "—"}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {item.kind}
+                      {item.has_totp ? " · 2FA" : ""}
+                    </Table.Cell>
                     <Table.Cell>
                       <Text as="span" variant="secondary" size="sm">
                         {(item.uris ?? []).join(" · ") || "—"}
@@ -399,28 +605,71 @@ function Items() {
                         <Button
                           type="button"
                           variant="secondary"
+                          onClick={() => setEditTarget(item)}
+                        >
+                          Edit
+                        </Button>
+                        {item.kind === "api_key" ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => {
+                                void verifyVaultItem(item.name).then((res) => {
+                                  if (res.error || !res.data) {
+                                    setError(`verify failed for ${item.name}`);
+                                    return;
+                                  }
+                                  setError(null);
+                                  setNotice(`Verified ${item.name} (${res.data.mode})`);
+                                });
+                              }}
+                            >
+                              Verify
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => setRotateTarget(item.name)}
+                            >
+                              Rotate
+                            </Button>
+                          </>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="secondary"
                           onClick={() => {
-                            void verifyVaultItem(item.name).then((res) => {
-                              if (res.error || !res.data) {
-                                setError(`verify failed for ${item.name}`);
+                            void archiveVaultItem(item.id).then((res) => {
+                              if (res.error) {
+                                setError(`archive failed for ${item.name}`);
                                 return;
                               }
                               setError(null);
-                              setNotice(`Verified ${item.name} (${res.data.mode})`);
+                              setNotice(`Archived ${item.name}`);
+                              void reload();
                             });
                           }}
                         >
-                          Verify
+                          Archive
                         </Button>
-                        {item.kind === "api_key" ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => setRotateTarget(item.name)}
-                          >
-                            Rotate
-                          </Button>
-                        ) : null}
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            void deleteVaultItem(item.id).then((res) => {
+                              if (res.error) {
+                                setError(`delete failed for ${item.name}`);
+                                return;
+                              }
+                              setError(null);
+                              setNotice(`Deleted ${item.name}`);
+                              void reload();
+                            });
+                          }}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </Table.Cell>
                   </Table.Row>
@@ -430,6 +679,32 @@ function Items() {
           )}
         </LayerCard.Primary>
       </LayerCard>
+      <Dialog.Root
+        open={editTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setEditTarget(null);
+          }
+        }}
+      >
+        <Dialog size="sm" className="p-6">
+          {editTarget ? (
+            <EditItemForm
+              key={editTarget.id}
+              item={editTarget}
+              onError={setError}
+              onDone={(msg) => {
+                setEditTarget(null);
+                if (msg) {
+                  setError(null);
+                  setNotice(msg);
+                }
+                void reload();
+              }}
+            />
+          ) : null}
+        </Dialog>
+      </Dialog.Root>
       <Dialog.Root
         open={rotateTarget !== null}
         onOpenChange={(next) => {
@@ -495,5 +770,110 @@ function Items() {
         </Dialog>
       </Dialog.Root>
     </PageChrome>
+  );
+}
+
+function EditItemForm({
+  item,
+  onError,
+  onDone,
+}: {
+  item: Item;
+  onError: (msg: string) => void;
+  onDone: (notice?: string) => void;
+}) {
+  const [secret, setSecret] = useState("");
+  const [secretVisible, setSecretVisible] = useState(false);
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        const login = String(fd.get("login") ?? "").trim();
+        const uris = parseList(String(fd.get("uris") ?? ""));
+        const tags = parseList(String(fd.get("tags") ?? ""));
+        const newSecret = secret.trim();
+        void updateVaultItem(item.id, {
+          login,
+          uris,
+          tags,
+          ...(newSecret ? { secret: newSecret } : {}),
+        }).then((res) => {
+          if (res.error) {
+            onError(`update failed for ${item.name}`);
+            return;
+          }
+          onDone(`Updated ${item.name}`);
+        });
+      }}
+    >
+      <Dialog.Title>Edit {item.name}</Dialog.Title>
+      <Dialog.Description>
+        Metadata saves in place. A new secret rotates the sealed value; leave it
+        blank to keep the current one.
+      </Dialog.Description>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="edit-login">Fill username</Label>
+        <Input
+          id="edit-login"
+          name="login"
+          defaultValue={item.login ?? ""}
+          autoComplete="username"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="edit-uris">URIs (comma-separated)</Label>
+        <Input
+          id="edit-uris"
+          name="uris"
+          defaultValue={(item.uris ?? []).join(", ")}
+          placeholder="https://app.example.com, https://example.com"
+          autoComplete="off"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="edit-tags">Tags (comma-separated)</Label>
+        <Input
+          id="edit-tags"
+          name="tags"
+          defaultValue={(item.tags ?? []).join(", ")}
+          placeholder="prod, github"
+          autoComplete="off"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="edit-secret">New secret / password (optional)</Label>
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <Input
+              id="edit-secret"
+              name="secret"
+              type={secretVisible ? "text" : "password"}
+              autoComplete="new-password"
+              value={secret}
+              onChange={(e) => setSecret(e.currentTarget.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              const generated = generateSecret();
+              setSecret(generated);
+              setSecretVisible(true);
+              void navigator.clipboard?.writeText(generated).catch(() => {});
+            }}
+          >
+            Generate
+          </Button>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button type="submit" variant="primary">
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }
