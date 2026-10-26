@@ -12,6 +12,7 @@ import Foundation
 final class BridgeDaemon {
     static let shared = BridgeDaemon()
     private var proc: Process?
+    private let lock = NSLock()
 
     private var socketPath: String {
         FileManager.default.homeDirectoryForCurrentUser
@@ -21,12 +22,35 @@ final class BridgeDaemon {
     /// A live socket means a daemon is already serving — usually one the
     /// user started by hand. Only spawn when nothing is there. The file
     /// lingers after a daemon dies, so connect-probe, not exists-check.
+    /// The probe is a bare connect — not a roundTrip on FillBridge.shared,
+    /// whose ping runs the host's PullReplica + ensureIndex and can block
+    /// seconds behind a human-JWT refresh.
     private func alive() -> Bool {
-        FileManager.default.fileExists(atPath: socketPath)
-            && (try? FillBridge.shared.roundTrip(["action": "ping"], timeout: 2)) != nil
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        addr.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let cap = MemoryLayout.size(ofValue: addr.sun_path)
+        guard socketPath.utf8.count < cap else { return false }
+        _ = withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: cap) { buf in
+                strlcpy(buf, socketPath, cap)
+            }
+        }
+        return withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                Darwin.connect(fd, sa, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        } == 0
     }
 
     func ensure() {
+        // ensure() is on the vault unlock path and app start — serialize so
+        // concurrent callers wait for the first spawn, not race a second.
+        lock.lock()
+        defer { lock.unlock() }
         syncBundledHostAndExtensions()
         for _ in 0..<10 {
             if alive() {
@@ -34,8 +58,43 @@ final class BridgeDaemon {
             }
             usleep(100_000)
         }
-        // Stale socket from a dead daemon — the file masks respawn.
-        try? FileManager.default.removeItem(atPath: socketPath)
+        // ServeBridge unlinks fill.sock itself after taking fill.lock —
+        // never remove it here or a live daemon loses its socket.
+        // The launchd job is the preferred supervisor; kick it first.
+        let plist = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/nyc.veil.fill.bridge.plist").path
+        if FileManager.default.fileExists(atPath: plist) {
+            // A spawn queued seconds ago (make macos-app, `veil fill
+            // install`, a KeepAlive respawn) can take a while to exec and
+            // bind the socket. `kickstart -k` on a spawn younger than
+            // launchd's 10s minimum runtime just re-arms the throttle
+            // ("spawn scheduled"), so first nudge without -k — a no-op on
+            // a live job — and poll for the whole window.
+            let nudge = Process()
+            nudge.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            nudge.arguments = ["kickstart", "gui/\(getuid())/nyc.veil.fill.bridge"]
+            try? nudge.run()
+            nudge.waitUntilExit()
+            for _ in 0..<100 {
+                if alive() {
+                    return
+                }
+                usleep(100_000)
+            }
+            // 10s with no socket: wedged or crash-looping. Any live spawn
+            // is now past minimum runtime, so a hard restart is safe.
+            let kick = Process()
+            kick.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            kick.arguments = ["kickstart", "-k", "gui/\(getuid())/nyc.veil.fill.bridge"]
+            try? kick.run()
+            kick.waitUntilExit()
+            for _ in 0..<50 {
+                if alive() {
+                    return
+                }
+                usleep(100_000)
+            }
+        }
         guard let bin = Bundle.main.url(forAuxiliaryExecutable: "veil-bin") else {
             NSLog("veil: no bundled veil-bin — bridge cannot start")
             return
@@ -44,18 +103,36 @@ final class BridgeDaemon {
         p.executableURL = bin
         p.arguments = ["fill", "--bridge"]
         var env = ProcessInfo.processInfo.environment
-        env["VEIL_HOME"] = FileManager.default.homeDirectoryForCurrentUser
+        let veilHome = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".veil").path
+        env["VEIL_HOME"] = veilHome
         env["VEIL_REPLICA_KEYSTORE"] = "mem"
         p.environment = env
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
+        // Bridge stderr carries remint/spawn failures — keep it on disk.
+        try? FileManager.default.createDirectory(atPath: veilHome, withIntermediateDirectories: true)
+        let logPath = veilHome + "/fill-bridge.log"
+        // createFile truncates an existing log — only create when missing.
+        if !FileManager.default.fileExists(atPath: logPath) {
+            FileManager.default.createFile(atPath: logPath, contents: nil)
+        }
+        let out = FileHandle(forWritingAtPath: logPath) ?? FileHandle.nullDevice
+        _ = try? out.seekToEnd()
+        p.standardOutput = out
+        p.standardError = out
         do {
             try p.run()
             proc = p
+            // The child owns the log fd now — close the parent's copy.
+            if out !== FileHandle.nullDevice { try? out.close() }
             NSLog("veil: bridge spawned pid=%d", p.processIdentifier)
         } catch {
             NSLog("veil: bridge spawn failed %@", error.localizedDescription)
+        }
+        for _ in 0..<10 {
+            if alive() {
+                return
+            }
+            usleep(100_000)
         }
     }
 
@@ -92,7 +169,7 @@ final class BridgeDaemon {
                     syncProc.waitUntilExit()
                     let killOld = Process()
                     killOld.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-                    killOld.arguments = ["veil-bin", "native-host"]
+                    killOld.arguments = ["native-host"]
                     try? killOld.run()
                     killOld.waitUntilExit()
                     let kick = Process()

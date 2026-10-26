@@ -109,10 +109,17 @@ fill-safari:
 # the local bridge and Veil.app.
 macos-app:
 	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
-	killall Veil veil-bin native-host 2>/dev/null || true
+	# Never `killall veil-bin` while the launchd bridge is up — launchd
+	# counts an outside SIGTERM as a crash and throttles the respawn 10s
+	# ("spawn scheduled"); kickstart -k below restarts it atomically. If
+	# the job is down, any veil-bin still alive is an app-fallback stray
+	# holding fill.sock — kill it so the new bridge can bind.
+	killall Veil native-host 2>/dev/null || true
+	launchctl print gui/$$(id -u)/nyc.veil.fill.bridge 2>/dev/null | grep -q "state = running" \
+		|| killall veil-bin 2>/dev/null || true
 	xcodebuild -project apps/fill-safari/Veil.xcodeproj -scheme Veil -configuration Release -derivedDataPath /tmp/VeilBuild build ENABLE_USER_SCRIPT_SANDBOXING=NO
 	rm -rf /Applications/Veil.app && ditto /tmp/VeilBuild/Build/Products/Release/Veil.app /Applications/Veil.app
-	cp /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
+	cp -p /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
 	launchctl kickstart -k gui/$$(id -u)/nyc.veil.fill.bridge 2>/dev/null || true
 	open -g /Applications/Veil.app
 
