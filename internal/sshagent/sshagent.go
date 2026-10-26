@@ -15,9 +15,15 @@ import (
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/protocol"
+	"github.com/VortexNYC/veil/internal/replica"
 )
 
 const Name = "ssh.sock"
+
+// KeyDir is the drop-in directory under the user home — ~/.veil/ssh holds
+// private keys the agent serves even before a replica pull lands them and
+// while origin is unreachable.
+const KeyDir = "ssh"
 
 var errReadOnly = fmt.Errorf("sshagent: keys live in the vault")
 
@@ -26,13 +32,32 @@ type Server struct {
 	ln   net.Listener
 }
 
+// Options wires the agent's key sources. App is the local-vault broker;
+// Replica is the sealed fill cache on an origin-mode device; Confirm gates
+// each signature behind the human (Touch ID) — nil means no gate.
+type Options struct {
+	App     *app.App
+	Replica *replica.Vault
+	Confirm func(reason string) error
+}
+
 func DefaultPath(home string) string {
 	return filepath.Join(home, Name)
 }
 
 func Listen(a *app.App, path string) (*Server, error) {
+	return ListenOptions(Options{App: a}, path)
+}
+
+func ListenOptions(opts Options, path string) (*Server, error) {
 	if path == "" {
-		path = DefaultPath(a.Dir)
+		dir := ""
+		if opts.App != nil {
+			dir = opts.App.Dir
+		} else if home, err := os.UserHomeDir(); err == nil {
+			dir = filepath.Join(home, ".veil")
+		}
+		path = DefaultPath(dir)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
@@ -50,7 +75,7 @@ func Listen(a *app.App, path string) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{Path: path, ln: ln}
-	go s.serve(a)
+	go s.serve(opts)
 	return s, nil
 }
 
@@ -65,8 +90,8 @@ func (s *Server) Close() error {
 	return err
 }
 
-func (s *Server) serve(a *app.App) {
-	v := &vault{app: a}
+func (s *Server) serve(opts Options) {
+	v := &vault{opts: opts}
 	for {
 		c, err := s.ln.Accept()
 		if err != nil {
@@ -80,7 +105,7 @@ func (s *Server) serve(a *app.App) {
 }
 
 type vault struct {
-	app *app.App
+	opts Options
 }
 
 func (v *vault) List() ([]*agent.Key, error) {
@@ -114,9 +139,15 @@ func (v *vault) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
 	}
 	want := string(key.Marshal())
 	for _, s := range signers {
-		if string(s.PublicKey().Marshal()) == want {
-			return s.Sign(nil, data)
+		if string(s.PublicKey().Marshal()) != want {
+			continue
 		}
+		if v.opts.Confirm != nil {
+			if err := v.opts.Confirm("Veil wants to sign an SSH request with " + comment(s)); err != nil {
+				return nil, err
+			}
+		}
+		return s.Sign(nil, data)
 	}
 	return nil, fmt.Errorf("sshagent: key not in vault")
 }
@@ -127,23 +158,89 @@ func (v *vault) RemoveAll() error           { return errReadOnly }
 func (v *vault) Lock([]byte) error          { return errReadOnly }
 func (v *vault) Unlock([]byte) error        { return errReadOnly }
 
+// Signers collects every SSH signer the agent may serve: the local vault
+// (App), the sealed origin replica, and drop-in keys under ~/.veil/ssh.
+// Dedup is by public key — the same private key sealed in two places signs
+// once per List.
 func (v *vault) Signers() ([]ssh.Signer, error) {
-	items, err := v.app.Store.ListItems()
+	var out []ssh.Signer
+	seen := map[string]bool{}
+	add := func(s ssh.Signer, err error) {
+		if err != nil {
+			return
+		}
+		k := string(s.PublicKey().Marshal())
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, s)
+	}
+	if v.opts.App != nil {
+		items, err := v.opts.App.Store.ListItems()
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item.Kind != protocol.ItemSSH {
+				continue
+			}
+			add(signerFor(v.opts.App, item))
+		}
+	}
+	if v.opts.Replica != nil {
+		for _, item := range v.opts.Replica.Items() {
+			if item.Kind != protocol.ItemSSH || item.Archived {
+				continue
+			}
+			raw := v.opts.Replica.Material(item.ID)
+			if raw == "" {
+				continue
+			}
+			s, err := ssh.ParsePrivateKey(pemBytes([]byte(raw)))
+			add(&namedSigner{Signer: s, name: item.Name}, err)
+		}
+	}
+	for _, s := range homeSigners() {
+		add(s, nil)
+	}
+	return out, nil
+}
+
+// homeSigners loads private keys dropped in ~/.veil/ssh — *.pem and id_*,
+// mode 0600. Unreadable or non-key files are skipped; a bad drop-in must
+// never break the agent.
+func homeSigners() []ssh.Signer {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, err
+		return nil
+	}
+	dir := filepath.Join(home, ".veil", KeyDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
 	}
 	var out []ssh.Signer
-	for _, item := range items {
-		if item.Kind != protocol.ItemSSH {
+	for _, e := range entries {
+		if e.IsDir() {
 			continue
 		}
-		s, err := signerFor(v.app, item)
+		name := e.Name()
+		if strings.HasSuffix(name, ".pub") ||
+			(!strings.HasSuffix(name, ".pem") && !strings.HasPrefix(name, "id_")) {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			continue
 		}
-		out = append(out, s)
+		s, err := ssh.ParsePrivateKey(pemBytes(raw))
+		if err != nil {
+			continue
+		}
+		out = append(out, &namedSigner{Signer: s, name: name})
 	}
-	return out, nil
+	return out
 }
 
 type namedSigner struct {

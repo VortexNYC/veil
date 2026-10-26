@@ -2327,6 +2327,16 @@ func fillCmd(home *string) *cobra.Command {
 					h.Confirm = confirm.TouchIDServer
 					confirm.PrewarmServer()
 				}
+				// The bridge also owns ~/.veil/ssh.sock — the replica plus
+				// drop-in keys under ~/.veil/ssh answer ssh-add/ssh without
+				// a second daemon, and signatures ride the same Touch ID.
+				if sshSrv, err := sshagent.ListenOptions(sshagent.Options{
+					App:     h.App,
+					Replica: h.Replica,
+					Confirm: h.ConfirmSSH,
+				}, sshagent.DefaultPath(dir)); err == nil {
+					defer sshSrv.Close()
+				}
 				return fill.ServeBridge(cmd.Context(), h, paths...)
 			}
 			return h.Serve(os.Stdin, os.Stdout)
@@ -2442,6 +2452,34 @@ func sshCmd(home *string) *cobra.Command {
 		Use:   "ssh",
 		Short: "OpenSSH agent socket. The broker signs. The private key never leaves.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				// Origin mode has no local vault app: keys come from the
+				// sealed replica and drop-ins under ~/.veil/ssh, signatures
+				// from the same Touch ID the fill host uses.
+				dir, err := resolveHome(*home)
+				if err != nil {
+					return err
+				}
+				h := fill.NewOrigin(dir, originBase(), "")
+				attachFillConfirm(h)
+				attachFillReplica(h, dir)
+				if path == "" {
+					path = sshagent.DefaultPath(dir)
+				}
+				s, err := sshagent.ListenOptions(sshagent.Options{
+					Replica: h.Replica,
+					Confirm: h.ConfirmSSH,
+				}, path)
+				if err != nil {
+					return err
+				}
+				defer s.Close()
+				fmt.Fprintf(cmd.OutOrStdout(), "SSH_AUTH_SOCK=%s\n", s.Path)
+				ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				<-ctx.Done()
+				return nil
+			}
 			a, err := openApp(*home)
 			if err != nil {
 				return err

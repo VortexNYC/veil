@@ -839,6 +839,17 @@ func (h *Host) InvalidateConfirm() {
 	h.mu.Unlock()
 }
 
+// ConfirmSSH gates one SSH agent signature behind the same device-owner
+// check the fill host uses — the "ssh" scope means a Touch ID that covered
+// a site fill does not also cover the agent, and vice versa. A host with
+// no Confirm attached (tests, non-mac builds) is not a gate.
+func (h *Host) ConfirmSSH(reason string) error {
+	if h.Confirm == nil {
+		return nil
+	}
+	return h.confirm(reason, "ssh", true, TrustedPeer)
+}
+
 // ApplyConfig updates the host's live confirmation/posture settings from cfg.
 func (h *Host) ApplyConfig(cfg HostConfig) {
 	h.mu.Lock()
