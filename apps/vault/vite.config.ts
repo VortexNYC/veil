@@ -9,9 +9,12 @@ import { defineConfig } from "vite"
 const root = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-  // Relative base so the same dist serves app.veil.nyc and the Mac app's
-  // bundled vault (loaded via a custom URL scheme, not a web root).
-  base: "./",
+  // Absolute base: relative ("./") breaks on nested routes — /oidc/callback
+  // resolves ./assets to /oidc/assets and the module never executes, so the
+  // sign-in callback renders a blank page forever. The Mac app loads the
+  // bundle at veil-app://vault/, where /assets still resolves under the
+  // scheme root — VaultScheme maps it to Resources/vault/assets.
+  base: "/",
   plugins: [
     tanstackRouter({
       routesDirectory: path.join(root, "src/routes"),
