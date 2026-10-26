@@ -15,6 +15,114 @@ interface Env {
 	DELETE_TOKEN?: string;
 }
 
+// Multipart upload — one request body can never exceed the edge's cap
+// (~500MB), and daily kratos/base artifacts crossed it in Oct 2026. Big
+// objects therefore arrive as parts, reassembled server-side by R2:
+//   POST /v1/<name>?mpu=create                       -> { uploadId }
+//   PUT  /v1/<name>?partNumber=<n>   (X-Mpu-Id: id)  -> { etag }
+//   POST /v1/<name>?mpu=complete     (X-Mpu-Id: id)     body {parts:[{partNumber,etag}]}
+//   POST /v1/<name>?mpu=abort        (X-Mpu-Id: id)
+// The uploadId travels in a header, not the query string: it is opaque
+// and need not be URL-safe. The same NAME grammar and arc- namespace
+// apply — a part can never write a key the flat PUT could not.
+// Parts are capped at 128MB so a stolen bearer cannot OOM the worker
+// with a giant buffered part, and every part PUT re-checks head(name):
+// the finished-key-exists fence holds for the whole upload, so mpu
+// keeps the same put-if-absent rule as single PUT. The residual race —
+// a peer committing between the last part and complete() — is the same
+// TOCTOU class fencedPartialPut narrows for .partial; R2 offers no
+// conditional complete, so the fence is best-effort, documented not
+// silent.
+const MPU_MAX_PART = 128 * 1024 * 1024;
+
+async function mpuCreate(bucket: R2Bucket, name: string): Promise<Response> {
+	if (await bucket.head(name)) {
+		return new Response("conflict: object exists", { status: 409 });
+	}
+	const mpu = await bucket.createMultipartUpload(name);
+	return Response.json({ uploadId: mpu.uploadId });
+}
+
+async function mpuPart(
+	req: Request,
+	bucket: R2Bucket,
+	name: string,
+	uploadId: string,
+	partRaw: string | null,
+): Promise<Response> {
+	const n = Number(partRaw);
+	if (!Number.isInteger(n) || n < 1 || n > 10000) {
+		return new Response("bad partNumber", { status: 400 });
+	}
+	const cl = Number(req.headers.get("Content-Length") ?? NaN);
+	if (!Number.isFinite(cl) || cl <= 0 || cl > MPU_MAX_PART) {
+		return new Response("bad content-length", { status: 400 });
+	}
+	if (!req.body) {
+		return new Response("empty body", { status: 400 });
+	}
+	if (await bucket.head(name)) {
+		return new Response("conflict: object exists", { status: 409 });
+	}
+	try {
+		const mpu = bucket.resumeMultipartUpload(name, uploadId);
+		const part = await mpu.uploadPart(n, req.body);
+		return Response.json({ partNumber: part.partNumber, etag: part.etag });
+	} catch {
+		return new Response("unknown uploadId", { status: 404 });
+	}
+}
+
+async function mpuFinish(
+	req: Request,
+	bucket: R2Bucket,
+	name: string,
+	uploadId: string,
+	action: string,
+): Promise<Response> {
+	if (action !== "abort" && action !== "complete") {
+		return new Response("bad mpu action", { status: 400 });
+	}
+	let mpu: R2MultipartUpload;
+	try {
+		mpu = bucket.resumeMultipartUpload(name, uploadId);
+	} catch {
+		return new Response("unknown uploadId", { status: 404 });
+	}
+	if (action === "abort") {
+		try {
+			await mpu.abort();
+		} catch {
+			return new Response("unknown uploadId", { status: 404 });
+		}
+		return new Response("ok");
+	}
+	let parts: { partNumber: number; etag: string }[];
+	try {
+		const body = (await req.json()) as { parts?: unknown };
+		if (!Array.isArray(body.parts)) throw new Error("parts");
+		parts = body.parts.map((p) => {
+			const o = p as { partNumber?: unknown; etag?: unknown };
+			if (!Number.isInteger(o.partNumber) || (o.partNumber as number) < 1 || (o.partNumber as number) > 10000)
+				throw new Error("partNumber");
+			if (typeof o.etag !== "string" || o.etag.length === 0 || o.etag.length > 256)
+				throw new Error("etag");
+			return { partNumber: o.partNumber as number, etag: o.etag };
+		});
+	} catch {
+		return new Response("bad parts body", { status: 400 });
+	}
+	if (await bucket.head(name)) {
+		return new Response("conflict: object exists", { status: 409 });
+	}
+	try {
+		await mpu.complete(parts);
+	} catch {
+		return new Response("unknown uploadId or bad parts", { status: 404 });
+	}
+	return new Response("ok");
+}
+
 // Flat wal-*/base-*/<db>-*.dump names are grandfathered for GET/HEAD/DELETE
 // (pre-namespace objects still readable); new writes must be namespaced so a
 // rebuilt cluster can never overwrite the archive of the cluster it replaced.
@@ -100,12 +208,39 @@ export default {
 			return new Response("not found", { status: 404 });
 		}
 		const name = m[1];
+		if (req.method === "POST") {
+			if (!authorized(req, env.OFFSITE_TOKEN)) {
+				return new Response("unauthorized", { status: 401 });
+			}
+			if (!name.startsWith("arc-")) {
+				return new Response("POST requires the arc-<sysid>/ namespace", { status: 400 });
+			}
+			const action = url.searchParams.get("mpu");
+			if (action === "create") {
+				return mpuCreate(env.BUCKET, name);
+			}
+			const uploadId = req.headers.get("x-mpu-id");
+			if (!uploadId) {
+				return new Response("missing x-mpu-id", { status: 400 });
+			}
+			if (action === "complete" || action === "abort") {
+				return mpuFinish(req, env.BUCKET, name, uploadId, action);
+			}
+			return new Response("bad mpu action", { status: 400 });
+		}
 		if (req.method === "PUT") {
 			if (!authorized(req, env.OFFSITE_TOKEN)) {
 				return new Response("unauthorized", { status: 401 });
 			}
 			if (!name.startsWith("arc-")) {
 				return new Response("PUT requires the arc-<sysid>/ namespace", { status: 400 });
+			}
+			const mpuId = req.headers.get("x-mpu-id");
+			if (mpuId !== null || url.searchParams.get("partNumber") !== null) {
+				if (!mpuId) {
+					return new Response("missing x-mpu-id", { status: 400 });
+				}
+				return mpuPart(req, env.BUCKET, name, mpuId, url.searchParams.get("partNumber"));
 			}
 			if (name.endsWith(".partial")) {
 				// The size fence needs the whole body in memory — bound it.

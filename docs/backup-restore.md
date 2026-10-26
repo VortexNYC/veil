@@ -44,7 +44,11 @@ Actual cadence: platform snapshots for crash recovery, plus the
 05:17 UTC, custom-format `pg_dump` of all four real databases — `veil`
 (the vault), `kratos` (humans), `keto` (org tuples), and `railway`
 (hydra's DSN targets the default `railway` db) — onto the
-`veil-backups` volume with 14-day retention. There is no `identity`
+`veil-backups` volume. Local retention is 2 days: the volume is a
+staging area, not the archive — R2 (below) holds every finished run
+offsite. `scripts/backup.sh` reclaims space *before* dumping (stale
+`base/` dir, then escalating passes if the volume stays >50% full) so
+a piled-up volume can never ENOSPC the run. There is no `identity`
 database; an earlier config dumped a name that never existed.
 
 The container stays alive for ten minutes after each run so artifacts
