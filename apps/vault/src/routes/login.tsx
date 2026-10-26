@@ -12,6 +12,13 @@ export const Route = createFileRoute("/login")({
     login_challenge: search.login_challenge,
   }),
   loader: async ({ deps }) => {
+    // The bundled Mac app vault (veil-app:// WKWebView) must never walk a
+    // Kratos browser flow — return_to would point at a scheme Kratos can't
+    // serve. Bounce to the app's lock route; the native gate relocks.
+    if (window.location.protocol === "veil-app:") {
+      window.location.assign("veil-app://vault/lock")
+      return new Promise<never>(() => {})
+    }
     // The vault's credential is the OIDC id_token — a bare kratos flow
     // can't mint it, so without ?flow= we restart the authorize hop and
     // Hydra returns here carrying the login_challenge flow. A dead flow id

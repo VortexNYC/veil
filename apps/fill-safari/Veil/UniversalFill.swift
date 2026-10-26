@@ -318,6 +318,7 @@ final class UniversalFill: NSObject {
             backing: .buffered, defer: false,
         )
         note.level = .floating
+        note.isReleasedWhenClosed = false
         note.isOpaque = false
         note.hasShadow = true
         note.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96)
@@ -382,6 +383,7 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         // becomes key — the field owns the keyboard.
         panel.becomesKeyOnlyIfNeeded = (mode == .anchored)
         panel.isFloatingPanel = true
+        panel.isReleasedWhenClosed = false
 
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
         table.addTableColumn(col)

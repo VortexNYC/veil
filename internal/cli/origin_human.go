@@ -50,7 +50,7 @@ func originHumanTokenLive(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if jwtNeedsRefresh(tok) {
-		return "", fmt.Errorf("origin: human JWT expired; veil human login --out-file")
+		return "", fmt.Errorf("origin: human JWT expired (%w); veil human login --out-file", merr)
 	}
 	return tok, nil
 }

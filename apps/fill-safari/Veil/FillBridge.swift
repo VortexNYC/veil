@@ -136,9 +136,21 @@ final class FillBridge {
         } catch {
             drop()
             try connect()
+            if let sock {
+                var tv = timeval(tv_sec: Int(timeout), tv_usec: 0)
+                setsockopt(sock.fileDescriptor, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+            }
             try send(message)
         }
-        return try receive()
+        // A timed-out or failed read leaves the host's late reply queued —
+        // the next round-trip would read it as its own and desync every
+        // call after. Drop the socket so the next call reconnects clean.
+        do {
+            return try receive()
+        } catch {
+            drop()
+            throw error
+        }
     }
 
     /// Items bound to this app (`app://<bundleID>` URIs — exact match, same
@@ -161,8 +173,10 @@ final class FillBridge {
     }
 
     /// Fresh human JWT from the bridge (auto-remints when expired).
+    /// Confirm-gated like fill — the Touch ID window plus a possible HTTP
+    /// remint needs the same long bound.
     func token() throws -> String {
-        let reply = try roundTrip(["action": "token"], timeout: 30)
+        let reply = try roundTrip(["action": "token"], timeout: 95)
         return reply["token"] as? String ?? ""
     }
 

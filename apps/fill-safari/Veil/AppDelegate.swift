@@ -48,7 +48,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         installStatusItem()
         UniversalFill.shared.install()
         IdentitySync.shared.start()
-        BridgeDaemon.shared.ensure()
+        // Bridge spawn probes + a launchctl kickstart can block — never
+        // on main or first launch hangs the menu before it draws.
+        DispatchQueue.global(qos: .userInitiated).async {
+            BridgeDaemon.shared.ensure()
+        }
         RequestWatcher.shared.start()
         // Screen lock drops the host's confirm reuse window — a
         // session-mode grant must not outlive the lock.
@@ -263,13 +267,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    // Launching Veil.app from Spotlight / Finder / Launchpad / Dock sends
+    // "open untitled" — answer it so the vault window comes up on an
+    // interactive start. `open -g` background launches never send this.
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        return true
+    }
+
+    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        VaultWindowController.shared.open()
+        return true
+    }
+
     // Clicking the app while it runs — Dock, Launchpad, Finder — opens the
-    // vault. The accessory has no dock icon of its own, so reopen is the
-    // only "launch it again" signal we get.
+    // vault. `flag` counts NSStatusBarWindow and floating panels too, so
+    // it can read true with the vault closed; open() already fronts an
+    // existing window instead of making a second.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            VaultWindowController.shared.open()
-        }
+        VaultWindowController.shared.open()
         return true
     }
 

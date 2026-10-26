@@ -107,6 +107,7 @@ final class SettingsWindowController: NSObject {
             let w = NSWindow(contentViewController: host)
             w.title = "Veil Settings"
             w.styleMask = [.titled, .closable]
+            w.isReleasedWhenClosed = false
             w.center()
             window = w
         }
