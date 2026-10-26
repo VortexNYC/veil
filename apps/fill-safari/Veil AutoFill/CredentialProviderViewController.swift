@@ -15,13 +15,21 @@ import AuthenticationServices
 
 final class CredentialProviderViewController: ASCredentialProviderViewController {
 
+    /// Displayed rows — `matchedEntries` (this service) and `allEntries`
+    /// (the whole vault) are the pools `searchField` filters into `entries`.
     private var entries: [[String: Any]] = []
+    private var matchedEntries: [[String: Any]] = []
+    private var allEntries: [[String: Any]] = []
     private var serviceURL = ""
     /// Set when the system is asking for a passkey — the OS owns
     /// clientDataJSON and hands us its hash to sign.
     private var passkeyParams: ASPasskeyCredentialRequestParameters?
+    /// Set when the list is one-time codes — a pick completes with
+    /// ASOneTimeCodeCredential instead of ASPasswordCredential.
+    private var oneTimeCodeList = false
     private let table = NSTableView()
     private let status = NSTextField(labelWithString: "Veil")
+    private let searchField = NSSearchField()
     private var scroll: NSScrollView!
 
     private func vlog(_ msg: String) {}
@@ -63,6 +71,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
         hairline(H - 58)
 
+        // Vault search under the header — a matched list is the site view,
+        // a typed query searches every saved login the bridge will list.
+        searchField.placeholderString = "Search Veil…"
+        searchField.frame = NSRect(x: 16, y: H - 90, width: W - 32, height: 24)
+        searchField.delegate = self
+        root.addSubview(searchField)
+
         // Rows.
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
         table.addTableColumn(col)
@@ -77,7 +92,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         table.action = #selector(rowClicked(_:))
         table.doubleAction = #selector(rowClicked(_:))
 
-        scroll = NSScrollView(frame: NSRect(x: 0, y: 40, width: W, height: H - 98))
+        scroll = NSScrollView(frame: NSRect(x: 0, y: 40, width: W, height: H - 134))
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
@@ -86,7 +101,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         emptyLabel.font = .systemFont(ofSize: 12)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
-        emptyLabel.frame = NSRect(x: 0, y: 40 + (H - 98) / 2 - 8, width: W, height: 18)
+        emptyLabel.frame = NSRect(x: 0, y: 40 + (H - 134) / 2 - 8, width: W, height: 18)
         emptyLabel.isHidden = true
         root.addSubview(emptyLabel)
 
@@ -131,6 +146,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     ) {
         vlog("prepareCredentialList ids=\(serviceIdentifiers.map { $0.identifier }) passkey=\(requestParameters != nil)")
         passkeyParams = requestParameters
+        oneTimeCodeList = false
         if let params = requestParameters {
             // Passkey assertion: entries need credId/rpId/userHandle, which
             // only `list` (the trusted surface) carries — `match` strips them.
@@ -139,7 +155,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 let got = (try? FillBridge.shared.list()) ?? []
                 self.vlog("passkey list got=\(got.count) rp=\(params.relyingPartyIdentifier)")
                 DispatchQueue.main.async {
-                    self.entries = got.filter { e in
+                    self.matchedEntries = got.filter { e in
                         guard (e["kind"] as? String) == "passkey",
                               (e["rpId"] as? String) == params.relyingPartyIdentifier,
                               let credID = e["credId"] as? String, !credID.isEmpty
@@ -149,52 +165,126 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                         guard let data = Self.data(b64url: credID) else { return false }
                         return params.allowedCredentials.contains(data)
                     }
-                    self.status.stringValue = self.entries.isEmpty
+                    self.status.stringValue = self.matchedEntries.isEmpty
                         ? "No passkeys for \(params.relyingPartyIdentifier)"
                         : "Choose a passkey for \(params.relyingPartyIdentifier)"
                     self.emptyLabel.stringValue = "No passkeys for \(params.relyingPartyIdentifier)"
-                    self.emptyLabel.isHidden = !self.entries.isEmpty
-                    self.table.reloadData()
+                    self.applyFilter()
                 }
             }
             return
         }
         serviceURL = serviceIdentifiers.first.map(Self.url(for:)) ?? ""
         DispatchQueue.global().async {
-            let got: [[String: Any]]
-            do {
-                if self.serviceURL.isEmpty {
-                    got = try FillBridge.shared.list()
-                } else {
-                    got = try FillBridge.shared.match(url: self.serviceURL)
-                }
-                self.vlog("bridge ok got=\(got.count)")
-            } catch {
-                self.vlog("bridge failed \(error.localizedDescription)")
-                got = []
-            }
+            // `match` ranks this service's logins; `list` is the vault feed
+            // the search field filters when nothing (or something else) fits.
+            let matched = self.serviceURL.isEmpty
+                ? []
+                : (try? FillBridge.shared.match(url: self.serviceURL)) ?? []
+            let all = (try? FillBridge.shared.list()) ?? []
+            self.vlog("bridge ok matched=\(matched.count) all=\(all.count)")
             DispatchQueue.main.async {
-                self.entries = got.filter { ($0["kind"] as? String) == "login" }
+                self.matchedEntries = matched.filter { ($0["kind"] as? String) == "login" }
+                self.allEntries = all.filter { ($0["kind"] as? String) == "login" }
                 let host = Self.host(self.serviceURL)
-                if self.entries.isEmpty {
+                if self.matchedEntries.isEmpty && self.allEntries.isEmpty {
                     self.status.stringValue = host.isEmpty
                         ? "No saved logins" : "No logins for \(host)"
                     self.emptyLabel.stringValue = host.isEmpty
-                        ? "No saved logins" : "No logins for \(host)"
+                        ? "No saved logins" : "No logins for \(host) — search the vault"
+                } else if self.matchedEntries.isEmpty {
+                    self.status.stringValue = host.isEmpty
+                        ? "Choose a sign-in" : "No logins for \(host) — search the vault"
                 } else {
                     self.status.stringValue = host.isEmpty
                         ? "Choose a sign-in" : "Fill for \(host)"
                 }
-                self.emptyLabel.isHidden = !self.entries.isEmpty
-                self.table.reloadData()
+                self.applyFilter()
             }
         }
+    }
+
+    /// The system's OTP AutoFill ask — same list shape, filtered to logins
+    /// that carry an authenticator. A pick completes with the code itself.
+    @available(macOS 15.0, *)
+    override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        vlog("prepareOneTimeCodeCredentialList ids=\(serviceIdentifiers.map { $0.identifier })")
+        passkeyParams = nil
+        oneTimeCodeList = true
+        serviceURL = serviceIdentifiers.first.map(Self.url(for:)) ?? ""
+        DispatchQueue.global().async {
+            let matched = self.serviceURL.isEmpty
+                ? []
+                : (try? FillBridge.shared.match(url: self.serviceURL)) ?? []
+            let all = (try? FillBridge.shared.list()) ?? []
+            let hasTotp: ([String: Any]) -> Bool = { e in
+                (e["kind"] as? String) == "login" && (e["hasTotp"] as? Bool) == true
+            }
+            DispatchQueue.main.async {
+                self.matchedEntries = matched.filter(hasTotp)
+                self.allEntries = all.filter(hasTotp)
+                let host = Self.host(self.serviceURL)
+                self.status.stringValue = host.isEmpty
+                    ? "Choose a one-time code" : "Codes for \(host)"
+                self.emptyLabel.stringValue = "No saved authenticators"
+                self.applyFilter()
+            }
+        }
+    }
+
+    /// Search field → table. Empty query: matched rows win, else the whole
+    /// vault. Typed query: filter the pool (all logins, or the matched
+    /// passkey/OTP set) by name, login, saved-for host, and URIs.
+    private func applyFilter() {
+        let q = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty {
+            entries = matchedEntries.isEmpty ? allEntries : matchedEntries
+        } else {
+            let pool = (passkeyParams != nil || oneTimeCodeList) ? matchedEntries : allEntries
+            entries = pool.filter { e in
+                for key in ["name", "login", "savedFor"] {
+                    if let s = e[key] as? String, s.lowercased().contains(q) { return true }
+                }
+                if let uris = e["uris"] as? [String] {
+                    return uris.contains { $0.lowercased().contains(q) }
+                }
+                return false
+            }
+        }
+        emptyLabel.isHidden = !entries.isEmpty
+        table.reloadData()
+        if !entries.isEmpty {
+            table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        }
+    }
+
+    /// Arrows from inside the search field walk the list without leaving it.
+    private func moveSelection(_ delta: Int) {
+        guard !entries.isEmpty else { return }
+        var row = table.selectedRow
+        if row < 0 {
+            row = delta > 0 ? 0 : entries.count - 1
+        } else {
+            row = max(0, min(entries.count - 1, row + delta))
+        }
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        table.scrollRowToVisible(row)
     }
 
     /// The user tapped one of our inline suggestions — the identity store
     /// already knows which record; confirm at the host and complete.
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
         vlog("prepareInterfaceToProvideCredential")
+        if #available(macOS 15.0, *),
+           let req = credentialRequest as? ASOneTimeCodeCredentialRequest,
+           let identity = req.credentialIdentity as? ASOneTimeCodeCredentialIdentity,
+           let uuid = identity.recordIdentifier, !uuid.isEmpty
+        {
+            serviceURL = Self.url(for: identity.serviceIdentifier)
+            status.stringValue = "Confirming code for \(identity.label)…"
+            fillCode(uuid: uuid)
+            return
+        }
         if let req = credentialRequest as? ASPasskeyCredentialRequest,
            let identity = req.credentialIdentity as? ASPasskeyCredentialIdentity {
             assertPasskey(
@@ -351,20 +441,57 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         cancel(with: .userInteractionRequired)
     }
 
+    /// Fill by uuid against the service URL; a search pick may point at an
+    /// item whose saved URI doesn't match, so an empty reply retries on the
+    /// Quick Access context, which resolves any vault item by uuid alone.
+    private func fillEntries(uuid: String, url: String) -> [[String: Any]] {
+        var entries = (try? FillBridge.shared.fill(url: url, uuid: uuid).entries) ?? []
+        if entries.isEmpty && url != "app://nyc.veil.fill" && !uuid.isEmpty {
+            entries = (try? FillBridge.shared.fill(url: "app://nyc.veil.fill", uuid: uuid).entries) ?? []
+        }
+        return entries
+    }
+
     private func fill(uuid: String) {
         let url = serviceURL
         DispatchQueue.global().async {
-            guard let (entries, _) = try? FillBridge.shared.fill(url: url, uuid: uuid),
-                  let first = entries.first,
+            let entries = self.fillEntries(uuid: uuid, url: url)
+            guard let first = entries.first,
                   let password = first["password"] as? String, !password.isEmpty
             else {
                 DispatchQueue.main.async { self.cancel(with: .userCanceled) }
                 return
             }
+            if let totp = first["totp"] as? String, !totp.isEmpty {
+                // The next screen asks for the 2FA code — park it on the
+                // clipboard so a paste lands it without another round trip.
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(totp, forType: .string)
+            }
             let login = first["login"] as? String ?? ""
             let credential = ASPasswordCredential(user: login, password: password)
             DispatchQueue.main.async {
                 self.extensionContext.completeRequest(withSelectedCredential: credential)
+            }
+        }
+    }
+
+    /// One-time-code pick: the bridge mints the code under the same Touch ID
+    /// gate as a password fill; the OS inserts it into the OTP field.
+    @available(macOS 15.0, *)
+    private func fillCode(uuid: String) {
+        let url = serviceURL
+        DispatchQueue.global().async {
+            let entries = self.fillEntries(uuid: uuid, url: url)
+            guard let first = entries.first,
+                  let totp = first["totp"] as? String, !totp.isEmpty
+            else {
+                DispatchQueue.main.async { self.cancel(with: .userCanceled) }
+                return
+            }
+            let credential = ASOneTimeCodeCredential(code: totp)
+            DispatchQueue.main.async {
+                self.extensionContext.completeOneTimeCodeRequest(using: credential) { _ in }
             }
         }
     }
@@ -387,6 +514,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
         guard let uuid = e["uuid"] as? String, !uuid.isEmpty else { return }
         status.stringValue = "Confirming…"
+        if #available(macOS 15.0, *), oneTimeCodeList {
+            fillCode(uuid: uuid)
+            return
+        }
         fill(uuid: uuid)
     }
 
@@ -489,5 +620,43 @@ extension CredentialProviderViewController: NSTableViewDataSource, NSTableViewDe
         }
         cell.textField = nameLabel
         return cell
+    }
+}
+
+extension CredentialProviderViewController: NSSearchFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSSearchField) === searchField else { return }
+        applyFilter()
+    }
+
+    /// Up/Down/Enter/Escape work straight from the search field — the table
+    /// never needs focus for keyboard-only picks.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard control === searchField else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.moveDown(_:)):
+            moveSelection(1)
+            return true
+        case #selector(NSResponder.moveUp(_:)):
+            moveSelection(-1)
+            return true
+        case #selector(NSResponder.insertNewline(_:)):
+            let row = table.selectedRow >= 0 ? table.selectedRow : 0
+            if row < entries.count {
+                table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                rowClicked(nil)
+            }
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            if searchField.stringValue.isEmpty {
+                cancel(with: .userCanceled)
+            } else {
+                searchField.stringValue = ""
+                applyFilter()
+            }
+            return true
+        default:
+            return false
+        }
     }
 }

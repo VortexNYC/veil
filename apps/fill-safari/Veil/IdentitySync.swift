@@ -75,6 +75,26 @@ final class IdentitySync {
                                 recordIdentifier: uuid,
                             ))
                         }
+                        // macOS 15 one-time-code AutoFill: logins carrying an
+                        // authenticator also surface in OTP fields. Metadata
+                        // only — the code is minted by the host at pick time.
+                        if #available(macOS 15.0, *), (e["hasTotp"] as? Bool) == true {
+                            let label = e["name"] as? String ?? user
+                            for raw in uris {
+                                guard let host = URL(string: raw)?.host?.lowercased(),
+                                      let scheme = URL(string: raw)?.scheme,
+                                      scheme == "http" || scheme == "https"
+                                else { continue }
+                                guard seen.insert("otp|" + host + "|" + user + "|" + uuid).inserted else { continue }
+                                identities.append(ASOneTimeCodeCredentialIdentity(
+                                    serviceIdentifier: ASCredentialServiceIdentifier(
+                                        identifier: host, type: .domain,
+                                    ),
+                                    label: label.isEmpty ? user : label,
+                                    recordIdentifier: uuid,
+                                ))
+                            }
+                        }
                     } else if kind == "passkey" {
                         // rpId + credId + userHandle come from the replica's
                         // sealed material — metadata only, never the key.

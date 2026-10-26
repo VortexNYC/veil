@@ -48,6 +48,51 @@
   function ident(el) {
     return String(el.name || el.id || "");
   }
+  // Everything the page tells a human this field is: placeholder, aria-label,
+  // title, and any <label> wired to it. Heuristics read ident+labelText so a
+  // nameless field still resolves.
+  function labelText(el) {
+    if (!el) {
+      return "";
+    }
+    const parts = [];
+    const attr = function (name) {
+      return typeof el.getAttribute === "function" ? el.getAttribute(name) || "" : "";
+    };
+    const push = function (v) {
+      if (v) {
+        parts.push(String(v));
+      }
+    };
+    push(el.placeholder || attr("placeholder"));
+    push(attr("aria-label"));
+    push(el.title || attr("title"));
+    try {
+      if (el.labels && el.labels.length) {
+        for (let i = 0; i < el.labels.length; i++) {
+          push(el.labels[i] && el.labels[i].textContent);
+        }
+      }
+      const id = el.id;
+      const doc = el.ownerDocument;
+      if (id && doc && typeof doc.querySelector === "function") {
+        const esc = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(String(id)) : String(id).replace(/"/g, "");
+        const l = esc ? doc.querySelector('label[for="' + esc + '"]') : null;
+        if (l) {
+          push(l.textContent);
+        }
+      }
+      if (typeof el.closest === "function") {
+        const wrap = el.closest("label");
+        if (wrap) {
+          push(wrap.textContent);
+        }
+      }
+    } catch {
+      /* label wiring is best-effort */
+    }
+    return parts.join(" ");
+  }
   function isSingleDigitBox(el) {
     if (!el || (el.tagName && el.tagName !== "INPUT")) {
       return false;
@@ -121,7 +166,19 @@
         return typ(el) === "email";
       }) ||
       live.find(function (el) {
-        return /user|email|login/i.test(ident(el)) && typ(el) !== "password";
+        return el.tagName !== "SELECT" && /user|email|login/i.test(ident(el)) && typ(el) !== "password";
+      }) ||
+      // A bare text/tel field can still be the sign-in — its placeholder,
+      // aria-label, or <label> says so even when name/autocomplete don't.
+      live.find(function (el) {
+        return (
+          (typ(el) === "text" || typ(el) === "tel") &&
+          !isTotpField(el) &&
+          !isSingleDigitBox(el) &&
+          /(?:^|[\s_.-])(user(?:name)?|e-?mail|login|account|identifier|handle|phone|mobile)(?:$|[\s_.-])/i.test(
+            ident(el) + " " + labelText(el)
+          )
+        );
       }) ||
       null;
     const current =
@@ -157,10 +214,41 @@
         return /card.?number|cc-num/i.test(ident(el) + " " + auto(el));
       }) ||
       null;
-    const expMonth = byAuto(["cc-exp-month"]);
-    const expYear = byAuto(["cc-exp-year"]);
-    const exp = byAuto(["cc-exp"]);
-    const cvv = byAuto(["cc-csc", "cc-cvc"]);
+    const expMonth =
+      byAuto(["cc-exp-month"]) ||
+      live.find(function (el) {
+        return /exp.*(mo|month)|cc.?month|card.?month/i.test(ident(el) + " " + labelText(el));
+      }) ||
+      null;
+    const expYear =
+      byAuto(["cc-exp-year"]) ||
+      live.find(function (el) {
+        return /exp.*(yr|year)|cc.?year|card.?year/i.test(ident(el) + " " + labelText(el));
+      }) ||
+      null;
+    const exp =
+      byAuto(["cc-exp"]) ||
+      live.find(function (el) {
+        return (
+          el !== expMonth &&
+          el !== expYear &&
+          /(?:^|[\s_.-])(cc-?exp|expir(?:y|ation)|mm\s*\/\s*yy)(?:$|[\s_.-])/i.test(ident(el) + " " + labelText(el))
+        );
+      }) ||
+      null;
+    const cvvRe = /(?:^|[\s_.-])(cvv|cvc|csc|security.?code|card.?code)(?:$|[\s_.-])/i;
+    const cvv =
+      byAuto(["cc-csc", "cc-cvc"]) ||
+      live.find(function (el) {
+        return !isTotpField(el) && cvvRe.test(ident(el) + " " + labelText(el));
+      }) ||
+      // "Security code" on a card form is the CVV, not a 2FA — the TOTP
+      // guard yields once a card number field is on screen.
+      (number &&
+        live.find(function (el) {
+          return el !== number && cvvRe.test(ident(el) + " " + labelText(el));
+        })) ||
+      null;
     const given = byAuto(["given-name", "cc-given-name"]);
     const family = byAuto(["family-name", "cc-family-name"]);
     const name = byAuto(["cc-name", "name"]);
@@ -195,7 +283,61 @@
     };
   }
 
+  // <select> options rarely spell the value the way the item does — month
+  // "04" vs value="4", year "2030" vs value="30", or a visible label like
+  // "April". Exact value, numeric, year-width, then option text.
+  function matchOption(options, value) {
+    const want = String(value);
+    const opts = Array.prototype.slice.call(options || []);
+    const find = function (fn) {
+      for (let i = 0; i < opts.length; i++) {
+        if (opts[i] && fn(opts[i])) {
+          return opts[i];
+        }
+      }
+      return null;
+    };
+    let hit = find(function (opt) {
+      return String(opt.value) === want;
+    });
+    if (!hit && /^\d+$/.test(want)) {
+      hit = find(function (opt) {
+        return /^\d+$/.test(String(opt.value)) && Number(opt.value) === Number(want);
+      });
+    }
+    if (!hit) {
+      hit = find(function (opt) {
+        const v = String(opt.value);
+        return (
+          (v.length === 4 && want.length === 2 && v.slice(-2) === want) ||
+          (v.length === 2 && want.length === 4 && want.slice(-2) === v)
+        );
+      });
+    }
+    if (!hit) {
+      const wl = want.toLowerCase();
+      hit = find(function (opt) {
+        const t = String(opt.text || opt.textContent || "")
+          .trim()
+          .toLowerCase();
+        return !!t && t === wl;
+      });
+    }
+    return hit;
+  }
+
   function nativeSet(el, value) {
+    if (el.tagName === "SELECT" || (el.options && typeof el.options.length === "number")) {
+      const matched = matchOption(el.options, value);
+      if (!matched) {
+        return;
+      }
+      el.value = matched.value;
+      matched.selected = true;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
     const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const desc = Object.getOwnPropertyDescriptor(proto, "value");
     if (desc && desc.set) {
@@ -217,7 +359,7 @@
   // confirm). A picked login goes to current-password — on a change form the
   // old password belongs there, not in the new fields it would be replacing.
   function writeLogin(doc, entry) {
-    const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea")));
+    const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea, select")));
     writeField(fields.username, entry.login);
     const news = fields.newPassword && fields.newPassword.length ? fields.newPassword : null;
     if (entry.generated && news) {
@@ -242,7 +384,7 @@
   }
 
   function writeCard(doc, entry) {
-    const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea")));
+    const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea, select")));
     let number = fields.number;
     if (!number && doc.querySelector) {
       number = doc.querySelector('input[autocomplete="cc-number"]');
@@ -260,7 +402,7 @@
   }
 
   function writeIdentity(doc, entry) {
-    const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea")));
+    const fields = pickFields(Array.prototype.slice.call(doc.querySelectorAll("input, textarea, select")));
     writeField(fields.given, entry.givenName);
     writeField(fields.family, entry.familyName);
     writeField(fields.address, entry.address);
@@ -291,10 +433,24 @@
   }
 
   function isFillTarget(el) {
-    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) {
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && el.tagName !== "SELECT")) {
       return false;
     }
-    if (auto(el) === "new-password") {
+    const a = auto(el);
+    if (el.tagName === "SELECT") {
+      // A dropdown is fillable only when it clearly belongs to a card or
+      // identity form — never a page's own navigation or setting picker.
+      if (a.indexOf("cc-") === 0) {
+        return true;
+      }
+      if (/^(street|address|postal|country|tel|given|family|name)/.test(a)) {
+        return true;
+      }
+      return /exp|cc[-_.]|card|month|year|country|state|province|region|postal|zip|address/i.test(
+        ident(el) + " " + labelText(el)
+      );
+    }
+    if (a === "new-password") {
       return true;
     }
     const t = typ(el);
@@ -304,7 +460,12 @@
     if (isTotpField(el) || isSingleDigitBox(el)) {
       return true;
     }
-    const a = auto(el);
+    if (
+      (t === "text" || t === "tel") &&
+      /user(?:name)?|e-?mail|login/i.test(ident(el) + " " + labelText(el))
+    ) {
+      return true;
+    }
     return (
       a === "username" ||
       a === "email" ||
