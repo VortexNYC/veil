@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://veil.nyc https://id.veil.nyc https://login.veil.nyc https://us.i.posthog.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://id.veil.nyc https://login.veil.nyc
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
