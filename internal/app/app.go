@@ -2172,7 +2172,7 @@ func (a *App) FillSync(p protocol.Principal, since string) ([]FillSyncRow, strin
 			continue
 		}
 		switch item.Kind {
-		case protocol.ItemAPIKey, protocol.ItemPasskey, protocol.ItemCard, protocol.ItemIdentity:
+		case protocol.ItemAPIKey, protocol.ItemPasskey, protocol.ItemCard, protocol.ItemIdentity, protocol.ItemSSH:
 			decryptable++
 		}
 	}
@@ -2188,7 +2188,7 @@ func (a *App) FillSync(p protocol.Principal, since string) ([]FillSyncRow, strin
 			continue
 		}
 		switch item.Kind {
-		case protocol.ItemAPIKey, protocol.ItemPasskey, protocol.ItemCard, protocol.ItemIdentity:
+		case protocol.ItemAPIKey, protocol.ItemPasskey, protocol.ItemCard, protocol.ItemIdentity, protocol.ItemSSH:
 		default:
 			continue
 		}

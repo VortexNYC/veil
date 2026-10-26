@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/grant"
@@ -392,6 +397,41 @@ func TestFillSyncIncludesCardMaterialNotList(t *testing.T) {
 	}
 	var out FillSyncResponse
 	if json.Unmarshal(raw, &out) != nil || len(out.Items) != 1 || out.Items[0].Item.Kind != protocol.ItemCard {
+		t.Fatalf("sync body %s", raw)
+	}
+}
+
+func TestFillSyncIncludesSSHMaterialNotList(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem := pem.EncodeToMemory(block)
+	a := testApp(t)
+	if _, err := a.PutItem(app.ItemOpts{Name: "id_ed25519", Kind: protocol.ItemSSH, Token: pem}); err != nil {
+		t.Fatal(err)
+	}
+	srv := apiServer(t, a)
+	code, raw := doJSON(t, srv, http.MethodGet, "/v1/items", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list %d %s", code, raw)
+	}
+	if scrub.Contains(raw, []byte("PRIVATE KEY")) {
+		t.Fatal("list leaked ssh material")
+	}
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/fill/sync", "human", FillSyncRequest{})
+	if code != http.StatusOK {
+		t.Fatalf("sync %d %s", code, raw)
+	}
+	if !scrub.Contains(raw, []byte("PRIVATE KEY")) {
+		t.Fatal("sync missing ssh material")
+	}
+	var out FillSyncResponse
+	if json.Unmarshal(raw, &out) != nil || len(out.Items) != 1 || out.Items[0].Item.Kind != protocol.ItemSSH {
 		t.Fatalf("sync body %s", raw)
 	}
 }
