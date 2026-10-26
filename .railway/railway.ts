@@ -92,30 +92,23 @@ export default defineRailway(() => {
   // plane is three databases, not one: kratos (humans), keto (org tuples),
   // and `railway` (hydra — its DSN targets the default db). Losing them
   // orphans humans even with a perfect vault restore.
-  // Custom-format (-Fc) dumps compress and restore selectively; 14-day
-  // local retention. The trailing sleep leaves a daily window where the
-  // container is alive for `railway ssh`/`railway volume files` pulls —
-  // the SFTP bridge only works while the service is running. After the
-  // local dumps, each fresh artifact PUTs to R2 via the backup-ingest
-  // worker (backup-ingest.veil.nyc) — the offsite copy that survives a
-  // Railway-account loss. The KEK is escrowed separately; a dump plus
-  // its KEK is a plaintext export, keep them apart.
-  // WARNING: every name this PUTs must match the worker's NAME allowlist
-  // (apps/backup-ingest/src/index.ts) — an unlisted suffix 404s, rc=1
-  // kills the run before the heartbeat, and the monitor pages a silent
-  // cron. The test at apps/backup-ingest/test/worker.test.ts enumerates
-  // the accepted shapes; add yours there too.
+  // The run lives in scripts/backup.sh (COPY'd into Dockerfile.backup):
+  // pre-run reclaim on the 2 GB staging volume (R2 via backup-ingest.veil.nyc
+  // holds every finished artifact offsite — local is a staging area, not
+  // the archive), pg_dump x4 + pg_basebackup, R2 push (multipart over the
+  // edge's ~500MB request cap), then the ops_heartbeat upsert the monitor
+  // pages on. The KEK is escrowed separately; a dump plus its KEK is a
+  // plaintext export, keep them apart.
+  // WARNING: every name the script PUTs must match the worker's NAME
+  // allowlist (apps/backup-ingest/src/index.ts) — an unlisted suffix 404s,
+  // rc=1 kills the run before the heartbeat, and the monitor pages a
+  // silent cron. The test at apps/backup-ingest/test/worker.test.ts
+  // enumerates the accepted shapes; add yours there too.
   const veilBackups = volume("veil-backups", { region: "sfo", sizeMB: 2000, allowOnlineResize: true });
   const veilBackup = service("veil-backup", {
     source: github("VortexNYC/veil", { branch: "main" }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile.backup" },
-    // Pre-run reclaim: the 2 GB /backups volume is a staging area — R2 via
-    // backup-ingest.veil.nyc already holds every prior run offsite, so the
-    // volume only needs headroom for THIS run (pg_dump x4 + pg_basebackup,
-    // ~1.2 GB worst case). Clean before dumping, not after: remove the stale
-    // base/ dir, expire artifacts older than 2 days, and if the volume is
-    // still >50% full keep only the most recent day's files.
-    start: "sh -c 'rm -rf /backups/base; find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" -o -name \"base-*.manifest\" \\) -mtime +2 -delete; set -- $(df -P /backups | tail -n 1); USEPCT=${5%%%}; if [ \"${USEPCT:-0}\" -gt 50 ] 2>/dev/null; then find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" -o -name \"base-*.manifest\" \\) -mtime +0 -delete; fi; rc=0; SYSID=$(psql \"$PGDUMP_BASE/veil\" -Atc \"SELECT system_identifier FROM pg_control_system()\" | tr -cd 0-9); [ -n \"$SYSID\" ] || { echo \"no system_identifier — cannot namespace archive\"; rc=1; }; [ -n \"$OFFSITE_TOKEN\" ] || { echo \"OFFSITE_TOKEN unset — offsite copy is not optional\"; rc=1; }; for d in veil kratos keto railway; do pg_dump \"$PGDUMP_BASE/$d\" -Fc -f /backups/$d-$(date +%F-%H%M).dump || rc=1; done; if pg_basebackup -D /backups/base -Ft -z -X stream -d \"$PGDUMP_BASE/postgres?replication=database\"; then mv /backups/base/base.tar.gz /backups/base-$(date +%F-%H%M).tar.gz; mv /backups/base/backup_manifest /backups/base-$(date +%F-%H%M).manifest; rm -f /backups/base/pg_wal.tar.gz; else rc=1; fi; if [ $rc -eq 0 ]; then for f in /backups/*-$(date +%F)-*.dump /backups/base-$(date +%F)-*.tar.gz /backups/base-$(date +%F)-*.manifest; do [ -f \"$f\" ] || continue; curl -fsS -X PUT -H \"Authorization: Bearer $OFFSITE_TOKEN\" --data-binary \"@$f\" \"https://backup-ingest.veil.nyc/v1/arc-$SYSID/$(basename \"$f\")\" || rc=1; done; fi; find /backups \\( -name \"*.dump\" -o -name \"base-*.tar.gz\" -o -name \"base-*.manifest\" \\) -mtime +2 -delete; if [ $rc -eq 0 ]; then psql \"$PGDUMP_BASE/veil\" -qc \"CREATE TABLE IF NOT EXISTS ops_heartbeat(name text primary key, at timestamptz not null); INSERT INTO ops_heartbeat(name,at) VALUES('\"'\"'backup'\"'\"',now()) ON CONFLICT(name) DO UPDATE SET at=now();\" || rc=1; fi; sleep 600; exit $rc'",
+    start: "sh /backup.sh",
     deploy: { restartPolicyType: "NEVER", cronSchedule: "17 5 * * *" },
     replicas: { "sfo": 1 },
     volumeMounts: { "/backups": veilBackups },

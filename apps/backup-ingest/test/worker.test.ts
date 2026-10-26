@@ -69,6 +69,49 @@ class MemBucket {
 			cursor: String(end),
 		};
 	}
+	// Multipart stub — models R2's create/resume/uploadPart/complete/abort.
+	// uploadIds are opaque; resume throws on an unknown id like R2's
+	// NoSuchUpload. complete() concatenates parts in partNumber order.
+	mpus = new Map<string, { key: string; parts: Map<number, Uint8Array> }>();
+	mpuSeq = 0;
+	async createMultipartUpload(key: string) {
+		const uploadId = `mpu-${++this.mpuSeq}`;
+		this.mpus.set(uploadId, { key, parts: new Map() });
+		return { key, uploadId };
+	}
+	resumeMultipartUpload(key: string, uploadId: string) {
+		const m = this.mpus.get(uploadId);
+		if (!m || m.key !== key) throw new Error("NoSuchUpload");
+		const self = this;
+		return {
+			key,
+			uploadId,
+			async uploadPart(partNumber: number, body: ArrayBuffer | Uint8Array | ReadableStream) {
+				const bytes =
+					body instanceof ReadableStream
+						? new Uint8Array(await new Response(body).arrayBuffer())
+						: new Uint8Array(body);
+				m.parts.set(partNumber, bytes);
+				return { partNumber, etag: `etag-${partNumber}` };
+			},
+			async complete(parts: { partNumber: number; etag: string }[]) {
+				const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+				const total = sorted.reduce((n, p) => n + (m.parts.get(p.partNumber)?.length ?? 0), 0);
+				const buf = new Uint8Array(total);
+				let off = 0;
+				for (const p of sorted) {
+					buf.set(m.parts.get(p.partNumber)!, off);
+					off += m.parts.get(p.partNumber)!.length;
+				}
+				self.objects.set(key, { body: buf, size: buf.length, etag: `e${++self.seq}` });
+				self.mpus.delete(uploadId);
+				return { key, size: buf.length };
+			},
+			async abort() {
+				self.mpus.delete(uploadId);
+			},
+		};
+	}
 }
 
 const env = {
@@ -269,6 +312,109 @@ test("LIST pages with an opaque cursor", async () => {
 	assert.equal(j2.keys.length, 1);
 	assert.equal(j2.cursor, undefined);
 	env.BUCKET.pageSize = null;
+});
+
+test("multipart: create -> parts -> complete lands one object", async () => {
+	const key = "arc-55/base-2026-10-26-1943.tar.gz";
+	const create = await call(`/v1/${key}?mpu=create`, { method: "POST" });
+	assert.equal(create.status, 200);
+	const { uploadId } = (await create.json()) as { uploadId: string };
+	assert.ok(uploadId);
+
+	const etags: { partNumber: number; etag: string }[] = [];
+	for (const [n, payload] of [
+		[1, "aaaa"],
+		[2, "bbbb"],
+	] as const) {
+		const res = await call(`/v1/${key}?partNumber=${n}`, {
+			method: "PUT",
+			body: payload,
+			headers: { "Content-Length": String(payload.length), "X-Mpu-Id": uploadId },
+		});
+		assert.equal(res.status, 200);
+		etags.push(((await res.json()) as { partNumber: number; etag: string }));
+	}
+	const done = await call(`/v1/${key}?mpu=complete`, {
+		method: "POST",
+		body: JSON.stringify({ parts: etags }),
+		headers: { "X-Mpu-Id": uploadId },
+	});
+	assert.equal(done.status, 200);
+	const stored = env.BUCKET.objects.get(key)!;
+	assert.equal(new TextDecoder().decode(stored.body), "aaaabbbb");
+});
+
+test("multipart: create refuses an existing finished object", async () => {
+	const key = "arc-56/veil-2026-10-26-1941.dump";
+	await call(`/v1/${key}`, { method: "PUT", body: "done", headers: { "Content-Length": "4" } });
+	const res = await call(`/v1/${key}?mpu=create`, { method: "POST" });
+	assert.equal(res.status, 409);
+	assert.equal(new TextDecoder().decode(env.BUCKET.objects.get(key)!.body), "done");
+});
+
+test("multipart: part PUT on an existing object is fenced 409", async () => {
+	const key = "arc-57/kratos-2026-10-26-1941.dump";
+	const create = await call(`/v1/${key}?mpu=create`, { method: "POST" });
+	const { uploadId } = (await create.json()) as { uploadId: string };
+	// A peer's flat PUT lands mid-upload — the part fence must refuse,
+	// the finished object can never be rolled over mid-flight.
+	await call(`/v1/${key}`, { method: "PUT", body: "peer", headers: { "Content-Length": "4" } });
+	const res = await call(`/v1/${key}?partNumber=1`, {
+		method: "PUT",
+		body: "xxxx",
+		headers: { "Content-Length": "4", "X-Mpu-Id": uploadId },
+	});
+	assert.equal(res.status, 409);
+});
+
+test("multipart: auth, namespace, and part bounds enforced", async () => {
+	const key = "arc-58/kratos-2026-10-26-1941.dump";
+	// No bearer at any stage.
+	assert.equal((await call(`/v1/${key}?mpu=create`, { method: "POST" }, false)).status, 401);
+	const create = await call(`/v1/${key}?mpu=create`, { method: "POST" });
+	const { uploadId } = (await create.json()) as { uploadId: string };
+	// Missing X-Mpu-Id, bad partNumber, oversized part.
+	assert.equal(
+		(await call(`/v1/${key}?partNumber=1`, { method: "PUT", body: "x", headers: { "Content-Length": "1" } }))
+			.status,
+		400,
+	);
+	assert.equal(
+		(
+			await call(`/v1/${key}?partNumber=0`, {
+				method: "PUT",
+				body: "x",
+				headers: { "Content-Length": "1", "X-Mpu-Id": uploadId },
+			})
+		).status,
+		400,
+	);
+	assert.equal(
+		(
+			await call(`/v1/${key}?partNumber=1`, {
+				method: "PUT",
+				body: "x",
+				headers: { "Content-Length": String(129 * 1024 * 1024), "X-Mpu-Id": uploadId },
+			})
+		).status,
+		400,
+	);
+	// Unknown uploadId.
+	assert.equal(
+		(
+			await call(`/v1/${key}?partNumber=1`, {
+				method: "PUT",
+				body: "x",
+				headers: { "Content-Length": "1", "X-Mpu-Id": "bogus" },
+			})
+		).status,
+		404,
+	);
+	// Abort cleans up.
+	assert.equal(
+		(await call(`/v1/${key}?mpu=abort`, { method: "POST", headers: { "X-Mpu-Id": uploadId } })).status,
+		200,
+	);
 });
 
 test("GET and HEAD serve namespaced objects", async () => {

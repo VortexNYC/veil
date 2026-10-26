@@ -118,7 +118,9 @@ the Keto tuple wipe + `PurgeOrg` by hand) is the teardown.
 - **RPO: 24h.** Daily `pg_dump -Fc` of all four databases at 05:17 UTC
   to the `veil-backups` volume **and** Cloudflare R2 (via the
   `backup-ingest` worker — the copy that survives a Railway-account
-  loss); 14-day local retention. Worst case is one day of audit/grant
+  loss); 2-day local retention (the volume is a staging area; artifacts
+  over the edge's ~500MB request cap ship as R2 multipart). Worst case
+  is one day of audit/grant
   churn — secrets themselves re-wrap on restore.
 - **RTO: hours, not days.** The drill (pg_restore into a fresh schema +
   `VEIL_KEK` unwrap + wrong-key fails closed) is proven

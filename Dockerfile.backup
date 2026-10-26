@@ -3,3 +3,5 @@
 # could not dump the Postgres 18 server — version must track.
 FROM postgres:18-alpine
 RUN apk add --no-cache curl
+COPY scripts/backup.sh /backup.sh
+CMD ["sh", "/backup.sh"]
