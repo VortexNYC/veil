@@ -1,14 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { Recovery } from "@ory/elements-react/theme"
-import { frontend, oryConfig } from "../ory"
+import { frontend, kratosURL, oryConfig } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
 export const Route = createFileRoute("/recovery")({
   validateSearch: flowSearch,
   loaderDeps: ({ search }) => ({ flow: search.flow }),
-  loader: ({ deps }) =>
-    loadOrCreateFlow("/recovery", deps.flow, () => frontend.createBrowserRecoveryFlow(), (id) =>
-      frontend.getRecoveryFlow({ id }),
-    ),
+  loader: ({ deps }) => {
+    // Browser flows are navigated to, never fetched: kratos answers
+    // /self-service/recovery/browser with a 303 back to this page carrying
+    // ?flow=, and following that cross-origin redirect chain via fetch
+    // dies on CORS. We hand the window to kratos and never resolve.
+    const createFlow = async (): Promise<never> => {
+      window.location.assign(
+        new URL("/self-service/recovery/browser", kratosURL),
+      )
+      return new Promise<never>(() => {})
+    }
+    return loadOrCreateFlow("/recovery", deps.flow, createFlow, async (id) => {
+      // A persisted ?flow= can point at an expired flow — navigate the
+      // create path instead of rendering the dead-end.
+      try {
+        return await frontend.getRecoveryFlow({ id })
+      } catch {
+        return createFlow()
+      }
+    })
+  },
   component: () => <Recovery flow={Route.useLoaderData()} config={oryConfig} />,
 })

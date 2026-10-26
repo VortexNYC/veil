@@ -8,13 +8,27 @@ export const Route = createFileRoute("/settings")({
   validateSearch: flowSearch,
   loaderDeps: ({ search }) => ({ flow: search.flow }),
   loader: async ({ deps }) => {
+    // Browser flows are navigated to, never fetched: kratos answers
+    // /self-service/settings/browser with a 303 back to this page carrying
+    // ?flow=, and following that cross-origin redirect chain via fetch dies
+    // on CORS. We hand the window to kratos and never resolve — a missing
+    // session bounces to the login UI the same way.
+    const createFlow = async (): Promise<never> => {
+      window.location.assign(
+        new URL("/self-service/settings/browser", kratosURL),
+      )
+      return new Promise<never>(() => {})
+    }
     const [flow, aal2] = await Promise.all([
-      loadOrCreateFlow(
-        "/settings",
-        deps.flow,
-        () => frontend.createBrowserSettingsFlow(),
-        (id) => frontend.getSettingsFlow({ id }),
-      ),
+      loadOrCreateFlow("/settings", deps.flow, createFlow, async (id) => {
+        // A persisted ?flow= can point at an expired flow — navigate the
+        // create path instead of rendering the dead-end.
+        try {
+          return await frontend.getSettingsFlow({ id })
+        } catch {
+          return createFlow()
+        }
+      }),
       secondFactorEnrolled(),
     ])
     return { flow, aal2 }
