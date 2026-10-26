@@ -258,10 +258,23 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     /// The SPA bounces to its login/lock route (or out to the identity
     /// hosts) when the injected session dies — that belongs to the native
     /// gate, not a webview trip to Kratos. Cancel and relock instead.
+    /// veil-app:///mac-settings opens the native Fill settings window, and
+    /// login.veil.nyc/settings belongs in the system browser — Ory Elements
+    /// standalone screens, not the embedded vault.
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         let url = navigationAction.request.url
+        if url?.scheme == "veil-app" && url?.path == "/mac-settings" {
+            decisionHandler(.cancel)
+            DispatchQueue.main.async { SettingsWindowController.shared.open() }
+            return
+        }
+        if url?.host == "login.veil.nyc", let url, url.path.hasPrefix("/settings") {
+            decisionHandler(.cancel)
+            NSWorkspace.shared.open(url)
+            return
+        }
         let bounce = (url?.scheme == "veil-app" && (url?.path == "/login" || url?.path == "/lock"))
             || url?.host == "accounts.veil.nyc"
             || url?.host == "login.veil.nyc"

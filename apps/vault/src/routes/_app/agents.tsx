@@ -15,6 +15,7 @@ import {
   agents,
   agentWorkloads,
   bindAgentWorkload,
+  revokeVaultAgent,
   unbindAgentWorkload,
   verifyWorkloadIssuer,
 } from "../../origin";
@@ -472,6 +473,7 @@ function Agents() {
                   <Table.Head>Name</Table.Head>
                   <Table.Head>Kind</Table.Head>
                   <Table.Head>OIDC Federation</Table.Head>
+                  <Table.Head>Revoke</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
@@ -510,6 +512,30 @@ function Agents() {
                           </Button>
                         </div>
                       </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {a.revoked_at ? (
+                        <Text as="span" variant="secondary" size="sm">
+                          Revoked
+                        </Text>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            void revokeVaultAgent(a.id).then((res) => {
+                              if (res.error) {
+                                setError(`revoke failed for ${a.id}`);
+                                return;
+                              }
+                              setError(null);
+                              void reload();
+                            });
+                          }}
+                        >
+                          Revoke
+                        </Button>
+                      )}
                     </Table.Cell>
                   </Table.Row>
                 ))}

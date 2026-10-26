@@ -1,6 +1,7 @@
 import {
   addGroupMember,
   approveRequest,
+  archiveItem as sdkArchiveItem,
   bindWorkload as sdkBindWorkload,
   createAgent,
   createBillingCheckout,
@@ -8,6 +9,7 @@ import {
   createGrant,
   createGroup,
   createItem,
+  deleteItem as sdkDeleteItem,
   denyRequest,
   getBilling,
   listAgents,
@@ -20,13 +22,15 @@ import {
   listRequests,
   listRotateProviders as sdkListRotateProviders,
   removeGroupMember,
+  revokeAgent as sdkRevokeAgent,
   rotateItem as sdkRotateItem,
   unbindWorkload as sdkUnbindWorkload,
+  updateItem as sdkUpdateItem,
   vaultReport,
   verifyIssuer as sdkVerifyIssuer,
   verifyItem as sdkVerifyItem,
 } from "@vortex-api/veil"
-import type { BindWorkloadRequest, RotateItemRequest } from "@vortex-api/veil"
+import type { BindWorkloadRequest, RotateItemRequest, UpdateItemRequest } from "@vortex-api/veil"
 import { originAPI, token } from "./auth"
 
 function client() {
@@ -47,9 +51,12 @@ export function items() {
 export function addItem(body: {
   name: string
   uri?: string
+  uris?: string[]
   secret?: string
+  totp_seed?: string
+  tags?: string[]
   login?: string
-  kind?: "api_key" | "card" | "identity" | "oauth"
+  kind?: "api_key" | "card" | "identity" | "oauth" | "ssh"
   card?: {
     number?: string
     exp_month?: string
@@ -83,6 +90,18 @@ export function addItem(body: {
   return createItem({ client: client(), body })
 }
 
+export function updateVaultItem(id: string, body: UpdateItemRequest) {
+  return sdkUpdateItem({ client: client(), path: { name: id }, body })
+}
+
+export function archiveVaultItem(id: string) {
+  return sdkArchiveItem({ client: client(), path: { name: id } })
+}
+
+export function deleteVaultItem(id: string) {
+  return sdkDeleteItem({ client: client(), path: { name: id } })
+}
+
 export function importItems(file: File) {
   const t = token()
   if (!t) {
@@ -109,6 +128,7 @@ export function addGrant(body: {
   agent?: string
   human?: string
   group?: string
+  expires?: string
 }) {
   return createGrant({ client: client(), body })
 }
@@ -147,6 +167,10 @@ export function agents() {
 
 export function addAgent(name: string) {
   return createAgent({ client: client(), body: { name } })
+}
+
+export function revokeVaultAgent(name: string) {
+  return sdkRevokeAgent({ client: client(), path: { name } })
 }
 
 export function bindAgentWorkload(name: string, body: BindWorkloadRequest) {
