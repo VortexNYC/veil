@@ -21,6 +21,7 @@ import {
   listItems,
   listRequests,
   listRotateProviders as sdkListRotateProviders,
+  provision as sdkProvision,
   removeGroupMember,
   revokeAgent as sdkRevokeAgent,
   rotateItem as sdkRotateItem,
@@ -221,6 +222,13 @@ export function billing() {
 // tokens are single-use, so the banner never caches one.
 export function billingCheckout() {
   return createBillingCheckout({ client: client() })
+}
+
+// provisionVault is first-sign-in provisioning: the org, sealed master key,
+// Keto owner/member tuples, and the Vortex billing customer. Idempotent —
+// safe to call on every login.
+export function provisionVault() {
+  return sdkProvision({ client: client() })
 }
 
 export function requests(status: "open" | "approved" | "denied" | "expired" | "cancelled") {
