@@ -13,7 +13,7 @@ export const oryConfig: OryClientConfiguration = {
     hide_ory_branding: true,
     default_redirect_url: "/",
     error_ui_url: "/error",
-    registration_enabled: false,
+    registration_enabled: true,
     verification_enabled: true,
     recovery_enabled: true,
     login_ui_url: "/login",

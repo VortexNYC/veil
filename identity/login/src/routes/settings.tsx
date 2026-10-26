@@ -10,5 +10,12 @@ export const Route = createFileRoute("/settings")({
     loadOrCreateFlow("/settings", deps.flow, () => frontend.createBrowserSettingsFlow(), (id) =>
       frontend.getSettingsFlow({ id }),
     ),
-  component: () => <Settings flow={Route.useLoaderData()} config={oryConfig} />,
+  component: () => (
+    <main>
+      <Settings flow={Route.useLoaderData()} config={oryConfig} />
+      <p>
+        <a href="https://app.veil.nyc">Continue to Veil Vault →</a>
+      </p>
+    </main>
+  ),
 })

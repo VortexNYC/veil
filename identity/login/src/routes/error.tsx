@@ -29,10 +29,10 @@ function ErrorPage() {
   if (disabled) {
     return (
       <main>
-        <h1>Veil is invite-only</h1>
+        <h1>This account isn't available</h1>
         <p>
-          Veil is in private alpha. Accounts are created by invitation — your
-          setup link arrives by email from the person who invited you.
+          The account may have been deactivated. If you think that's a
+          mistake, contact the owner of your Veil organization.
         </p>
         <p>
           <Link to="/login">Back to log in</Link>

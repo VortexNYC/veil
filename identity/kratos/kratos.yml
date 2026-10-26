@@ -77,7 +77,7 @@ selfservice:
       ui_url: http://127.0.0.1:4455/login
       lifespan: 10m
     registration:
-      enabled: false
+      enabled: true
       lifespan: 10m
       ui_url: http://127.0.0.1:4455/registration
       after:

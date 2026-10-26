@@ -38,8 +38,8 @@ func TestOfficialMFAMethodsEnabled(t *testing.T) {
 			if !strings.Contains(s, "type: api_key") || !strings.Contains(s, "name: Authorization") {
 				t.Fatal("origin courier auth is not a bearer token header")
 			}
-			if !strings.Contains(s, "registration:\n      enabled: false") {
-				t.Fatal("origin registration is not invite-gated")
+			if !strings.Contains(s, "registration:\n      enabled: true") {
+				t.Fatal("origin registration is not open for self-serve signup")
 			}
 			if !strings.Contains(s, "required_aal: highest_available") {
 				t.Fatal("origin session does not require TOTP when enrolled")

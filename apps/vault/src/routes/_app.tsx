@@ -91,7 +91,7 @@ function BillingBanner() {
         });
       }}
     >
-      Subscribe
+      Subscribe ($1/mo Beta)
     </Banner.Action>
   );
   return (

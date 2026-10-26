@@ -32,7 +32,10 @@ function Home() {
         <p>
           <Link to="/login">Log in</Link>
         </p>
-        <p>Veil is in private alpha — access is by invitation.</p>
+        <p>
+          New to Veil? <Link to="/registration">Create an account</Link> —
+          public beta, 100 free uses a month.
+        </p>
       </main>
     )
   }
