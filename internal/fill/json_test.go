@@ -1473,3 +1473,119 @@ func TestJSONBindAttachesAppURI(t *testing.T) {
 		t.Fatalf("post-bind match %+v", matched.Entries)
 	}
 }
+
+// The Touch ID prompt names the item and login being released, and the
+// peer's surface — the human reads "fill github (ada) ... in Safari", not
+// a bare "fill a saved sign-in".
+func TestJSONFillPromptNamesItemLoginAndPeer(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "github", URI: "https://github.com", Secret: secret, Login: "ada",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	var prompt string
+	h.Confirm = func(r string) error { prompt = r; return nil }
+
+	ext := &Peer{
+		PID:      4242,
+		Path:     "/Applications/Veil.app/Contents/PlugIns/Veil Extension.appex/Contents/MacOS/Veil Extension",
+		Attested: true,
+	}
+	req, err := json.Marshal(map[string]string{
+		"action": "fill", "url": "https://github.com/login", "uuid": "github",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := h.handlePeer(req, ext)
+	var out struct {
+		Entries []jsonFillEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil || len(out.Entries) != 1 {
+		t.Fatalf("fill %s", got)
+	}
+	want := "Veil wants to fill github (ada) on github.com in Safari"
+	if prompt != want {
+		t.Fatalf("prompt %q, want %q", prompt, want)
+	}
+}
+
+// Quick Access names the item by uuid — the palette pick is the binding,
+// so any fillable vault item reveals here even when its URIs are web-only
+// or absent. The fill still rides the veil.nyc Touch ID scope.
+func TestJSONQuickAccessFillByUUID(t *testing.T) {
+	const seed = "JBSWY3DPEHPK3PXP"
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	srv := originAPI(t, a)
+	code, raw := originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "github", URI: "https://github.com", Secret: secret, Login: "ada", TOTPSeed: seed,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create github %d %s", code, raw)
+	}
+	code, raw = originJSON(t, srv, http.MethodPost, "/v1/items", "human", publicapi.CreateItemRequest{
+		Name: "bareitem", Secret: secret + "-bare", Login: "nouri",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create bareitem %d %s", code, raw)
+	}
+	h := NewOrigin(t.TempDir(), srv.URL, "human")
+	var prompts []string
+	h.Confirm = func(r string) error { prompts = append(prompts, r); return nil }
+
+	var out struct {
+		Entries []jsonFillEntry `json:"entries"`
+	}
+	// A web-URI item: no match on the app context, the uuid lookup serves it.
+	got := jsonHandle(t, h, map[string]string{
+		"action": "fill", "url": "app://nyc.veil.fill", "uuid": "github",
+	})
+	if err := json.Unmarshal(got, &out); err != nil || len(out.Entries) != 1 {
+		t.Fatalf("quick access fill %s", got)
+	}
+	e := out.Entries[0]
+	if e.UUID != "github" || e.Login != "ada" || e.Password != secret || len(e.TOTP) != 6 {
+		t.Fatalf("quick access entry %+v", e)
+	}
+	if len(prompts) != 1 || !strings.Contains(prompts[0], "Veil wants to fill github (ada)") ||
+		!strings.Contains(prompts[0], "on veil.nyc") {
+		t.Fatalf("quick access prompts %v", prompts)
+	}
+
+	// A URI-less item is unreachable by match entirely — uuid still serves it.
+	got = jsonHandle(t, h, map[string]string{
+		"action": "fill", "url": "app://nyc.veil.fill", "uuid": "bareitem",
+	})
+	out.Entries = nil
+	if err := json.Unmarshal(got, &out); err != nil || len(out.Entries) != 1 {
+		t.Fatalf("quick access bare fill %s", got)
+	}
+	if out.Entries[0].Password != secret+"-bare" || out.Entries[0].Login != "nouri" {
+		t.Fatalf("quick access bare entry %+v", out.Entries[0])
+	}
+	// Same veil.nyc scope inside the reuse window — no second prompt.
+	if len(prompts) != 1 {
+		t.Fatalf("reuse window should cover the palette, prompts %v", prompts)
+	}
+
+	// An unknown uuid still fails closed.
+	got = jsonHandle(t, h, map[string]string{
+		"action": "fill", "url": "app://nyc.veil.fill", "uuid": "nonexistent",
+	})
+	out.Entries = nil
+	if err := json.Unmarshal(got, &out); err != nil || len(out.Entries) != 0 {
+		t.Fatalf("unknown uuid must fail closed: %s", got)
+	}
+}

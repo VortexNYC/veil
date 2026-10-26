@@ -136,6 +136,25 @@ func attested(path string) bool {
 	return ok
 }
 
+// DisplayName is the human-readable name of the connecting Veil surface —
+// the Touch ID prompt says "in Safari" so the human sees which piece of
+// the product is asking, not just which site.
+func (p *Peer) DisplayName() string {
+	if p == nil {
+		return ""
+	}
+	if strings.Contains(p.Path, "Veil Extension.appex") {
+		return "Safari"
+	}
+	if strings.Contains(p.Path, "Veil AutoFill.appex") {
+		return "AutoFill"
+	}
+	if strings.HasSuffix(p.Path, "/Contents/MacOS/Veil") {
+		return "Veil"
+	}
+	return ""
+}
+
 // peerKey is the reuse-window key — the human's Touch ID covers this
 // exact process, not whatever else connects to the socket afterward.
 func (p *Peer) key() string {
