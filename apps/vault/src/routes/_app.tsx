@@ -8,6 +8,7 @@ import {
   ListBullets,
   Robot,
   EnvelopeSimple,
+  ShareNetwork,
   SignOut,
   Stamp,
   Users,
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/_app")({
 const nav: ReadonlyArray<{
   to:
     | "/items"
+    | "/shares"
     | "/grants"
     | "/groups"
     | "/requests"
@@ -54,6 +56,7 @@ const nav: ReadonlyArray<{
   icon: Icon;
 }> = [
   { to: "/items", label: "Items", icon: Key },
+  { to: "/shares", label: "Shares", icon: ShareNetwork },
   { to: "/report", label: "Report", icon: Heartbeat },
   { to: "/grants", label: "Grants", icon: Users },
   { to: "/groups", label: "Groups", icon: UsersThree },

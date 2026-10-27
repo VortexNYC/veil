@@ -167,7 +167,7 @@ and asserts the event — the table is a test, not a promise.
 | Grants | `grant_granted` (`reason=agent=<id> level=<n>`) | atomic with the grant write |
 | Sessions | `session_created` / `session_renewed` / `session_revoked` (`reason=agent=<id> session=<id>`) | atomic with the session write |
 | Workload identity | `workload_bound` (`reason=agent=<id> issuer=<iss>`) | atomic with the bind |
-| Human credential reads | `fill` (login reveal), `totp_mint`, `passkey_assert`, `fill_sync` (`reason=items=<n>`, audited before any material decrypts), `file_write` | the audit row must be durable — committed or spooled — before the secret leaves; a double failure (store + spool) denies the disclosure |
+| Human credential reads | `fill` (login reveal), `reveal` (deliberate human read-back: vault UI, `veil item reveal`), `totp_mint`, `passkey_assert`, `fill_sync` (`reason=items=<n>`, audited before any material decrypts), `file_write` | the audit row must be durable — committed or spooled — before the secret leaves; a double failure (store + spool) denies the disclosure |
 | Org / membership | `member_invited`, `member_removed`, `owner_promoted`, `owner_demoted`, `human_deleted`, `org_deleted`, `human_provisioned` | post-commit — Keto/identity owns those transactions; append failure logs loudly rather than erroring a finished operation |
 | Billing | `billing_plan_changed`, `billing_provision_failed` | post-commit — the webhook owns the plan write |
 
