@@ -277,6 +277,9 @@ func (m *Memory) ConsumeShare(id string, now time.Time, events ...protocol.Audit
 	t := now.UTC()
 	sh.ConsumedAt = &t
 	m.shares[id] = sh
+	for i := range events {
+		events[i].OrgID = sh.OrgID
+	}
 	m.audit = append(m.audit, events...)
 	return sh, nil
 }
