@@ -13,7 +13,14 @@ import {
   provisionVault,
   recoveryShare,
 } from "../../origin";
-import { b64, downloadRecoveryKit, generateRecoveryKeypair } from "../../recovery";
+import {
+  b64,
+  downloadEmergencyKit,
+  downloadRecoveryKit,
+  generateRecoveryKeypair,
+} from "../../recovery";
+import { claimsOf, token } from "../../auth";
+import { frontend } from "../../ory";
 import { PageChrome } from "../../page-chrome";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -32,6 +39,7 @@ function RecoveryKitCard() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -44,6 +52,22 @@ function RecoveryKitCard() {
       }
       setLoaded(true);
     });
+    // The Emergency Kit names the member — Kratos traits carry the email;
+    // the Hydra id_token email claim is the fallback.
+    void frontend
+      .toSession()
+      .then((session) => {
+        if (!live) {
+          return;
+        }
+        const traits = (session.identity?.traits ?? {}) as { email?: unknown };
+        const found =
+          typeof traits.email === "string"
+            ? traits.email
+            : String(claimsOf(token() ?? "").email ?? "");
+        setEmail(found);
+      })
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -58,6 +82,9 @@ function RecoveryKitCard() {
       const prov = await provisionVault();
       const orgID = prov.data?.org_id ?? "veil";
       downloadRecoveryKit(orgID, pub, priv);
+      // The printable Emergency Kit carries the same key — both downloads
+      // must happen here, while the private half still exists in memory.
+      downloadEmergencyKit(orgID, email, pub, priv);
       const res = await enrollRecovery(b64(pub));
       if (res.error) {
         // 409 — another device beat this click. Re-read tells the truth.
@@ -113,7 +140,8 @@ function RecoveryKitCard() {
             />
             <Text as="p" variant="secondary">
               Generate an X25519 recovery keypair in this browser. The private half downloads once
-              as your Recovery Kit — Veil only ever receives the public half.
+              as your Recovery Kit plus a printable Emergency Kit (veil-emergency-kit-*.html — open
+              it and Print to PDF or paper). Veil only ever receives the public half.
             </Text>
             {error ? (
               <Text as="p" variant="error">
