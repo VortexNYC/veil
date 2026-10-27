@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -85,6 +86,32 @@ func TestBridgeHumanTokenGateOff(t *testing.T) {
 	t.Setenv("VEIL_FILL_TOUCHID", "0")
 	if _, err := bridgeHumanToken(context.Background()); !errors.Is(err, errBridgeUnavailable) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A home with no native-host binary means the re-exec leg reports
+// errNoNativeHost so the caller falls through to the direct socket ask.
+func TestReexecBridgeTokenNoHost(t *testing.T) {
+	home := t.TempDir()
+	if _, err := reexecBridgeToken(context.Background(), home); !errors.Is(err, errNoNativeHost) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestUnlockPrintWritesTokenToStdout(t *testing.T) {
+	orig := bridgeTokenFn
+	bridgeTokenFn = func(context.Context) (string, error) { return "child-tok", nil }
+	defer func() { bridgeTokenFn = orig }()
+
+	cmd := unlockCmd(new(string))
+	var buf strings.Builder
+	cmd.SetOut(&buf)
+	cmd.SetArgs([]string{"--print"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if buf.String() != "child-tok" {
+		t.Fatalf("stdout = %q", buf.String())
 	}
 }
 

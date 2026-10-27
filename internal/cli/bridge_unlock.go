@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,6 +22,12 @@ import (
 const bridgeTimeout = 90 * time.Second
 
 var errBridgeUnavailable = errors.New("bridge token unavailable")
+
+var errNoNativeHost = errors.New("no attested native-host binary")
+
+// bridgeChildEnv marks the re-executed native-host child so an unsigned
+// dev build cannot recurse `unlock --print` forever.
+const bridgeChildEnv = "VEIL_UNLOCK_BRIDGE_CHILD"
 
 // bridgeTokenFn / remintHTTPFn are the mint order's two legs — tests stub
 // them to prove the bridge is tried before the password+TOTP remint.
@@ -49,7 +57,45 @@ func bridgeHumanToken(ctx context.Context) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, bridgeTimeout)
 	defer cancel()
+	// The socket only serves signed Veil peers. A standalone CLI (brew,
+	// go build) is unattested, so the ask rides through the attested
+	// native-host binary the app installed — same gate, one Touch ID.
+	if !fill.SelfAttested() && os.Getenv(bridgeChildEnv) == "" {
+		if tok, err := reexecBridgeToken(ctx, home); !errors.Is(err, errNoNativeHost) {
+			return tok, err
+		}
+	}
 	return fill.BridgeToken(ctx, sock)
+}
+
+// reexecBridgeToken runs `native-host unlock --print` — the installed,
+// code-signed copy of this binary — so the socket's peer attestation sees
+// a trusted client. The token returns on the child's stdout pipe only.
+func reexecBridgeToken(ctx context.Context, home string) (string, error) {
+	nh := fill.HostPath(home)
+	self, err := os.Executable()
+	if err == nil {
+		if resolved, rerr := filepath.EvalSymlinks(self); rerr == nil {
+			self = resolved
+		}
+	}
+	if self == nh || self == "" {
+		return "", errNoNativeHost
+	}
+	if _, err := os.Stat(nh); err != nil {
+		return "", errNoNativeHost
+	}
+	cmd := exec.CommandContext(ctx, nh, "unlock", "--print")
+	cmd.Env = append(os.Environ(), bridgeChildEnv+"=1")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	tok := strings.TrimSpace(string(out))
+	if tok == "" {
+		return "", errBridgeUnavailable
+	}
+	return tok, nil
 }
 
 // mintHumanToken prefers the bridge's Touch ID mint over the
@@ -69,6 +115,7 @@ func mintHumanToken(ctx context.Context, outFile string) (string, error) {
 
 func unlockCmd(home *string) *cobra.Command {
 	var outFile string
+	var printTok bool
 	c := &cobra.Command{
 		Use:   "unlock",
 		Short: "Unlock the vault with Touch ID — mints a human JWT via the fill bridge",
@@ -77,6 +124,17 @@ func unlockCmd(home *string) *cobra.Command {
 			"password+TOTP remint. Writes the token to --out-file (or " +
 			"VEIL_HUMAN_TOKEN_FILE). Never stdout.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// --print is the internal child mode: an unattested CLI
+			// re-execs the signed native-host binary so the bridge sees a
+			// trusted peer, and the token returns on the stdout pipe.
+			if printTok {
+				tok, err := bridgeTokenFn(cmd.Context())
+				if err != nil {
+					return err
+				}
+				_, err = fmt.Fprint(cmd.OutOrStdout(), tok)
+				return err
+			}
 			out := outFile
 			if out == "" {
 				out = resolveFillHomeSafe()
@@ -95,6 +153,8 @@ func unlockCmd(home *string) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&outFile, "out-file", "", "write the ID token here. never stdout.")
+	c.Flags().BoolVar(&printTok, "print", false, "internal: print the token on stdout (re-exec child mode)")
+	_ = c.Flags().MarkHidden("print")
 	_ = home // vault home resolution lives in resolveFillHome inside bridgeHumanToken
 	return c
 }
