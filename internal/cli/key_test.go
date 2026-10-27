@@ -376,13 +376,11 @@ func TestEscrowRefusesBadInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Second keygen in the same dir must not orphan earlier parcels.
-	if err := keyCmd().ExecuteContext(context.Background()); err == nil {
-		kg2 := keyCmd()
-		kg2.SetArgs([]string{"escrow-keygen", "--out-dir", cust})
-		if err := kg2.ExecuteContext(context.Background()); err == nil ||
-			!strings.Contains(err.Error(), "exists") {
-			t.Fatalf("keygen overwrite should refuse, got %v", err)
-		}
+	kg2 := keyCmd()
+	kg2.SetArgs([]string{"escrow-keygen", "--out-dir", cust})
+	if err := kg2.ExecuteContext(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "exists") {
+		t.Fatalf("keygen overwrite should refuse, got %v", err)
 	}
 
 	// A non-canonical share name mislabels custody — refuse.
@@ -466,7 +464,10 @@ func TestEscrowRefusesBadInputs(t *testing.T) {
 func TestEscrowEnvelopeShape(t *testing.T) {
 	var fp [4]byte
 	copy(fp[:], []byte{0xde, 0xad, 0xbe, 0xef})
-	share := []byte{0x01, 0x02, 0x03}
+	share := make([]byte, crypto.KeySize+1) // 32B secret + x-coord
+	if _, err := rand.Read(share); err != nil {
+		t.Fatal(err)
+	}
 	env := escrowEnvelope(2, fp, share)
 	ord, gotFP, gotShare, err := parseEscrowEnvelope(env)
 	if err != nil || ord != 2 || gotFP != fp || !bytes.Equal(gotShare, share) {

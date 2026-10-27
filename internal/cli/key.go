@@ -416,8 +416,11 @@ func keyCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("key: %s is not valid hex: %w", sealIn, err)
 			}
-			if len(share) < 2 {
-				return fmt.Errorf("key: %s share too short", sealIn)
+			// A KEK share is exactly KeySize+1 bytes (32B secret + x-coord).
+			// Sealing a truncated share reports a custody handoff that can
+			// never reconstruct — reject anything but the real shape.
+			if len(share) != crypto.KeySize+1 {
+				return fmt.Errorf("key: %s share is %d bytes, want %d (32B secret + x-coord)", sealIn, len(share), crypto.KeySize+1)
 			}
 			var pub []byte
 			switch {
@@ -554,6 +557,9 @@ func parseEscrowEnvelope(env []byte) (ordinal int, fp [4]byte, share []byte, err
 	}
 	copy(fp[:], env[len(escrowMagic)+1:head])
 	share = env[head:]
+	if len(share) != crypto.KeySize+1 {
+		return 0, fp, nil, fmt.Errorf("key: parcel share is %d bytes, want %d (32B secret + x-coord)", len(share), crypto.KeySize+1)
+	}
 	return ordinal, fp, share, nil
 }
 
