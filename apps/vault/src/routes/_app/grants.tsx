@@ -12,6 +12,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
+import { formatGrantLevel, formatSubjectKind } from "../../ui";
 import { addGrant, agents, grants, groups, items } from "../../origin";
 import type { Agent, Grant, Group, Item } from "@vortex-api/veil";
 
@@ -170,6 +171,7 @@ function Grants() {
                   value={targetKind}
                   label="Target kind"
                   hideLabel={false}
+                  renderValue={(value) => formatSubjectKind(String(value))}
                   onValueChange={(value) => {
                     if (typeof value === "string" && isTargetKind(value)) {
                       setTargetKind(value);
@@ -235,21 +237,25 @@ function Grants() {
                 ) : null}
                 <Select
                   value={level}
-                  label="Level"
+                  label="Approval policy"
                   hideLabel={false}
+                  renderValue={(value) => formatGrantLevel(String(value))}
                   onValueChange={(value) => {
                     if (typeof value === "string" && isLevel(value)) {
                       setLevel(value);
                     }
                   }}
                 >
-                  <Select.Option value="level1">level1</Select.Option>
-                  <Select.Option value="level2">level2</Select.Option>
+                  <Select.Option value="level1">Level 1 · Ask approval every use</Select.Option>
+                  <Select.Option value="level2">Level 2 · Auto-approve</Select.Option>
                 </Select>
                 <Select
                   value={expires}
                   label="Expires (optional)"
                   hideLabel={false}
+                  renderValue={(value) =>
+                    EXPIRES_OPTIONS.find((o) => o.value === value)?.label ?? "Forever"
+                  }
                   onValueChange={(value) => {
                     if (typeof value === "string") {
                       setExpires(value);
@@ -322,10 +328,14 @@ function Grants() {
                         {g.agent_id}
                       </Table.Cell>
                       <Table.Cell>
-                        <Badge variant="neutral">{g.subject_kind}</Badge>
+                        <Badge variant="neutral">
+                          {formatSubjectKind(g.subject_kind)}
+                        </Badge>
                       </Table.Cell>
                       <Table.Cell>
-                        <Badge variant="neutral">{g.level}</Badge>
+                        <Badge variant="neutral">
+                          {formatGrantLevel(g.level)}
+                        </Badge>
                       </Table.Cell>
                     </Table.Row>
                   ))}

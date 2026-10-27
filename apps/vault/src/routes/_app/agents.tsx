@@ -315,6 +315,25 @@ function Agents() {
                   value={preset}
                   label="Provider"
                   hideLabel={false}
+                  renderValue={(v) =>
+                    v === "vercel"
+                      ? "Vercel"
+                      : v === "github-actions"
+                        ? "GitHub Actions"
+                        : v === "gitlab"
+                          ? "GitLab CI"
+                          : v === "google"
+                            ? "Google Cloud"
+                            : v === "bitbucket"
+                              ? "Bitbucket Pipelines"
+                              : v === "aws-eks"
+                                ? "AWS EKS"
+                                : v === "azure"
+                                  ? "Azure Entra ID"
+                                  : v === "fly"
+                                    ? "Fly.io"
+                                    : "Custom OIDC"
+                  }
                   onValueChange={(value) => {
                     if (typeof value === "string" && isPreset(value)) {
                       setPreset(value);
