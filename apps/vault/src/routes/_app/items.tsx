@@ -1251,6 +1251,19 @@ function ShareItemForm({
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ttl, setTtl] = useState("86400");
+  const [prefilledSecret, setPrefilledSecret] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    void revealVaultItem(item.id, item.has_totp).then((res) => {
+      if (live && res.data?.password) {
+        setPrefilledSecret((cur) => (cur ? cur : res.data!.password));
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.has_totp]);
   if (link !== null) {
     return (
       <div className="flex flex-col gap-4">
@@ -1323,6 +1336,8 @@ function ShareItemForm({
           rows={4}
           autoComplete="off"
           required
+          value={prefilledSecret}
+          onChange={(e) => setPrefilledSecret(e.currentTarget.value)}
           placeholder="Paste the value the recipient should see"
         />
       </div>
