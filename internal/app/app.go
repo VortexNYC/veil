@@ -1708,10 +1708,22 @@ func (a *App) BillingCheckoutURL(ctx context.Context, orgID string) (string, err
 	if err != nil {
 		return "", err
 	}
+	seats := 0
+	if humans, herr := a.Store.ListHumans(); herr == nil {
+		for _, h := range humans {
+			if h.OrgID == orgID {
+				seats++
+			}
+		}
+	}
+	if seats < 1 {
+		seats = 1
+	}
 	return c.CheckoutSession(bctx, billing.CheckoutIntent{
 		OrgID:            orgID,
 		CustomerID:       ob.CustomerID,
 		BillingAccountID: ob.BillingAccountID,
+		Quantity:         seats,
 	})
 }
 

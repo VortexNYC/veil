@@ -1,6 +1,8 @@
 # Chrome Web Store — Veil listing
 
-Package: `~/.veil/store/veil-chrome-0.0.1.zip` (run `make fill-pack` after `veil fill install` to rebuild)
+Package: `~/.veil/store/veil-chrome-0.0.2.zip` (built automatically by `make deploy` or `make fill-pack`)
+Screenshot (1280×800): `~/.veil/store/screenshot-vault-1280x800.png`
+Store Icon (128×128): `~/.veil/store/icon-128.png`
 
 - Publisher: Organization 13 Inc. (Vortex)
 - Category: Productivity → Tools

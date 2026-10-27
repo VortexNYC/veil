@@ -285,13 +285,13 @@ function Settings() {
       subtitle="Identity is Ory Elements. This app does not restyle those screens."
     >
       <div className="flex w-full max-w-3xl flex-col gap-4">
-        {paid ? <Banner title="Subscription active — thank you for backing Veil Beta!" /> : null}
+        {paid ? <Banner title="Subscription active — thank you for subscribing to Veil!" /> : null}
         {view ? (
           <LayerCard>
             <LayerCard.Secondary>Plan &amp; Billing</LayerCard.Secondary>
             <LayerCard.Primary>
               <Text as="p" variant="heading">
-                {view.plan === "active" ? "Veil Pro Beta ($1/mo)" : "Free tier"}
+                {view.plan === "active" ? "Veil ($1/mo per human user)" : "Free tier"}
               </Text>
               <Text as="p" variant="secondary">
                 {view.used}
@@ -307,8 +307,8 @@ function Settings() {
               {view.plan !== "active" ? (
                 <>
                   <Text as="p" variant="secondary">
-                    Limited-time beta offer: $1/month through the end of the year (standard $29/mo)
-                    for unlimited agent &amp; API credential uses.
+                    $1/month per human user for unlimited credential uses. AI agents are free and do
+                    not count as users.
                   </Text>
                   <div>
                     <Button
@@ -323,7 +323,7 @@ function Settings() {
                         });
                       }}
                     >
-                      Subscribe — $1/mo Beta
+                      Subscribe — $1/mo per user
                     </Button>
                   </div>
                 </>

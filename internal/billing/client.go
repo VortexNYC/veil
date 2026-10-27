@@ -290,10 +290,13 @@ func (c *Client) RecordUsage(ctx context.Context, d UsageDelta) error {
 }
 
 // CheckoutIntent is one upgrade-click against the org's billing link.
+// Quantity is the number of human users in the org ($1/mo per human user;
+// agents do not count as users).
 type CheckoutIntent struct {
 	OrgID            string
 	CustomerID       string
 	BillingAccountID string
+	Quantity         int
 }
 
 // CheckoutSession mints a hosted subscription checkout and returns the URL.
@@ -305,13 +308,21 @@ func (c *Client) CheckoutSession(ctx context.Context, in CheckoutIntent) (string
 	if c.PriceID == "" {
 		return "", fmt.Errorf("vortex checkout: price not configured")
 	}
+	qty := in.Quantity
+	if qty < 1 {
+		qty = 1
+	}
+	item := map[string]any{"priceId": c.PriceID}
+	if qty > 1 {
+		item["quantity"] = qty
+	}
 	cmd := map[string]any{
 		"environment":       c.Environment,
 		"merchantAccountId": c.MerchantID,
 		"mode":              "subscription",
 		"customerId":        in.CustomerID,
 		"billingAccountId":  in.BillingAccountID,
-		"items":             []map[string]any{{"priceId": c.PriceID}},
+		"items":             []map[string]any{item},
 		"metadata":          map[string]string{"source": "veil", "orgId": in.OrgID},
 	}
 	if c.SuccessURL != "" {

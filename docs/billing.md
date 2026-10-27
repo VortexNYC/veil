@@ -76,7 +76,7 @@ first-party merchants)
 | `VEIL_FREE_USE_CAP` | free-tier monthly use allowance; 0/unset = metering off |
 | `VEIL_VORTEX_METER_ID` | meter usage deltas report against (`mtr_…`); unset = dual-write off |
 | `VEIL_VORTEX_USAGE_EVENT` | event name on usage rows; default `credential_use` |
-| `VEIL_VORTEX_PRICE_ID` | paid-plan catalog price (`veil-pro-monthly`); unset = checkout endpoint 404s |
+| `VEIL_VORTEX_PRICE_ID` | paid-plan catalog price (`veil-user-monthly`, $1/mo per human user; agents free); unset = checkout endpoint 404s |
 | `VEIL_CHECKOUT_SUCCESS_URL` | post-payment return target; optional |
 | `VEIL_CHECKOUT_CANCEL_URL` | checkout-abandon return target; optional |
 | `VEIL_BILLING_UPGRADE_URL` | legacy static link in `GET /v1/billing`; superseded by `POST /v1/billing/checkout` |
