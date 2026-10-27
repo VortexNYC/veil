@@ -24,7 +24,17 @@ CREATE TABLE items (
     tags TEXT NOT NULL DEFAULT '[]',
     archived BOOLEAN NOT NULL DEFAULT FALSE,
     has_file BOOLEAN NOT NULL DEFAULT FALSE,
-    login TEXT NOT NULL DEFAULT ''
+    login TEXT NOT NULL DEFAULT '',
+    travel_safe BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- Org-level flags (VTX-788 Travel Mode). One row per org; an absent row
+-- reads as travel_mode off. Owner-toggled via POST /v1/org/travel-mode —
+-- while on, non-travel_safe items are hidden from list/fill/Use.
+CREATE TABLE org_settings (
+    org_id TEXT PRIMARY KEY,
+    travel_mode BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE grants (

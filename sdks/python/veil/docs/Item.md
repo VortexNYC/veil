@@ -16,6 +16,7 @@ Name | Type | Description | Notes
 **has_totp** | **bool** |  | [optional] 
 **has_file** | **bool** |  | [optional] 
 **login** | **str** | Fill username. Metadata. Not a secret. Empty if unset. | [optional] 
+**travel_safe** | **bool** | Stays visible while the org&#39;s Travel Mode is on (VTX-788). Metadata, not ACL. | [optional] 
 
 ## Example
 

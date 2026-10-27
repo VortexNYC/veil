@@ -121,7 +121,7 @@ func TestAuditMatrix_ItemLifecycle(t *testing.T) {
 	}
 	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemCreated), owner.ID, item.ID, "")
 
-	if _, err := a.UpdateItemFor(owner, item.ID, nil, nil, []string{"tag1"}, "login", nil); err != nil {
+	if _, err := a.UpdateItemFor(owner, item.ID, nil, nil, []string{"tag1"}, "login", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionItemUpdated), owner.ID, item.ID, "")

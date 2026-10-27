@@ -16,6 +16,7 @@ Name | Type | Description | Notes
 **card** | [**CardFields**](CardFields.md) |  | [optional] 
 **identity** | [**IdentityFields**](IdentityFields.md) |  | [optional] 
 **wif** | [**WIFItemFields**](WIFItemFields.md) |  | [optional] 
+**travel_safe** | **bool** | Stays visible while the org&#39;s Travel Mode is on. | [optional] 
 
 ## Example
 

@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
 from veil.models.card_fields import CardFields
 from veil.models.identity_fields import IdentityFields
@@ -41,7 +41,8 @@ class CreateItemRequest(BaseModel):
     card: Optional[CardFields] = None
     identity: Optional[IdentityFields] = None
     wif: Optional[WIFItemFields] = None
-    __properties: ClassVar[List[str]] = ["name", "uri", "uris", "tags", "kind", "secret", "totp_seed", "login", "card", "identity", "wif"]
+    travel_safe: Optional[StrictBool] = Field(default=None, description="Stays visible while the org's Travel Mode is on.")
+    __properties: ClassVar[List[str]] = ["name", "uri", "uris", "tags", "kind", "secret", "totp_seed", "login", "card", "identity", "wif", "travel_safe"]
 
     @field_validator('kind')
     def kind_validate_enum(cls, value):
@@ -123,7 +124,8 @@ class CreateItemRequest(BaseModel):
             "login": obj.get("login"),
             "card": CardFields.from_dict(obj["card"]) if obj.get("card") is not None else None,
             "identity": IdentityFields.from_dict(obj["identity"]) if obj.get("identity") is not None else None,
-            "wif": WIFItemFields.from_dict(obj["wif"]) if obj.get("wif") is not None else None
+            "wif": WIFItemFields.from_dict(obj["wif"]) if obj.get("wif") is not None else None,
+            "travel_safe": obj.get("travel_safe")
         })
         return _obj
 

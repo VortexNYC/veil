@@ -2272,6 +2272,71 @@
      }
     }
    }
+  },
+  "/v1/org/travel-mode": {
+   "get": {
+    "operationId": "getTravelMode",
+    "tags": [
+     "Human"
+    ],
+    "summary": "Read the org's Travel Mode flag.",
+    "responses": {
+     "200": {
+      "description": "flag state",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TravelModeView"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "missing or invalid Bearer"
+     },
+     "403": {
+      "description": "agents cannot read org settings"
+     }
+    }
+   },
+   "post": {
+    "operationId": "setTravelMode",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Toggle Travel Mode — hides non-travel_safe items from list/fill/Use. Audited travel_mode_toggled.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TravelModeRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "flag state",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TravelModeView"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad request"
+     },
+     "401": {
+      "description": "missing or invalid Bearer"
+     },
+     "403": {
+      "description": "owner only"
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2338,6 +2403,10 @@
      "login": {
       "type": "string",
       "description": "Fill username. Metadata. Not a secret. Empty if unset."
+     },
+     "travel_safe": {
+      "type": "boolean",
+      "description": "Stays visible while the org's Travel Mode is on (VTX-788). Metadata, not ACL."
      }
     },
     "required": [
@@ -2590,6 +2659,10 @@
      },
      "wif": {
       "$ref": "#/components/schemas/WIFItemFields"
+     },
+     "travel_safe": {
+      "type": "boolean",
+      "description": "Stays visible while the org's Travel Mode is on."
      }
     }
    },
@@ -2621,6 +2694,10 @@
      "secret": {
       "type": "string",
       "description": "Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone."
+     },
+     "travel_safe": {
+      "type": "boolean",
+      "description": "Set the travel_safe flag. Absent leaves it untouched."
      }
     }
    },
@@ -3987,6 +4064,30 @@
      "recovery_pubkey": {
       "type": "string",
       "description": "Optional 32-byte X25519 public key (base64 or hex) to enroll the member's recovery share at signup."
+     }
+    }
+   },
+   "TravelModeRequest": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "enabled"
+    ],
+    "properties": {
+     "enabled": {
+      "type": "boolean"
+     }
+    }
+   },
+   "TravelModeView": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "enabled"
+    ],
+    "properties": {
+     "enabled": {
+      "type": "boolean"
      }
     }
    }

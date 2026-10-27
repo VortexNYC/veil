@@ -93,17 +93,19 @@ type AuditFeedResponse struct {
 }
 
 type CreateItemRequest struct {
-	Name     string          `json:"name"`
-	URI      string          `json:"uri,omitempty"`
-	URIs     []string        `json:"uris,omitempty"`
-	Tags     []string        `json:"tags,omitempty"`
-	Kind     string          `json:"kind,omitempty"`
-	Secret   string          `json:"secret,omitempty"`
-	TOTPSeed string          `json:"totp_seed,omitempty"`
-	Login    string          `json:"login,omitempty"`
-	Card     *CardFields     `json:"card,omitempty"`
-	Identity *IdentityFields `json:"identity,omitempty"`
-	WIF      *WIFItemFields  `json:"wif,omitempty"`
+	Name     string   `json:"name"`
+	URI      string   `json:"uri,omitempty"`
+	URIs     []string `json:"uris,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+	Kind     string   `json:"kind,omitempty"`
+	Secret   string   `json:"secret,omitempty"`
+	TOTPSeed string   `json:"totp_seed,omitempty"`
+	Login    string   `json:"login,omitempty"`
+	// TravelSafe keeps the item visible while the org's Travel Mode is on.
+	TravelSafe bool            `json:"travel_safe,omitempty"`
+	Card       *CardFields     `json:"card,omitempty"`
+	Identity   *IdentityFields `json:"identity,omitempty"`
+	WIF        *WIFItemFields  `json:"wif,omitempty"`
 }
 
 type WIFItemFields struct {
@@ -149,6 +151,18 @@ type UpdateItemRequest struct {
 	Tags   []string `json:"tags,omitempty"`
 	Login  string   `json:"login,omitempty"`
 	Secret string   `json:"secret,omitempty"`
+	// TravelSafe is tri-state: absent leaves the flag untouched.
+	TravelSafe *bool `json:"travel_safe,omitempty"`
+}
+
+// TravelModeRequest is the owner toggle body; TravelModeView is both
+// surfaces' read shape.
+type TravelModeRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+type TravelModeView struct {
+	Enabled bool `json:"enabled"`
 }
 
 type CreateGrantRequest struct {
@@ -435,6 +449,8 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/members/{id}/owner", s.demoteOwner)
 	mux.HandleFunc("DELETE /v1/me", s.deleteMe)
 	mux.HandleFunc("DELETE /v1/org", s.deleteOrg)
+	mux.HandleFunc("GET /v1/org/travel-mode", s.getTravelMode)
+	mux.HandleFunc("POST /v1/org/travel-mode", s.setTravelMode)
 	mux.HandleFunc("POST /v1/use", s.useItem)
 	mux.HandleFunc("GET /v1/recovery/share", s.getRecoveryShare)
 	mux.HandleFunc("POST /v1/recovery/enroll", s.enrollRecovery)
@@ -532,15 +548,16 @@ func (s *Server) createItem(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	item, err := s.App.PutItemFor(p, app.ItemOpts{
-		Name:     in.Name,
-		URI:      in.URI,
-		URIs:     in.URIs,
-		Tags:     in.Tags,
-		Kind:     kind,
-		Token:    token,
-		Login:    in.Login,
-		TOTPSeed: []byte(in.TOTPSeed),
-		WIF:      wifOpts,
+		Name:       in.Name,
+		URI:        in.URI,
+		URIs:       in.URIs,
+		Tags:       in.Tags,
+		Kind:       kind,
+		Token:      token,
+		Login:      in.Login,
+		TOTPSeed:   []byte(in.TOTPSeed),
+		WIF:        wifOpts,
+		TravelSafe: in.TravelSafe,
 	})
 	if err != nil {
 		http.Error(w, "create failed", http.StatusBadRequest)
@@ -590,12 +607,46 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	if in.URI != "" {
 		add = []string{in.URI}
 	}
-	item, err := s.App.UpdateItemFor(p, r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret))
+	item, err := s.App.UpdateItemFor(p, r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret), in.TravelSafe)
 	if err != nil {
 		http.Error(w, "update failed", http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, item)
+}
+
+// getTravelMode reads the org's flag — any org human may see why items
+// vanished; only owners may flip it.
+func (s *Server) getTravelMode(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	on, err := s.App.TravelMode(p.OrgID)
+	if err != nil {
+		http.Error(w, "read failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, TravelModeView{Enabled: on})
+}
+
+// setTravelMode is the owner-gated toggle — the flag and its
+// travel_mode_toggled audit row commit atomically in the store.
+func (s *Server) setTravelMode(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in TravelModeRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := s.App.SetTravelModeFor(p, in.Enabled); err != nil {
+		http.Error(w, "update failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, TravelModeView{Enabled: in.Enabled})
 }
 
 func (s *Server) archiveItem(w http.ResponseWriter, r *http.Request) {

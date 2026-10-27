@@ -28,6 +28,8 @@ type UpdateItemRequest struct {
 	Login *string `json:"login,omitempty"`
 	// Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone.
 	Secret *string `json:"secret,omitempty"`
+	// Set the travel_safe flag. Absent leaves it untouched.
+	TravelSafe *bool `json:"travel_safe,omitempty"`
 }
 
 // NewUpdateItemRequest instantiates a new UpdateItemRequest object
@@ -207,6 +209,38 @@ func (o *UpdateItemRequest) SetSecret(v string) {
 	o.Secret = &v
 }
 
+// GetTravelSafe returns the TravelSafe field value if set, zero value otherwise.
+func (o *UpdateItemRequest) GetTravelSafe() bool {
+	if o == nil || IsNil(o.TravelSafe) {
+		var ret bool
+		return ret
+	}
+	return *o.TravelSafe
+}
+
+// GetTravelSafeOk returns a tuple with the TravelSafe field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *UpdateItemRequest) GetTravelSafeOk() (*bool, bool) {
+	if o == nil || IsNil(o.TravelSafe) {
+		return nil, false
+	}
+	return o.TravelSafe, true
+}
+
+// HasTravelSafe returns a boolean if a field has been set.
+func (o *UpdateItemRequest) HasTravelSafe() bool {
+	if o != nil && !IsNil(o.TravelSafe) {
+		return true
+	}
+
+	return false
+}
+
+// SetTravelSafe gets a reference to the given bool and assigns it to the TravelSafe field.
+func (o *UpdateItemRequest) SetTravelSafe(v bool) {
+	o.TravelSafe = &v
+}
+
 func (o UpdateItemRequest) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -231,6 +265,9 @@ func (o UpdateItemRequest) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Secret) {
 		toSerialize["secret"] = o.Secret
+	}
+	if !IsNil(o.TravelSafe) {
+		toSerialize["travel_safe"] = o.TravelSafe
 	}
 	return toSerialize, nil
 }

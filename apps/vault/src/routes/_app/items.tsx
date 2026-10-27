@@ -267,12 +267,14 @@ function Items() {
                   const fd = new FormData(e.currentTarget);
                   const name = String(fd.get("name") ?? "");
                   const tags = parseList(String(fd.get("tags") ?? ""));
+                  const travelSafe = fd.get("travel_safe") === "on";
                   const body =
                     kind === "wif"
                       ? {
                           name,
                           kind: "oauth" as const,
                           uri: String(fd.get("uri") ?? "").trim() || "https://api.anthropic.com",
+                          travel_safe: travelSafe,
                           wif: {
                             token_url:
                               String(fd.get("token_url") ?? "").trim() ||
@@ -296,6 +298,7 @@ function Items() {
                       ? {
                           name,
                           kind,
+                          travel_safe: travelSafe,
                           card: {
                             number: String(fd.get("number") ?? "") || undefined,
                             exp_month: String(fd.get("exp_month") ?? "") || undefined,
@@ -308,6 +311,7 @@ function Items() {
                         ? {
                             name,
                             kind,
+                            travel_safe: travelSafe,
                             identity: {
                               given_name: String(fd.get("given_name") ?? "") || undefined,
                               family_name: String(fd.get("family_name") ?? "") || undefined,
@@ -324,6 +328,7 @@ function Items() {
                         ? {
                             name,
                             kind: "ssh" as const,
+                            travel_safe: travelSafe,
                             uri: String(fd.get("uri") ?? "").trim() || undefined,
                             secret: String(fd.get("secret") ?? "") || undefined,
                             ...(tags.length > 0 ? { tags } : {}),
@@ -332,12 +337,14 @@ function Items() {
                           ? {
                               name,
                               kind,
+                              travel_safe: travelSafe,
                               secret: String(fd.get("secret") ?? "") || undefined,
                               ...(tags.length > 0 ? { tags } : {}),
                             }
                           : {
                             name,
                             kind,
+                            travel_safe: travelSafe,
                             uri: String(fd.get("uri") ?? "") || undefined,
                             login: String(fd.get("login") ?? "") || undefined,
                             secret: String(fd.get("secret") ?? "") || undefined,
@@ -590,6 +597,12 @@ function Items() {
                     </div>
                   </>
                 ) : null}
+                <label className="flex items-center gap-2" htmlFor="travel_safe">
+                  <input id="travel_safe" name="travel_safe" type="checkbox" />
+                  <Text as="span" variant="secondary" size="sm">
+                    Travel safe — stays visible when Travel Mode is on
+                  </Text>
+                </label>
                 <div className="flex justify-end">
                   <Button type="submit" variant="primary">
                     Save
@@ -681,6 +694,9 @@ function Items() {
                       <div className="flex flex-wrap items-center gap-1.5">
                         <ItemIcon item={item} enabled={iconsOn} />
                         <Text as="span">{item.name}</Text>
+                        {item.travel_safe ? (
+                          <Badge variant="neutral">travel safe</Badge>
+                        ) : null}
                         {(item.tags ?? []).map((tag) => (
                           <Badge key={tag} variant="neutral">
                             {tag}
@@ -900,6 +916,7 @@ function EditItemForm({
           login,
           uris,
           tags,
+          travel_safe: fd.get("travel_safe") === "on",
           ...(newSecret ? { secret: newSecret } : {}),
         }).then((res) => {
           if (res.error) {
@@ -944,6 +961,17 @@ function EditItemForm({
           autoComplete="off"
         />
       </div>
+      <label className="flex items-center gap-2" htmlFor="edit-travel-safe">
+        <input
+          id="edit-travel-safe"
+          name="travel_safe"
+          type="checkbox"
+          defaultChecked={item.travel_safe ?? false}
+        />
+        <Text as="span" variant="secondary" size="sm">
+          Travel safe — stays visible when Travel Mode is on
+        </Text>
+      </label>
       <div className="flex flex-col gap-1">
         <Label htmlFor="edit-secret">New secret / password (optional)</Label>
         <div className="flex items-center gap-2">

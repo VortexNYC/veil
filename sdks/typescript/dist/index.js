@@ -1139,6 +1139,20 @@ var denyRecovery = (options) => (options.client ?? client).post({
   url: "/v1/recovery/{id}/deny",
   ...options
 });
+var getTravelMode = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/org/travel-mode",
+  ...options
+});
+var setTravelMode = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/org/travel-mode",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
 
 // sdks/typescript/ambient-oidc.ts
 function b64url(bytes) {
@@ -1308,6 +1322,7 @@ export {
   getOpenApi,
   getRecovery,
   getRecoveryShare,
+  getTravelMode,
   importItems,
   listAgentWorkloads,
   listAgents,
@@ -1329,6 +1344,7 @@ export {
   revokeAgent,
   rotateItem,
   setRotateHooks,
+  setTravelMode,
   signDPoPProof,
   startRecovery,
   streamRequests,

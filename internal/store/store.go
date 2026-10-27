@@ -58,6 +58,9 @@ type UseAuth struct {
 	Grant    *protocol.Grant
 	Approval *protocol.Approval
 	Groups   []string
+	// TravelMode is the org's travel_mode flag joined in the same round
+	// trip — the broker denies Use on non-travel_safe items while it is on.
+	TravelMode bool
 }
 
 // FileOutcome is what one FileRequest did: the live ask, whether this call
@@ -130,6 +133,15 @@ type Store interface {
 	// memory) cover every org by construction.
 	EnsureOrgKey(ctx context.Context, orgID string, master []byte) error
 	HasOrgKey(ctx context.Context, orgID string) (bool, error)
+
+	// TravelMode reports whether the org's Travel Mode is on (VTX-788) —
+	// while on, items without travel_safe are hidden from list/fill/Use.
+	// An absent org_settings row reads as off.
+	TravelMode(orgID string) (bool, error)
+	// SetTravelMode upserts the org_settings row. The toggle is an
+	// administration write, so the optional audit events commit atomically
+	// with it.
+	SetTravelMode(orgID string, on bool, events ...protocol.AuditEvent) error
 
 	// RotateOrgKey mints a fresh org master and rewraps every owner DEK
 	// under it (item ciphertexts are untouched). RotateKEK rewraps every

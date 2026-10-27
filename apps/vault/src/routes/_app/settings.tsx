@@ -12,6 +12,8 @@ import {
   enrollRecovery,
   provisionVault,
   recoveryShare,
+  setTravelMode,
+  travelMode,
 } from "../../origin";
 import {
   b64,
@@ -165,6 +167,86 @@ function RecoveryKitCard() {
   );
 }
 
+// TravelModeCard is the VTX-788 owner toggle. The GET is open to any org
+// human so members see why items vanished; the POST is owner-only — a
+// member click fails 403 and the card says so.
+function TravelModeCard() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [readonly, setReadonly] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void travelMode().then((res) => {
+      if (!live) {
+        return;
+      }
+      if (!res.error && res.data) {
+        setEnabled(res.data.enabled);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function toggle(next: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await setTravelMode(next);
+      if (res.error || !res.data) {
+        if (res.response?.status === 403) {
+          setReadonly(true);
+          setError("Only org owners can change Travel Mode.");
+          return;
+        }
+        setError("update failed");
+        return;
+      }
+      setEnabled(res.data.enabled);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (enabled === null) {
+    return null;
+  }
+  return (
+    <LayerCard>
+      <LayerCard.Secondary>Travel Mode</LayerCard.Secondary>
+      <LayerCard.Primary>
+        <Text as="p" variant="heading">
+          {enabled ? "On — only travel-safe items are visible" : "Off"}
+        </Text>
+        <Text as="p" variant="secondary">
+          While on, items not marked travel safe are hidden from every list, fill, and
+          agent Use — on every device. Mark items travel safe from the Items page.
+        </Text>
+        {error ? (
+          <Text as="p" variant="error">
+            {error}
+          </Text>
+        ) : null}
+        {!readonly ? (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={enabled ? "secondary" : "primary"}
+              disabled={busy}
+              onClick={() => void toggle(!enabled)}
+            >
+              {busy ? "Updating…" : enabled ? "Turn off" : "Turn on"}
+            </Button>
+          </div>
+        ) : null}
+      </LayerCard.Primary>
+    </LayerCard>
+  );
+}
+
 function Settings() {
   const [view, setView] = useState<BillingView | null>(null);
   useEffect(() => {
@@ -237,6 +319,7 @@ function Settings() {
             </LayerCard.Primary>
           </LayerCard>
         ) : null}
+        <TravelModeCard />
         <RecoveryKitCard />
         <Text as="p">Password, TOTP, WebAuthn, and lookup codes live at login.veil.nyc.</Text>
         <div className="flex flex-wrap items-center gap-2">

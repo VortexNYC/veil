@@ -565,6 +565,15 @@ func (q *Queries) DeleteOrgKeySharesForOrg(ctx context.Context, orgID string) er
 	return err
 }
 
+const deleteOrgSettings = `-- name: DeleteOrgSettings :exec
+DELETE FROM org_settings WHERE org_id = $1::text
+`
+
+func (q *Queries) DeleteOrgSettings(ctx context.Context, orgID string) error {
+	_, err := q.db.Exec(ctx, deleteOrgSettings, orgID)
+	return err
+}
+
 const deleteRecoveryWrapsForOrg = `-- name: DeleteRecoveryWrapsForOrg :exec
 DELETE FROM recovery_wraps WHERE org_id = $1::text
 `
@@ -1078,23 +1087,24 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (A
 }
 
 const itemByID = `-- name: ItemByID :one
-SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
+SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe
 FROM items WHERE id = $1::text
 `
 
 type ItemByIDRow struct {
-	ID        string
-	OrgID     string
-	Name      string
-	Kind      string
-	OwnerKind string
-	OwnerID   string
-	Uris      string
-	HasTotp   bool
-	Tags      string
-	Archived  bool
-	HasFile   bool
-	Login     string
+	ID         string
+	OrgID      string
+	Name       string
+	Kind       string
+	OwnerKind  string
+	OwnerID    string
+	Uris       string
+	HasTotp    bool
+	Tags       string
+	Archived   bool
+	HasFile    bool
+	Login      string
+	TravelSafe bool
 }
 
 func (q *Queries) ItemByID(ctx context.Context, id string) (ItemByIDRow, error) {
@@ -1113,12 +1123,13 @@ func (q *Queries) ItemByID(ctx context.Context, id string) (ItemByIDRow, error) 
 		&i.Archived,
 		&i.HasFile,
 		&i.Login,
+		&i.TravelSafe,
 	)
 	return i, err
 }
 
 const itemByName = `-- name: ItemByName :one
-SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
+SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe
 FROM items WHERE org_id = $1::text AND name = $2::text
 `
 
@@ -1128,18 +1139,19 @@ type ItemByNameParams struct {
 }
 
 type ItemByNameRow struct {
-	ID        string
-	OrgID     string
-	Name      string
-	Kind      string
-	OwnerKind string
-	OwnerID   string
-	Uris      string
-	HasTotp   bool
-	Tags      string
-	Archived  bool
-	HasFile   bool
-	Login     string
+	ID         string
+	OrgID      string
+	Name       string
+	Kind       string
+	OwnerKind  string
+	OwnerID    string
+	Uris       string
+	HasTotp    bool
+	Tags       string
+	Archived   bool
+	HasFile    bool
+	Login      string
+	TravelSafe bool
 }
 
 func (q *Queries) ItemByName(ctx context.Context, arg ItemByNameParams) (ItemByNameRow, error) {
@@ -1158,6 +1170,7 @@ func (q *Queries) ItemByName(ctx context.Context, arg ItemByNameParams) (ItemByN
 		&i.Archived,
 		&i.HasFile,
 		&i.Login,
+		&i.TravelSafe,
 	)
 	return i, err
 }
@@ -1454,23 +1467,24 @@ func (q *Queries) ListHumans(ctx context.Context, maxResults int64) ([]Human, er
 }
 
 const listItems = `-- name: ListItems :many
-SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
+SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe
 FROM items WHERE archived = FALSE ORDER BY name LIMIT $1::bigint
 `
 
 type ListItemsRow struct {
-	ID        string
-	OrgID     string
-	Name      string
-	Kind      string
-	OwnerKind string
-	OwnerID   string
-	Uris      string
-	HasTotp   bool
-	Tags      string
-	Archived  bool
-	HasFile   bool
-	Login     string
+	ID         string
+	OrgID      string
+	Name       string
+	Kind       string
+	OwnerKind  string
+	OwnerID    string
+	Uris       string
+	HasTotp    bool
+	Tags       string
+	Archived   bool
+	HasFile    bool
+	Login      string
+	TravelSafe bool
 }
 
 func (q *Queries) ListItems(ctx context.Context, maxResults int64) ([]ListItemsRow, error) {
@@ -1495,6 +1509,7 @@ func (q *Queries) ListItems(ctx context.Context, maxResults int64) ([]ListItemsR
 			&i.Archived,
 			&i.HasFile,
 			&i.Login,
+			&i.TravelSafe,
 		); err != nil {
 			return nil, err
 		}
@@ -1993,6 +2008,18 @@ func (q *Queries) OrgKeyShareByPubkey(ctx context.Context, pubkey []byte) (OrgKe
 	return i, err
 }
 
+const orgTravelMode = `-- name: OrgTravelMode :one
+SELECT travel_mode FROM org_settings WHERE org_id = $1::text
+`
+
+// Org settings (VTX-788). An absent row reads as travel_mode off.
+func (q *Queries) OrgTravelMode(ctx context.Context, orgID string) (bool, error) {
+	row := q.db.QueryRow(ctx, orgTravelMode, orgID)
+	var travel_mode bool
+	err := row.Scan(&travel_mode)
+	return travel_mode, err
+}
+
 const ownerWrapped = `-- name: OwnerWrapped :one
 SELECT wrapped FROM owner_keys
 WHERE org_id = $1::text AND owner_kind = $2::text AND owner_id = $3::text
@@ -2161,32 +2188,33 @@ func (q *Queries) PutHuman(ctx context.Context, arg PutHumanParams) error {
 }
 
 const putItem = `-- name: PutItem :execrows
-INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
-VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::bytea, $9::bool, $10::text, $11::bool, $12::bool, $13::text)
+INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login, travel_safe)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::bytea, $9::bool, $10::text, $11::bool, $12::bool, $13::text, $14::bool)
 ON CONFLICT(id) DO UPDATE SET
     org_id=excluded.org_id, name=excluded.name, kind=excluded.kind,
     owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
     uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
     tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
-    login=excluded.login
+    login=excluded.login, travel_safe=excluded.travel_safe
 WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
     AND items.org_id=excluded.org_id
 `
 
 type PutItemParams struct {
-	ID        string
-	OrgID     string
-	Name      string
-	Kind      string
-	OwnerKind string
-	OwnerID   string
-	Uris      string
-	Secret    []byte
-	HasTotp   bool
-	Tags      string
-	Archived  bool
-	HasFile   bool
-	Login     string
+	ID         string
+	OrgID      string
+	Name       string
+	Kind       string
+	OwnerKind  string
+	OwnerID    string
+	Uris       string
+	Secret     []byte
+	HasTotp    bool
+	Tags       string
+	Archived   bool
+	HasFile    bool
+	Login      string
+	TravelSafe bool
 }
 
 func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) (int64, error) {
@@ -2204,6 +2232,7 @@ func (q *Queries) PutItem(ctx context.Context, arg PutItemParams) (int64, error)
 		arg.Archived,
 		arg.HasFile,
 		arg.Login,
+		arg.TravelSafe,
 	)
 	if err != nil {
 		return 0, err
@@ -2796,6 +2825,24 @@ func (q *Queries) SessionByID(ctx context.Context, id string) (Session, error) {
 	return i, err
 }
 
+const setOrgTravelMode = `-- name: SetOrgTravelMode :exec
+INSERT INTO org_settings(org_id, travel_mode, updated_at)
+VALUES($1::text, $2::bool, $3::timestamptz)
+ON CONFLICT(org_id) DO UPDATE SET
+    travel_mode=excluded.travel_mode, updated_at=excluded.updated_at
+`
+
+type SetOrgTravelModeParams struct {
+	OrgID      string
+	TravelMode bool
+	UpdatedAt  time.Time
+}
+
+func (q *Queries) SetOrgTravelMode(ctx context.Context, arg SetOrgTravelModeParams) error {
+	_, err := q.db.Exec(ctx, setOrgTravelMode, arg.OrgID, arg.TravelMode, arg.UpdatedAt)
+	return err
+}
+
 const snapshotItem = `-- name: SnapshotItem :exec
 INSERT INTO item_versions(item_id, at, secret)
 SELECT $1::text, $2::timestamptz, secret FROM items WHERE id = $1::text
@@ -2954,6 +3001,8 @@ SELECT
     i.archived AS item_archived,
     i.has_file AS item_has_file,
     i.login AS item_login,
+    i.travel_safe AS item_travel_safe,
+    COALESCE(os.travel_mode, FALSE) AS org_travel_mode,
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
@@ -2972,6 +3021,7 @@ SELECT
 FROM (SELECT $1::text AS agent_id, $2::text AS item_id, $3::timestamptz AS now) AS v
 LEFT JOIN agents a ON a.id = v.agent_id
 LEFT JOIN items i ON i.id = v.item_id
+LEFT JOIN org_settings os ON os.org_id = i.org_id
 LEFT JOIN LATERAL (
     SELECT gg.id AS win_id FROM grants gg
     LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
@@ -3017,6 +3067,8 @@ type UseAuthRow struct {
 	ItemArchived      sql.NullBool
 	ItemHasFile       sql.NullBool
 	ItemLogin         sql.NullString
+	ItemTravelSafe    sql.NullBool
+	OrgTravelMode     bool
 	GrantID           sql.NullString
 	GrantOrgID        sql.NullString
 	GrantAgentID      sql.NullString
@@ -3059,6 +3111,8 @@ func (q *Queries) UseAuth(ctx context.Context, arg UseAuthParams) (UseAuthRow, e
 		&i.ItemArchived,
 		&i.ItemHasFile,
 		&i.ItemLogin,
+		&i.ItemTravelSafe,
+		&i.OrgTravelMode,
 		&i.GrantID,
 		&i.GrantOrgID,
 		&i.GrantAgentID,
@@ -3096,6 +3150,8 @@ SELECT
     i.archived AS item_archived,
     i.has_file AS item_has_file,
     i.login AS item_login,
+    i.travel_safe AS item_travel_safe,
+    COALESCE(os.travel_mode, FALSE) AS org_travel_mode,
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
@@ -3115,6 +3171,7 @@ FROM (SELECT $1::bytea AS session_hash, $2::text AS item_id, $3::timestamptz AS 
 LEFT JOIN sessions s ON s.secret_hash = v.session_hash AND s.expires_at > v.now AND s.revoked_at IS NULL AND (s.max_uses = 0 OR s.uses < s.max_uses)
 LEFT JOIN agents a ON a.id = s.agent_id
 LEFT JOIN items i ON i.id = v.item_id
+LEFT JOIN org_settings os ON os.org_id = i.org_id
 LEFT JOIN LATERAL (
     SELECT gg.id AS win_id FROM grants gg
     LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
@@ -3161,6 +3218,8 @@ type UseAuthSessionRow struct {
 	ItemArchived      sql.NullBool
 	ItemHasFile       sql.NullBool
 	ItemLogin         sql.NullString
+	ItemTravelSafe    sql.NullBool
+	OrgTravelMode     bool
 	GrantID           sql.NullString
 	GrantOrgID        sql.NullString
 	GrantAgentID      sql.NullString
@@ -3198,6 +3257,8 @@ func (q *Queries) UseAuthSession(ctx context.Context, arg UseAuthSessionParams) 
 		&i.ItemArchived,
 		&i.ItemHasFile,
 		&i.ItemLogin,
+		&i.ItemTravelSafe,
+		&i.OrgTravelMode,
 		&i.GrantID,
 		&i.GrantOrgID,
 		&i.GrantAgentID,

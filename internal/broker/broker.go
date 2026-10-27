@@ -290,6 +290,13 @@ func (b *Broker) useAuthorized(ctx context.Context, span trace.Span, agent proto
 		}
 		return out, nil
 	}
+	// Travel Mode (VTX-788): while the org's flag is on, a grant on an item
+	// without travel_safe must still refuse Use — the flag hides the item
+	// from every surface, and the deny is auditable like every decision.
+	if auth.TravelMode && !item.TravelSafe {
+		dec := protocol.UseResult{Decision: protocol.DecisionDeny, Reason: "travel_mode"}
+		return b.auditUse(ctx, span, agent, item, req, dec, target, 0, now), nil
+	}
 	dec := grant.Evaluate(grant.Input{
 		Principal: agent,
 		Item:      item,

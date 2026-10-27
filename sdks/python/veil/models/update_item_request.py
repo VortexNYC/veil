@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
@@ -32,7 +32,8 @@ class UpdateItemRequest(BaseModel):
     tags: Optional[List[StrictStr]] = None
     login: Optional[StrictStr] = Field(default=None, description="Fill username. Metadata on the item. Also sealed in the envelope.")
     secret: Optional[StrictStr] = Field(default=None, description="Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone.")
-    __properties: ClassVar[List[str]] = ["uri", "uris", "tags", "login", "secret"]
+    travel_safe: Optional[StrictBool] = Field(default=None, description="Set the travel_safe flag. Absent leaves it untouched.")
+    __properties: ClassVar[List[str]] = ["uri", "uris", "tags", "login", "secret", "travel_safe"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -89,7 +90,8 @@ class UpdateItemRequest(BaseModel):
             "uris": obj.get("uris"),
             "tags": obj.get("tags"),
             "login": obj.get("login"),
-            "secret": obj.get("secret")
+            "secret": obj.get("secret"),
+            "travel_safe": obj.get("travel_safe")
         })
         return _obj
 

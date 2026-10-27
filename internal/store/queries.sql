@@ -23,6 +23,8 @@ SELECT
     i.archived AS item_archived,
     i.has_file AS item_has_file,
     i.login AS item_login,
+    i.travel_safe AS item_travel_safe,
+    COALESCE(os.travel_mode, FALSE) AS org_travel_mode,
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
@@ -41,6 +43,7 @@ SELECT
 FROM (SELECT @agent_id::text AS agent_id, @item_id::text AS item_id, @now::timestamptz AS now) AS v
 LEFT JOIN agents a ON a.id = v.agent_id
 LEFT JOIN items i ON i.id = v.item_id
+LEFT JOIN org_settings os ON os.org_id = i.org_id
 LEFT JOIN LATERAL (
     SELECT gg.id AS win_id FROM grants gg
     LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
@@ -81,6 +84,8 @@ SELECT
     i.archived AS item_archived,
     i.has_file AS item_has_file,
     i.login AS item_login,
+    i.travel_safe AS item_travel_safe,
+    COALESCE(os.travel_mode, FALSE) AS org_travel_mode,
     g.id AS grant_id,
     g.org_id AS grant_org_id,
     g.agent_id AS grant_agent_id,
@@ -100,6 +105,7 @@ FROM (SELECT @session_hash::bytea AS session_hash, @item_id::text AS item_id, @n
 LEFT JOIN sessions s ON s.secret_hash = v.session_hash AND s.expires_at > v.now AND s.revoked_at IS NULL AND (s.max_uses = 0 OR s.uses < s.max_uses)
 LEFT JOIN agents a ON a.id = s.agent_id
 LEFT JOIN items i ON i.id = v.item_id
+LEFT JOIN org_settings os ON os.org_id = i.org_id
 LEFT JOIN LATERAL (
     SELECT gg.id AS win_id FROM grants gg
     LEFT JOIN approvals lap ON lap.grant_id = gg.id AND lap.expires_at > v.now
@@ -174,27 +180,27 @@ INSERT INTO item_versions(item_id, at, secret)
 SELECT @item_id::text, @at::timestamptz, secret FROM items WHERE id = @item_id::text;
 
 -- name: PutItem :execrows
-INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
-VALUES(@id::text, @org_id::text, @name::text, @kind::text, @owner_kind::text, @owner_id::text, @uris::text, @secret::bytea, @has_totp::bool, @tags::text, @archived::bool, @has_file::bool, @login::text)
+INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login, travel_safe)
+VALUES(@id::text, @org_id::text, @name::text, @kind::text, @owner_kind::text, @owner_id::text, @uris::text, @secret::bytea, @has_totp::bool, @tags::text, @archived::bool, @has_file::bool, @login::text, @travel_safe::bool)
 ON CONFLICT(id) DO UPDATE SET
     org_id=excluded.org_id, name=excluded.name, kind=excluded.kind,
     owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
     uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
     tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
-    login=excluded.login
+    login=excluded.login, travel_safe=excluded.travel_safe
 WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
     AND items.org_id=excluded.org_id;
 
 -- name: ItemByID :one
-SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
+SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe
 FROM items WHERE id = @id::text;
 
 -- name: ItemByName :one
-SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
+SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe
 FROM items WHERE org_id = @org_id::text AND name = @name::text;
 
 -- name: ListItems :many
-SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login
+SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe
 FROM items WHERE archived = FALSE ORDER BY name LIMIT @max_results::bigint;
 
 -- name: ArchiveItem :execrows
@@ -709,3 +715,16 @@ RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, cre
 UPDATE recovery_requests SET status = 'expired', resolved_at = @resolved_at::timestamptz
 WHERE status = 'open' AND expires_at <= @now::timestamptz
 RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch;
+
+-- Org settings (VTX-788). An absent row reads as travel_mode off.
+-- name: OrgTravelMode :one
+SELECT travel_mode FROM org_settings WHERE org_id = @org_id::text;
+
+-- name: SetOrgTravelMode :exec
+INSERT INTO org_settings(org_id, travel_mode, updated_at)
+VALUES(@org_id::text, @travel_mode::bool, @updated_at::timestamptz)
+ON CONFLICT(org_id) DO UPDATE SET
+    travel_mode=excluded.travel_mode, updated_at=excluded.updated_at;
+
+-- name: DeleteOrgSettings :exec
+DELETE FROM org_settings WHERE org_id = @org_id::text;

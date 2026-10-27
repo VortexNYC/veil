@@ -8,6 +8,7 @@ Method | HTTP request | Description
 [**delete_me**](HumanApi.md#delete_me) | **DELETE** /v1/me | Leave the org: drops the member (and owner, when present) tuples plus the humans row — the token resolves nothing afterward. A sole owner is refused: promote a member or delete the org. Not MCP.
 [**delete_org**](HumanApi.md#delete_org) | **DELETE** /v1/org | Teardown. Owner-only. Deletes every Keto tuple for the org, then purges every vault row (items, grants, sessions, agents, humans, keys) in one transaction. Audit rows are kept — teardown must not erase the forensic record. Not MCP.
 [**demote_owner**](HumanApi.md#demote_owner) | **DELETE** /v1/members/{id}/owner | Strip the owners tuple from a co-owner. Owner-only. The last owner cannot be demoted — the org would have no administrator. Not MCP.
+[**get_travel_mode**](HumanApi.md#get_travel_mode) | **GET** /v1/org/travel-mode | Read the org&#39;s Travel Mode flag.
 [**promote_owner**](HumanApi.md#promote_owner) | **POST** /v1/members/{id}/owner | Grant an existing member the owners tuple. Owner-only. Not MCP.
 [**provision**](HumanApi.md#provision) | **POST** /v1/provision | Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 [**register_device**](HumanApi.md#register_device) | **POST** /v1/devices | Register a push endpoint for the caller&#39;s org. The phone app POSTs its APNs/FCM token on sign-in and refresh. Humans only — an agent must never mint a wake channel for asks meant to reach a human. Idempotent upsert.
@@ -321,6 +322,80 @@ Name | Type | Description  | Notes
 **401** | missing or invalid human token |  -  |
 **403** | caller is a member, not an owner |  -  |
 **404** | not an owner of this org |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **get_travel_mode**
+> TravelModeView get_travel_mode()
+
+Read the org's Travel Mode flag.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.travel_mode_view import TravelModeView
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.HumanApi(api_client)
+
+    try:
+        # Read the org's Travel Mode flag.
+        api_response = api_instance.get_travel_mode()
+        print("The response of HumanApi->get_travel_mode:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling HumanApi->get_travel_mode: %s\n" % e)
+```
+
+
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TravelModeView**](TravelModeView.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | flag state |  -  |
+**401** | missing or invalid Bearer |  -  |
+**403** | agents cannot read org settings |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
