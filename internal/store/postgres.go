@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store/sqlc"
 	"github.com/jackc/pgx/v5"
@@ -344,6 +346,29 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 	if err := q.DeleteRecoveryWrapsForOrg(ctx, orgID); err != nil {
 		return err
 	}
+	// Member key shares are asymmetric: the stored pubkey re-wraps the new
+	// master without the member's private key, so recovery kits SURVIVE
+	// rotation (VEIL-78) — unlike the symmetric wraps deleted above.
+	shares, err := q.ListOrgKeySharesForOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	for _, share := range shares {
+		reboxed, err := device.Offer(newMaster, share.Pubkey)
+		if err != nil {
+			return err
+		}
+		n, err := q.RewrapOrgKeyShare(ctx, sqlc.RewrapOrgKeyShareParams{
+			OrgID: orgID, HumanID: share.HumanID, WrappedMaster: reboxed,
+			OrgKeyVersion: row.KeyVersion + 1, UpdatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("store: org_key_shares row %s/%s vanished mid-rotation", orgID, share.HumanID)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -552,21 +577,38 @@ func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.O
 	row, err := q.RecoveryWrap(ctx, sqlc.RecoveryWrapParams{
 		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
 	})
-	if err == pgx.ErrNoRows {
-		return ErrNotFound
-	}
-	if err != nil {
+	var master []byte
+	usedWrap := false
+	switch {
+	case err == nil:
+		if row.UsedAt.Valid {
+			return fmt.Errorf("store: recovery wrap already used")
+		}
+		if row.ExpiresAt.Valid && time.Now().UTC().After(row.ExpiresAt.Time) {
+			return fmt.Errorf("store: recovery wrap expired")
+		}
+		master, err = crypto.OpenAAD(recoveryKey, row.Wrapped, recoveryAAD(orgID, o))
+		if err != nil {
+			return fmt.Errorf("store: recovery key does not open this wrap: %w", err)
+		}
+		usedWrap = true
+	case errors.Is(err, pgx.ErrNoRows):
+		// VEIL-78 fallback: no symmetric wrap, so recoveryKey is the
+		// member's 32-byte X25519 recovery private key opening their
+		// org_key_shares row. Shares are not single-use — nothing burns.
+		share, serr := q.OrgKeyShare(ctx, sqlc.OrgKeyShareParams{OrgID: orgID, HumanID: o.ID})
+		if errors.Is(serr, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if serr != nil {
+			return serr
+		}
+		master, err = device.Accept(share.WrappedMaster, recoveryKey)
+		if err != nil {
+			return fmt.Errorf("store: recovery key does not open this share: %w", err)
+		}
+	default:
 		return err
-	}
-	if row.UsedAt.Valid {
-		return fmt.Errorf("store: recovery wrap already used")
-	}
-	if row.ExpiresAt.Valid && time.Now().UTC().After(row.ExpiresAt.Time) {
-		return fmt.Errorf("store: recovery wrap expired")
-	}
-	master, err := crypto.OpenAAD(recoveryKey, row.Wrapped, recoveryAAD(orgID, o))
-	if err != nil {
-		return fmt.Errorf("store: recovery key does not open this wrap: %w", err)
 	}
 	// Never regress a live master: if the committed row already opens under
 	// this KEK to the same master the org is healthy — no-op, wrap unspent.
@@ -589,20 +631,413 @@ func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.O
 	if n != 1 {
 		return ErrOrgKeyMissing
 	}
-	n, err = q.ConsumeRecoveryWrap(ctx, sqlc.ConsumeRecoveryWrapParams{
-		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID, UsedAt: time.Now().UTC(),
-	})
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return fmt.Errorf("store: recovery wrap consumed concurrently")
+	if usedWrap {
+		n, err = q.ConsumeRecoveryWrap(ctx, sqlc.ConsumeRecoveryWrapParams{
+			OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID, UsedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("store: recovery wrap consumed concurrently")
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	p.km.InvalidateOrg(orgID)
 	return nil
+}
+
+func orgKeyShareFromSqlc(r sqlc.OrgKeyShare) protocol.OrgKeyShare {
+	return protocol.OrgKeyShare{
+		OrgID:           r.OrgID,
+		HumanID:         r.HumanID,
+		Pubkey:          append([]byte(nil), r.Pubkey...),
+		WrappedMaster:   append([]byte(nil), r.WrappedMaster...),
+		WrapPubkeyEpoch: int(r.WrapPubkeyEpoch),
+		OrgKeyVersion:   int(r.OrgKeyVersion),
+		CreatedAt:       r.CreatedAt.UTC(),
+		UpdatedAt:       r.UpdatedAt.UTC(),
+	}
+}
+
+func recoveryRequestFromSqlc(r sqlc.RecoveryRequest) protocol.RecoveryRequest {
+	out := protocol.RecoveryRequest{
+		ID:          r.ID,
+		OrgID:       r.OrgID,
+		HumanID:     r.HumanID,
+		InitiatedBy: r.InitiatedBy,
+		NewPubkey:   append([]byte(nil), r.NewPubkey...),
+		ResetMFA:    r.ResetMfa,
+		Status:      protocol.RecoveryStatus(r.Status),
+		CreatedAt:   r.CreatedAt.UTC(),
+		UnlockAt:    r.UnlockAt.UTC(),
+		ExpiresAt:   r.ExpiresAt.UTC(),
+	}
+	if r.ResolvedAt.Valid {
+		t := r.ResolvedAt.Time.UTC()
+		out.ResolvedAt = &t
+	}
+	if r.ConfirmedBy.Valid {
+		out.ConfirmedBy = r.ConfirmedBy.String
+	}
+	if r.ResultEpoch.Valid {
+		e := int(r.ResultEpoch.Int32)
+		out.ResultEpoch = &e
+	}
+	return out
+}
+
+// EnrollOrgKeyShare seals the committed org master under the member's
+// X25519 pubkey — a FOR SHARE read of org_keys serializes against
+// RotateOrgKey's FOR UPDATE, so the planted share can never wrap a dead
+// master. The insert is ON CONFLICT DO NOTHING: enrollment is idempotent
+// and a member's pubkey can never be overwritten outside the ceremony.
+func (p *Postgres) EnrollOrgKeyShare(ctx context.Context, orgID, humanID string, pubkey []byte, audit ...protocol.AuditEvent) (protocol.OrgKeyShare, bool, error) {
+	if len(pubkey) != device.PublicSize {
+		return protocol.OrgKeyShare{}, false, fmt.Errorf("store: recovery pubkey must be %d bytes", device.PublicSize)
+	}
+	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.OrgKeyForShare(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return protocol.OrgKeyShare{}, false, ErrOrgKeyMissing
+	}
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, err
+	}
+	master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	wrapped, err := device.Offer(master, pubkey)
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, err
+	}
+	now := time.Now().UTC()
+	ins, err := q.PutOrgKeyShare(ctx, sqlc.PutOrgKeyShareParams{
+		OrgID: orgID, HumanID: humanID, Pubkey: pubkey, WrappedMaster: wrapped,
+		WrapPubkeyEpoch: 1, OrgKeyVersion: row.KeyVersion,
+		CreatedAt: now, UpdatedAt: now,
+	})
+	created := true
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Already enrolled — return the committed row, never overwrite.
+		created = false
+		ins, err = q.OrgKeyShare(ctx, sqlc.OrgKeyShareParams{OrgID: orgID, HumanID: humanID})
+	}
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, err
+	}
+	for _, e := range audit {
+		if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
+			return protocol.OrgKeyShare{}, false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.OrgKeyShare{}, false, err
+	}
+	return orgKeyShareFromSqlc(ins), created, nil
+}
+
+// OrgKeyShare returns the member's enrolled share — metadata and the
+// sealed blob only; the master never leaves the store.
+func (p *Postgres) OrgKeyShare(ctx context.Context, orgID, humanID string) (protocol.OrgKeyShare, error) {
+	row, err := p.sqlc.OrgKeyShare(ctx, sqlc.OrgKeyShareParams{OrgID: orgID, HumanID: humanID})
+	if err == pgx.ErrNoRows {
+		return protocol.OrgKeyShare{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	return orgKeyShareFromSqlc(row), nil
+}
+
+// FileRecoveryRequest plants an open recovery row. new_pubkey must not
+// collide with any enrolled share pubkey (idx_org_key_shares_pubkey is
+// global-unique, so reuse anywhere is a rejection). The partial unique
+// dedupes concurrent or repeated starts: the second call returns the live
+// row with created=false.
+func (p *Postgres) FileRecoveryRequest(ctx context.Context, req protocol.RecoveryRequest, audit ...protocol.AuditEvent) (protocol.RecoveryRequest, bool, error) {
+	if len(req.NewPubkey) != device.PublicSize {
+		return protocol.RecoveryRequest{}, false, fmt.Errorf("store: recovery pubkey must be %d bytes", device.PublicSize)
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.RecoveryRequest{}, false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	if _, err := q.OrgKeyShareByPubkey(ctx, req.NewPubkey); err == nil {
+		return protocol.RecoveryRequest{}, false, ErrRecoveryPubkey
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return protocol.RecoveryRequest{}, false, err
+	}
+	row, err := q.InsertRecoveryRequest(ctx, sqlc.InsertRecoveryRequestParams{
+		ID: req.ID, OrgID: req.OrgID, HumanID: req.HumanID, InitiatedBy: req.InitiatedBy,
+		NewPubkey: req.NewPubkey, ResetMfa: req.ResetMFA,
+		CreatedAt: req.CreatedAt.UTC(), UnlockAt: req.UnlockAt.UTC(), ExpiresAt: req.ExpiresAt.UTC(),
+	})
+	created := true
+	if errors.Is(err, pgx.ErrNoRows) {
+		// An open ask already exists — return it, do not re-notify.
+		created = false
+		row, err = q.OpenRecoveryRequestForHuman(ctx, sqlc.OpenRecoveryRequestForHumanParams{
+			OrgID: req.OrgID, HumanID: req.HumanID,
+		})
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, false, err
+	}
+	for _, e := range audit {
+		if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
+			return protocol.RecoveryRequest{}, false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.RecoveryRequest{}, false, err
+	}
+	return recoveryRequestFromSqlc(row), created, nil
+}
+
+func (p *Postgres) RecoveryRequest(ctx context.Context, id string) (protocol.RecoveryRequest, error) {
+	row, err := p.sqlc.RecoveryRequestByID(ctx, id)
+	if err == pgx.ErrNoRows {
+		return protocol.RecoveryRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	return recoveryRequestFromSqlc(row), nil
+}
+
+func (p *Postgres) ListRecoveryRequests(ctx context.Context, orgID string, status protocol.RecoveryStatus) ([]protocol.RecoveryRequest, error) {
+	rows, err := p.sqlc.ListRecoveryRequests(ctx, sqlc.ListRecoveryRequestsParams{
+		OrgID: orgID, Status: string(status), MaxResults: maxListResults,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.RecoveryRequest, len(rows))
+	for i, r := range rows {
+		out[i] = recoveryRequestFromSqlc(r)
+	}
+	return out, nil
+}
+
+// CompleteRecovery is the ceremony's atomic commit — the spec's Step 3.
+// It runs the org-master rotation inline: owner DEKs re-wrap to a fresh
+// master, the recovering member's share moves to their staged new_pubkey
+// at epoch+1, every other member's share re-wraps under their existing
+// pubkey, and the request resolves completed — one transaction, one
+// recovery_completed audit row.
+func (p *Postgres) CompleteRecovery(ctx context.Context, orgID, id, confirmerID string, proofHMAC []byte) (protocol.RecoveryRequest, error) {
+	// kekMu.RLock outermost — the docs/key-rotation.md lock order.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN ROW EXCLUSIVE MODE`); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	q := p.sqlc.WithTx(tx)
+	orgRow, err := q.OrgKeyForUpdate(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return protocol.RecoveryRequest{}, ErrOrgKeyMissing
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	req, err := q.RecoveryRequestForUpdate(ctx, id)
+	if err == pgx.ErrNoRows {
+		return protocol.RecoveryRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	if req.OrgID != orgID {
+		return protocol.RecoveryRequest{}, ErrNotFound
+	}
+	if req.Status != string(protocol.RecoveryOpen) {
+		return protocol.RecoveryRequest{}, ErrRequestResolved
+	}
+	oldMaster, err := crypto.OpenAAD(p.kek, orgRow.Wrapped, []byte(orgID))
+	if err != nil {
+		return protocol.RecoveryRequest{}, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	now := time.Now().UTC()
+	if !now.Before(req.ExpiresAt) {
+		return protocol.RecoveryRequest{}, ErrRecoveryExpired
+	}
+	// The unlock_at timelock yields only to a proof that the confirmer
+	// already holds the committed master: HMAC-SHA256(oldMaster, req.ID).
+	if now.Before(req.UnlockAt) {
+		mac := hmac.New(sha256.New, oldMaster)
+		mac.Write([]byte(req.ID))
+		if len(proofHMAC) == 0 || !hmac.Equal(mac.Sum(nil), proofHMAC) {
+			return protocol.RecoveryRequest{}, ErrRecoveryLocked
+		}
+	}
+	newMaster, err := crypto.NewKey()
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	owners, err := q.ListOwnerKeysForOrg(ctx, orgID)
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	for _, ow := range owners {
+		owner := protocol.Owner{Kind: protocol.OwnerKind(ow.OwnerKind), ID: ow.OwnerID}
+		dek, err := crypto.OpenEpoch(oldMaster, ow.Wrapped, ownerWrapAAD(orgID, owner))
+		if err != nil {
+			return protocol.RecoveryRequest{}, fmt.Errorf("store: owner_keys row %s/%s does not unwrap: %w", ow.OwnerKind, ow.OwnerID, err)
+		}
+		resealed, err := crypto.SealEpoch(newMaster, dek, ownerWrapAAD(orgID, owner))
+		if err != nil {
+			return protocol.RecoveryRequest{}, err
+		}
+		n, err := q.RewrapOwnerKey(ctx, sqlc.RewrapOwnerKeyParams{
+			OrgID: orgID, OwnerKind: ow.OwnerKind, OwnerID: ow.OwnerID, Wrapped: resealed,
+		})
+		if err != nil {
+			return protocol.RecoveryRequest{}, err
+		}
+		if n != 1 {
+			return protocol.RecoveryRequest{}, fmt.Errorf("store: owner_keys row %s/%s vanished mid-recovery", ow.OwnerKind, ow.OwnerID)
+		}
+	}
+	wrapped, err := crypto.SealAAD(p.kek, newMaster, []byte(orgID))
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	n, err := q.BumpOrgKey(ctx, sqlc.BumpOrgKeyParams{
+		OrgID: orgID, Wrapped: wrapped, RotatedAt: now, KeyVersion: orgRow.KeyVersion,
+	})
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	if n != 1 {
+		return protocol.RecoveryRequest{}, ErrRotationConflict
+	}
+	newKeyVersion := orgRow.KeyVersion + 1
+	// Symmetric wraps seal the dead master — same as RotateOrgKey.
+	if err := q.DeleteRecoveryWrapsForOrg(ctx, orgID); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	shares, err := q.ListOrgKeySharesForOrg(ctx, orgID)
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	// The recovering member's share moves to their staged pubkey and bumps
+	// the wrap epoch; everybody else re-wraps the new master unchanged.
+	targetWrapped, err := device.Offer(newMaster, req.NewPubkey)
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	oldEpoch := int32(0)
+	var targetCreatedAt time.Time
+	for _, share := range shares {
+		if share.HumanID == req.HumanID {
+			oldEpoch = share.WrapPubkeyEpoch
+			targetCreatedAt = share.CreatedAt
+			continue
+		}
+		reboxed, err := device.Offer(newMaster, share.Pubkey)
+		if err != nil {
+			return protocol.RecoveryRequest{}, err
+		}
+		n, err := q.RewrapOrgKeyShare(ctx, sqlc.RewrapOrgKeyShareParams{
+			OrgID: orgID, HumanID: share.HumanID, WrappedMaster: reboxed,
+			OrgKeyVersion: newKeyVersion, UpdatedAt: now,
+		})
+		if err != nil {
+			return protocol.RecoveryRequest{}, err
+		}
+		if n != 1 {
+			return protocol.RecoveryRequest{}, fmt.Errorf("store: org_key_shares row %s/%s vanished mid-recovery", orgID, share.HumanID)
+		}
+	}
+	if targetCreatedAt.IsZero() {
+		targetCreatedAt = now
+	}
+	newEpoch := oldEpoch + 1
+	if err := q.UpsertOrgKeyShare(ctx, sqlc.UpsertOrgKeyShareParams{
+		OrgID: orgID, HumanID: req.HumanID, Pubkey: req.NewPubkey,
+		WrappedMaster: targetWrapped, WrapPubkeyEpoch: newEpoch,
+		OrgKeyVersion: newKeyVersion, CreatedAt: targetCreatedAt, UpdatedAt: now,
+	}); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	done, err := q.CompleteRecoveryRequest(ctx, sqlc.CompleteRecoveryRequestParams{
+		ID: id, ResolvedAt: now, ConfirmedBy: confirmerID,
+		ResultEpoch: newEpoch,
+	})
+	if err == pgx.ErrNoRows {
+		return protocol.RecoveryRequest{}, ErrRequestResolved
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	if err := auditInTx(ctx, tx, sqlc.InsertAuditParams{
+		At: now, OrgID: orgID, AgentID: confirmerID, ItemID: req.ID,
+		Action: string(protocol.ActionRecoveryCompleted), Decision: string(protocol.DecisionAllow),
+		Reason: fmt.Sprintf("human=%s epoch=%d key_version=%d", req.HumanID, newEpoch, newKeyVersion),
+	}); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	p.km.InvalidateOrg(orgID)
+	return recoveryRequestFromSqlc(done), nil
+}
+
+// DenyRecovery resolves an open request to denied (owner) or cancelled
+// (initiator) — first write wins, and the recovery_denied audit row
+// commits with the flip.
+func (p *Postgres) DenyRecovery(ctx context.Context, id, actorID string, status protocol.RecoveryStatus) (protocol.RecoveryRequest, error) {
+	if status != protocol.RecoveryDenied && status != protocol.RecoveryCancelled {
+		return protocol.RecoveryRequest{}, fmt.Errorf("store: cannot resolve recovery to %q", status)
+	}
+	now := time.Now().UTC()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	row, err := q.ResolveRecoveryRequest(ctx, sqlc.ResolveRecoveryRequestParams{
+		ID: id, Status: string(status), ResolvedAt: now,
+		ConfirmedBy: actorID,
+	})
+	if err == pgx.ErrNoRows {
+		return protocol.RecoveryRequest{}, ErrRequestResolved
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	if err := auditInTx(ctx, tx, sqlc.InsertAuditParams{
+		At: now, OrgID: row.OrgID, AgentID: actorID, ItemID: row.ID,
+		Action: string(protocol.ActionRecoveryDenied), Decision: string(protocol.DecisionDeny),
+		Reason: "human=" + row.HumanID,
+	}); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	return recoveryRequestFromSqlc(row), nil
 }
 
 // RotateKEK rewraps every org master under newKEK. Masters do not change —
@@ -877,6 +1312,47 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			used_at TIMESTAMPTZ,
 			PRIMARY KEY (org_id, owner_kind, owner_id)
 		)`,
+		// Per-member nacl/box wrapped copy of the org master (VEIL-78).
+		// pubkey is the member's 32-byte X25519 public key; wrapped_master
+		// is the 80-byte box.SealAnonymous ciphertext of the org master at
+		// org_key_version.
+		`CREATE TABLE IF NOT EXISTS org_key_shares (
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL,
+			pubkey BYTEA NOT NULL,
+			wrapped_master BYTEA NOT NULL,
+			wrap_pubkey_epoch INTEGER NOT NULL DEFAULT 1,
+			org_key_version INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (org_id, human_id),
+			CONSTRAINT org_key_shares_org_id_nonempty CHECK (org_id <> ''),
+			CONSTRAINT org_key_shares_pubkey_len CHECK (octet_length(pubkey) = 32),
+			CONSTRAINT org_key_shares_wrapped_len CHECK (octet_length(wrapped_master) = 80)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_org_key_shares_pubkey ON org_key_shares(pubkey)`,
+		// Initiator -> confirmer recovery ceremony state (VEIL-78).
+		`CREATE TABLE IF NOT EXISTS recovery_requests (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL,
+			initiated_by TEXT NOT NULL,
+			new_pubkey BYTEA NOT NULL,
+			reset_mfa BOOLEAN NOT NULL DEFAULT FALSE,
+			status TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			unlock_at TIMESTAMPTZ NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			resolved_at TIMESTAMPTZ,
+			confirmed_by TEXT,
+			result_epoch INTEGER,
+			CONSTRAINT recovery_requests_org_id_nonempty CHECK (org_id <> ''),
+			CONSTRAINT recovery_requests_pubkey_len CHECK (octet_length(new_pubkey) = 32)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS recovery_requests_one_open
+			ON recovery_requests(org_id, human_id) WHERE status = 'open'`,
+		`CREATE INDEX IF NOT EXISTS idx_recovery_requests_org_status
+			ON recovery_requests(org_id, status, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_workloads_issuer ON workloads(issuer)`,
 		// Request-change fan-out for the live approvals feed: any committed
 		// INSERT or status change on approval_requests NOTIFYs the org. The
@@ -1066,7 +1542,7 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "audit_outbox", "sessions", "recovery_wraps"} {
+	for _, table := range []string{"humans", "agents", "items", "grants", "audit", "audit_outbox", "sessions", "recovery_wraps", "org_key_shares", "recovery_requests"} {
 		if _, err := tx.Exec(ctx, `ALTER TABLE `+table+` ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}

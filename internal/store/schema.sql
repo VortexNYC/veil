@@ -164,6 +164,50 @@ CREATE TABLE recovery_wraps (
     PRIMARY KEY (org_id, owner_kind, owner_id)
 );
 
+-- Per-member nacl/box wrapped copy of the org master (VEIL-78).
+-- pubkey is the member's 32-byte X25519 public key; wrapped_master is the
+-- 80-byte box.SealAnonymous ciphertext of the org master at org_key_version.
+CREATE TABLE org_key_shares (
+    org_id TEXT NOT NULL,
+    human_id TEXT NOT NULL,
+    pubkey BYTEA NOT NULL,
+    wrapped_master BYTEA NOT NULL,
+    wrap_pubkey_epoch INTEGER NOT NULL DEFAULT 1,
+    org_key_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (org_id, human_id),
+    CONSTRAINT org_key_shares_org_id_nonempty CHECK (org_id <> ''),
+    CONSTRAINT org_key_shares_pubkey_len CHECK (octet_length(pubkey) = 32),
+    CONSTRAINT org_key_shares_wrapped_len CHECK (octet_length(wrapped_master) = 80)
+);
+
+CREATE UNIQUE INDEX idx_org_key_shares_pubkey ON org_key_shares(pubkey);
+
+-- Initiator -> confirmer recovery ceremony state (VEIL-78).
+CREATE TABLE recovery_requests (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    human_id TEXT NOT NULL,
+    initiated_by TEXT NOT NULL,
+    new_pubkey BYTEA NOT NULL,
+    reset_mfa BOOLEAN NOT NULL DEFAULT FALSE,
+    status TEXT NOT NULL, -- 'open' | 'completed' | 'denied' | 'expired' | 'cancelled'
+    created_at TIMESTAMPTZ NOT NULL,
+    unlock_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    resolved_at TIMESTAMPTZ,
+    confirmed_by TEXT,
+    result_epoch INTEGER,
+    CONSTRAINT recovery_requests_org_id_nonempty CHECK (org_id <> ''),
+    CONSTRAINT recovery_requests_pubkey_len CHECK (octet_length(new_pubkey) = 32)
+);
+
+CREATE UNIQUE INDEX recovery_requests_one_open
+    ON recovery_requests(org_id, human_id) WHERE status = 'open';
+CREATE INDEX idx_recovery_requests_org_status
+    ON recovery_requests(org_id, status, created_at DESC);
+
 CREATE TABLE item_versions (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     item_id TEXT NOT NULL,

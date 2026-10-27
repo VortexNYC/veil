@@ -182,6 +182,15 @@ const (
 	// billing_provision_failed — Vortex customer upsert failed during
 	// provision; signup succeeded anyway. Reconcile target.
 	ActionBillingProvisionFailed ActionKind = "billing_provision_failed"
+	// Member recovery (VEIL-78): per-member wrapped org-key share
+	// enrollment and the initiator → confirmer ceremony lifecycle. Every
+	// transition commits atomically with its audit row. AgentID is the
+	// actor; ItemID carries the recovery request id.
+	ActionRecoveryShareEnrolled ActionKind = "recovery_share_enrolled"
+	ActionRecoveryStarted       ActionKind = "recovery_started"
+	ActionRecoveryCompleted     ActionKind = "recovery_completed"
+	ActionRecoveryDenied        ActionKind = "recovery_denied"
+	ActionRecoveryExpired       ActionKind = "recovery_expired"
 )
 
 type Decision string
@@ -327,6 +336,56 @@ type ApprovalRequest struct {
 	ResolvedAt *time.Time
 	ResolvedBy string
 	ApprovalID string
+}
+
+// OrgKeyShare is one member's nacl/box wrapped copy of the org master
+// (VEIL-78). Pubkey is the member's 32-byte X25519 public key — the only
+// half that ever reaches the origin; WrappedMaster is the 80-byte
+// box.SealAnonymous ciphertext of the org master at OrgKeyVersion. The
+// plaintext master and the member's private key never ride this type.
+type OrgKeyShare struct {
+	OrgID           string    `json:"org_id"`
+	HumanID         string    `json:"human_id"`
+	Pubkey          []byte    `json:"pubkey"`
+	WrappedMaster   []byte    `json:"wrapped_master"`
+	WrapPubkeyEpoch int       `json:"wrap_pubkey_epoch"`
+	OrgKeyVersion   int       `json:"org_key_version"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// RecoveryStatus is the recovery-request lifecycle. Open is the only state
+// a resolution may leave; every other state is terminal.
+type RecoveryStatus string
+
+const (
+	RecoveryOpen      RecoveryStatus = "open"
+	RecoveryCompleted RecoveryStatus = "completed"
+	RecoveryDenied    RecoveryStatus = "denied"
+	RecoveryExpired   RecoveryStatus = "expired"
+	RecoveryCancelled RecoveryStatus = "cancelled"
+)
+
+// RecoveryRequest is the initiator → confirmer recovery ceremony row
+// (VEIL-78). NewPubkey is the member's staged X25519 public key —
+// ciphertext material only; no secret ever rides the request. UnlockAt is
+// the sole-owner timelock the app layer computes (immediate for
+// owner-confirmed paths, +24h for solo self-recovery); ExpiresAt bounds
+// the whole ask.
+type RecoveryRequest struct {
+	ID          string         `json:"id"`
+	OrgID       string         `json:"org_id"`
+	HumanID     string         `json:"human_id"`
+	InitiatedBy string         `json:"initiated_by"`
+	NewPubkey   []byte         `json:"new_pubkey"`
+	ResetMFA    bool           `json:"reset_mfa"`
+	Status      RecoveryStatus `json:"status"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UnlockAt    time.Time      `json:"unlock_at"`
+	ExpiresAt   time.Time      `json:"expires_at"`
+	ResolvedAt  *time.Time     `json:"resolved_at,omitempty"`
+	ConfirmedBy string         `json:"confirmed_by,omitempty"`
+	ResultEpoch *int           `json:"result_epoch,omitempty"`
 }
 
 // Workload is an Entra-style federation binding. We verify an OIDC ID token

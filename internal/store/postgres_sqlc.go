@@ -1598,6 +1598,25 @@ func sweepPostgresRun(ctx context.Context, db sqlc.DBTX, before time.Time, audit
 			return rep, fmt.Errorf("sweep request audit: %w", err)
 		}
 	}
+	// Recovery asks expire the same way (VEIL-78): a staged key nobody
+	// confirmed in time dies auditable — each expiry is a security event.
+	expiredRec, err := q.ExpireStaleRecoveryRequests(ctx, sqlc.ExpireStaleRecoveryRequestsParams{
+		ResolvedAt: time.Now().UTC(), Now: time.Now().UTC(),
+	})
+	if err != nil {
+		return rep, fmt.Errorf("sweep recoveries: %w", err)
+	}
+	rep.Recoveries = int64(len(expiredRec))
+	for i := range expiredRec {
+		ev := sqlc.InsertAuditParams{
+			At: time.Now().UTC(), OrgID: expiredRec[i].OrgID, AgentID: expiredRec[i].HumanID,
+			ItemID: expiredRec[i].ID, Action: string(protocol.ActionRecoveryExpired),
+			Decision: string(protocol.DecisionNeedApproval), Reason: expiredRec[i].ID,
+		}
+		if err := auditFn(ctx, ev); err != nil {
+			return rep, fmt.Errorf("sweep recovery audit: %w", err)
+		}
+	}
 	return rep, nil
 }
 

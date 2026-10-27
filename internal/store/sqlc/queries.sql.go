@@ -189,6 +189,54 @@ func (q *Queries) BumpOrgKey(ctx context.Context, arg BumpOrgKeyParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const cancelRecoveryRequestsForHuman = `-- name: CancelRecoveryRequestsForHuman :many
+UPDATE recovery_requests SET status = 'cancelled', resolved_at = $1::timestamptz
+WHERE org_id = $2::text AND human_id = $3::text AND status = 'open'
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+`
+
+type CancelRecoveryRequestsForHumanParams struct {
+	ResolvedAt time.Time
+	OrgID      string
+	HumanID    string
+}
+
+// Member offboard: every open ask for the human cancels so a removed
+// member's staged key can never be completed.
+func (q *Queries) CancelRecoveryRequestsForHuman(ctx context.Context, arg CancelRecoveryRequestsForHumanParams) ([]RecoveryRequest, error) {
+	rows, err := q.db.Query(ctx, cancelRecoveryRequestsForHuman, arg.ResolvedAt, arg.OrgID, arg.HumanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryRequest
+	for rows.Next() {
+		var i RecoveryRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.HumanID,
+			&i.InitiatedBy,
+			&i.NewPubkey,
+			&i.ResetMfa,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UnlockAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ConfirmedBy,
+			&i.ResultEpoch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cancelRequestsForAgent = `-- name: CancelRequestsForAgent :many
 UPDATE approval_requests SET status = 'cancelled', resolved_at = $1::timestamptz
 WHERE agent_id = $2::text AND status = 'open'
@@ -315,6 +363,49 @@ func (q *Queries) ClaimAuditOutbox(ctx context.Context, maxResults int64) ([]Aud
 		return nil, err
 	}
 	return items, nil
+}
+
+const completeRecoveryRequest = `-- name: CompleteRecoveryRequest :one
+UPDATE recovery_requests
+SET status = 'completed', resolved_at = $1::timestamptz,
+    confirmed_by = $2::text, result_epoch = $3::integer
+WHERE id = $4::text AND status = 'open'
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+`
+
+type CompleteRecoveryRequestParams struct {
+	ResolvedAt  time.Time
+	ConfirmedBy string
+	ResultEpoch int32
+	ID          string
+}
+
+// First-write-wins terminal flip: only an open row resolves, and the
+// completed epoch is stamped atomically with the share upsert it keys.
+func (q *Queries) CompleteRecoveryRequest(ctx context.Context, arg CompleteRecoveryRequestParams) (RecoveryRequest, error) {
+	row := q.db.QueryRow(ctx, completeRecoveryRequest,
+		arg.ResolvedAt,
+		arg.ConfirmedBy,
+		arg.ResultEpoch,
+		arg.ID,
+	)
+	var i RecoveryRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.HumanID,
+		&i.InitiatedBy,
+		&i.NewPubkey,
+		&i.ResetMfa,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UnlockAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ConfirmedBy,
+		&i.ResultEpoch,
+	)
+	return i, err
 }
 
 const consumeRecoveryWrap = `-- name: ConsumeRecoveryWrap :execrows
@@ -451,12 +542,49 @@ func (q *Queries) DeleteItemVersions(ctx context.Context, itemID string) error {
 	return err
 }
 
+const deleteOrgKeyShare = `-- name: DeleteOrgKeyShare :exec
+DELETE FROM org_key_shares WHERE org_id = $1::text AND human_id = $2::text
+`
+
+type DeleteOrgKeyShareParams struct {
+	OrgID   string
+	HumanID string
+}
+
+func (q *Queries) DeleteOrgKeyShare(ctx context.Context, arg DeleteOrgKeyShareParams) error {
+	_, err := q.db.Exec(ctx, deleteOrgKeyShare, arg.OrgID, arg.HumanID)
+	return err
+}
+
+const deleteOrgKeySharesForOrg = `-- name: DeleteOrgKeySharesForOrg :exec
+DELETE FROM org_key_shares WHERE org_id = $1::text
+`
+
+func (q *Queries) DeleteOrgKeySharesForOrg(ctx context.Context, orgID string) error {
+	_, err := q.db.Exec(ctx, deleteOrgKeySharesForOrg, orgID)
+	return err
+}
+
 const deleteRecoveryWrapsForOrg = `-- name: DeleteRecoveryWrapsForOrg :exec
 DELETE FROM recovery_wraps WHERE org_id = $1::text
 `
 
 func (q *Queries) DeleteRecoveryWrapsForOrg(ctx context.Context, orgID string) error {
 	_, err := q.db.Exec(ctx, deleteRecoveryWrapsForOrg, orgID)
+	return err
+}
+
+const deleteWorkload = `-- name: DeleteWorkload :exec
+DELETE FROM workloads WHERE issuer = $1::text AND subject = $2::text
+`
+
+type DeleteWorkloadParams struct {
+	Issuer  string
+	Subject string
+}
+
+func (q *Queries) DeleteWorkload(ctx context.Context, arg DeleteWorkloadParams) error {
+	_, err := q.db.Exec(ctx, deleteWorkload, arg.Issuer, arg.Subject)
 	return err
 }
 
@@ -478,6 +606,52 @@ func (q *Queries) ExpireOpenRequest(ctx context.Context, arg ExpireOpenRequestPa
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const expireStaleRecoveryRequests = `-- name: ExpireStaleRecoveryRequests :many
+UPDATE recovery_requests SET status = 'expired', resolved_at = $1::timestamptz
+WHERE status = 'open' AND expires_at <= $2::timestamptz
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+`
+
+type ExpireStaleRecoveryRequestsParams struct {
+	ResolvedAt time.Time
+	Now        time.Time
+}
+
+// Returns expired rows so the sweep can audit each recovery_expired.
+func (q *Queries) ExpireStaleRecoveryRequests(ctx context.Context, arg ExpireStaleRecoveryRequestsParams) ([]RecoveryRequest, error) {
+	rows, err := q.db.Query(ctx, expireStaleRecoveryRequests, arg.ResolvedAt, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryRequest
+	for rows.Next() {
+		var i RecoveryRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.HumanID,
+			&i.InitiatedBy,
+			&i.NewPubkey,
+			&i.ResetMfa,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UnlockAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ConfirmedBy,
+			&i.ResultEpoch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const expireStaleRequests = `-- name: ExpireStaleRequests :many
@@ -799,6 +973,58 @@ func (q *Queries) InsertAuditOutbox(ctx context.Context, arg InsertAuditOutboxPa
 		arg.ApprovalID,
 	)
 	return err
+}
+
+const insertRecoveryRequest = `-- name: InsertRecoveryRequest :one
+INSERT INTO recovery_requests(id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at)
+VALUES($1::text, $2::text, $3::text, $4::text, $5::bytea, $6::bool, 'open', $7::timestamptz, $8::timestamptz, $9::timestamptz)
+ON CONFLICT(org_id, human_id) WHERE status = 'open' DO NOTHING
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+`
+
+type InsertRecoveryRequestParams struct {
+	ID          string
+	OrgID       string
+	HumanID     string
+	InitiatedBy string
+	NewPubkey   []byte
+	ResetMfa    bool
+	CreatedAt   time.Time
+	UnlockAt    time.Time
+	ExpiresAt   time.Time
+}
+
+// One open request per (org, human) — the partial unique dedupes a
+// refiled start so the caller returns the live row instead of re-notifying.
+func (q *Queries) InsertRecoveryRequest(ctx context.Context, arg InsertRecoveryRequestParams) (RecoveryRequest, error) {
+	row := q.db.QueryRow(ctx, insertRecoveryRequest,
+		arg.ID,
+		arg.OrgID,
+		arg.HumanID,
+		arg.InitiatedBy,
+		arg.NewPubkey,
+		arg.ResetMfa,
+		arg.CreatedAt,
+		arg.UnlockAt,
+		arg.ExpiresAt,
+	)
+	var i RecoveryRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.HumanID,
+		&i.InitiatedBy,
+		&i.NewPubkey,
+		&i.ResetMfa,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UnlockAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ConfirmedBy,
+		&i.ResultEpoch,
+	)
+	return i, err
 }
 
 const insertRequest = `-- name: InsertRequest :one
@@ -1327,6 +1553,40 @@ func (q *Queries) ListOpenRequests(ctx context.Context, arg ListOpenRequestsPara
 	return items, nil
 }
 
+const listOrgKeySharesForOrg = `-- name: ListOrgKeySharesForOrg :many
+SELECT org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+FROM org_key_shares WHERE org_id = $1::text
+`
+
+func (q *Queries) ListOrgKeySharesForOrg(ctx context.Context, orgID string) ([]OrgKeyShare, error) {
+	rows, err := q.db.Query(ctx, listOrgKeySharesForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrgKeyShare
+	for rows.Next() {
+		var i OrgKeyShare
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.HumanID,
+			&i.Pubkey,
+			&i.WrappedMaster,
+			&i.WrapPubkeyEpoch,
+			&i.OrgKeyVersion,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrgKeys = `-- name: ListOrgKeys :many
 SELECT org_id, wrapped, key_version, cmk_id, created_at, rotated_at FROM org_keys
 `
@@ -1376,6 +1636,53 @@ func (q *Queries) ListOwnerKeysForOrg(ctx context.Context, orgID string) ([]Owne
 			&i.OwnerKind,
 			&i.OwnerID,
 			&i.Wrapped,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecoveryRequests = `-- name: ListRecoveryRequests :many
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests
+WHERE org_id = $1::text AND status = $2::text
+ORDER BY created_at DESC LIMIT $3::bigint
+`
+
+type ListRecoveryRequestsParams struct {
+	OrgID      string
+	Status     string
+	MaxResults int64
+}
+
+func (q *Queries) ListRecoveryRequests(ctx context.Context, arg ListRecoveryRequestsParams) ([]RecoveryRequest, error) {
+	rows, err := q.db.Query(ctx, listRecoveryRequests, arg.OrgID, arg.Status, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryRequest
+	for rows.Next() {
+		var i RecoveryRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.HumanID,
+			&i.InitiatedBy,
+			&i.NewPubkey,
+			&i.ResetMfa,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UnlockAt,
+			&i.ExpiresAt,
+			&i.ResolvedAt,
+			&i.ConfirmedBy,
+			&i.ResultEpoch,
 		); err != nil {
 			return nil, err
 		}
@@ -1516,6 +1823,38 @@ func (q *Queries) MarkUsageReported(ctx context.Context, arg MarkUsageReportedPa
 	return err
 }
 
+const openRecoveryRequestForHuman = `-- name: OpenRecoveryRequestForHuman :one
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests
+WHERE org_id = $1::text AND human_id = $2::text AND status = 'open'
+`
+
+type OpenRecoveryRequestForHumanParams struct {
+	OrgID   string
+	HumanID string
+}
+
+func (q *Queries) OpenRecoveryRequestForHuman(ctx context.Context, arg OpenRecoveryRequestForHumanParams) (RecoveryRequest, error) {
+	row := q.db.QueryRow(ctx, openRecoveryRequestForHuman, arg.OrgID, arg.HumanID)
+	var i RecoveryRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.HumanID,
+		&i.InitiatedBy,
+		&i.NewPubkey,
+		&i.ResetMfa,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UnlockAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ConfirmedBy,
+		&i.ResultEpoch,
+	)
+	return i, err
+}
+
 const openRequestByGrant = `-- name: OpenRequestByGrant :one
 SELECT id, org_id, agent_id, item_id, grant_id, action, status, created_at,
     expires_at, resolved_at, resolved_by, approval_id
@@ -1601,6 +1940,55 @@ func (q *Queries) OrgKeyForUpdate(ctx context.Context, orgID string) (OrgKey, er
 		&i.CmkID,
 		&i.CreatedAt,
 		&i.RotatedAt,
+	)
+	return i, err
+}
+
+const orgKeyShare = `-- name: OrgKeyShare :one
+SELECT org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+FROM org_key_shares WHERE org_id = $1::text AND human_id = $2::text
+`
+
+type OrgKeyShareParams struct {
+	OrgID   string
+	HumanID string
+}
+
+func (q *Queries) OrgKeyShare(ctx context.Context, arg OrgKeyShareParams) (OrgKeyShare, error) {
+	row := q.db.QueryRow(ctx, orgKeyShare, arg.OrgID, arg.HumanID)
+	var i OrgKeyShare
+	err := row.Scan(
+		&i.OrgID,
+		&i.HumanID,
+		&i.Pubkey,
+		&i.WrappedMaster,
+		&i.WrapPubkeyEpoch,
+		&i.OrgKeyVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const orgKeyShareByPubkey = `-- name: OrgKeyShareByPubkey :one
+SELECT org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+FROM org_key_shares WHERE pubkey = $1::bytea
+`
+
+// idx_org_key_shares_pubkey makes every pubkey globally unique: reuse of
+// an enrolled or historically-completed key is a ceremony rejection.
+func (q *Queries) OrgKeyShareByPubkey(ctx context.Context, pubkey []byte) (OrgKeyShare, error) {
+	row := q.db.QueryRow(ctx, orgKeyShareByPubkey, pubkey)
+	var i OrgKeyShare
+	err := row.Scan(
+		&i.OrgID,
+		&i.HumanID,
+		&i.Pubkey,
+		&i.WrappedMaster,
+		&i.WrapPubkeyEpoch,
+		&i.OrgKeyVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -1851,6 +2239,54 @@ func (q *Queries) PutOrgKey(ctx context.Context, arg PutOrgKeyParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const putOrgKeyShare = `-- name: PutOrgKeyShare :one
+
+INSERT INTO org_key_shares(org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at)
+VALUES($1::text, $2::text, $3::bytea, $4::bytea, $5::integer, $6::integer, $7::timestamptz, $8::timestamptz)
+ON CONFLICT(org_id, human_id) DO NOTHING
+RETURNING org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+`
+
+type PutOrgKeyShareParams struct {
+	OrgID           string
+	HumanID         string
+	Pubkey          []byte
+	WrappedMaster   []byte
+	WrapPubkeyEpoch int32
+	OrgKeyVersion   int32
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// VEIL-78: per-member wrapped org-key shares + recovery ceremony rows.
+// Initial enrollment only — ON CONFLICT DO NOTHING makes a retry return
+// zero rows so the caller can fetch the committed share instead of
+// overwriting a member's pubkey outside the ceremony.
+func (q *Queries) PutOrgKeyShare(ctx context.Context, arg PutOrgKeyShareParams) (OrgKeyShare, error) {
+	row := q.db.QueryRow(ctx, putOrgKeyShare,
+		arg.OrgID,
+		arg.HumanID,
+		arg.Pubkey,
+		arg.WrappedMaster,
+		arg.WrapPubkeyEpoch,
+		arg.OrgKeyVersion,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i OrgKeyShare
+	err := row.Scan(
+		&i.OrgID,
+		&i.HumanID,
+		&i.Pubkey,
+		&i.WrappedMaster,
+		&i.WrapPubkeyEpoch,
+		&i.OrgKeyVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const putOwnerWrapped = `-- name: PutOwnerWrapped :exec
 INSERT INTO owner_keys(org_id, owner_kind, owner_id, wrapped)
 VALUES($1::text, $2::text, $3::text, $4::bytea)
@@ -1985,6 +2421,58 @@ func (q *Queries) PutWorkload(ctx context.Context, arg PutWorkloadParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const recoveryRequestByID = `-- name: RecoveryRequestByID :one
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests WHERE id = $1::text
+`
+
+func (q *Queries) RecoveryRequestByID(ctx context.Context, id string) (RecoveryRequest, error) {
+	row := q.db.QueryRow(ctx, recoveryRequestByID, id)
+	var i RecoveryRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.HumanID,
+		&i.InitiatedBy,
+		&i.NewPubkey,
+		&i.ResetMfa,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UnlockAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ConfirmedBy,
+		&i.ResultEpoch,
+	)
+	return i, err
+}
+
+const recoveryRequestForUpdate = `-- name: RecoveryRequestForUpdate :one
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests WHERE id = $1::text FOR UPDATE
+`
+
+func (q *Queries) RecoveryRequestForUpdate(ctx context.Context, id string) (RecoveryRequest, error) {
+	row := q.db.QueryRow(ctx, recoveryRequestForUpdate, id)
+	var i RecoveryRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.HumanID,
+		&i.InitiatedBy,
+		&i.NewPubkey,
+		&i.ResetMfa,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UnlockAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ConfirmedBy,
+		&i.ResultEpoch,
+	)
+	return i, err
+}
+
 const recoveryWrap = `-- name: RecoveryWrap :one
 SELECT org_id, owner_kind, owner_id, wrapped, created_at, expires_at, used_at
 FROM recovery_wraps
@@ -2097,6 +2585,47 @@ func (q *Queries) ResolveOpenRequest(ctx context.Context, arg ResolveOpenRequest
 	return i, err
 }
 
+const resolveRecoveryRequest = `-- name: ResolveRecoveryRequest :one
+UPDATE recovery_requests
+SET status = $1::text, resolved_at = $2::timestamptz, confirmed_by = $3::text
+WHERE id = $4::text AND status = 'open'
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+`
+
+type ResolveRecoveryRequestParams struct {
+	Status      string
+	ResolvedAt  time.Time
+	ConfirmedBy string
+	ID          string
+}
+
+// Deny/cancel flip on an open request — first write wins.
+func (q *Queries) ResolveRecoveryRequest(ctx context.Context, arg ResolveRecoveryRequestParams) (RecoveryRequest, error) {
+	row := q.db.QueryRow(ctx, resolveRecoveryRequest,
+		arg.Status,
+		arg.ResolvedAt,
+		arg.ConfirmedBy,
+		arg.ID,
+	)
+	var i RecoveryRequest
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.HumanID,
+		&i.InitiatedBy,
+		&i.NewPubkey,
+		&i.ResetMfa,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UnlockAt,
+		&i.ExpiresAt,
+		&i.ResolvedAt,
+		&i.ConfirmedBy,
+		&i.ResultEpoch,
+	)
+	return i, err
+}
+
 const restoreItemSecret = `-- name: RestoreItemSecret :exec
 UPDATE items SET secret = $1::bytea WHERE id = $2::text
 `
@@ -2156,6 +2685,36 @@ type RewrapOrgKeyParams struct {
 
 func (q *Queries) RewrapOrgKey(ctx context.Context, arg RewrapOrgKeyParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rewrapOrgKey, arg.Wrapped, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rewrapOrgKeyShare = `-- name: RewrapOrgKeyShare :execrows
+UPDATE org_key_shares
+SET wrapped_master = $1::bytea, org_key_version = $2::integer, updated_at = $3::timestamptz
+WHERE org_id = $4::text AND human_id = $5::text
+`
+
+type RewrapOrgKeyShareParams struct {
+	WrappedMaster []byte
+	OrgKeyVersion int32
+	UpdatedAt     time.Time
+	OrgID         string
+	HumanID       string
+}
+
+// Rotation/ceremony rewrap: the member's pubkey is unchanged, only the
+// sealed master and its org_key_version move.
+func (q *Queries) RewrapOrgKeyShare(ctx context.Context, arg RewrapOrgKeyShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rewrapOrgKeyShare,
+		arg.WrappedMaster,
+		arg.OrgKeyVersion,
+		arg.UpdatedAt,
+		arg.OrgID,
+		arg.HumanID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -2338,6 +2897,44 @@ func (q *Queries) UpsertOrgBillingLink(ctx context.Context, arg UpsertOrgBilling
 	return err
 }
 
+const upsertOrgKeyShare = `-- name: UpsertOrgKeyShare :exec
+INSERT INTO org_key_shares(org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at)
+VALUES($1::text, $2::text, $3::bytea, $4::bytea, $5::integer, $6::integer, $7::timestamptz, $8::timestamptz)
+ON CONFLICT(org_id, human_id) DO UPDATE SET
+    pubkey = EXCLUDED.pubkey,
+    wrapped_master = EXCLUDED.wrapped_master,
+    wrap_pubkey_epoch = EXCLUDED.wrap_pubkey_epoch,
+    org_key_version = EXCLUDED.org_key_version,
+    updated_at = EXCLUDED.updated_at
+`
+
+type UpsertOrgKeyShareParams struct {
+	OrgID           string
+	HumanID         string
+	Pubkey          []byte
+	WrappedMaster   []byte
+	WrapPubkeyEpoch int32
+	OrgKeyVersion   int32
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// Ceremony complete re-keys the member: pubkey, wrapped blob, epoch, and
+// version all move together. Never used for first enrollment.
+func (q *Queries) UpsertOrgKeyShare(ctx context.Context, arg UpsertOrgKeyShareParams) error {
+	_, err := q.db.Exec(ctx, upsertOrgKeyShare,
+		arg.OrgID,
+		arg.HumanID,
+		arg.Pubkey,
+		arg.WrappedMaster,
+		arg.WrapPubkeyEpoch,
+		arg.OrgKeyVersion,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const useAuth = `-- name: UseAuth :one
 SELECT
     a.id AS agent_id,
@@ -2438,8 +3035,9 @@ type UseAuthRow struct {
 // The grant leg is picked by a LATERAL scalar: the principal's direct
 // grant, else a grant to a group the principal holds membership in (its own
 // rows plus, for a user-owned agent, the owner's). Precedence inside the
-// candidate set: direct beats group, deny beats allow, a grant that
-// resolves now (level2 or carrying a live approval) beats a bare level1.
+// candidate set: expired edges rank last, direct beats group, deny beats
+// allow, a grant that resolves now (level2 or a live approval) beats a bare
+// level1.
 func (q *Queries) UseAuth(ctx context.Context, arg UseAuthParams) (UseAuthRow, error) {
 	row := q.db.QueryRow(ctx, useAuth, arg.AgentID, arg.ItemID, arg.Now)
 	var i UseAuthRow
@@ -2640,42 +3238,6 @@ func (q *Queries) WorkloadByKey(ctx context.Context, arg WorkloadByKeyParams) (W
 	return i, err
 }
 
-const workloadsForIssuer = `-- name: WorkloadsForIssuer :many
-SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE issuer = $1::text ORDER BY subject LIMIT $2::bigint
-`
-
-type WorkloadsForIssuerParams struct {
-	Issuer     string
-	MaxResults int64
-}
-
-func (q *Queries) WorkloadsForIssuer(ctx context.Context, arg WorkloadsForIssuerParams) ([]Workload, error) {
-	rows, err := q.db.Query(ctx, workloadsForIssuer, arg.Issuer, arg.MaxResults)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Workload
-	for rows.Next() {
-		var i Workload
-		if err := rows.Scan(
-			&i.Issuer,
-			&i.Subject,
-			&i.OrgID,
-			&i.AgentID,
-			&i.Audience,
-			&i.Claims,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const workloadsForAgent = `-- name: WorkloadsForAgent :many
 SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE agent_id = $1::text ORDER BY issuer, subject LIMIT $2::bigint
 `
@@ -2712,16 +3274,38 @@ func (q *Queries) WorkloadsForAgent(ctx context.Context, arg WorkloadsForAgentPa
 	return items, nil
 }
 
-const deleteWorkload = `-- name: DeleteWorkload :exec
-DELETE FROM workloads WHERE issuer = $1::text AND subject = $2::text
+const workloadsForIssuer = `-- name: WorkloadsForIssuer :many
+SELECT issuer, subject, org_id, agent_id, audience, claims FROM workloads WHERE issuer = $1::text ORDER BY subject LIMIT $2::bigint
 `
 
-type DeleteWorkloadParams struct {
-	Issuer  string
-	Subject string
+type WorkloadsForIssuerParams struct {
+	Issuer     string
+	MaxResults int64
 }
 
-func (q *Queries) DeleteWorkload(ctx context.Context, arg DeleteWorkloadParams) error {
-	_, err := q.db.Exec(ctx, deleteWorkload, arg.Issuer, arg.Subject)
-	return err
+func (q *Queries) WorkloadsForIssuer(ctx context.Context, arg WorkloadsForIssuerParams) ([]Workload, error) {
+	rows, err := q.db.Query(ctx, workloadsForIssuer, arg.Issuer, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Workload
+	for rows.Next() {
+		var i Workload
+		if err := rows.Scan(
+			&i.Issuer,
+			&i.Subject,
+			&i.OrgID,
+			&i.AgentID,
+			&i.Audience,
+			&i.Claims,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -603,3 +603,109 @@ INSERT INTO org_billing(org_id, plan, customer_id, billing_account_id, updated_a
 VALUES(@org_id::text, 'free', @customer_id::text, @billing_account_id::text, now())
 ON CONFLICT(org_id) DO UPDATE SET
   customer_id = EXCLUDED.customer_id, billing_account_id = EXCLUDED.billing_account_id;
+
+-- VEIL-78: per-member wrapped org-key shares + recovery ceremony rows.
+
+-- name: PutOrgKeyShare :one
+-- Initial enrollment only — ON CONFLICT DO NOTHING makes a retry return
+-- zero rows so the caller can fetch the committed share instead of
+-- overwriting a member's pubkey outside the ceremony.
+INSERT INTO org_key_shares(org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at)
+VALUES(@org_id::text, @human_id::text, @pubkey::bytea, @wrapped_master::bytea, @wrap_pubkey_epoch::integer, @org_key_version::integer, @created_at::timestamptz, @updated_at::timestamptz)
+ON CONFLICT(org_id, human_id) DO NOTHING
+RETURNING org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at;
+
+-- name: UpsertOrgKeyShare :exec
+-- Ceremony complete re-keys the member: pubkey, wrapped blob, epoch, and
+-- version all move together. Never used for first enrollment.
+INSERT INTO org_key_shares(org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at)
+VALUES(@org_id::text, @human_id::text, @pubkey::bytea, @wrapped_master::bytea, @wrap_pubkey_epoch::integer, @org_key_version::integer, @created_at::timestamptz, @updated_at::timestamptz)
+ON CONFLICT(org_id, human_id) DO UPDATE SET
+    pubkey = EXCLUDED.pubkey,
+    wrapped_master = EXCLUDED.wrapped_master,
+    wrap_pubkey_epoch = EXCLUDED.wrap_pubkey_epoch,
+    org_key_version = EXCLUDED.org_key_version,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: OrgKeyShare :one
+SELECT org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+FROM org_key_shares WHERE org_id = @org_id::text AND human_id = @human_id::text;
+
+-- name: OrgKeyShareByPubkey :one
+-- idx_org_key_shares_pubkey makes every pubkey globally unique: reuse of
+-- an enrolled or historically-completed key is a ceremony rejection.
+SELECT org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+FROM org_key_shares WHERE pubkey = @pubkey::bytea;
+
+-- name: ListOrgKeySharesForOrg :many
+SELECT org_id, human_id, pubkey, wrapped_master, wrap_pubkey_epoch, org_key_version, created_at, updated_at
+FROM org_key_shares WHERE org_id = @org_id::text;
+
+-- name: RewrapOrgKeyShare :execrows
+-- Rotation/ceremony rewrap: the member's pubkey is unchanged, only the
+-- sealed master and its org_key_version move.
+UPDATE org_key_shares
+SET wrapped_master = @wrapped_master::bytea, org_key_version = @org_key_version::integer, updated_at = @updated_at::timestamptz
+WHERE org_id = @org_id::text AND human_id = @human_id::text;
+
+-- name: DeleteOrgKeyShare :exec
+DELETE FROM org_key_shares WHERE org_id = @org_id::text AND human_id = @human_id::text;
+
+-- name: DeleteOrgKeySharesForOrg :exec
+DELETE FROM org_key_shares WHERE org_id = @org_id::text;
+
+-- name: InsertRecoveryRequest :one
+-- One open request per (org, human) — the partial unique dedupes a
+-- refiled start so the caller returns the live row instead of re-notifying.
+INSERT INTO recovery_requests(id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at)
+VALUES(@id::text, @org_id::text, @human_id::text, @initiated_by::text, @new_pubkey::bytea, @reset_mfa::bool, 'open', @created_at::timestamptz, @unlock_at::timestamptz, @expires_at::timestamptz)
+ON CONFLICT(org_id, human_id) WHERE status = 'open' DO NOTHING
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch;
+
+-- name: OpenRecoveryRequestForHuman :one
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests
+WHERE org_id = @org_id::text AND human_id = @human_id::text AND status = 'open';
+
+-- name: RecoveryRequestByID :one
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests WHERE id = @id::text;
+
+-- name: RecoveryRequestForUpdate :one
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests WHERE id = @id::text FOR UPDATE;
+
+-- name: ListRecoveryRequests :many
+SELECT id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch
+FROM recovery_requests
+WHERE org_id = @org_id::text AND status = @status::text
+ORDER BY created_at DESC LIMIT @max_results::bigint;
+
+-- name: CompleteRecoveryRequest :one
+-- First-write-wins terminal flip: only an open row resolves, and the
+-- completed epoch is stamped atomically with the share upsert it keys.
+UPDATE recovery_requests
+SET status = 'completed', resolved_at = @resolved_at::timestamptz,
+    confirmed_by = @confirmed_by::text, result_epoch = @result_epoch::integer
+WHERE id = @id::text AND status = 'open'
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch;
+
+-- name: ResolveRecoveryRequest :one
+-- Deny/cancel flip on an open request — first write wins.
+UPDATE recovery_requests
+SET status = @status::text, resolved_at = @resolved_at::timestamptz, confirmed_by = @confirmed_by::text
+WHERE id = @id::text AND status = 'open'
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch;
+
+-- name: CancelRecoveryRequestsForHuman :many
+-- Member offboard: every open ask for the human cancels so a removed
+-- member's staged key can never be completed.
+UPDATE recovery_requests SET status = 'cancelled', resolved_at = @resolved_at::timestamptz
+WHERE org_id = @org_id::text AND human_id = @human_id::text AND status = 'open'
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch;
+
+-- name: ExpireStaleRecoveryRequests :many
+-- Returns expired rows so the sweep can audit each recovery_expired.
+UPDATE recovery_requests SET status = 'expired', resolved_at = @resolved_at::timestamptz
+WHERE status = 'open' AND expires_at <= @now::timestamptz
+RETURNING id, org_id, human_id, initiated_by, new_pubkey, reset_mfa, status, created_at, unlock_at, expires_at, resolved_at, confirmed_by, result_epoch;
