@@ -53,7 +53,7 @@ To restore with the Veil CLI, save the hex line to a file and either
 pass it straight to the lost-KEK path, or decode it to raw bytes for
 the proof path:
 
-  veil key recover-org ${orgID} --owner-id <you> --recovery-file <hex file>
+  veil key recover-org ${orgID} --owner-kind user --owner-id <you> --recovery-file <hex file>
 
   xxd -r -p <hex file> > ~/.veil/recovery.key
   chmod 600 ~/.veil/recovery.key
@@ -164,7 +164,7 @@ an account recovery for you.</p>
 <ol class="steps">
   <li>Save the hex private key to a file, e.g. <code>recovery.hex</code>.</li>
   <li>Run
-    <code>veil key recover-org ${escapeHTML(orgID)} --owner-id &lt;you&gt; --recovery-file recovery.hex</code></li>
+    <code>veil key recover-org ${escapeHTML(orgID)} --owner-kind user --owner-id &lt;you&gt; --recovery-file recovery.hex</code></li>
   <li>Or decode it for the proof path:
     <code>xxd -r -p recovery.hex &gt; ~/.veil/recovery.key &amp;&amp; chmod 600 ~/.veil/recovery.key</code>
     then <code>veil recovery complete &lt;request-id&gt; --proof-file ~/.veil/recovery.key</code></li>
