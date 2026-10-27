@@ -55,6 +55,28 @@ func originHumanTokenLive(ctx context.Context) (string, error) {
 	return tok, nil
 }
 
+// originHumanTokenDirect is the fill host/bridge's own token resolver — it
+// must never call bridgeTokenFn (which dials fill.sock, i.e. this very
+// process, deadlocking on self-call when the cached JWT expires).
+func originHumanTokenDirect(ctx context.Context) (string, error) {
+	tok, err := originHumanToken()
+	if err == nil && !jwtNeedsRefresh(tok) {
+		return tok, nil
+	}
+	out := strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE"))
+	minted, merr := remintHTTPFn(ctx, out)
+	if merr == nil {
+		return minted, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if jwtNeedsRefresh(tok) {
+		return "", fmt.Errorf("origin: human JWT expired (%w); veil human login --out-file", merr)
+	}
+	return tok, nil
+}
+
 func originHumanCLI(ctx context.Context) (string, error) {
 	tok, err := originHumanTokenLive(ctx)
 	if err != nil {
