@@ -14,6 +14,7 @@ import {
   IdentificationCard,
   Key,
   LockKey,
+  Star,
   Terminal,
 } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -23,9 +24,11 @@ import {
   archiveVaultItem,
   createShareLink,
   deleteVaultItem,
+  enrollVaultTOTP,
   importItems,
   items,
   mintVaultTOTP,
+  parseTOTPSeed,
   revealVaultItem,
   rotateProviders,
   rotateVaultItem,
@@ -53,11 +56,12 @@ function isKind(value: string): value is Kind {
   );
 }
 
-type KindFilter = "all" | "2fa" | Item["kind"];
+type KindFilter = "all" | "pinned" | "2fa" | Item["kind"];
 
 function isKindFilter(value: string): value is KindFilter {
   return (
     value === "all" ||
+    value === "pinned" ||
     value === "2fa" ||
     value === "api_key" ||
     value === "passkey" ||
@@ -72,6 +76,7 @@ function isKindFilter(value: string): value is KindFilter {
 
 const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "all", label: "All accounts" },
+  { value: "pinned", label: "Pinned" },
   { value: "2fa", label: "2FA / TOTP enabled" },
   { value: "api_key", label: "Passwords / API keys" },
   { value: "passkey", label: "Passkeys" },
@@ -81,6 +86,16 @@ const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "oauth", label: "OAuth / WIF" },
   { value: "file", label: "Files" },
   { value: "secure_note", label: "Secure notes" },
+];
+
+const QUICK_PILLS: { value: KindFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "pinned", label: "Pinned" },
+  { value: "2fa", label: "2FA" },
+  { value: "api_key", label: "Logins" },
+  { value: "card", label: "Cards" },
+  { value: "ssh", label: "SSH" },
+  { value: "secure_note", label: "Notes" },
 ];
 
 // CSPRNG password for the inline Generate buttons — 24 chars from a
@@ -178,8 +193,40 @@ function itemMatches(item: Item, query: string): boolean {
   return terms.every((t) => haystack.includes(t));
 }
 
+const ITEMS_CACHE_KEY = "veil.items.cache";
+const FAVORITES_KEY = "veil.favorites";
+
+function loadCachedItems(): Item[] | null {
+  try {
+    const raw = sessionStorage.getItem(ITEMS_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Item[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    if (!raw) {
+      return new Set();
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set(parsed.filter((v): v is string => typeof v === "string"))
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 function Items() {
-  const [rows, setRows] = useState<Item[] | null>(null);
+  const [rows, setRows] = useState<Item[] | null>(() => loadCachedItems());
+  const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -198,38 +245,208 @@ function Items() {
   const [addSecretVisible, setAddSecretVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const filtered = (rows ?? []).filter(
-    (item) =>
-      (kindFilter === "all" ||
-        (kindFilter === "2fa" ? Boolean(item.has_totp) : item.kind === kindFilter)) &&
-      itemMatches(item, query),
-  );
+  function isPinned(item: Item): boolean {
+    return favorites.has(item.id) || (item.tags ?? []).includes("favorite");
+  }
+
+  function togglePinned(item: Item) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) {
+        next.delete(item.id);
+      } else {
+        next.add(item.id);
+      }
+      try {
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage quota errors
+      }
+      return next;
+    });
+  }
+
+  const filtered = (rows ?? [])
+    .filter(
+      (item) =>
+        (kindFilter === "all" ||
+          (kindFilter === "pinned"
+            ? isPinned(item)
+            : kindFilter === "2fa"
+              ? Boolean(item.has_totp)
+              : item.kind === kindFilter)) &&
+        itemMatches(item, query),
+    )
+    .sort((a, b) => {
+      const ap = isPinned(a) ? 0 : 1;
+      const bp = isPinned(b) ? 0 : 1;
+      if (ap !== bp) {
+        return ap - bp;
+      }
+      return a.name.localeCompare(b.name);
+    });
 
   const selectedItem =
     filtered.find((item) => item.id === selectedId) ?? filtered[0] ?? null;
 
   useEffect(() => {
+    if (!selectedItem || !listRef.current) {
+      return;
+    }
+    const btn = listRef.current.querySelector<HTMLElement>(
+      `[data-item-id="${CSS.escape(selectedItem.id)}"]`,
+    );
+    btn?.scrollIntoView({ block: "nearest" });
+  }, [selectedItem?.id]);
+
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const dialogOpen =
+        open ||
+        editTarget !== null ||
+        rotateTarget !== null ||
+        shareTarget !== null;
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
+        return;
+      }
+      if (!inInput && !dialogOpen && e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (dialogOpen) {
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setOpen(true);
+        return;
+      }
+      if (
+        !inInput &&
+        (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+        filtered.length > 0
+      ) {
+        e.preventDefault();
+        const curIdx = selectedItem
+          ? filtered.findIndex((i) => i.id === selectedItem.id)
+          : 0;
+        const nextIdx =
+          e.key === "ArrowDown"
+            ? Math.min(filtered.length - 1, curIdx + 1)
+            : Math.max(0, curIdx - 1);
+        const next = filtered[nextIdx];
+        if (next) {
+          setSelectedId(next.id);
+        }
+        return;
+      }
+      if (!selectedItem) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && key === "c") {
+        if (selectedItem.login) {
+          e.preventDefault();
+          void navigator.clipboard?.writeText(selectedItem.login).then(() => {
+            setError(null);
+            setNotice(`Copied username for ${selectedItem.name}`);
+          });
+        }
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        if (key === "u" && selectedItem.login) {
+          e.preventDefault();
+          void navigator.clipboard?.writeText(selectedItem.login).then(() => {
+            setError(null);
+            setNotice(`Copied username for ${selectedItem.name}`);
+          });
+          return;
+        }
+        if (key === "t" && selectedItem.has_totp) {
+          e.preventDefault();
+          void mintVaultTOTP(selectedItem.id).then((res) => {
+            if (res.totp) {
+              void navigator.clipboard?.writeText(res.totp).then(() => {
+                setError(null);
+                setNotice(
+                  `Copied 2FA code for ${selectedItem.name}: ${res.totp}`,
+                );
+              });
+            }
+          });
+          return;
+        }
+        if (key === "e") {
+          e.preventDefault();
+          setEditTarget(selectedItem);
+          return;
+        }
+        if (key === "o") {
+          const webURI = (selectedItem.uris ?? []).find(
+            (u) =>
+              u.toLowerCase().startsWith("http://") ||
+              u.toLowerCase().startsWith("https://"),
+          );
+          if (webURI) {
+            e.preventDefault();
+            window.open(webURI, "_blank", "noopener,noreferrer");
+          }
+          return;
+        }
+        if (
+          key === "c" &&
+          !inInput &&
+          (window.getSelection()?.toString() ?? "") === ""
+        ) {
+          e.preventDefault();
+          void revealVaultItem(selectedItem.id, selectedItem.has_totp).then(
+            (res) => {
+              if (res.data?.password) {
+                void navigator.clipboard
+                  ?.writeText(res.data.password)
+                  .then(() => {
+                    setError(null);
+                    setNotice(`Copied password for ${selectedItem.name}`);
+                  });
+              }
+            },
+          );
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  });
 
   async function reload() {
     const res = await items();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) {
+        setRows([]);
+      }
       return;
     }
     setError(null);
     setRows(res.data.items);
+    try {
+      sessionStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(res.data.items));
+    } catch {
+      // ignore cache write failure
+    }
     const pres = await rotateProviders();
     if (pres.data) {
       setZeroTouchHosts(pres.data.zero_touch_hosts);
@@ -392,7 +609,8 @@ function Items() {
                             login: String(fd.get("login") ?? "") || undefined,
                             secret: String(fd.get("secret") ?? "") || undefined,
                             totp_seed:
-                              String(fd.get("totp_seed") ?? "").trim() || undefined,
+                              parseTOTPSeed(String(fd.get("totp_seed") ?? "")) ||
+                              undefined,
                             ...(tags.length > 0 ? { tags } : {}),
                           };
                   void addItem(body).then((res) => {
@@ -743,6 +961,25 @@ function Items() {
           Icons
         </Button>
       </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        {QUICK_PILLS.map((pill) => {
+          const active = kindFilter === pill.value;
+          return (
+            <button
+              key={pill.value}
+              type="button"
+              onClick={() => setKindFilter(pill.value)}
+              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                active
+                  ? "bg-kumo-tint text-kumo-default ring-kumo-focus/40 ring"
+                  : "bg-kumo-elevated/60 text-kumo-subtle hover:bg-kumo-elevated hover:text-kumo-default"
+              }`}
+            >
+              {pill.label}
+            </button>
+          );
+        })}
+      </div>
       <div className="bg-kumo-base ring-kumo-line flex min-h-0 flex-1 overflow-hidden rounded-lg ring">
         {rows === null ? (
           <div className="flex flex-1 items-center justify-center p-8">
@@ -765,17 +1002,20 @@ function Items() {
         ) : (
           <div className="grid h-full min-h-0 w-full flex-1 grid-cols-[340px_minmax(0,1fr)] overflow-hidden">
             <div
+              ref={listRef}
               role="listbox"
               aria-label="Accounts"
               className="border-kumo-hairline flex h-full min-h-0 flex-col overflow-y-auto border-r"
             >
               {filtered.map((item) => {
                 const active = selectedItem?.id === item.id;
+                const pinned = isPinned(item);
                 const sub =
                   item.login || firstURIDomain(item) || item.kind;
                 return (
                   <button
                     key={item.id}
+                    data-item-id={item.id}
                     type="button"
                     role="option"
                     aria-selected={active}
@@ -790,8 +1030,18 @@ function Items() {
                       <ItemIcon item={item} enabled={iconsOn} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">
-                        {item.name}
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium">
+                          {item.name}
+                        </span>
+                        {pinned ? (
+                          <Star
+                            size={12}
+                            weight="fill"
+                            className="shrink-0 text-amber-400"
+                            aria-label="Pinned"
+                          />
+                        ) : null}
                       </div>
                       <div className="text-kumo-subtle truncate text-xs opacity-75">
                         {sub}
@@ -810,6 +1060,8 @@ function Items() {
                   key={selectedItem.id}
                   item={selectedItem}
                   iconsOn={iconsOn}
+                  pinned={isPinned(selectedItem)}
+                  onTogglePin={() => togglePinned(selectedItem)}
                   onError={setError}
                   onNotice={(msg) => {
                     setError(null);
@@ -1186,6 +1438,8 @@ function EditItemForm({
 function AccountInspector({
   item,
   iconsOn,
+  pinned,
+  onTogglePin,
   onError,
   onNotice,
   onEdit,
@@ -1195,6 +1449,8 @@ function AccountInspector({
 }: {
   item: Item;
   iconsOn: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
   onError: (msg: string) => void;
   onNotice: (msg: string) => void;
   onEdit: () => void;
@@ -1211,10 +1467,16 @@ function AccountInspector({
   );
   const [copied, setCopied] = useState<string | null>(null);
   const [showAllURIs, setShowAllURIs] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [enrollingTotp, setEnrollingTotp] = useState(false);
+  const [totpSeedInput, setTotpSeedInput] = useState("");
+  const [totpBusy, setTotpBusy] = useState(false);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
   const canReveal = item.kind !== "passkey" && item.kind !== "file";
+  const canEnrollTotp =
+    !item.has_totp && !totp && (item.kind === "api_key" || item.kind === "oauth");
 
   // Auto-load live 2FA code as soon as a 2FA-enabled account is selected.
   useEffect(() => {
@@ -1302,8 +1564,20 @@ function AccountInspector({
               <Text as="h2" variant="heading">
                 {item.name}
               </Text>
+              <button
+                type="button"
+                title={pinned ? "Unpin from top" : "Pin to top of list"}
+                onClick={onTogglePin}
+                className="cursor-pointer rounded p-1 opacity-80 hover:opacity-100"
+              >
+                <Star
+                  size={16}
+                  weight={pinned ? "fill" : "regular"}
+                  className={pinned ? "text-amber-400" : "text-kumo-subtle"}
+                />
+              </button>
               <Badge variant="neutral">{item.kind}</Badge>
-              {item.has_totp ? <Badge variant="neutral">2FA</Badge> : null}
+              {item.has_totp || totp ? <Badge variant="neutral">2FA</Badge> : null}
               {item.travel_safe ? (
                 <Badge variant="neutral">travel safe</Badge>
               ) : null}
@@ -1321,7 +1595,12 @@ function AccountInspector({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="secondary" onClick={onEdit}>
+          <Button
+            type="button"
+            variant="secondary"
+            title="Edit account (⌘E)"
+            onClick={onEdit}
+          >
             Edit
           </Button>
           <Button
@@ -1370,22 +1649,41 @@ function AccountInspector({
           >
             Archive
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              void deleteVaultItem(item.id).then((res) => {
-                if (res.error) {
-                  onError(`delete failed for ${item.name}`);
-                  return;
-                }
-                onNotice(`Deleted ${item.name}`);
-                onReload();
-              });
-            }}
-          >
-            Delete
-          </Button>
+          {confirmDelete ? (
+            <>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  void deleteVaultItem(item.id).then((res) => {
+                    if (res.error) {
+                      onError(`delete failed for ${item.name}`);
+                      return;
+                    }
+                    onNotice(`Deleted ${item.name}`);
+                    onReload();
+                  });
+                }}
+              >
+                Confirm Delete
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1403,11 +1701,12 @@ function AccountInspector({
             <Button
               type="button"
               variant="secondary"
+              title="Copy username / email (⌘U)"
               onClick={() =>
                 copy("login", loginVal, `Copied username for ${item.name}`)
               }
             >
-              {copied === "login" ? "Copied" : "Copy"}
+              {copied === "login" ? "Copied" : "Copy ⌘U"}
             </Button>
           ) : null}
         </div>
@@ -1463,6 +1762,7 @@ function AccountInspector({
                   type="button"
                   variant="primary"
                   disabled={loadingSecret}
+                  title="Copy password (⌘C)"
                   onClick={() => {
                     void ensureRevealed().then((data) => {
                       if (data?.password) {
@@ -1475,7 +1775,7 @@ function AccountInspector({
                     });
                   }}
                 >
-                  {copied === "password" ? "Copied" : "Copy Password"}
+                  {copied === "password" ? "Copied" : "Copy ⌘C"}
                 </Button>
               </div>
             </div>
@@ -1510,6 +1810,7 @@ function AccountInspector({
             <Button
               type="button"
               variant="primary"
+              title="Copy 6-digit 2FA code (⌘T)"
               onClick={() => {
                 if (totp) {
                   copy("totp", totp, `Copied 2FA code for ${item.name}: ${totp}`);
@@ -1527,8 +1828,83 @@ function AccountInspector({
                 });
               }}
             >
-              {copied === "totp" ? "Copied" : "Copy 2FA"}
+              {copied === "totp" ? "Copied" : "Copy 2FA ⌘T"}
             </Button>
+          </div>
+        ) : canEnrollTotp ? (
+          <div className="flex flex-col gap-2 px-4 py-3">
+            {!enrollingTotp ? (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                    One-Time Password (2FA)
+                  </div>
+                  <div className="text-kumo-subtle mt-0.5 text-xs opacity-75">
+                    No authenticator attached
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setEnrollingTotp(true)}
+                >
+                  + Add 2FA
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="enroll-totp-input">
+                  Authenticator secret (base32 seed or otpauth:// URI)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="enroll-totp-input"
+                    className="w-full font-mono text-xs"
+                    placeholder="JBSWY3DPEHPK3PXP or otpauth://totp/…"
+                    value={totpSeedInput}
+                    onChange={(e) => setTotpSeedInput(e.currentTarget.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    disabled={totpBusy || !totpSeedInput.trim()}
+                    onClick={() => {
+                      setTotpBusy(true);
+                      void enrollVaultTOTP(item.id, totpSeedInput).then(
+                        (res) => {
+                          setTotpBusy(false);
+                          if (res.error) {
+                            onError(res.error);
+                            return;
+                          }
+                          setEnrollingTotp(false);
+                          setTotpSeedInput("");
+                          onNotice(`2FA enabled for ${item.name}`);
+                          onReload();
+                          void mintVaultTOTP(item.id).then((tRes) => {
+                            if (tRes.totp) {
+                              setTotp(tRes.totp);
+                            }
+                          });
+                        },
+                      );
+                    }}
+                  >
+                    {totpBusy ? "Saving…" : "Save 2FA"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setEnrollingTotp(false);
+                      setTotpSeedInput("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

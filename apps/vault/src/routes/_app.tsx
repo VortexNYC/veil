@@ -212,16 +212,16 @@ function Shell() {
           <Sidebar.Rail />
         </Sidebar>
         <main className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="border-kumo-hairline flex items-center gap-3 border-b px-4 py-3">
-            <Sidebar.Trigger aria-label="Toggle sidebar" />
-            <div className="min-w-0">
-              <Text as="p" variant="heading">
+          <div className="border-kumo-hairline flex items-center justify-between gap-3 border-b px-4 py-2">
+            <div className="flex items-center gap-2">
+              <Sidebar.Trigger aria-label="Toggle sidebar" />
+              <Text as="span" size="sm">
                 Vault
               </Text>
-              <Text variant="secondary" size="sm">
-                {aal2 ? "password + TOTP" : "session"}
-              </Text>
             </div>
+            <Text variant="secondary" size="xs">
+              {aal2 ? "password + TOTP" : "session"}
+            </Text>
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-auto">
             <BillingBanner />
