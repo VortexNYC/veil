@@ -76,6 +76,30 @@ func TestCheckOryDepsNewAdvisoryStillFires(t *testing.T) {
 	}
 }
 
+func TestOrySuppressed(t *testing.T) {
+	for _, tc := range []struct {
+		repo, pin, id string
+		want          bool
+	}{
+		// fixed AT the pin
+		{"ory/hydra", "v26.2.0", "CVE-2026-33504", true},
+		{"ory/hydra", "v26.2.0", "CVE-2019-8400", true},
+		// pin past the fix still suppresses
+		{"ory/hydra", "v26.3.0", "CVE-2026-33504", true},
+		// rollback below fixedIn pages again
+		{"ory/hydra", "v26.1.9", "CVE-2026-33504", false},
+		{"ory/hydra", "v1.4.7", "CVE-2019-8400", false},
+		// unknown advisory / repo / pin never suppresses
+		{"ory/hydra", "v26.2.0", "CVE-2026-9999", false},
+		{"ory/kratos", "v26.2.0", "CVE-2026-33504", false},
+		{"ory/hydra", "garbage", "CVE-2026-33504", false},
+	} {
+		if got := orySuppressed(tc.repo, tc.pin, tc.id); got != tc.want {
+			t.Errorf("orySuppressed(%q,%q,%q)=%v want %v", tc.repo, tc.pin, tc.id, got, tc.want)
+		}
+	}
+}
+
 func TestCheckOryDepsQuietWhenCurrent(t *testing.T) {
 	src := fakeDepSource{
 		latest: map[string]string{"ory/hydra": "v26.2.0", "ory/kratos": "v26.2.0", "ory/keto": "v26.2.0"},
