@@ -100,6 +100,34 @@ func (p *Pusher) NotifyRequest(ctx context.Context, req protocol.ApprovalRequest
 	return nil
 }
 
+// NotifyRecovery implements the app's recovery alert shape (VEIL-78): a
+// filed or completed recovery request is a security event — time-sensitive
+// and loud on every registered device in the org. The payload stays thin:
+// type + id + event, no member data, no key material.
+func (p *Pusher) NotifyRecovery(ctx context.Context, req protocol.RecoveryRequest, event string) error {
+	if p == nil || p.sender == nil {
+		return nil
+	}
+	devs, err := p.store.PushDevices(req.OrgID)
+	if err != nil {
+		return err
+	}
+	body := "An account recovery request was filed for your org — open Veil to review"
+	if event == "completed" {
+		body = "An account recovery completed for your org — open Veil to review"
+	}
+	data := map[string]string{"type": "recovery", "id": req.ID, "event": event}
+	for _, d := range devs {
+		if err := p.sender.Send(ctx, d, "Veil security alert: Account recovery", body, data); err != nil {
+			if !IsUnregistered(err) {
+				slog.Warn("push recovery send failed", "request", req.ID, "err", err)
+			}
+			p.pruneOnDead(ctx, d, err)
+		}
+	}
+	return nil
+}
+
 // NotifyOps pages an org's devices with monitor findings — the ops
 // plane's own channel (findings arrive by name; the device is the page).
 func (p *Pusher) NotifyOps(ctx context.Context, orgID string, findings []string) error {

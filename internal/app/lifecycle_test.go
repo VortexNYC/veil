@@ -41,6 +41,11 @@ func (f *fakeOrgAdmin) ListOwners(_ context.Context, orgID string) ([]string, er
 	return append([]string(nil), f.owners[orgID]...), nil
 }
 
+func (f *fakeOrgAdmin) ResetMemberMFA(_ context.Context, orgID, id string) error {
+	f.calls = append(f.calls, "mfa:"+orgID+":"+id)
+	return nil
+}
+
 // orgRoles is the org-scoped MemberCheck with split member/owner legs — the
 // orgMembers fake in provision_test keys both legs on one map entry, which
 // cannot represent "member but not owner".

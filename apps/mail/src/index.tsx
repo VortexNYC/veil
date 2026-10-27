@@ -50,6 +50,42 @@ function templateFor(req: SendRequest): Rendered | null {
 			element: <InviteEmail url={str(d.url)} code={str(d.code)} />,
 		};
 	}
+	if (req.kind === "recovery") {
+		const event = str(d.event);
+		const who = str(d.human_email) || str(d.human) || "a member";
+		const review = str(d.url) || "https://app.veil.nyc/requests";
+		if (event === "mfa_reset") {
+			return {
+				subject: "Reset your Veil sign-in",
+				element: (
+					<LinkEmail
+						action="Reset your sign-in"
+						body="An org owner confirmed your account recovery and your previous two-factor credentials were cleared. Use this link to set a new password and re-enroll two-factor sign-in — it expires shortly. If you did not request this, contact your org owner now."
+						button="Reset credentials"
+						url={str(d.url)}
+					/>
+				),
+			};
+		}
+		const started = event !== "completed";
+		return {
+			subject: started
+				? `Veil security alert: account recovery started for ${who}`
+				: `Veil: account recovery completed for ${who}`,
+			element: (
+				<LinkEmail
+					action={started ? "Account recovery requested" : "Account recovery completed"}
+					body={
+						started
+							? `A recovery request was filed for ${who}${str(d.reset_mfa) === "true" ? " with a two-factor reset" : ""}.${str(d.unlock_at) ? ` It unlocks at ${str(d.unlock_at)}.` : ""} If this was not you or your org, deny it now — the request dies on denial.`
+							: `Recovery for ${who} was confirmed and completed: the org key rotated and the member's recovery share moved to a new key. If this was not expected, treat it as a security incident.`
+					}
+					button="Review in Veil"
+					url={review}
+				/>
+			),
+		};
+	}
 	if (req.kind === "request") {
 		const agent = str(d.agent);
 		const item = str(d.item);

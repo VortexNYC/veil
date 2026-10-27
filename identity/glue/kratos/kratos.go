@@ -84,6 +84,60 @@ func (c *Client) Invite(ctx context.Context, email, orgID string) (Invite, error
 	}, nil
 }
 
+// ResetMFA wipes a member's second factors (totp, webauthn) and mints a
+// fresh recovery code — the identity-plane half of a completed org recovery
+// (VEIL-78): a member who lost every device re-enrolls MFA through the
+// recovery link. The org stamp is verified first so one org's confirmer can
+// never reset another org's identity. Deleting a credential type the member
+// never enrolled is a 404 — tolerated, not an error.
+// The caller owns delivery: the Invite's code/link go exclusively to the
+// member's own Kratos address, never back to the confirmer.
+func (c *Client) ResetMFA(ctx context.Context, identityID, orgID string) (Invite, error) {
+	if c == nil || c.admin == nil {
+		return Invite{}, fmt.Errorf("kratos: admin is required")
+	}
+	identityID = strings.TrimSpace(identityID)
+	if identityID == "" || strings.TrimSpace(orgID) == "" {
+		return Invite{}, fmt.Errorf("kratos: identity and org required")
+	}
+	got, _, err := c.admin.IdentityAPI.GetIdentity(ctx, identityID).Execute()
+	if err != nil {
+		return Invite{}, fmt.Errorf("kratos: get identity: %w", err)
+	}
+	if got == nil || got.GetId() == "" {
+		return Invite{}, fmt.Errorf("kratos: get identity: empty")
+	}
+	if got.GetOrganizationId() != orgID {
+		return Invite{}, fmt.Errorf("kratos: identity not in org")
+	}
+	for _, kind := range []string{"totp", "webauthn"} {
+		res, err := c.admin.IdentityAPI.DeleteIdentityCredentials(ctx, identityID, kind).Execute()
+		if err != nil {
+			// A member without that factor is already reset — only a
+			// non-404 failure is real.
+			if res != nil && res.StatusCode == 404 {
+				continue
+			}
+			return Invite{}, fmt.Errorf("kratos: delete %s credentials: %w", kind, err)
+		}
+	}
+	codeBody := ory.NewCreateRecoveryCodeForIdentityBody(identityID)
+	code, _, err := c.admin.IdentityAPI.CreateRecoveryCodeForIdentity(ctx).
+		CreateRecoveryCodeForIdentityBody(*codeBody).
+		Execute()
+	if err != nil {
+		return Invite{}, fmt.Errorf("kratos: recovery code: %w", err)
+	}
+	if code == nil || code.GetRecoveryCode() == "" {
+		return Invite{}, fmt.Errorf("kratos: recovery code: empty")
+	}
+	return Invite{
+		IdentityID:   identityID,
+		RecoveryLink: code.GetRecoveryLink(),
+		Code:         code.GetRecoveryCode(),
+	}, nil
+}
+
 // List returns identity ids in org. Email stays in Kratos.
 func (c *Client) List(ctx context.Context, orgID string) ([]string, error) {
 	if c == nil || c.admin == nil {

@@ -69,6 +69,10 @@ type OrgAdmin interface {
 	PromoteOwner(ctx context.Context, orgID, identityID string) error
 	RemoveOrgTuples(ctx context.Context, orgID string) error
 	ListOwners(ctx context.Context, orgID string) ([]string, error)
+	// ResetMemberMFA wipes a member's second factors in Kratos and mails the
+	// re-enrollment link to the member's own address (VEIL-78). The code
+	// never returns to the caller.
+	ResetMemberMFA(ctx context.Context, orgID, identityID string) error
 }
 
 // InviteResult is what an owner gets back from an invite: the new identity,
@@ -89,6 +93,20 @@ type Inviter interface {
 // nil in local vaults. Best-effort: the request row is the durable part.
 type RequestNotify interface {
 	NotifyRequest(ctx context.Context, req protocol.ApprovalRequest) error
+}
+
+// RecoveryNotify pings owners, the target member, and registered devices on
+// recovery lifecycle events (VEIL-78). glue.Glue (mail) and *push.Pusher
+// satisfy it — the notify sites assert it over Notify/Push.
+type RecoveryNotify interface {
+	NotifyRecovery(ctx context.Context, req protocol.RecoveryRequest, event string) error
+}
+
+// HumanDirectory resolves an identity to its deliverable address — the
+// confirmer's recovery view shows the member's email. glue.Glue satisfies
+// it; nil leaves human_email empty.
+type HumanDirectory interface {
+	Email(ctx context.Context, identityID string) (string, error)
 }
 
 var ErrExists = errors.New("app: vault already exists")
@@ -133,8 +151,12 @@ type App struct {
 	// HookClient fires post-rotation webhooks — nil falls back to a
 	// 10s-timeout default. Tests inject an httptest transport.
 	HookClient *http.Client
+	// Directory resolves member emails for the confirmer's recovery view —
+	// Kratos via glue. Nil leaves human_email empty.
+	Directory HumanDirectory
 
 	inviteLim            inviteLimiter
+	recoveryLim          recoveryLimiter
 	usageStop, usageDone chan struct{}
 	rotStop, rotDone     chan struct{}
 
@@ -1434,7 +1456,12 @@ func (a *App) PrincipalFromOIDC(ctx context.Context, rawToken string) (protocol.
 // same join key. Idempotent: a planted human returns their existing org, and
 // a retry after a mid-flight failure resumes from the anchored humans row
 // rather than minting a second org.
-func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Principal, error) {
+//
+// recoveryPubkey (VEIL-78) is the member's 32-byte X25519 public key when the
+// client generated a recovery keypair before signup; an enrolled share is
+// planted after membership lands. ON CONFLICT DO NOTHING — a retry never
+// overwrites a share, and an enrollment failure never blocks provisioning.
+func (a *App) ProvisionHuman(ctx context.Context, rawToken string, recoveryPubkey ...[]byte) (protocol.Principal, error) {
 	if a.Human == nil {
 		return protocol.Principal{}, fmt.Errorf("app: human verifier not configured")
 	}
@@ -1523,6 +1550,15 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string) (protocol.Pri
 		// First provision only — repeats are logins, not events. Post-commit
 		// by nature (the humans row and tuples already landed).
 		a.auditBestEffort(adminEvent(sub, orgID, "", protocol.ActionHumanProvisioned, ""))
+	}
+	// Recovery share enrollment at signup (VEIL-78): insert-if-absent so a
+	// retried provision never overwrites the member's key. Best-effort —
+	// the member can always enroll lazily via POST /v1/recovery/enroll.
+	if len(recoveryPubkey) > 0 && len(recoveryPubkey[0]) == device.PublicSize {
+		if _, _, err := a.Store.EnrollOrgKeyShare(ctx, orgID, sub, recoveryPubkey[0],
+			adminEvent(sub, orgID, "", protocol.ActionRecoveryShareEnrolled, "epoch=1")); err != nil {
+			slog.Warn("recovery share enrollment at provision failed", "org", orgID, "err", err)
+		}
 	}
 	a.ensureBillingCustomer(ctx, orgID)
 	return protocol.Principal{Kind: protocol.PrincipalHuman, ID: sub, OrgID: orgID}, nil
@@ -1712,6 +1748,16 @@ func (a *App) RemoveMember(ctx context.Context, rawToken, memberID string) error
 		if err := lc.DeleteHuman(ctx, memberID); err != nil {
 			return err
 		}
+		// VEIL-78 abuse-4: the removed member may have cached their share and
+		// recovery key — drop the row, cancel their open asks, and rotate the
+		// org master so the stale wrapped_master opens nothing. Single-key
+		// stores have no org master to rotate; ErrUnsupported is the no-op.
+		if err := lc.DeleteHumanRecovery(ctx, p.OrgID, memberID); err != nil {
+			return err
+		}
+		if err := a.Store.RotateOrgKey(ctx, p.OrgID); err != nil && !errors.Is(err, store.ErrUnsupported) {
+			return err
+		}
 	}
 	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionMemberRemoved, "member="+memberID))
 	return nil
@@ -1806,6 +1852,14 @@ func (a *App) DeleteMe(ctx context.Context, rawToken string) error {
 	}
 	if lc, ok := a.Store.(store.OrgLifecycle); ok {
 		if err := lc.DeleteHuman(ctx, p.ID); err != nil {
+			return err
+		}
+		// Same offboard rotation as RemoveMember (VEIL-78 abuse-4): the
+		// departed member's cached share must not outlive their tuple.
+		if err := lc.DeleteHumanRecovery(ctx, p.OrgID, p.ID); err != nil {
+			return err
+		}
+		if err := a.Store.RotateOrgKey(ctx, p.OrgID); err != nil && !errors.Is(err, store.ErrUnsupported) {
 			return err
 		}
 	}

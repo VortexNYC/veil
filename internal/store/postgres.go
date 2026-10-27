@@ -1368,6 +1368,12 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`DROP TRIGGER IF EXISTS approval_requests_notify ON approval_requests`,
 		`CREATE TRIGGER approval_requests_notify AFTER INSERT OR UPDATE OF status
 			ON approval_requests FOR EACH ROW EXECUTE FUNCTION approval_requests_notify()`,
+		// Recovery asks ride the same channel (VEIL-78): a filed or resolved
+		// recovery_requests row wakes the owner SSE feed the same way an
+		// approval ask does — the client refetches both lists on a tick.
+		`DROP TRIGGER IF EXISTS approval_requests_notify ON recovery_requests`,
+		`CREATE TRIGGER approval_requests_notify AFTER INSERT OR UPDATE OF status
+			ON recovery_requests FOR EACH ROW EXECUTE FUNCTION approval_requests_notify()`,
 		// Billing plane — Vortex webhook writes org_billing; ConsumeUse claims
 		// usage_counters atomically under ON CONFLICT.
 		`CREATE TABLE IF NOT EXISTS org_billing (

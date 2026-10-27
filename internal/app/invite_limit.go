@@ -66,3 +66,57 @@ func (l *inviteLimiter) fresh(key string, now time.Time) []time.Time {
 	l.hits[key] = kept
 	return kept
 }
+
+// ErrRecoveryLimit is returned when an initiator or an org has hit the
+// recovery-start ceiling for the window. The API maps it to 429 (VEIL-78
+// abuse-1: deny-then-refile must not become a notification flood).
+var ErrRecoveryLimit = errors.New("app: recovery rate limit")
+
+const (
+	// A human legitimately starts recovery rarely — three a day per
+	// initiator covers retries without enabling a mail-bomb loop.
+	recoveryPerHumanPerDay = 3
+	// A whole-org incident still fits inside ten starts a day.
+	recoveryPerOrgPerDay = 10
+	recoveryWindow       = 24 * time.Hour
+)
+
+// recoveryLimiter is the same per-process sliding window as inviteLimiter —
+// Postgres does not need to know about it.
+type recoveryLimiter struct {
+	mu   sync.Mutex
+	hits map[string][]time.Time
+}
+
+// allowRecovery gates on the initiator's identity and the org — hits record
+// only when both pass, so a refused start never burns the org's allowance.
+func (l *recoveryLimiter) allowRecovery(humanID, orgID string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.hits == nil {
+		l.hits = map[string][]time.Time{}
+	}
+	now := time.Now()
+	h := l.fresh("h:"+humanID, now)
+	o := l.fresh("o:"+orgID, now)
+	if len(h) >= recoveryPerHumanPerDay || len(o) >= recoveryPerOrgPerDay {
+		return false
+	}
+	l.hits["h:"+humanID] = append(h, now)
+	l.hits["o:"+orgID] = append(o, now)
+	return true
+}
+
+// fresh prunes expired hits for key in place and returns the live tail.
+// Caller holds the lock.
+func (l *recoveryLimiter) fresh(key string, now time.Time) []time.Time {
+	cutoff := now.Add(-recoveryWindow)
+	kept := l.hits[key][:0]
+	for _, t := range l.hits[key] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	l.hits[key] = kept
+	return kept
+}

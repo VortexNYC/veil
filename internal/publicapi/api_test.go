@@ -1737,6 +1737,11 @@ func (f *fakeOrgAdmin) ListOwners(_ context.Context, orgID string) ([]string, er
 	return []string{"sub-owner"}, nil
 }
 
+func (f *fakeOrgAdmin) ResetMemberMFA(_ context.Context, orgID, id string) error {
+	f.calls = append(f.calls, "mfa:"+id)
+	return nil
+}
+
 // Lifecycle verbs: owner removes/promotes members and tears the org down;
 // members get 403, strangers 404, anonymous 401.
 func TestLifecycleEndpoints(t *testing.T) {

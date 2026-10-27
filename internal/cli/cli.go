@@ -360,6 +360,7 @@ func openOriginApp(home string) (*app.App, error) {
 		a.Invites = glueInviter{g}
 		a.OrgAdmin = g
 		a.Notify = g
+		a.Directory = g
 		return a, nil
 	}
 	return openOrInitApp(home)
