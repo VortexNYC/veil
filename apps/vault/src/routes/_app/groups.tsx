@@ -9,6 +9,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import { addGroup, addGroupMemberTo, groupMembers, groups, removeGroupMemberFrom } from "../../origin";
 import type { Group, GroupMember } from "@vortex-api/veil";
@@ -24,7 +25,9 @@ function isMemberKind(value: string): value is MemberKind {
 }
 
 function Groups() {
-  const [rows, setRows] = useState<Group[] | null>(null);
+  const [rows, setRows] = useState<Group[] | null>(() =>
+    readCache<Group[]>(CACHE_KEYS.groups),
+  );
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [manage, setManage] = useState<Group | null>(null);
@@ -33,10 +36,11 @@ function Groups() {
     const res = await groups();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) setRows([]);
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.groups, res.data.groups);
     setRows(res.data.groups);
   }
 
@@ -54,7 +58,7 @@ function Groups() {
             New group
           </Button>
           <Dialog.Root open={open} onOpenChange={setOpen}>
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -171,7 +175,7 @@ function MembersDialog({
         }
       }}
     >
-      <Dialog size="sm" className="p-6">
+      <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
         <Dialog.Title>{group?.name} members</Dialog.Title>
         <Dialog.Description>Agents by id; humans by Kratos identity id.</Dialog.Description>
         {error ? (
@@ -250,14 +254,15 @@ function MembersDialog({
             value={kind}
             label="Kind"
             hideLabel={false}
+            renderValue={(v) => (v === "human" ? "Human" : "Agent")}
             onValueChange={(value) => {
               if (typeof value === "string" && isMemberKind(value)) {
                 setKind(value);
               }
             }}
           >
-            <Select.Option value="agent">agent</Select.Option>
-            <Select.Option value="human">human</Select.Option>
+            <Select.Option value="agent">Agent</Select.Option>
+            <Select.Option value="human">Human</Select.Option>
           </Select>
           <div className="flex justify-end">
             <Button type="submit" variant="primary">

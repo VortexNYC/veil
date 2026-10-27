@@ -9,7 +9,7 @@
     "lint": "vp lint",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
-    "typecheck": "pnpm --filter identity-login typecheck && pnpm --filter veil-vault typecheck",
+    "typecheck": "pnpm --filter identity-login typecheck && pnpm --filter veil-vault typecheck && pnpm --filter veil-phone typecheck",
     "scan:secrets": "secretlint . --no-gitignore --secretlintignore .secretlintignore",
     "sdk:generate": "pnpm exec tsx scripts/generate-sdks.ts",
     "docs:dev": "pnpm --filter @vortex-api/veil-docs dev",

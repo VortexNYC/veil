@@ -59,6 +59,7 @@ type Envelope struct {
 	Country            string `json:"country,omitempty"`
 	Phone              string `json:"phone,omitempty"`
 	Email              string `json:"email,omitempty"`
+	Notes              string `json:"notes,omitempty"`
 	KeyID              string `json:"key_id,omitempty"`
 	PendingKeyID       string `json:"pending_key_id,omitempty"`
 	ManagementItemID   string `json:"management_item_id,omitempty"`
@@ -235,6 +236,41 @@ func WithRefresh(raw []byte, refresh string) ([]byte, error) {
 	env := Unpack(raw)
 	env.V = Version
 	env.Refresh = refresh
+	return pack(env)
+}
+
+func WithNotes(raw []byte, notes string) ([]byte, error) {
+	env := Unpack(raw)
+	env.V = Version
+	env.Notes = strings.TrimSpace(notes)
+	return pack(env)
+}
+
+func WithCard(raw []byte, number, expMonth, expYear, cvv, holder string) ([]byte, error) {
+	env := Unpack(raw)
+	env.V = Version
+	if strings.TrimSpace(number) != "" {
+		env.Number = strings.TrimSpace(number)
+	}
+	env.ExpMonth = strings.TrimSpace(expMonth)
+	env.ExpYear = strings.TrimSpace(expYear)
+	env.CVV = strings.TrimSpace(cvv)
+	env.GivenName = strings.TrimSpace(holder)
+	return pack(env)
+}
+
+func WithIdentity(raw []byte, given, family, address, city, region, postal, country, phone, email string) ([]byte, error) {
+	env := Unpack(raw)
+	env.V = Version
+	env.GivenName = strings.TrimSpace(given)
+	env.FamilyName = strings.TrimSpace(family)
+	env.Address = strings.TrimSpace(address)
+	env.City = strings.TrimSpace(city)
+	env.Region = strings.TrimSpace(region)
+	env.Postal = strings.TrimSpace(postal)
+	env.Country = strings.TrimSpace(country)
+	env.Phone = strings.TrimSpace(phone)
+	env.Email = strings.TrimSpace(email)
 	return pack(env)
 }
 

@@ -827,6 +827,35 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     });
     return true;
   }
+  if (msg.type === "popup-reveal") {
+    hostSend(
+      {
+        action: "fill",
+        url: "app://nyc.veil.fill",
+        uuid: msg.uuid,
+        mintTotp: !!msg.mintTotp,
+      },
+      90000,
+    ).then(
+      function (res) {
+        if (needLogin(res)) {
+          openLogin();
+          sendResponse({ ok: false, error: "need_login" });
+          return;
+        }
+        const entry = res && res.entries && res.entries[0];
+        if (!entry) {
+          sendResponse({ ok: false, error: (res && res.error) || "empty" });
+          return;
+        }
+        sendResponse({ ok: true, entry: entry });
+      },
+      function () {
+        sendResponse({ ok: false, error: "host" });
+      },
+    );
+    return true;
+  }
   if (msg.type === "popup-fill") {
     const listed = usable(msg.url) ? tabByURL(msg.url) : Promise.resolve(null);
     listed.then(function (byURL) {

@@ -2551,7 +2551,7 @@ func fillCmd(home *string) *cobra.Command {
 				if err := os.MkdirAll(dir, 0o700); err != nil {
 					return err
 				}
-				if _, err := originHumanTokenLive(cmd.Context()); err != nil {
+				if _, err := originHumanTokenDirect(cmd.Context()); err != nil {
 					// A stale/expired token must not kill the daemon: the
 					// socket stays up, clients get need_login per request,
 					// and Refresh remints on demand once creds are valid.
@@ -2564,7 +2564,7 @@ func fillCmd(home *string) *cobra.Command {
 				h.Redirect = envOr("VEIL_HYDRA_REDIRECT", human.DefaultRedirect)
 				h.TokenPath = strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE"))
 				h.TokenFn = func() (string, error) {
-					return originHumanTokenLive(cmd.Context())
+					return originHumanTokenDirect(cmd.Context())
 				}
 				h.Refresh = func() (string, error) {
 					out := strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE"))

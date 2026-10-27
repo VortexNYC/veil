@@ -1,15 +1,15 @@
 @import "tailwindcss";
 @import "uniwind";
 
-/* Veil is dark-first: paper ink on near-black, same mark as the docs logo. */
+/* Veil unified Kumo dark palette — matches app.veil.nyc, Veil.app, and extension. */
 @theme {
-  --color-background: #141210;
-  --color-foreground: #f0ede8;
-  --color-card: #1e1b18;
-  --color-card-foreground: #f0ede8;
-  --color-muted: #8a8378;
-  --color-border: #2e2924;
-  --color-accent: #f0ede8;
-  --color-accent-foreground: #141210;
-  --color-danger: #e5645c;
+  --color-background: #0e0e10;
+  --color-foreground: #f4f4f5;
+  --color-card: #18181b;
+  --color-card-foreground: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-border: #27272a;
+  --color-accent: #3b82f6;
+  --color-accent-foreground: #ffffff;
+  --color-danger: #ef4444;
 }

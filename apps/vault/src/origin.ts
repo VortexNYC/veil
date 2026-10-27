@@ -109,8 +109,35 @@ export function addItem(body: {
   return createItem({ client: client(), body });
 }
 
-export function updateVaultItem(id: string, body: UpdateItemRequest) {
-  return sdkUpdateItem({ client: client(), path: { name: id }, body });
+export type ExtendedUpdateItemRequest = UpdateItemRequest & {
+  archived?: boolean;
+  notes?: string;
+  card?: {
+    number?: string;
+    exp_month?: string;
+    exp_year?: string;
+    cvv?: string;
+    holder?: string;
+  };
+  identity?: {
+    given_name?: string;
+    family_name?: string;
+    address?: string;
+    city?: string;
+    region?: string;
+    postal?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+  };
+};
+
+export function updateVaultItem(id: string, body: ExtendedUpdateItemRequest) {
+  return sdkUpdateItem({
+    client: client(),
+    path: { name: id },
+    body: body as UpdateItemRequest,
+  });
 }
 
 export function archiveVaultItem(id: string) {
@@ -274,6 +301,7 @@ export type RevealedItem = {
   password: string;
   uuid: string;
   totp?: string;
+  notes?: string;
   card?: {
     number?: string;
     exp_month?: string;
@@ -364,6 +392,47 @@ export async function mintVaultTOTP(
   }
   const body = (await res.json()) as { totp?: string };
   return { totp: body.totp };
+}
+
+export function parseTOTPSeed(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.toLowerCase().startsWith("otpauth://")) {
+    try {
+      const u = new URL(trimmed);
+      const sec = u.searchParams.get("secret") ?? "";
+      return sec.replace(/[\s-]+/g, "").toUpperCase();
+    } catch {
+      return "";
+    }
+  }
+  return trimmed.replace(/[\s-]+/g, "").toUpperCase();
+}
+
+export async function enrollVaultTOTP(
+  uuid: string,
+  rawSeedOrOtpauth: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const t = token();
+  if (!t) {
+    throw new Error("signed out");
+  }
+  const seed = parseTOTPSeed(rawSeedOrOtpauth);
+  if (!seed) {
+    return { error: "invalid 2FA secret" };
+  }
+  const res = await fetch(`${originAPI}/v1/fill/totp/enroll`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uuid, totp_seed: seed }),
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    return { error: msg || `2FA enroll failed (${res.status})` };
+  }
+  return { ok: true };
 }
 
 export function events() {

@@ -14,18 +14,39 @@ import {
   IdentificationCard,
   Key,
   LockKey,
+  Star,
   Terminal,
 } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  CACHE_KEYS,
+  fmtRelativeTime,
+  readCache,
+  writeCache,
+} from "../../cache";
+import {
+  FieldCard,
+  FilterPill,
+  formatAuditAction,
+  formatGrantLevel,
+  formatKind,
+  formatSubjectKind,
+} from "../../ui";
+import {
+  addGrant,
   addItem,
+  agents,
   archiveVaultItem,
   createShareLink,
   deleteVaultItem,
+  enrollVaultTOTP,
+  grants,
+  groups,
   importItems,
   items,
   mintVaultTOTP,
+  parseTOTPSeed,
   revealVaultItem,
   rotateProviders,
   rotateVaultItem,
@@ -34,7 +55,14 @@ import {
   type RevealedItem,
 } from "../../origin";
 import { sealShare } from "../../share";
-import type { Item } from "@vortex-api/veil";
+import type {
+  Agent,
+  AuditEvent,
+  Grant,
+  Group,
+  Item,
+  VaultReport,
+} from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/items")({
   component: Items,
@@ -53,12 +81,14 @@ function isKind(value: string): value is Kind {
   );
 }
 
-type KindFilter = "all" | "2fa" | Item["kind"];
+type KindFilter = "all" | "pinned" | "2fa" | "archived" | Item["kind"];
 
 function isKindFilter(value: string): value is KindFilter {
   return (
     value === "all" ||
+    value === "pinned" ||
     value === "2fa" ||
+    value === "archived" ||
     value === "api_key" ||
     value === "passkey" ||
     value === "card" ||
@@ -72,6 +102,7 @@ function isKindFilter(value: string): value is KindFilter {
 
 const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "all", label: "All accounts" },
+  { value: "pinned", label: "Pinned" },
   { value: "2fa", label: "2FA / TOTP enabled" },
   { value: "api_key", label: "Passwords / API keys" },
   { value: "passkey", label: "Passkeys" },
@@ -81,6 +112,18 @@ const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "oauth", label: "OAuth / WIF" },
   { value: "file", label: "Files" },
   { value: "secure_note", label: "Secure notes" },
+  { value: "archived", label: "Archived" },
+];
+
+const QUICK_PILLS: { value: KindFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "pinned", label: "Pinned" },
+  { value: "2fa", label: "2FA" },
+  { value: "api_key", label: "Logins" },
+  { value: "card", label: "Cards" },
+  { value: "ssh", label: "SSH" },
+  { value: "secure_note", label: "Notes" },
+  { value: "archived", label: "Archived" },
 ];
 
 // CSPRNG password for the inline Generate buttons — 24 chars from a
@@ -178,15 +221,54 @@ function itemMatches(item: Item, query: string): boolean {
   return terms.every((t) => haystack.includes(t));
 }
 
+const ITEMS_CACHE_KEY = "veil.items.cache";
+const FAVORITES_KEY = "veil.favorites";
+
+function loadCachedItems(): Item[] | null {
+  try {
+    const raw = sessionStorage.getItem(ITEMS_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Item[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    if (!raw) {
+      return new Set();
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set(parsed.filter((v): v is string => typeof v === "string"))
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 function Items() {
-  const [rows, setRows] = useState<Item[] | null>(null);
+  const [rows, setRows] = useState<Item[] | null>(() => loadCachedItems());
+  const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [rotateTarget, setRotateTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Item | null>(null);
   const [shareTarget, setShareTarget] = useState<Item | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const pick = sessionStorage.getItem(CACHE_KEYS.selectItemId);
+    if (pick) {
+      sessionStorage.removeItem(CACHE_KEYS.selectItemId);
+      return pick;
+    }
+    return null;
+  });
   const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
@@ -198,37 +280,209 @@ function Items() {
   const [addSecretVisible, setAddSecretVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const filtered = (rows ?? []).filter(
-    (item) =>
-      (kindFilter === "all" ||
-        (kindFilter === "2fa" ? Boolean(item.has_totp) : item.kind === kindFilter)) &&
-      itemMatches(item, query),
-  );
+  function isPinned(item: Item): boolean {
+    return favorites.has(item.id) || (item.tags ?? []).includes("favorite");
+  }
+
+  function togglePinned(item: Item) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) {
+        next.delete(item.id);
+      } else {
+        next.add(item.id);
+      }
+      try {
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage quota errors
+      }
+      return next;
+    });
+  }
+
+  const filtered = (rows ?? [])
+    .filter((item) => {
+      if (kindFilter === "archived") {
+        return Boolean(item.archived) && itemMatches(item, query);
+      }
+      if (item.archived) {
+        return false;
+      }
+      const matchesFilter =
+        kindFilter === "all" ||
+        (kindFilter === "pinned"
+          ? isPinned(item)
+          : kindFilter === "2fa"
+            ? Boolean(item.has_totp)
+            : item.kind === kindFilter);
+      return matchesFilter && itemMatches(item, query);
+    })
+    .sort((a, b) => {
+      const ap = isPinned(a) ? 0 : 1;
+      const bp = isPinned(b) ? 0 : 1;
+      if (ap !== bp) {
+        return ap - bp;
+      }
+      return a.name.localeCompare(b.name);
+    });
 
   const selectedItem =
     filtered.find((item) => item.id === selectedId) ?? filtered[0] ?? null;
 
   useEffect(() => {
+    if (!selectedItem || !listRef.current) {
+      return;
+    }
+    const btn = listRef.current.querySelector<HTMLElement>(
+      `[data-item-id="${CSS.escape(selectedItem.id)}"]`,
+    );
+    btn?.scrollIntoView({ block: "nearest" });
+  }, [selectedItem?.id]);
+
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const dialogOpen =
+        open ||
+        editTarget !== null ||
+        rotateTarget !== null ||
+        shareTarget !== null;
+      const target = e.target as HTMLElement | null;
+      const inInput =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
+        return;
+      }
+      if (!inInput && !dialogOpen && e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (dialogOpen) {
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setOpen(true);
+        return;
+      }
+      if (
+        !inInput &&
+        (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+        filtered.length > 0
+      ) {
+        e.preventDefault();
+        const curIdx = selectedItem
+          ? filtered.findIndex((i) => i.id === selectedItem.id)
+          : 0;
+        const nextIdx =
+          e.key === "ArrowDown"
+            ? Math.min(filtered.length - 1, curIdx + 1)
+            : Math.max(0, curIdx - 1);
+        const next = filtered[nextIdx];
+        if (next) {
+          setSelectedId(next.id);
+        }
+        return;
+      }
+      if (!selectedItem) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && key === "c") {
+        if (selectedItem.login) {
+          e.preventDefault();
+          void navigator.clipboard?.writeText(selectedItem.login).then(() => {
+            setError(null);
+            setNotice(`Copied username for ${selectedItem.name}`);
+          });
+        }
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        if (key === "u" && selectedItem.login) {
+          e.preventDefault();
+          void navigator.clipboard?.writeText(selectedItem.login).then(() => {
+            setError(null);
+            setNotice(`Copied username for ${selectedItem.name}`);
+          });
+          return;
+        }
+        if (key === "t" && selectedItem.has_totp) {
+          e.preventDefault();
+          void mintVaultTOTP(selectedItem.id).then((res) => {
+            if (res.totp) {
+              void navigator.clipboard?.writeText(res.totp).then(() => {
+                setError(null);
+                setNotice(
+                  `Copied 2FA code for ${selectedItem.name}: ${res.totp}`,
+                );
+              });
+            }
+          });
+          return;
+        }
+        if (key === "e") {
+          e.preventDefault();
+          setEditTarget(selectedItem);
+          return;
+        }
+        if (key === "o") {
+          const webURI = (selectedItem.uris ?? []).find(
+            (u) =>
+              u.toLowerCase().startsWith("http://") ||
+              u.toLowerCase().startsWith("https://"),
+          );
+          if (webURI) {
+            e.preventDefault();
+            window.open(webURI, "_blank", "noopener,noreferrer");
+          }
+          return;
+        }
+        if (
+          key === "c" &&
+          !inInput &&
+          (window.getSelection()?.toString() ?? "") === ""
+        ) {
+          e.preventDefault();
+          void revealVaultItem(selectedItem.id, selectedItem.has_totp).then(
+            (res) => {
+              if (res.data?.password) {
+                void navigator.clipboard
+                  ?.writeText(res.data.password)
+                  .then(() => {
+                    setError(null);
+                    setNotice(`Copied password for ${selectedItem.name}`);
+                  });
+              }
+            },
+          );
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  });
 
   async function reload() {
     const res = await items();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) {
+        setRows([]);
+      }
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.items, res.data.items);
     setRows(res.data.items);
     const pres = await rotateProviders();
     if (pres.data) {
@@ -238,6 +492,26 @@ function Items() {
 
   useEffect(() => {
     void reload();
+    function onFocus() {
+      void reload();
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        void reload();
+      }
+    }
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void reload();
+      }
+    }, 60_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   return (
@@ -302,7 +576,7 @@ function Items() {
               }
             }}
           >
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -392,7 +666,8 @@ function Items() {
                             login: String(fd.get("login") ?? "") || undefined,
                             secret: String(fd.get("secret") ?? "") || undefined,
                             totp_seed:
-                              String(fd.get("totp_seed") ?? "").trim() || undefined,
+                              parseTOTPSeed(String(fd.get("totp_seed") ?? "")) ||
+                              undefined,
                             ...(tags.length > 0 ? { tags } : {}),
                           };
                   void addItem(body).then((res) => {
@@ -579,20 +854,22 @@ function Items() {
                 {kind === "card" ? (
                   <>
                     <div className="flex flex-col gap-1">
-                      <Label htmlFor="number">Number</Label>
+                      <Label htmlFor="number">Card number</Label>
                       <Input id="number" name="number" autoComplete="cc-number" required />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="exp_month">Month</Label>
-                      <Input id="exp_month" name="exp_month" autoComplete="cc-exp-month" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="exp_year">Year</Label>
-                      <Input id="exp_year" name="exp_year" autoComplete="cc-exp-year" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="cvv">CVV</Label>
-                      <Input id="cvv" name="cvv" autoComplete="cc-csc" />
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="exp_month">Month (MM)</Label>
+                        <Input id="exp_month" name="exp_month" placeholder="08" autoComplete="cc-exp-month" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="exp_year">Year (YY)</Label>
+                        <Input id="exp_year" name="exp_year" placeholder="29" autoComplete="cc-exp-year" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="cvv">CVV</Label>
+                        <Input id="cvv" name="cvv" placeholder="123" autoComplete="cc-csc" />
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="holder">Name on card</Label>
@@ -602,41 +879,49 @@ function Items() {
                 ) : null}
                 {kind === "identity" ? (
                   <>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="given_name">Given name</Label>
-                      <Input id="given_name" name="given_name" autoComplete="given-name" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="given_name">Given name</Label>
+                        <Input id="given_name" name="given_name" autoComplete="given-name" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="family_name">Family name</Label>
+                        <Input id="family_name" name="family_name" autoComplete="family-name" />
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <Label htmlFor="family_name">Family name</Label>
-                      <Input id="family_name" name="family_name" autoComplete="family-name" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="address">Street</Label>
+                      <Label htmlFor="address">Street address</Label>
                       <Input id="address" name="address" autoComplete="address-line1" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="city">City</Label>
-                      <Input id="city" name="city" autoComplete="address-level2" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="city">City</Label>
+                        <Input id="city" name="city" autoComplete="address-level2" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="region">State / Region</Label>
+                        <Input id="region" name="region" autoComplete="address-level1" />
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="region">Region</Label>
-                      <Input id="region" name="region" autoComplete="address-level1" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="postal">Postal code</Label>
+                        <Input id="postal" name="postal" autoComplete="postal-code" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="country">Country</Label>
+                        <Input id="country" name="country" autoComplete="country-name" />
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="postal">Postal</Label>
-                      <Input id="postal" name="postal" autoComplete="postal-code" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="country">Country</Label>
-                      <Input id="country" name="country" autoComplete="country-name" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" name="phone" autoComplete="tel" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="email">Email</Label>
-                      <Input id="email" name="email" autoComplete="email" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="phone">Phone</Label>
+                        <Input id="phone" name="phone" autoComplete="tel" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" name="email" autoComplete="email" />
+                      </div>
                     </div>
                   </>
                 ) : null}
@@ -743,6 +1028,17 @@ function Items() {
           Icons
         </Button>
       </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        {QUICK_PILLS.map((pill) => (
+          <FilterPill
+            key={pill.value}
+            active={kindFilter === pill.value}
+            onClick={() => setKindFilter(pill.value)}
+          >
+            {pill.label}
+          </FilterPill>
+        ))}
+      </div>
       <div className="bg-kumo-base ring-kumo-line flex min-h-0 flex-1 overflow-hidden rounded-lg ring">
         {rows === null ? (
           <div className="flex flex-1 items-center justify-center p-8">
@@ -765,17 +1061,20 @@ function Items() {
         ) : (
           <div className="grid h-full min-h-0 w-full flex-1 grid-cols-[340px_minmax(0,1fr)] overflow-hidden">
             <div
+              ref={listRef}
               role="listbox"
               aria-label="Accounts"
               className="border-kumo-hairline flex h-full min-h-0 flex-col overflow-y-auto border-r"
             >
               {filtered.map((item) => {
                 const active = selectedItem?.id === item.id;
+                const pinned = isPinned(item);
                 const sub =
-                  item.login || firstURIDomain(item) || item.kind;
+                  item.login || firstURIDomain(item) || formatKind(item.kind);
                 return (
                   <button
                     key={item.id}
+                    data-item-id={item.id}
                     type="button"
                     role="option"
                     aria-selected={active}
@@ -790,8 +1089,18 @@ function Items() {
                       <ItemIcon item={item} enabled={iconsOn} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">
-                        {item.name}
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium">
+                          {item.name}
+                        </span>
+                        {pinned ? (
+                          <Star
+                            size={12}
+                            weight="fill"
+                            className="shrink-0 text-amber-400"
+                            aria-label="Pinned"
+                          />
+                        ) : null}
                       </div>
                       <div className="text-kumo-subtle truncate text-xs opacity-75">
                         {sub}
@@ -810,6 +1119,8 @@ function Items() {
                   key={selectedItem.id}
                   item={selectedItem}
                   iconsOn={iconsOn}
+                  pinned={isPinned(selectedItem)}
+                  onTogglePin={() => togglePinned(selectedItem)}
                   onError={setError}
                   onNotice={(msg) => {
                     setError(null);
@@ -833,7 +1144,7 @@ function Items() {
           }
         }}
       >
-        <Dialog size="sm" className="p-6">
+        <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
           {editTarget ? (
             <EditItemForm
               key={editTarget.id}
@@ -859,7 +1170,7 @@ function Items() {
           }
         }}
       >
-        <Dialog size="sm" className="p-6">
+        <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
           <form
             key={rotateTarget ?? "closed"}
             className="flex flex-col gap-4"
@@ -923,7 +1234,7 @@ function Items() {
           }
         }}
       >
-        <Dialog size="sm" className="p-6">
+        <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
           {shareTarget ? (
             <ShareItemForm
               key={shareTarget.id}
@@ -955,6 +1266,19 @@ function ShareItemForm({
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ttl, setTtl] = useState("86400");
+  const [prefilledSecret, setPrefilledSecret] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    void revealVaultItem(item.id, item.has_totp).then((res) => {
+      if (live && res.data?.password) {
+        setPrefilledSecret((cur) => (cur ? cur : res.data!.password));
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.has_totp]);
   if (link !== null) {
     return (
       <div className="flex flex-col gap-4">
@@ -1027,6 +1351,8 @@ function ShareItemForm({
           rows={4}
           autoComplete="off"
           required
+          value={prefilledSecret}
+          onChange={(e) => setPrefilledSecret(e.currentTarget.value)}
           placeholder="Paste the value the recipient should see"
         />
       </div>
@@ -1036,6 +1362,9 @@ function ShareItemForm({
           value={ttl}
           hideLabel
           aria-label="Link expiry"
+          renderValue={(v) =>
+            v === "3600" ? "1 hour" : v === "604800" ? "7 days" : "24 hours"
+          }
           onValueChange={(v) => {
             if (typeof v === "string") {
               setTtl(v);
@@ -1077,6 +1406,63 @@ function EditItemForm({
 }) {
   const [secret, setSecret] = useState("");
   const [secretVisible, setSecretVisible] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [card, setCard] = useState({
+    number: "",
+    exp_month: "",
+    exp_year: "",
+    cvv: "",
+    holder: "",
+  });
+  const [identity, setIdentity] = useState({
+    given_name: "",
+    family_name: "",
+    address: "",
+    city: "",
+    region: "",
+    postal: "",
+    country: "",
+    phone: "",
+    email: "",
+  });
+
+  useEffect(() => {
+    let live = true;
+    void revealVaultItem(item.id, item.has_totp).then((res) => {
+      if (!live || !res.data) {
+        return;
+      }
+      if (res.data.notes) {
+        setNotes(res.data.notes);
+      }
+      if (res.data.card) {
+        setCard({
+          number: res.data.card.number ?? "",
+          exp_month: res.data.card.exp_month ?? "",
+          exp_year: res.data.card.exp_year ?? "",
+          cvv: res.data.card.cvv ?? "",
+          holder: res.data.card.holder ?? "",
+        });
+      }
+      if (res.data.identity) {
+        setIdentity({
+          given_name: res.data.identity.given_name ?? "",
+          family_name: res.data.identity.family_name ?? "",
+          address: res.data.identity.address ?? "",
+          city: res.data.identity.city ?? "",
+          region: res.data.identity.region ?? "",
+          postal: res.data.identity.postal ?? "",
+          country: res.data.identity.country ?? "",
+          phone: res.data.identity.phone ?? "",
+          email: res.data.identity.email ?? "",
+        });
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.has_totp]);
+
   return (
     <form
       className="flex flex-col gap-4"
@@ -1092,7 +1478,10 @@ function EditItemForm({
           uris,
           tags,
           travel_safe: fd.get("travel_safe") === "on",
+          notes,
           ...(newSecret ? { secret: newSecret } : {}),
+          ...(item.kind === "card" ? { card } : {}),
+          ...(item.kind === "identity" ? { identity } : {}),
         }).then((res) => {
           if (res.error) {
             onError(`update failed for ${item.name}`);
@@ -1107,15 +1496,176 @@ function EditItemForm({
         Metadata saves in place. A new secret rotates the sealed value; leave it
         blank to keep the current one.
       </Dialog.Description>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="edit-login">Fill username</Label>
-        <Input
-          id="edit-login"
-          name="login"
-          defaultValue={item.login ?? ""}
-          autoComplete="username"
-        />
-      </div>
+      {item.kind === "card" ? (
+        <>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="edit-card-number">Card number</Label>
+            <Input
+              id="edit-card-number"
+              value={card.number}
+              onChange={(e) =>
+                setCard((c) => ({ ...c, number: e.currentTarget.value }))
+              }
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-card-month">Month (MM)</Label>
+              <Input
+                id="edit-card-month"
+                value={card.exp_month}
+                onChange={(e) =>
+                  setCard((c) => ({ ...c, exp_month: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-card-year">Year (YY)</Label>
+              <Input
+                id="edit-card-year"
+                value={card.exp_year}
+                onChange={(e) =>
+                  setCard((c) => ({ ...c, exp_year: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-card-cvv">CVV</Label>
+              <Input
+                id="edit-card-cvv"
+                value={card.cvv}
+                onChange={(e) =>
+                  setCard((c) => ({ ...c, cvv: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="edit-card-holder">Name on card</Label>
+            <Input
+              id="edit-card-holder"
+              value={card.holder}
+              onChange={(e) =>
+                setCard((c) => ({ ...c, holder: e.currentTarget.value }))
+              }
+            />
+          </div>
+        </>
+      ) : item.kind === "identity" ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-given">Given name</Label>
+              <Input
+                id="edit-id-given"
+                value={identity.given_name}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, given_name: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-family">Family name</Label>
+              <Input
+                id="edit-id-family"
+                value={identity.family_name}
+                onChange={(e) =>
+                  setIdentity((i) => ({
+                    ...i,
+                    family_name: e.currentTarget.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="edit-id-address">Street address</Label>
+            <Input
+              id="edit-id-address"
+              value={identity.address}
+              onChange={(e) =>
+                setIdentity((i) => ({ ...i, address: e.currentTarget.value }))
+              }
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-city">City</Label>
+              <Input
+                id="edit-id-city"
+                value={identity.city}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, city: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-region">State / Region</Label>
+              <Input
+                id="edit-id-region"
+                value={identity.region}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, region: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-postal">Postal code</Label>
+              <Input
+                id="edit-id-postal"
+                value={identity.postal}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, postal: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-country">Country</Label>
+              <Input
+                id="edit-id-country"
+                value={identity.country}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, country: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-phone">Phone</Label>
+              <Input
+                id="edit-id-phone"
+                value={identity.phone}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, phone: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-email">Email</Label>
+              <Input
+                id="edit-id-email"
+                value={identity.email}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, email: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="edit-login">Username / Email</Label>
+          <Input
+            id="edit-login"
+            name="login"
+            defaultValue={item.login ?? ""}
+            autoComplete="username"
+          />
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <Label htmlFor="edit-uris">URIs (comma-separated)</Label>
         <Input
@@ -1136,6 +1686,47 @@ function EditItemForm({
           autoComplete="off"
         />
       </div>
+      {item.kind !== "card" && item.kind !== "identity" ? (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="edit-secret">New secret / password (optional)</Label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <Input
+                id="edit-secret"
+                name="secret"
+                type={secretVisible ? "text" : "password"}
+                autoComplete="new-password"
+                value={secret}
+                onChange={(e) => setSecret(e.currentTarget.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                const generated = generateSecret();
+                setSecret(generated);
+                setSecretVisible(true);
+                void navigator.clipboard?.writeText(generated).catch(() => {});
+              }}
+            >
+              Generate
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="edit-notes">
+          Notes (optional — backup codes, PINs, security questions)
+        </Label>
+        <Textarea
+          id="edit-notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.currentTarget.value)}
+          placeholder="Recovery codes, PINs, or account notes…"
+        />
+      </div>
       <label className="flex items-center gap-2" htmlFor="edit-travel-safe">
         <input
           id="edit-travel-safe"
@@ -1147,33 +1738,6 @@ function EditItemForm({
           Travel safe — stays visible when Travel Mode is on
         </Text>
       </label>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="edit-secret">New secret / password (optional)</Label>
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <Input
-              id="edit-secret"
-              name="secret"
-              type={secretVisible ? "text" : "password"}
-              autoComplete="new-password"
-              value={secret}
-              onChange={(e) => setSecret(e.currentTarget.value)}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              const generated = generateSecret();
-              setSecret(generated);
-              setSecretVisible(true);
-              void navigator.clipboard?.writeText(generated).catch(() => {});
-            }}
-          >
-            Generate
-          </Button>
-        </div>
-      </div>
       <div className="flex justify-end">
         <Button type="submit" variant="primary">
           Save
@@ -1186,6 +1750,8 @@ function EditItemForm({
 function AccountInspector({
   item,
   iconsOn,
+  pinned,
+  onTogglePin,
   onError,
   onNotice,
   onEdit,
@@ -1195,6 +1761,8 @@ function AccountInspector({
 }: {
   item: Item;
   iconsOn: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
   onError: (msg: string) => void;
   onNotice: (msg: string) => void;
   onEdit: () => void;
@@ -1211,10 +1779,22 @@ function AccountInspector({
   );
   const [copied, setCopied] = useState<string | null>(null);
   const [showAllURIs, setShowAllURIs] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [enrollingTotp, setEnrollingTotp] = useState(false);
+  const [totpSeedInput, setTotpSeedInput] = useState("");
+  const [totpBusy, setTotpBusy] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [grantTargetKind, setGrantTargetKind] = useState<"agent" | "group">("agent");
+  const [grantTarget, setGrantTarget] = useState("");
+  const [grantLevel, setGrantLevel] = useState<"level1" | "level2">("level2");
+  const [grantBusy, setGrantBusy] = useState(false);
+  const [localGrants, setLocalGrants] = useState<Grant[] | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
   const canReveal = item.kind !== "passkey" && item.kind !== "file";
+  const canEnrollTotp =
+    !item.has_totp && !totp && (item.kind === "api_key" || item.kind === "oauth");
 
   // Auto-load live 2FA code as soon as a 2FA-enabled account is selected.
   useEffect(() => {
@@ -1289,6 +1869,19 @@ function AccountInspector({
     totp && totp.length === 6 ? `${totp.slice(0, 3)} ${totp.slice(3)}` : totp;
   const uris = item.uris ?? [];
   const visibleURIs = showAllURIs ? uris : uris.slice(0, 5);
+  const cachedReport = readCache<VaultReport>(CACHE_KEYS.report);
+  const finding = cachedReport?.findings.find((f) => f.item_id === item.id);
+  const allGrants = localGrants ?? readCache<Grant[]>(CACHE_KEYS.grants) ?? [];
+  const itemGrants = allGrants.filter(
+    (g) => g.item_id === item.id || g.item_id === item.name,
+  );
+  const cachedAgents = (readCache<Agent[]>(CACHE_KEYS.agents) ?? []).filter(
+    (a) => !a.revoked_at,
+  );
+  const cachedGroups = readCache<Group[]>(CACHE_KEYS.groups) ?? [];
+  const itemAudit = (readCache<AuditEvent[]>(CACHE_KEYS.audit) ?? [])
+    .filter((e) => e.item_id === item.id || e.item_id === item.name)
+    .slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
@@ -1302,8 +1895,21 @@ function AccountInspector({
               <Text as="h2" variant="heading">
                 {item.name}
               </Text>
-              <Badge variant="neutral">{item.kind}</Badge>
-              {item.has_totp ? <Badge variant="neutral">2FA</Badge> : null}
+              <button
+                type="button"
+                title={pinned ? "Unpin from top" : "Pin to top of list"}
+                onClick={onTogglePin}
+                className="cursor-pointer rounded p-1 opacity-80 hover:opacity-100"
+              >
+                <Star
+                  size={16}
+                  weight={pinned ? "fill" : "regular"}
+                  className={pinned ? "text-amber-400" : "text-kumo-subtle"}
+                />
+              </button>
+              <Badge variant="neutral">{formatKind(item.kind)}</Badge>
+              {item.archived ? <Badge variant="warning">Archived</Badge> : null}
+              {item.has_totp || totp ? <Badge variant="neutral">2FA</Badge> : null}
               {item.travel_safe ? (
                 <Badge variant="neutral">travel safe</Badge>
               ) : null}
@@ -1321,7 +1927,12 @@ function AccountInspector({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="secondary" onClick={onEdit}>
+          <Button
+            type="button"
+            variant="secondary"
+            title="Edit account (⌘E)"
+            onClick={onEdit}
+          >
             Edit
           </Button>
           <Button
@@ -1354,42 +1965,105 @@ function AccountInspector({
               </Button>
             </>
           ) : null}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              void archiveVaultItem(item.id).then((res) => {
-                if (res.error) {
-                  onError(`archive failed for ${item.name}`);
-                  return;
-                }
-                onNotice(`Archived ${item.name}`);
-                onReload();
-              });
-            }}
-          >
-            Archive
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              void deleteVaultItem(item.id).then((res) => {
-                if (res.error) {
-                  onError(`delete failed for ${item.name}`);
-                  return;
-                }
-                onNotice(`Deleted ${item.name}`);
-                onReload();
-              });
-            }}
-          >
-            Delete
-          </Button>
+          {item.archived ? (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                void updateVaultItem(item.id, { archived: false }).then((res) => {
+                  if (res.error) {
+                    onError(`restore failed for ${item.name}`);
+                    return;
+                  }
+                  onNotice(`Restored ${item.name}`);
+                  onReload();
+                });
+              }}
+            >
+              Restore
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                void archiveVaultItem(item.id).then((res) => {
+                  if (res.error) {
+                    onError(`archive failed for ${item.name}`);
+                    return;
+                  }
+                  onNotice(`Archived ${item.name}`);
+                  onReload();
+                });
+              }}
+            >
+              Archive
+            </Button>
+          )}
+          {confirmDelete ? (
+            <>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  void deleteVaultItem(item.id).then((res) => {
+                    if (res.error) {
+                      onError(`delete failed for ${item.name}`);
+                      return;
+                    }
+                    onNotice(`Deleted ${item.name}`);
+                    onReload();
+                  });
+                }}
+              >
+                Confirm Delete
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 
-      <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+      {finding ? (
+        <div className="bg-kumo-elevated/60 ring-kumo-hairline flex items-center justify-between gap-3 rounded-lg px-4 py-3 ring">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant={finding.pwned > 0 ? "red" : finding.reused ? "orange" : "warning"}>
+              {finding.pwned > 0
+                ? `Breached ×${finding.pwned}`
+                : finding.reused
+                  ? `Reused ×${finding.reused}`
+                  : "Weak password"}
+            </Badge>
+            <span className="text-kumo-subtle">
+              {[
+                ...(finding.weak ?? []),
+                finding.reused ? `reused across ${finding.reused} accounts` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") || "Flagged by Watchtower"}
+            </span>
+          </div>
+          <Button type="button" variant="secondary" onClick={onEdit}>
+            Change Password
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="bg-kumo-elevated/40 ring-kumo-hairline divide-kumo-hairline flex flex-col divide-y rounded-lg ring">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
@@ -1403,11 +2077,12 @@ function AccountInspector({
             <Button
               type="button"
               variant="secondary"
+              title="Copy username / email (⌘U)"
               onClick={() =>
                 copy("login", loginVal, `Copied username for ${item.name}`)
               }
             >
-              {copied === "login" ? "Copied" : "Copy"}
+              {copied === "login" ? "Copied" : "Copy ⌘U"}
             </Button>
           ) : null}
         </div>
@@ -1463,6 +2138,7 @@ function AccountInspector({
                   type="button"
                   variant="primary"
                   disabled={loadingSecret}
+                  title="Copy password (⌘C)"
                   onClick={() => {
                     void ensureRevealed().then((data) => {
                       if (data?.password) {
@@ -1475,7 +2151,7 @@ function AccountInspector({
                     });
                   }}
                 >
-                  {copied === "password" ? "Copied" : "Copy Password"}
+                  {copied === "password" ? "Copied" : "Copy ⌘C"}
                 </Button>
               </div>
             </div>
@@ -1510,6 +2186,7 @@ function AccountInspector({
             <Button
               type="button"
               variant="primary"
+              title="Copy 6-digit 2FA code (⌘T)"
               onClick={() => {
                 if (totp) {
                   copy("totp", totp, `Copied 2FA code for ${item.name}: ${totp}`);
@@ -1527,14 +2204,89 @@ function AccountInspector({
                 });
               }}
             >
-              {copied === "totp" ? "Copied" : "Copy 2FA"}
+              {copied === "totp" ? "Copied" : "Copy 2FA ⌘T"}
             </Button>
+          </div>
+        ) : canEnrollTotp ? (
+          <div className="flex flex-col gap-2 px-4 py-3">
+            {!enrollingTotp ? (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                    One-Time Password (2FA)
+                  </div>
+                  <div className="text-kumo-subtle mt-0.5 text-xs opacity-75">
+                    No authenticator attached
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setEnrollingTotp(true)}
+                >
+                  + Add 2FA
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="enroll-totp-input">
+                  Authenticator secret (base32 seed or otpauth:// URI)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="enroll-totp-input"
+                    className="w-full font-mono text-xs"
+                    placeholder="JBSWY3DPEHPK3PXP or otpauth://totp/…"
+                    value={totpSeedInput}
+                    onChange={(e) => setTotpSeedInput(e.currentTarget.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    disabled={totpBusy || !totpSeedInput.trim()}
+                    onClick={() => {
+                      setTotpBusy(true);
+                      void enrollVaultTOTP(item.id, totpSeedInput).then(
+                        (res) => {
+                          setTotpBusy(false);
+                          if (res.error) {
+                            onError(res.error);
+                            return;
+                          }
+                          setEnrollingTotp(false);
+                          setTotpSeedInput("");
+                          onNotice(`2FA enabled for ${item.name}`);
+                          onReload();
+                          void mintVaultTOTP(item.id).then((tRes) => {
+                            if (tRes.totp) {
+                              setTotp(tRes.totp);
+                            }
+                          });
+                        },
+                      );
+                    }}
+                  >
+                    {totpBusy ? "Saving…" : "Save 2FA"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setEnrollingTotp(false);
+                      setTotpSeedInput("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
       </div>
 
       {passwordVisible && secret?.card ? (
-        <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+        <div className="bg-kumo-elevated/40 ring-kumo-hairline divide-kumo-hairline flex flex-col divide-y rounded-lg ring">
           {secret.card.holder ? (
             <div className="flex items-center justify-between gap-4 px-4 py-3">
               <div>
@@ -1646,6 +2398,28 @@ function AccountInspector({
         </div>
       ) : null}
 
+      {secret?.notes ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label>Notes</Label>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                copy("notes", secret.notes!, `Copied notes for ${item.name}`)
+              }
+            >
+              {copied === "notes" ? "Copied" : "Copy Notes"}
+            </Button>
+          </div>
+          <FieldCard>
+            <div className="whitespace-pre-wrap px-4 py-3 font-mono text-xs">
+              {secret.notes}
+            </div>
+          </FieldCard>
+        </div>
+      ) : null}
+
       {uris.length > 0 ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -1660,7 +2434,7 @@ function AccountInspector({
               </button>
             ) : null}
           </div>
-          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+          <div className="bg-kumo-elevated/40 ring-kumo-hairline divide-kumo-hairline flex flex-col divide-y rounded-lg ring">
             {visibleURIs.map((u) => {
               const isWeb =
                 u.toLowerCase().startsWith("http://") ||
@@ -1700,6 +2474,170 @@ function AccountInspector({
               );
             })}
           </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <Label>Granted Access ({itemGrants.length})</Label>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setGrantOpen((v) => !v);
+              if (cachedAgents.length === 0) {
+                void agents().then((r) => {
+                  if (r.data) writeCache(CACHE_KEYS.agents, r.data.agents);
+                });
+              }
+              if (cachedGroups.length === 0) {
+                void groups().then((r) => {
+                  if (r.data) writeCache(CACHE_KEYS.groups, r.data.groups);
+                });
+              }
+            }}
+          >
+            {grantOpen ? "Cancel" : "+ Grant Access"}
+          </Button>
+        </div>
+        {grantOpen ? (
+          <FieldCard>
+            <div className="flex flex-col gap-3 p-4">
+              <div className="grid grid-cols-3 gap-2">
+                <Select
+                  aria-label="Principal kind"
+                  value={grantTargetKind}
+                  renderValue={(v) => formatSubjectKind(String(v))}
+                  onValueChange={(v) => {
+                    if (v === "agent" || v === "group") {
+                      setGrantTargetKind(v);
+                      setGrantTarget("");
+                    }
+                  }}
+                >
+                  <Select.Option value="agent">Agent</Select.Option>
+                  <Select.Option value="group">Group</Select.Option>
+                </Select>
+                <Select
+                  aria-label="Principal"
+                  value={grantTarget}
+                  placeholder={
+                    grantTargetKind === "agent" ? "Pick agent…" : "Pick group…"
+                  }
+                  renderValue={(v) => String(v || "Pick…")}
+                  onValueChange={(v) => {
+                    if (typeof v === "string") setGrantTarget(v);
+                  }}
+                >
+                  {(grantTargetKind === "agent"
+                    ? cachedAgents.map((a) => a.id)
+                    : cachedGroups.map((g) => g.name)
+                  ).map((id) => (
+                    <Select.Option key={id} value={id}>
+                      {id}
+                    </Select.Option>
+                  ))}
+                </Select>
+                <Select
+                  aria-label="Approval policy"
+                  value={grantLevel}
+                  renderValue={(v) => formatGrantLevel(String(v))}
+                  onValueChange={(v) => {
+                    if (v === "level1" || v === "level2") setGrantLevel(v);
+                  }}
+                >
+                  <Select.Option value="level2">
+                    Level 2 · Auto-approve
+                  </Select.Option>
+                  <Select.Option value="level1">
+                    Level 1 · Ask approval
+                  </Select.Option>
+                </Select>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={grantBusy || !grantTarget}
+                  onClick={() => {
+                    setGrantBusy(true);
+                    void addGrant({
+                      item: item.name,
+                      level: grantLevel,
+                      ...(grantTargetKind === "agent"
+                        ? { agent: grantTarget }
+                        : { group: grantTarget }),
+                    }).then((res) => {
+                      setGrantBusy(false);
+                      if (res.error) {
+                        onError("grant failed");
+                        return;
+                      }
+                      setGrantOpen(false);
+                      setGrantTarget("");
+                      onNotice(
+                        `Granted ${grantTarget} access to ${item.name}`,
+                      );
+                      void grants().then((gRes) => {
+                        if (gRes.data) {
+                          writeCache(CACHE_KEYS.grants, gRes.data.grants);
+                          setLocalGrants(gRes.data.grants);
+                        }
+                      });
+                    });
+                  }}
+                >
+                  {grantBusy ? "Saving…" : "Save Grant"}
+                </Button>
+              </div>
+            </div>
+          </FieldCard>
+        ) : null}
+        {itemGrants.length > 0 ? (
+          <FieldCard>
+            {itemGrants.map((g) => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <Badge variant="neutral">
+                    {formatSubjectKind(g.subject_kind)}
+                  </Badge>
+                  <span className="font-mono font-medium">{g.agent_id}</span>
+                </div>
+                <Badge variant="neutral">{formatGrantLevel(g.level)}</Badge>
+              </div>
+            ))}
+          </FieldCard>
+        ) : null}
+      </div>
+
+      {itemAudit.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <Label>Recent Activity</Label>
+          <FieldCard>
+            {itemAudit.map((ev, i) => (
+              <div
+                key={`${ev.time}-${i}`}
+                className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <Badge variant={ev.decision === "allow" ? "neutral" : "red"}>
+                    {formatAuditAction(ev.action)}
+                  </Badge>
+                  <span className="text-kumo-subtle font-mono" title={ev.agent_id}>
+                    {ev.agent_id && ev.agent_id.length === 36
+                      ? "You"
+                      : ev.agent_id}
+                  </span>
+                </div>
+                <span className="text-kumo-subtle" title={ev.time}>
+                  {fmtRelativeTime(ev.time)}
+                </span>
+              </div>
+            ))}
+          </FieldCard>
         </div>
       ) : null}
     </div>
