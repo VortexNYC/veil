@@ -89,7 +89,7 @@ export async function sealShare(
   const key = new Uint8Array(32);
   crypto.getRandomValues(key);
   const meta: ShareMeta = { v: SHARE_VERSION, alg: SHARE_ALG };
-  let keff = key;
+  let keff: Uint8Array = key;
   if (passphrase) {
     const salt = new Uint8Array(16);
     crypto.getRandomValues(salt);
