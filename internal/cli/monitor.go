@@ -27,7 +27,7 @@ import (
 // once, not every tick.
 func monitorCmd() *cobra.Command {
 	var dsn, mailURL, mailToken, alertTo, readyURL, ntfyTopic string
-	var backupStale, sweepStale, alertCooldown, usageStale, auditExportStale, walStale time.Duration
+	var backupStale, sweepStale, alertCooldown, usageStale, auditExportStale, walStale, oryDepsEvery time.Duration
 	var usagePending int64
 	c := &cobra.Command{
 		Use:   "monitor",
@@ -123,6 +123,22 @@ func monitorCmd() *cobra.Command {
 				}
 			}
 
+			// Ory dependency CVE watch (VEIL-70): a kratos/keto/hydra
+			// advisory is our incident. Cheap + cached — at most one
+			// GitHub/OSV round-trip per --ory-deps-every, deduped on the
+			// ops_heartbeat beat so the 15-min cron stays quiet. Advisory
+			// only: a FINDING line + the same email page, never a failure.
+			if pool != nil {
+				if age, ok, err := store.HeartbeatAge(ctx, pool, "ory-deps"); err == nil && ok && age < oryDepsEvery {
+					// checked recently
+				} else {
+					findings = append(findings, checkOryDeps(ctx, newOryDepHTTP())...)
+					if err := store.MarkHeartbeat(ctx, pool, "ory-deps"); err != nil {
+						fmt.Fprintf(cmd.OutOrStdout(), "ory-deps beat unwritten: %v\n", err)
+					}
+				}
+			}
+
 			// The ops plane lands on the PostHog board too — one
 			// ops_finding event per tick carrying the findings so the same
 			// dashboard sees dead-beats and route-deaths, not just product
@@ -175,6 +191,7 @@ func monitorCmd() *cobra.Command {
 	c.Flags().DurationVar(&walStale, "wal-stale", 10*time.Minute, "wal-archive beat older than this is a finding — WAL archiving is what bounds backup RPO")
 	c.Flags().Int64Var(&usagePending, "usage-pending", 25, "unreported usage org-windows beyond this is a finding")
 	c.Flags().DurationVar(&alertCooldown, "alert-cooldown", 6*time.Hour, "minimum time between alert emails")
+	c.Flags().DurationVar(&oryDepsEvery, "ory-deps-every", 24*time.Hour, "minimum time between Ory pin CVE/version checks — cached on the ory-deps heartbeat")
 	c.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if dsn == "" {
 			dsn = os.Getenv("VEIL_POSTGRES_DSN")
