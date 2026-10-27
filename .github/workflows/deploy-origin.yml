@@ -1,0 +1,29 @@
+name: Deploy Origin & Vault
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: veil-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy-origin:
+    name: Deploy Origin (Railway veil.nyc)
+    runs-on: ubuntu-latest
+    if: ${{ vars.RAILWAY_DEPLOY_ENABLED != 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trigger Railway deploy if token configured
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "RAILWAY_TOKEN not set in GitHub secrets — skipping CLI deploy (Railway GitHub integration or manual 'make deploy' handles rollout)."
+            exit 0
+          fi
+          npx --yes @railway/cli@latest up --service veil --detach
+      - name: Verify production surfaces
+        run: sh ./scripts/deploy-check.sh
