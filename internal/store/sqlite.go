@@ -217,6 +217,40 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			uses INTEGER NOT NULL,
 			UNIQUE(secret_hash)
 		)`,
+		// VEIL-78: the single-key store carries the ceremony tables so
+		// DeleteHumanRecovery/PurgeOrg behave identically — the crypto
+		// verbs themselves stay ErrUnsupported (no org master).
+		`CREATE TABLE IF NOT EXISTS org_key_shares (
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL,
+			pubkey BLOB NOT NULL,
+			wrapped_master BLOB NOT NULL,
+			wrap_pubkey_epoch INTEGER NOT NULL DEFAULT 1,
+			org_key_version INTEGER NOT NULL DEFAULT 1,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (org_id, human_id)
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_org_key_shares_pubkey ON org_key_shares(pubkey)`,
+		`CREATE TABLE IF NOT EXISTS recovery_requests (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL,
+			initiated_by TEXT NOT NULL,
+			new_pubkey BLOB NOT NULL,
+			reset_mfa INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			unlock_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL,
+			resolved_at INTEGER,
+			confirmed_by TEXT,
+			result_epoch INTEGER
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS recovery_requests_one_open
+			ON recovery_requests(org_id, human_id) WHERE status = 'open'`,
+		`CREATE INDEX IF NOT EXISTS idx_recovery_requests_org_status
+			ON recovery_requests(org_id, status, created_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS org_billing (
 			org_id TEXT PRIMARY KEY,
 			plan TEXT NOT NULL DEFAULT 'free',
@@ -544,6 +578,24 @@ func (s *SQLite) DenyRecovery(context.Context, string, string, protocol.Recovery
 	return protocol.RecoveryRequest{}, ErrUnsupported
 }
 
+// DeleteHumanRecovery drops the member's share row and cancels their open
+// recovery asks — the same offboard prelude as Postgres (VEIL-78).
+func (s *SQLite) DeleteHumanRecovery(ctx context.Context, orgID, humanID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM org_key_shares WHERE org_id = ? AND human_id = ?`, orgID, humanID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE recovery_requests SET status='cancelled', resolved_at=? WHERE org_id=? AND human_id=? AND status='open'`,
+		time.Now().UTC().Format(time.RFC3339), orgID, humanID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
 	p.Kind = protocol.PrincipalHuman
@@ -806,6 +858,8 @@ func (s *SQLite) PurgeOrg(ctx context.Context, orgID string) (PurgeReport, error
 		{`DELETE FROM workloads WHERE agent_id IN (SELECT id FROM agents WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM groups WHERE org_id = ?`, new(int64)},
+		{`DELETE FROM recovery_requests WHERE org_id = ?`, new(int64)},
+		{`DELETE FROM org_key_shares WHERE org_id = ?`, new(int64)},
 		{`DELETE FROM owner_keys WHERE org_id = ?`, new(int64)},
 		{`DELETE FROM items WHERE org_id = ?`, &rep.Items},
 		{`DELETE FROM agents WHERE org_id = ?`, &rep.Agents},
