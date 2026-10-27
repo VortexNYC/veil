@@ -473,6 +473,37 @@ func (q *Queries) ConsumeSession(ctx context.Context, arg ConsumeSessionParams) 
 	return i, err
 }
 
+const consumeShare = `-- name: ConsumeShare :one
+UPDATE shares SET consumed_at = $1::timestamptz
+WHERE id = $2::text AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
+RETURNING id, org_id, name, blob, meta, created_by, expires_at, created_at, consumed_at, revoked_at
+`
+
+type ConsumeShareParams struct {
+	Now time.Time
+	ID  string
+}
+
+// Atomic claim-then-return: one read burns the share. Missing, consumed,
+// revoked, and expired all collapse to no row → generic 404 upstream.
+func (q *Queries) ConsumeShare(ctx context.Context, arg ConsumeShareParams) (Share, error) {
+	row := q.db.QueryRow(ctx, consumeShare, arg.Now, arg.ID)
+	var i Share
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Blob,
+		&i.Meta,
+		&i.CreatedBy,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.ConsumedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const consumeUse = `-- name: ConsumeUse :one
 INSERT INTO usage_counters(org_id, window_start, used)
 VALUES($1::text, $2::timestamptz, 1)
@@ -1794,6 +1825,58 @@ func (q *Queries) ListSessions(ctx context.Context, maxResults int64) ([]Session
 	return items, nil
 }
 
+const listShares = `-- name: ListShares :many
+SELECT id, org_id, name, meta, created_by, expires_at, created_at, consumed_at, revoked_at
+FROM shares WHERE org_id = $1::text ORDER BY created_at DESC LIMIT $2::bigint
+`
+
+type ListSharesParams struct {
+	OrgID      string
+	MaxResults int64
+}
+
+type ListSharesRow struct {
+	ID         string
+	OrgID      string
+	Name       string
+	Meta       string
+	CreatedBy  string
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	ConsumedAt sql.NullTime
+	RevokedAt  sql.NullTime
+}
+
+func (q *Queries) ListShares(ctx context.Context, arg ListSharesParams) ([]ListSharesRow, error) {
+	rows, err := q.db.Query(ctx, listShares, arg.OrgID, arg.MaxResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSharesRow
+	for rows.Next() {
+		var i ListSharesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.Meta,
+			&i.CreatedBy,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.ConsumedAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const liveGrantForApprove = `-- name: LiveGrantForApprove :one
 SELECT g.id FROM grants g
 JOIN items i ON i.id = g.item_id
@@ -2418,6 +2501,40 @@ func (q *Queries) PutSession(ctx context.Context, arg PutSessionParams) error {
 	return err
 }
 
+const putShare = `-- name: PutShare :execrows
+INSERT INTO shares(id, org_id, name, blob, meta, created_by, expires_at, created_at)
+VALUES($1::text, $2::text, $3::text, $4::bytea, $5::text, $6::text, $7::timestamptz, $8::timestamptz)
+`
+
+type PutShareParams struct {
+	ID        string
+	OrgID     string
+	Name      string
+	Blob      []byte
+	Meta      string
+	CreatedBy string
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+// Share links (VTX-783).
+func (q *Queries) PutShare(ctx context.Context, arg PutShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, putShare,
+		arg.ID,
+		arg.OrgID,
+		arg.Name,
+		arg.Blob,
+		arg.Meta,
+		arg.CreatedBy,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const putWorkload = `-- name: PutWorkload :execrows
 INSERT INTO workloads(issuer, subject, org_id, agent_id, audience, claims)
 VALUES($1::text, $2::text, $3::text, $4::text, $5::text, $6::text)
@@ -2703,6 +2820,25 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (i
 	return result.RowsAffected(), nil
 }
 
+const revokeShare = `-- name: RevokeShare :execrows
+UPDATE shares SET revoked_at = COALESCE(revoked_at, $1::timestamptz)
+WHERE id = $2::text AND org_id = $3::text
+`
+
+type RevokeShareParams struct {
+	At    time.Time
+	ID    string
+	OrgID string
+}
+
+func (q *Queries) RevokeShare(ctx context.Context, arg RevokeShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeShare, arg.At, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rewrapOrgKey = `-- name: RewrapOrgKey :execrows
 UPDATE org_keys SET wrapped = $1::bytea WHERE org_id = $2::text
 `
@@ -2890,6 +3026,20 @@ WHERE expires_at < $1::timestamptz
 
 func (q *Queries) SweepExpiredSessions(ctx context.Context, before time.Time) (int64, error) {
 	result, err := q.db.Exec(ctx, sweepExpiredSessions, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const sweepShares = `-- name: SweepShares :execrows
+DELETE FROM shares WHERE expires_at < $1::timestamptz
+   OR consumed_at < $1::timestamptz
+   OR revoked_at < $1::timestamptz
+`
+
+func (q *Queries) SweepShares(ctx context.Context, olderThan time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, sweepShares, olderThan)
 	if err != nil {
 		return 0, err
 	}

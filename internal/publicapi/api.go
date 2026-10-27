@@ -382,6 +382,40 @@ type FillSyncRequest struct {
 	Since string `json:"since,omitempty"`
 }
 
+// Share links (VTX-783): the origin stores only the client-sealed blob.
+// blob_b64/meta are opaque — plaintext and the fragment key never touch
+// the server. Meta is the envelope params JSON (alg/version/passphrase).
+type CreateShareRequest struct {
+	Name       string          `json:"name"`
+	BlobB64    string          `json:"blob_b64"`
+	Meta       json.RawMessage `json:"meta,omitempty"`
+	TTLSeconds int64           `json:"ttl_seconds,omitempty"`
+}
+
+// ShareView is owner metadata — the blob column is never in it.
+type ShareView struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name,omitempty"`
+	Meta       json.RawMessage `json:"meta,omitempty"`
+	CreatedBy  string          `json:"created_by,omitempty"`
+	ExpiresAt  time.Time       `json:"expires_at"`
+	CreatedAt  time.Time       `json:"created_at"`
+	ConsumedAt *time.Time      `json:"consumed_at,omitempty"`
+	RevokedAt  *time.Time      `json:"revoked_at,omitempty"`
+}
+
+type SharesResponse struct {
+	Shares []ShareView `json:"shares"`
+}
+
+// RedeemShareResponse returns the sealed envelope exactly once — a second
+// read is the generic 404.
+type RedeemShareResponse struct {
+	Name    string          `json:"name,omitempty"`
+	BlobB64 string          `json:"blob_b64"`
+	Meta    json.RawMessage `json:"meta,omitempty"`
+}
+
 type FillSyncItem struct {
 	Item     protocol.Item `json:"item"`
 	Material string        `json:"material"`
@@ -444,6 +478,12 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
 	mux.HandleFunc("POST /v1/provision", s.provision)
 	mux.HandleFunc("POST /v1/invites", s.createInvite)
+	// Share links (VTX-783): create/list/revoke are owner ops; redeem is
+	// the public one-time read — the link id is the capability.
+	mux.HandleFunc("POST /v1/shares", s.createShare)
+	mux.HandleFunc("GET /v1/shares", s.listShares)
+	mux.HandleFunc("POST /v1/shares/{id}/redeem", s.redeemShare)
+	mux.HandleFunc("DELETE /v1/shares/{id}", s.revokeShare)
 	mux.HandleFunc("DELETE /v1/members/{id}", s.removeMember)
 	mux.HandleFunc("POST /v1/members/{id}/owner", s.promoteOwner)
 	mux.HandleFunc("DELETE /v1/members/{id}/owner", s.demoteOwner)
@@ -1535,6 +1575,107 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 		out.RecoveryURL = inv.RecoveryURL
 	}
 	writeJSON(w, out)
+}
+
+func shareView(sh protocol.Share) ShareView {
+	meta := sh.Meta
+	if len(meta) == 0 {
+		meta = json.RawMessage("{}")
+	}
+	return ShareView{
+		ID: sh.ID, Name: sh.Name, Meta: meta, CreatedBy: sh.CreatedBy,
+		ExpiresAt: sh.ExpiresAt, CreatedAt: sh.CreatedAt,
+		ConsumedAt: sh.ConsumedAt, RevokedAt: sh.RevokedAt,
+	}
+}
+
+// createShare is owner-only: the client seals the payload (nacl secretbox)
+// and POSTs the envelope — the origin stores it verbatim and never sees
+// plaintext or the fragment key, which lives in the link's URL fragment.
+func (s *Server) createShare(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in CreateShareRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil || in.BlobB64 == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	blob, err := base64.StdEncoding.DecodeString(in.BlobB64)
+	if err != nil {
+		http.Error(w, "bad blob_b64", http.StatusBadRequest)
+		return
+	}
+	if len(in.Meta) > 0 && !json.Valid(in.Meta) {
+		http.Error(w, "bad meta", http.StatusBadRequest)
+		return
+	}
+	ttl := time.Duration(in.TTLSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	sh, err := s.App.CreateShareFor(p, in.Name, blob, in.Meta, ttl)
+	if err != nil {
+		http.Error(w, "share failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, shareView(sh))
+}
+
+// redeemShare is the public one-time read — no auth; the link id is the
+// capability and the per-id limiter keeps probing from being free.
+// Missing, consumed, revoked, and expired all collapse to a generic 404.
+func (s *Server) redeemShare(w http.ResponseWriter, r *http.Request) {
+	sh, err := s.App.RedeemShare(r.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, app.ErrShareLimit) {
+			http.Error(w, "redeem rate limit", http.StatusTooManyRequests)
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	meta := sh.Meta
+	if len(meta) == 0 {
+		meta = json.RawMessage("{}")
+	}
+	writeJSON(w, RedeemShareResponse{
+		Name:    sh.Name,
+		BlobB64: base64.StdEncoding.EncodeToString(sh.Blob),
+		Meta:    meta,
+	})
+}
+
+// revokeShare is the owner delete — the link dies immediately.
+func (s *Server) revokeShare(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	if err := s.App.RevokeShareFor(p, r.PathValue("id")); err != nil {
+		http.Error(w, "revoke failed", lifecycleStatus(err))
+		return
+	}
+	writeJSON(w, map[string]bool{"revoked": true})
+}
+
+// listShares is owner metadata — the blob column is never read.
+func (s *Server) listShares(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	shares, err := s.App.ListSharesFor(p)
+	if err != nil {
+		http.Error(w, "list failed", http.StatusBadRequest)
+		return
+	}
+	out := []ShareView{}
+	for _, sh := range shares {
+		out = append(out, shareView(sh))
+	}
+	writeJSON(w, SharesResponse{Shares: out})
 }
 
 // lifecycleStatus maps org-admin errors to status codes: 401 for unresolvable

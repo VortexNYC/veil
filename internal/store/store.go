@@ -203,6 +203,15 @@ type Store interface {
 	// the same transaction. ErrRequestResolved when already resolved.
 	DenyRecovery(ctx context.Context, id, actorID string, status protocol.RecoveryStatus) (protocol.RecoveryRequest, error)
 
+	// Share links (VTX-783): PutShare stores a sealed envelope; ConsumeShare
+	// is the atomic claim-then-return — one read burns the share, and
+	// missing/consumed/revoked/expired all read ErrNotFound. ListShares is
+	// owner metadata only (no blob). RevokeShare stamps revoked_at.
+	PutShare(protocol.Share, ...protocol.AuditEvent) error
+	ConsumeShare(id string, now time.Time, events ...protocol.AuditEvent) (protocol.Share, error)
+	RevokeShare(id, orgID string, at time.Time, events ...protocol.AuditEvent) error
+	ListShares(orgID string) ([]protocol.Share, error)
+
 	PutItem(protocol.Item, Secret, ...protocol.AuditEvent) error
 	Item(id string) (protocol.Item, error)
 	ItemByName(orgID, name string) (protocol.Item, error)

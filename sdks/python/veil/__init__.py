@@ -23,6 +23,7 @@ __all__ = [
     "BillingApi",
     "HumanApi",
     "OwnerApi",
+    "PublicApi",
     "RecoveryApi",
     "ApiResponse",
     "ApiClient",
@@ -52,6 +53,7 @@ __all__ = [
     "CreateItemRequest",
     "CreateSessionRequest",
     "CreateSessionResponse",
+    "CreateShareRequest",
     "DeleteMe200Response",
     "DeleteOrg200Response",
     "DeviceRegisterRequest",
@@ -76,6 +78,7 @@ __all__ = [
     "RecoveriesResponse",
     "RecoveryRequest",
     "RecoveryShare",
+    "RedeemShareResponse",
     "RemoveMember200Response",
     "RequestsResponse",
     "RotateHook",
@@ -88,6 +91,8 @@ __all__ = [
     "RotateProvidersResponse",
     "Session",
     "SessionsResponse",
+    "Share",
+    "SharesResponse",
     "StartRecoveryRequest",
     "StartRecoveryResponse",
     "TravelModeRequest",
@@ -111,6 +116,7 @@ from veil.api.audit_api import AuditApi as AuditApi
 from veil.api.billing_api import BillingApi as BillingApi
 from veil.api.human_api import HumanApi as HumanApi
 from veil.api.owner_api import OwnerApi as OwnerApi
+from veil.api.public_api import PublicApi as PublicApi
 from veil.api.recovery_api import RecoveryApi as RecoveryApi
 
 # import ApiClient
@@ -144,6 +150,7 @@ from veil.models.create_group_request import CreateGroupRequest as CreateGroupRe
 from veil.models.create_item_request import CreateItemRequest as CreateItemRequest
 from veil.models.create_session_request import CreateSessionRequest as CreateSessionRequest
 from veil.models.create_session_response import CreateSessionResponse as CreateSessionResponse
+from veil.models.create_share_request import CreateShareRequest as CreateShareRequest
 from veil.models.delete_me200_response import DeleteMe200Response as DeleteMe200Response
 from veil.models.delete_org200_response import DeleteOrg200Response as DeleteOrg200Response
 from veil.models.device_register_request import DeviceRegisterRequest as DeviceRegisterRequest
@@ -168,6 +175,7 @@ from veil.models.provision_response import ProvisionResponse as ProvisionRespons
 from veil.models.recoveries_response import RecoveriesResponse as RecoveriesResponse
 from veil.models.recovery_request import RecoveryRequest as RecoveryRequest
 from veil.models.recovery_share import RecoveryShare as RecoveryShare
+from veil.models.redeem_share_response import RedeemShareResponse as RedeemShareResponse
 from veil.models.remove_member200_response import RemoveMember200Response as RemoveMember200Response
 from veil.models.requests_response import RequestsResponse as RequestsResponse
 from veil.models.rotate_hook import RotateHook as RotateHook
@@ -180,6 +188,8 @@ from veil.models.rotate_item_request import RotateItemRequest as RotateItemReque
 from veil.models.rotate_providers_response import RotateProvidersResponse as RotateProvidersResponse
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
+from veil.models.share import Share as Share
+from veil.models.shares_response import SharesResponse as SharesResponse
 from veil.models.start_recovery_request import StartRecoveryRequest as StartRecoveryRequest
 from veil.models.start_recovery_response import StartRecoveryResponse as StartRecoveryResponse
 from veil.models.travel_mode_request import TravelModeRequest as TravelModeRequest

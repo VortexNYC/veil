@@ -199,6 +199,19 @@ type Session struct {
 	Uses       int32
 }
 
+type Share struct {
+	ID         string
+	OrgID      string
+	Name       string
+	Blob       []byte
+	Meta       string
+	CreatedBy  string
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	ConsumedAt sql.NullTime
+	RevokedAt  sql.NullTime
+}
+
 type UsageCounter struct {
 	OrgID       string
 	WindowStart time.Time

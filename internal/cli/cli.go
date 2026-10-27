@@ -48,6 +48,7 @@ import (
 	"github.com/VortexNYC/veil/internal/publicapi"
 	"github.com/VortexNYC/veil/internal/replica"
 	"github.com/VortexNYC/veil/internal/rotate"
+	"github.com/VortexNYC/veil/internal/share"
 	"github.com/VortexNYC/veil/internal/socket"
 	"github.com/VortexNYC/veil/internal/sshagent"
 	"github.com/VortexNYC/veil/internal/store"
@@ -1252,7 +1253,117 @@ func itemCmd(home *string) *cobra.Command {
 			return encode(cmd, map[string]any{"results": results})
 		},
 	}
-	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, verify, addHook, removeHook, listHooks, fireHooks)
+	var shareSecretFile, sharePassFile, shareLinkBase string
+	var shareTTL time.Duration
+	shareCmd := &cobra.Command{
+		Use:   "share NAME",
+		Short: "One-time share link. Sealed client-side; the origin stores only the envelope.",
+		Long: "Create a one-time share link. Plaintext comes from --secret-file, or from " +
+			"the local vault item NAME when it is readable here. The link key lives in the " +
+			"URL fragment — the origin never sees it. Redeem is public and one-time: " +
+			"POST /v1/shares/{id}/redeem returns the sealed blob exactly once.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var plain []byte
+			if shareSecretFile != "" {
+				b, err := readFileMaterial(shareSecretFile)
+				if err != nil {
+					return err
+				}
+				plain = b
+			} else {
+				a, err := openApp(*home)
+				if err != nil {
+					return err
+				}
+				defer a.Close()
+				item, err := a.Store.Item(args[0])
+				if err != nil {
+					return fmt.Errorf("item share: no local item %q — pass --secret-file", args[0])
+				}
+				raw, err := a.Store.Secret(item.ID)
+				if err != nil {
+					return err
+				}
+				env := material.Unpack([]byte(raw))
+				if item.Kind == protocol.ItemFile || item.HasFile {
+					plain, err = material.FileBytes(env)
+					if err != nil {
+						return err
+					}
+				} else {
+					plain = []byte(env.Token)
+				}
+			}
+			if len(plain) == 0 {
+				return fmt.Errorf("item share: nothing to share")
+			}
+			var pass string
+			if sharePassFile != "" {
+				p, err := readFileMaterial(sharePassFile)
+				if err != nil {
+					return err
+				}
+				pass = string(p)
+			}
+			blob, meta, key, err := share.Seal(plain, pass)
+			if err != nil {
+				return err
+			}
+			if shareTTL <= 0 {
+				shareTTL = 24 * time.Hour
+			}
+			base := strings.TrimRight(shareLinkBase, "/")
+			var sid string
+			var exp time.Time
+			if originBase() != "" {
+				tok, err := originOwnerToken(cmd.Context())
+				if err != nil {
+					return err
+				}
+				payload, err := json.Marshal(publicapi.CreateShareRequest{
+					Name:       args[0],
+					BlobB64:    base64.StdEncoding.EncodeToString(blob),
+					Meta:       meta,
+					TTLSeconds: int64(shareTTL / time.Second),
+				})
+				if err != nil {
+					return err
+				}
+				res, err := originDo(cmd.Context(), http.MethodPost, "/v1/shares", tok, payload)
+				if err != nil {
+					return err
+				}
+				var out publicapi.ShareView
+				if err := json.Unmarshal(res, &out); err != nil {
+					return err
+				}
+				sid, exp = out.ID, out.ExpiresAt
+			} else {
+				a, err := openApp(*home)
+				if err != nil {
+					return err
+				}
+				defer a.Close()
+				actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+				sh, err := a.CreateShareFor(actor, args[0], blob, meta, shareTTL)
+				if err != nil {
+					return err
+				}
+				sid, exp = sh.ID, sh.ExpiresAt
+			}
+			return encode(cmd, map[string]any{
+				"id":         sid,
+				"link":       base + "/s/" + sid + "#k=" + key,
+				"expires_at": exp,
+			})
+		},
+	}
+	shareCmd.Flags().StringVar(&shareSecretFile, "secret-file", "", "plaintext to share — never argv")
+	shareCmd.Flags().StringVar(&sharePassFile, "passphrase-file", "", "optional passphrase file — second factor on top of the link key")
+	shareCmd.Flags().DurationVar(&shareTTL, "expires", 24*time.Hour, "link lifetime (max 30d)")
+	shareCmd.Flags().StringVar(&shareLinkBase, "link-base", envOr("VEIL_SHARE_BASE", "https://app.veil.nyc"), "SPA base the link resolves on")
+	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, verify, addHook, removeHook, listHooks, fireHooks, shareCmd)
 	return c
 }
 

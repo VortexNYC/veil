@@ -964,6 +964,26 @@ var createInvite = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var listShares = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/shares",
+  ...options
+});
+var createShare = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/shares",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var revokeShare = (options) => (options.client ?? client).delete({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/shares/{id}",
+  ...options
+});
+var redeemShare = (options) => (options.client ?? client).post({ url: "/v1/shares/{id}/redeem", ...options });
 var removeMember = (options) => (options.client ?? client).delete({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/members/{id}",
@@ -1308,6 +1328,7 @@ export {
   createInvite,
   createItem,
   createSession,
+  createShare,
   deleteItem,
   deleteMe,
   deleteOrg,
@@ -1336,12 +1357,15 @@ export {
   listRotateHooks,
   listRotateProviders,
   listSessions,
+  listShares,
   promoteOwner,
   provision,
+  redeemShare,
   registerDevice,
   removeGroupMember,
   removeMember,
   revokeAgent,
+  revokeShare,
   rotateItem,
   setRotateHooks,
   setTravelMode,

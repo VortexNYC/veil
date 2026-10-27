@@ -32,6 +32,7 @@ from veil.models.create_group_request import CreateGroupRequest
 from veil.models.create_item_request import CreateItemRequest
 from veil.models.create_session_request import CreateSessionRequest
 from veil.models.create_session_response import CreateSessionResponse
+from veil.models.create_share_request import CreateShareRequest
 from veil.models.delete_me200_response import DeleteMe200Response
 from veil.models.delete_org200_response import DeleteOrg200Response
 from veil.models.device_register_request import DeviceRegisterRequest
@@ -56,6 +57,7 @@ from veil.models.provision_response import ProvisionResponse
 from veil.models.recoveries_response import RecoveriesResponse
 from veil.models.recovery_request import RecoveryRequest
 from veil.models.recovery_share import RecoveryShare
+from veil.models.redeem_share_response import RedeemShareResponse
 from veil.models.remove_member200_response import RemoveMember200Response
 from veil.models.requests_response import RequestsResponse
 from veil.models.rotate_hook import RotateHook
@@ -68,6 +70,8 @@ from veil.models.rotate_item_request import RotateItemRequest
 from veil.models.rotate_providers_response import RotateProvidersResponse
 from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
+from veil.models.share import Share
+from veil.models.shares_response import SharesResponse
 from veil.models.start_recovery_request import StartRecoveryRequest
 from veil.models.start_recovery_response import StartRecoveryResponse
 from veil.models.travel_mode_request import TravelModeRequest

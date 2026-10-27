@@ -24,6 +24,7 @@ import { PageChrome } from "../../page-chrome";
 import {
   addItem,
   archiveVaultItem,
+  createShareLink,
   deleteVaultItem,
   importItems,
   items,
@@ -32,6 +33,7 @@ import {
   updateVaultItem,
   verifyVaultItem,
 } from "../../origin";
+import { sealShare } from "../../share";
 import type { Item } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/items")({
@@ -173,6 +175,7 @@ function Items() {
   const [open, setOpen] = useState(false);
   const [rotateTarget, setRotateTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Item | null>(null);
+  const [shareTarget, setShareTarget] = useState<Item | null>(null);
   const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
@@ -727,6 +730,14 @@ function Items() {
                         >
                           Edit
                         </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          title="One-time share link — sealed in this browser, the origin stores only the envelope"
+                          onClick={() => setShareTarget(item)}
+                        >
+                          Share
+                        </Button>
                         {item.kind === "api_key" ? (
                           <>
                             <Button
@@ -887,7 +898,154 @@ function Items() {
           </form>
         </Dialog>
       </Dialog.Root>
+      <Dialog.Root
+        open={shareTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setShareTarget(null);
+          }
+        }}
+      >
+        <Dialog size="sm" className="p-6">
+          {shareTarget ? (
+            <ShareItemForm
+              key={shareTarget.id}
+              item={shareTarget}
+              onError={setError}
+              onDone={() => setShareTarget(null)}
+            />
+          ) : null}
+        </Dialog>
+      </Dialog.Root>
     </PageChrome>
+  );
+}
+
+// ShareItemForm seals a pasted value in this browser (nacl secretbox) and
+// POSTs only the envelope — there is no GetSecret, so the human supplies
+// the plaintext. The link key stays in the URL fragment; the origin stores
+// a blob it cannot open. The share is one-time and dies on redeem.
+function ShareItemForm({
+  item,
+  onError,
+  onDone,
+}: {
+  item: Item;
+  onError: (msg: string) => void;
+  onDone: () => void;
+}) {
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [ttl, setTtl] = useState("86400");
+  if (link !== null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Dialog.Title>Share {item.name}</Dialog.Title>
+        <Dialog.Description>
+          One-time link. The key after # never reaches the server — anyone
+          with the full URL can open it exactly once.
+        </Dialog.Description>
+        <Input readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              void navigator.clipboard?.writeText(link).then(() => setCopied(true));
+            }}
+          >
+            {copied ? "Copied" : "Copy link"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={onDone}>
+            Done
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        const secret = String(fd.get("secret") ?? "");
+        const passphrase = String(fd.get("passphrase") ?? "");
+        const ttlSeconds = Number(ttl) || 86400;
+        if (!secret) {
+          onError("share needs a secret");
+          return;
+        }
+        setBusy(true);
+        void sealShare(secret, passphrase)
+          .then(({ blobB64, meta, key }) =>
+            createShareLink({
+              name: item.name,
+              blob_b64: blobB64,
+              meta,
+              ttl_seconds: ttlSeconds,
+            }).then((res) => ({ res, key })),
+          )
+          .then(({ res, key }) => {
+            setBusy(false);
+            if (res.error || !res.data) {
+              onError(`share failed for ${item.name}`);
+              return;
+            }
+            setLink(`${window.location.origin}/s/${res.data.id}#k=${key}`);
+          });
+      }}
+    >
+      <Dialog.Title>Share {item.name}</Dialog.Title>
+      <Dialog.Description>
+        Paste the value to share. It is sealed in this browser — the origin
+        stores only the envelope, and the link opens exactly once.
+      </Dialog.Description>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="share-secret">Secret</Label>
+        <Textarea
+          id="share-secret"
+          name="secret"
+          rows={4}
+          autoComplete="off"
+          required
+          placeholder="Paste the value the recipient should see"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="share-ttl">Link expires after</Label>
+        <Select
+          value={ttl}
+          hideLabel
+          aria-label="Link expiry"
+          onValueChange={(v) => {
+            if (typeof v === "string") {
+              setTtl(v);
+            }
+          }}
+        >
+          <Select.Option value="3600">1 hour</Select.Option>
+          <Select.Option value="86400">24 hours</Select.Option>
+          <Select.Option value="604800">7 days</Select.Option>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="share-passphrase">Passphrase (optional)</Label>
+        <Input
+          id="share-passphrase"
+          name="passphrase"
+          type="password"
+          autoComplete="off"
+          placeholder="Second factor — sent out of band"
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button type="submit" variant="primary" disabled={busy}>
+          {busy ? "Sealing…" : "Create link"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

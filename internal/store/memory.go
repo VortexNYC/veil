@@ -36,6 +36,7 @@ type Memory struct {
 	beats       map[string]time.Time             // key: job name — ops liveness
 	pushDevices map[string][]protocol.PushDevice // key: org_id
 	travel      map[string]bool                  // key: org_id — VTX-788 travel mode
+	shares      map[string]protocol.Share        // VTX-783 share links
 }
 
 func NewMemory() *Memory {
@@ -57,6 +58,7 @@ func NewMemory() *Memory {
 		usage:     map[string]usageCounter{},
 		beats:     map[string]time.Time{},
 		travel:    map[string]bool{},
+		shares:    map[string]protocol.Share{},
 	}
 }
 
@@ -255,6 +257,58 @@ func (m *Memory) SetTravelMode(orgID string, on bool, events ...protocol.AuditEv
 	m.travel[orgID] = on
 	m.audit = append(m.audit, events...)
 	return nil
+}
+
+func (m *Memory) PutShare(sh protocol.Share, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.shares[sh.ID] = sh
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
+func (m *Memory) ConsumeShare(id string, now time.Time, events ...protocol.AuditEvent) (protocol.Share, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sh, ok := m.shares[id]
+	if !ok || sh.ConsumedAt != nil || sh.RevokedAt != nil || !now.Before(sh.ExpiresAt) {
+		return protocol.Share{}, ErrNotFound
+	}
+	t := now.UTC()
+	sh.ConsumedAt = &t
+	m.shares[id] = sh
+	m.audit = append(m.audit, events...)
+	return sh, nil
+}
+
+func (m *Memory) RevokeShare(id, orgID string, at time.Time, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sh, ok := m.shares[id]
+	if !ok || sh.OrgID != orgID {
+		return ErrNotFound
+	}
+	if sh.RevokedAt == nil {
+		t := at.UTC()
+		sh.RevokedAt = &t
+		m.shares[id] = sh
+	}
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
+func (m *Memory) ListShares(orgID string) ([]protocol.Share, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []protocol.Share{}
+	for _, sh := range m.shares {
+		if sh.OrgID == orgID {
+			sh.Blob = nil
+			out = append(out, sh)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
 }
 
 func (m *Memory) ListItems() ([]protocol.Item, error) {
@@ -1293,6 +1347,14 @@ func (m *Memory) Sweep(olderThan time.Time) (SweepReport, error) {
 				Action: protocol.ActionRequestExpired, Decision: protocol.DecisionNeedApproval, Reason: r.ID,
 			})
 			orgs[r.OrgID] = struct{}{}
+		}
+	}
+	for k, sh := range m.shares {
+		dead := sh.ExpiresAt.Before(cut) ||
+			(sh.ConsumedAt != nil && sh.ConsumedAt.Before(cut)) ||
+			(sh.RevokedAt != nil && sh.RevokedAt.Before(cut))
+		if dead {
+			delete(m.shares, k)
 		}
 	}
 	m.reqBus.notifyOrgs(orgs)

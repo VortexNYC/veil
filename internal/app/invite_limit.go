@@ -53,6 +53,46 @@ func (l *inviteLimiter) allowInvite(inviter, email string) bool {
 	return true
 }
 
+// slidingLimiter is the same per-process sliding window, keyed on a single
+// dimension — the public share-redeem gate uses it so link probing is not
+// free (VTX-783).
+type slidingLimiter struct {
+	mu   sync.Mutex
+	hits map[string][]time.Time
+	max  int
+	win  time.Duration
+	now  func() time.Time
+}
+
+func newSlidingLimiter(max int, win time.Duration) *slidingLimiter {
+	return &slidingLimiter{max: max, win: win}
+}
+
+func (l *slidingLimiter) allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.hits == nil {
+		l.hits = map[string][]time.Time{}
+	}
+	now := l.now
+	if now == nil {
+		now = time.Now
+	}
+	cutoff := now().Add(-l.win)
+	kept := l.hits[key][:0]
+	for _, t := range l.hits[key] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) >= l.max {
+		l.hits[key] = kept
+		return false
+	}
+	l.hits[key] = append(kept, now())
+	return true
+}
+
 // fresh prunes expired hits for key in place and returns the live tail.
 // Caller holds the lock.
 func (l *inviteLimiter) fresh(key string, now time.Time) []time.Time {

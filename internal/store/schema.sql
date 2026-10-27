@@ -37,6 +37,22 @@ CREATE TABLE org_settings (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
+-- Share links (VTX-783): sealed, client-encrypted payloads. consumed_at
+-- stamps the one-time read; revoked_at is owner revoke. The sweep deletes
+-- terminally-dead rows.
+CREATE TABLE shares (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    blob BYTEA NOT NULL,
+    meta TEXT NOT NULL DEFAULT '{}',
+    created_by TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ
+);
+
 CREATE TABLE grants (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,

@@ -271,6 +271,18 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			travel_mode INTEGER NOT NULL DEFAULT 0,
 			updated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS shares (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			blob BLOB NOT NULL,
+			meta TEXT NOT NULL DEFAULT '{}',
+			created_by TEXT NOT NULL DEFAULT '',
+			expires_at INTEGER NOT NULL,
+			created_at INTEGER NOT NULL,
+			consumed_at INTEGER,
+			revoked_at INTEGER
+		)`,
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			name TEXT PRIMARY KEY,
 			version INTEGER NOT NULL
@@ -808,6 +820,116 @@ func (s *SQLite) SetTravelMode(orgID string, on bool, events ...protocol.AuditEv
 	})
 }
 
+// PutShare stores the sealed envelope — audited atomically.
+func (s *SQLite) PutShare(sh protocol.Share, events ...protocol.AuditEvent) error {
+	meta := sh.Meta
+	if len(meta) == 0 {
+		meta = []byte("{}")
+	}
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		res, err := ex.Exec(`INSERT INTO shares(id, org_id, name, blob, meta, created_by, expires_at, created_at)
+			VALUES(?,?,?,?,?,?,?,?)`,
+			sh.ID, sh.OrgID, sh.Name, sh.Blob, meta, sh.CreatedBy, sh.ExpiresAt.Unix(), sh.CreatedAt.Unix())
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err == nil && n == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+}
+
+// ConsumeShare is the atomic claim-then-return: the UPDATE and the audit
+// row land in one transaction so a read is recorded exactly when it burns.
+func (s *SQLite) ConsumeShare(id string, now time.Time, events ...protocol.AuditEvent) (protocol.Share, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return protocol.Share{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var sh protocol.Share
+	var meta []byte
+	var exp, cre int64
+	var consumed, revoked sql.NullInt64
+	err = tx.QueryRow(`UPDATE shares SET consumed_at = ?
+		WHERE id = ? AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > ?
+		RETURNING id, org_id, name, blob, meta, created_by, expires_at, created_at, consumed_at, revoked_at`,
+		now.Unix(), id, now.Unix()).Scan(
+		&sh.ID, &sh.OrgID, &sh.Name, &sh.Blob, &meta, &sh.CreatedBy, &exp, &cre, &consumed, &revoked)
+	if err == sql.ErrNoRows {
+		return protocol.Share{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.Share{}, err
+	}
+	sh.ExpiresAt = time.Unix(exp, 0).UTC()
+	sh.CreatedAt = time.Unix(cre, 0).UTC()
+	sh.Meta = meta
+	if consumed.Valid {
+		t := time.Unix(consumed.Int64, 0).UTC()
+		sh.ConsumedAt = &t
+	}
+	if revoked.Valid {
+		t := time.Unix(revoked.Int64, 0).UTC()
+		sh.RevokedAt = &t
+	}
+	if err := auditEventsTx(tx, events); err != nil {
+		return protocol.Share{}, err
+	}
+	return sh, tx.Commit()
+}
+
+func (s *SQLite) RevokeShare(id, orgID string, at time.Time, events ...protocol.AuditEvent) error {
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		res, err := ex.Exec(`UPDATE shares SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ? AND org_id = ?`,
+			at.Unix(), id, orgID)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
+}
+
+// ListShares is owner metadata — the blob never leaves this call.
+func (s *SQLite) ListShares(orgID string) ([]protocol.Share, error) {
+	rows, err := s.db.Query(`SELECT id, org_id, name, meta, created_by, expires_at, created_at, consumed_at, revoked_at
+		FROM shares WHERE org_id = ? ORDER BY created_at DESC LIMIT ?`, orgID, maxListResults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []protocol.Share{}
+	for rows.Next() {
+		var sh protocol.Share
+		var exp, cre int64
+		var consumed, revoked sql.NullInt64
+		if err := rows.Scan(&sh.ID, &sh.OrgID, &sh.Name, &sh.Meta, &sh.CreatedBy, &exp, &cre, &consumed, &revoked); err != nil {
+			return nil, err
+		}
+		sh.ExpiresAt = time.Unix(exp, 0).UTC()
+		sh.CreatedAt = time.Unix(cre, 0).UTC()
+		if consumed.Valid {
+			t := time.Unix(consumed.Int64, 0).UTC()
+			sh.ConsumedAt = &t
+		}
+		if revoked.Valid {
+			t := time.Unix(revoked.Int64, 0).UTC()
+			sh.RevokedAt = &t
+		}
+		out = append(out, sh)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLite) ListItems() ([]protocol.Item, error) {
 	rows, err := s.db.Query(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe FROM items WHERE archived=0 ORDER BY name LIMIT ?`, maxListResults)
 	if err != nil {
@@ -897,6 +1019,7 @@ func (s *SQLite) PurgeOrg(ctx context.Context, orgID string) (PurgeReport, error
 		{`DELETE FROM approvals WHERE grant_id IN (SELECT id FROM grants WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM sessions WHERE org_id = ?`, &rep.Sessions},
 		{`DELETE FROM org_settings WHERE org_id = ?`, new(int64)},
+		{`DELETE FROM shares WHERE org_id = ?`, new(int64)},
 		{`DELETE FROM grants WHERE org_id = ?`, &rep.Grants},
 		{`DELETE FROM workloads WHERE agent_id IN (SELECT id FROM agents WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE org_id = ?)`, new(int64)},
@@ -2675,6 +2798,10 @@ func SweepSQLite(db *sql.DB, before time.Time) (SweepReport, error) {
 	}
 	if res, err = tx.Exec(`DELETE FROM approvals WHERE expires_at < ?`, cut.Unix()); err != nil {
 		return rep, fmt.Errorf("sweep approvals: %w", err)
+	}
+	if _, err = tx.Exec(`DELETE FROM shares WHERE expires_at < ? OR consumed_at < ? OR revoked_at < ?`,
+		cut.Unix(), cut.Unix(), cut.Unix()); err != nil {
+		return rep, fmt.Errorf("sweep shares: %w", err)
 	}
 	if rep.Approvals, err = res.RowsAffected(); err != nil {
 		return rep, err

@@ -111,6 +111,9 @@ type HumanDirectory interface {
 
 var ErrExists = errors.New("app: vault already exists")
 
+// ErrShareLimit means the public redeem limiter refused — 429 upstream.
+var ErrShareLimit = errors.New("app: share redeem rate limit")
+
 // ErrIdentityUnavailable marks dependency failures in the identity plane
 // (Keto membership, Hydra verification) — distinct from bad credentials so
 // API callers see 503-unavailable instead of a misleading 401.
@@ -2974,6 +2977,79 @@ func Accept(dir string, priv, blob []byte) error {
 		return err
 	}
 	return nil
+}
+
+// CreateShareFor seals nothing — the envelope arrives client-encrypted.
+// Owner-only; the share_created audit row commits with the write.
+func (a *App) CreateShareFor(actor protocol.Principal, name string, blob, meta []byte, ttl time.Duration) (protocol.Share, error) {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return protocol.Share{}, err
+	}
+	if !own || actor.OrgID == "" {
+		return protocol.Share{}, ErrForbidden
+	}
+	if len(blob) == 0 || len(blob) > 64<<10 {
+		return protocol.Share{}, fmt.Errorf("app: share blob size")
+	}
+	if ttl <= 0 || ttl > 30*24*time.Hour {
+		return protocol.Share{}, fmt.Errorf("app: share ttl")
+	}
+	sid, err := id.NewItem()
+	if err != nil {
+		return protocol.Share{}, err
+	}
+	now := time.Now().UTC()
+	sh := protocol.Share{
+		ID: sid, OrgID: actor.OrgID, Name: strings.TrimSpace(name),
+		Blob: blob, Meta: meta, CreatedBy: actor.ID,
+		ExpiresAt: now.Add(ttl), CreatedAt: now,
+	}
+	return sh, a.Store.PutShare(sh, adminEvent(actor.ID, actor.OrgID, sid, protocol.ActionShareCreated, "name="+sh.Name))
+}
+
+// shareLimiter bounds public redeem attempts per share id — link probing
+// must not be free. Per-process sliding window, same shape as the invite
+// limiter.
+var shareLim = newSlidingLimiter(10, time.Minute)
+
+// RedeemShare is the public one-time read: atomic claim-then-return. All
+// failure modes collapse to ErrNotFound so the 404 is generic. The redeem
+// audit row commits in the consume transaction.
+func (a *App) RedeemShare(id string) (protocol.Share, error) {
+	if !shareLim.allow(id) {
+		return protocol.Share{}, ErrShareLimit
+	}
+	now := time.Now().UTC()
+	return a.Store.ConsumeShare(id, now, protocol.AuditEvent{
+		Time: now, AgentID: "share-redeem", ItemID: id,
+		Action: protocol.ActionShareRedeemed, Decision: protocol.DecisionAllow,
+	})
+}
+
+// RevokeShareFor is the owner delete — the link dies immediately.
+func (a *App) RevokeShareFor(actor protocol.Principal, id string) error {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return err
+	}
+	if !own || actor.OrgID == "" {
+		return ErrForbidden
+	}
+	return a.Store.RevokeShare(id, actor.OrgID, time.Now().UTC(),
+		adminEvent(actor.ID, actor.OrgID, id, protocol.ActionShareRevoked, ""))
+}
+
+// ListSharesFor is owner metadata — the blob column is never read.
+func (a *App) ListSharesFor(actor protocol.Principal) ([]protocol.Share, error) {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return nil, err
+	}
+	if !own || actor.OrgID == "" {
+		return nil, ErrForbidden
+	}
+	return a.Store.ListShares(actor.OrgID)
 }
 
 func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {

@@ -502,6 +502,107 @@ func (p *Postgres) ItemByName(orgID, name string) (protocol.Item, error) {
 	return itemFromSqlc(&row), nil
 }
 
+func shareFromConsumeRow(r *sqlc.Share) protocol.Share {
+	sh := protocol.Share{ID: r.ID, OrgID: r.OrgID, Name: r.Name, Blob: r.Blob, Meta: []byte(r.Meta), CreatedBy: r.CreatedBy}
+	sh.ExpiresAt = r.ExpiresAt.UTC()
+	sh.CreatedAt = r.CreatedAt.UTC()
+	if r.ConsumedAt.Valid {
+		t := r.ConsumedAt.Time.UTC()
+		sh.ConsumedAt = &t
+	}
+	if r.RevokedAt.Valid {
+		t := r.RevokedAt.Time.UTC()
+		sh.RevokedAt = &t
+	}
+	return sh
+}
+
+func shareFromListRow(r *sqlc.ListSharesRow) protocol.Share {
+	sh := protocol.Share{ID: r.ID, OrgID: r.OrgID, Name: r.Name, Meta: []byte(r.Meta), CreatedBy: r.CreatedBy}
+	sh.ExpiresAt = r.ExpiresAt.UTC()
+	sh.CreatedAt = r.CreatedAt.UTC()
+	if r.ConsumedAt.Valid {
+		t := r.ConsumedAt.Time.UTC()
+		sh.ConsumedAt = &t
+	}
+	if r.RevokedAt.Valid {
+		t := r.RevokedAt.Time.UTC()
+		sh.RevokedAt = &t
+	}
+	return sh
+}
+
+func (p *Postgres) PutShare(sh protocol.Share, events ...protocol.AuditEvent) error {
+	meta := string(sh.Meta)
+	if meta == "" {
+		meta = "{}"
+	}
+	return p.writeAudited(context.Background(), events, func(q *sqlc.Queries) error {
+		n, err := q.PutShare(context.Background(), sqlc.PutShareParams{
+			ID: sh.ID, OrgID: sh.OrgID, Name: sh.Name, Blob: sh.Blob, Meta: meta,
+			CreatedBy: sh.CreatedBy, ExpiresAt: sh.ExpiresAt.UTC(), CreatedAt: sh.CreatedAt.UTC(),
+		})
+		if err == nil && n == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+}
+
+// ConsumeShare is the atomic claim-then-return: one read burns the share,
+// and the audit row lands in the same transaction.
+func (p *Postgres) ConsumeShare(id string, now time.Time, events ...protocol.AuditEvent) (protocol.Share, error) {
+	ctx := context.Background()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.Share{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	row, err := p.sqlc.WithTx(tx).ConsumeShare(ctx, sqlc.ConsumeShareParams{ID: id, Now: now.UTC()})
+	if err == pgx.ErrNoRows {
+		return protocol.Share{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.Share{}, err
+	}
+	for _, e := range events {
+		if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
+			return protocol.Share{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.Share{}, err
+	}
+	return shareFromConsumeRow(&row), nil
+}
+
+func (p *Postgres) RevokeShare(id, orgID string, at time.Time, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		n, err := q.RevokeShare(ctx, sqlc.RevokeShareParams{ID: id, OrgID: orgID, At: nullTime(&at).Time})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
+}
+
+// ListShares is owner metadata — the blob never leaves this call.
+func (p *Postgres) ListShares(orgID string) ([]protocol.Share, error) {
+	rows, err := p.sqlc.ListShares(context.Background(), sqlc.ListSharesParams{OrgID: orgID, MaxResults: maxListResults})
+	if err != nil {
+		return nil, err
+	}
+	out := []protocol.Share{}
+	for i := range rows {
+		out = append(out, shareFromListRow(&rows[i]))
+	}
+	return out, nil
+}
+
 func (p *Postgres) ListItems() ([]protocol.Item, error) {
 	rows, err := p.sqlc.ListItems(context.Background(), maxListResults)
 	if err != nil {
@@ -1607,6 +1708,9 @@ func sweepPostgresRun(ctx context.Context, db sqlc.DBTX, before time.Time, audit
 	}
 	if rep.Approvals, err = q.SweepExpiredApprovals(ctx, before.UTC()); err != nil {
 		return rep, fmt.Errorf("sweep approvals: %w", err)
+	}
+	if _, err = q.SweepShares(ctx, before.UTC()); err != nil {
+		return rep, fmt.Errorf("sweep shares: %w", err)
 	}
 	// Open asks mark expired at expiry — the row stays auditable, the ask
 	// dies, and each expiry is itself a security event: "nobody answered in

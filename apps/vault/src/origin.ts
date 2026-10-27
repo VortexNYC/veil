@@ -29,6 +29,9 @@ import {
   listRotateProviders as sdkListRotateProviders,
   provision as sdkProvision,
   removeGroupMember,
+  createShare as sdkCreateShare,
+  listShares as sdkListShares,
+  revokeShare as sdkRevokeShare,
   revokeAgent as sdkRevokeAgent,
   rotateItem as sdkRotateItem,
   setTravelMode as sdkSetTravelMode,
@@ -41,6 +44,7 @@ import {
 } from "@vortex-api/veil";
 import type {
   BindWorkloadRequest,
+  RedeemShareResponse,
   RotateItemRequest,
   StartRecoveryRequest,
   UpdateItemRequest,
@@ -396,4 +400,38 @@ export function completeRecovery(id: string, proofHmac?: string) {
 
 export function denyRecovery(id: string) {
   return sdkDenyRecovery({ client: client(), path: { id } });
+}
+
+// VTX-783 share links. The blob POSTs already sealed — these calls never
+// see plaintext or the fragment key.
+export function createShareLink(body: {
+  name: string;
+  blob_b64: string;
+  meta?: { [key: string]: unknown };
+  ttl_seconds?: number;
+}) {
+  return sdkCreateShare({ client: client(), body });
+}
+
+export function shares() {
+  return sdkListShares({ client: client() });
+}
+
+export function revokeShareLink(id: string) {
+  return sdkRevokeShare({ client: client(), path: { id } });
+}
+
+// redeemShareLink is PUBLIC: the recipient need not have an account, so
+// this raw fetch deliberately carries no Authorization — the link id is
+// the capability, and the one-time read is rate-limited per id.
+export async function redeemShareLink(
+  id: string,
+): Promise<{ status: number; data?: RedeemShareResponse }> {
+  const res = await fetch(`${originAPI}/v1/shares/${encodeURIComponent(id)}/redeem`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    return { status: res.status };
+  }
+  return { status: res.status, data: (await res.json()) as RedeemShareResponse };
 }

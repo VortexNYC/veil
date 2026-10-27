@@ -13,6 +13,7 @@ Method | HTTP request | Description
 [**create_group**](OwnerApi.md#create_group) | **POST** /v1/groups | Create an org group. Not MCP.
 [**create_item**](OwnerApi.md#create_item) | **POST** /v1/items | Create an item. Secret is in the request over TLS. Never in the response. Not MCP.
 [**create_session**](OwnerApi.md#create_session) | **POST** /v1/sessions | Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.
+[**create_share**](OwnerApi.md#create_share) | **POST** /v1/shares | Create a share link. Owner-authenticated. The client seals the payload client-side (nacl secretbox) and POSTs only the envelope — the origin never sees plaintext or the fragment key. One-time redeem; audit share_created.
 [**delete_item**](OwnerApi.md#delete_item) | **DELETE** /v1/items/{name} | Remove the item and its grants. Not MCP.
 [**deny_request**](OwnerApi.md#deny_request) | **POST** /v1/requests/{id}/deny | Deny an open request. First write wins; the agent&#39;s next use files a fresh ask.
 [**fire_rotate_hooks**](OwnerApi.md#fire_rotate_hooks) | **POST** /v1/items/{name}/rotate-hooks/fire | Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
@@ -26,8 +27,10 @@ Method | HTTP request | Description
 [**list_rotate_hooks**](OwnerApi.md#list_rotate_hooks) | **GET** /v1/items/{name}/rotate-hooks | List an item&#39;s post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.
 [**list_rotate_providers**](OwnerApi.md#list_rotate_providers) | **GET** /v1/rotate/providers | List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.
 [**list_sessions**](OwnerApi.md#list_sessions) | **GET** /v1/sessions | Active sandbox sessions. Metadata only. Never the token. Not MCP.
+[**list_shares**](OwnerApi.md#list_shares) | **GET** /v1/shares | List the org&#39;s share links — metadata only, never the blob.
 [**remove_group_member**](OwnerApi.md#remove_group_member) | **DELETE** /v1/groups/{name}/members/{kind}/{id} | Remove a member from the group. Not MCP.
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
+[**revoke_share**](OwnerApi.md#revoke_share) | **DELETE** /v1/shares/{id} | Revoke a share link. Owner-authenticated; the link dies immediately and redeem reads 404. Audit share_revoked.
 [**rotate_item**](OwnerApi.md#rotate_item) | **POST** /v1/items/{name}/rotate | Rotate an item&#39;s credential via the provider&#39;s key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
 [**set_rotate_hooks**](OwnerApi.md#set_rotate_hooks) | **PUT** /v1/items/{name}/rotate-hooks | Replace an item&#39;s post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.
 [**set_travel_mode**](OwnerApi.md#set_travel_mode) | **POST** /v1/org/travel-mode | Toggle Travel Mode — hides non-travel_safe items from list/fill/Use. Audited travel_mode_toggled.
@@ -755,6 +758,86 @@ Name | Type | Description  | Notes
 **400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **create_share**
+> Share create_share(create_share_request)
+
+Create a share link. Owner-authenticated. The client seals the payload client-side (nacl secretbox) and POSTs only the envelope — the origin never sees plaintext or the fragment key. One-time redeem; audit share_created.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.create_share_request import CreateShareRequest
+from veil.models.share import Share
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    create_share_request = veil.CreateShareRequest() # CreateShareRequest | 
+
+    try:
+        # Create a share link. Owner-authenticated. The client seals the payload client-side (nacl secretbox) and POSTs only the envelope — the origin never sees plaintext or the fragment key. One-time redeem; audit share_created.
+        api_response = api_instance.create_share(create_share_request)
+        print("The response of OwnerApi->create_share:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->create_share: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **create_share_request** | [**CreateShareRequest**](CreateShareRequest.md)|  | 
+
+### Return type
+
+[**Share**](Share.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | The share metadata |  -  |
+**400** | malformed body, bad blob_b64, or invalid ttl |  -  |
+**401** | missing or invalid token |  -  |
+**403** | not an org owner |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -1760,6 +1843,80 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **list_shares**
+> SharesResponse list_shares()
+
+List the org's share links — metadata only, never the blob.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.shares_response import SharesResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+
+    try:
+        # List the org's share links — metadata only, never the blob.
+        api_response = api_instance.list_shares()
+        print("The response of OwnerApi->list_shares:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_shares: %s\n" % e)
+```
+
+
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**SharesResponse**](SharesResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Share metadata |  -  |
+**401** | missing or invalid token |  -  |
+**403** | not an org owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **remove_group_member**
 > remove_group_member(name, kind, id)
 
@@ -1916,6 +2073,82 @@ Name | Type | Description  | Notes
 **400** | bad request |  -  |
 **401** | missing or invalid Bearer |  -  |
 **403** | not owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **revoke_share**
+> revoke_share(id)
+
+Revoke a share link. Owner-authenticated; the link dies immediately and redeem reads 404. Audit share_revoked.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    id = 'id_example' # str | 
+
+    try:
+        # Revoke a share link. Owner-authenticated; the link dies immediately and redeem reads 404. Audit share_revoked.
+        api_instance.revoke_share(id)
+    except Exception as e:
+        print("Exception when calling OwnerApi->revoke_share: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **str**|  | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | revoked |  -  |
+**401** | missing or invalid token |  -  |
+**403** | not an org owner |  -  |
+**404** | unknown share |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
