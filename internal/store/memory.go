@@ -35,6 +35,7 @@ type Memory struct {
 	usage       map[string]usageCounter          // key: org_id+"\x00"+window unix
 	beats       map[string]time.Time             // key: job name — ops liveness
 	pushDevices map[string][]protocol.PushDevice // key: org_id
+	travel      map[string]bool                  // key: org_id — VTX-788 travel mode
 }
 
 func NewMemory() *Memory {
@@ -55,6 +56,7 @@ func NewMemory() *Memory {
 		billing:   map[string]OrgBilling{},
 		usage:     map[string]usageCounter{},
 		beats:     map[string]time.Time{},
+		travel:    map[string]bool{},
 	}
 }
 
@@ -240,6 +242,21 @@ func (m *Memory) ItemByName(orgID, name string) (protocol.Item, error) {
 	return protocol.Item{}, ErrNotFound
 }
 
+// TravelMode reads the org's flag — absent is off.
+func (m *Memory) TravelMode(orgID string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.travel[orgID], nil
+}
+
+func (m *Memory) SetTravelMode(orgID string, on bool, events ...protocol.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.travel[orgID] = on
+	m.audit = append(m.audit, events...)
+	return nil
+}
+
 func (m *Memory) ListItems() ([]protocol.Item, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -412,6 +429,7 @@ func (m *Memory) useAuthLocked(agentID, itemID string, now time.Time) UseAuth {
 	}
 	if item, ok := m.items[itemID]; ok {
 		r.Item = item
+		r.TravelMode = m.travel[item.OrgID]
 	}
 	groups := m.groupIDsLocked(r.Agent)
 	r.Groups = groups

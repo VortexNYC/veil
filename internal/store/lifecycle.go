@@ -71,6 +71,7 @@ func (p *Postgres) PurgeOrg(ctx context.Context, orgID string) (PurgeReport, err
 			{`DELETE FROM item_versions WHERE item_id IN (SELECT id FROM items WHERE org_id = $1)`, new(int64)},
 			{`DELETE FROM approvals WHERE grant_id IN (SELECT id FROM grants WHERE org_id = $1)`, new(int64)},
 			{`DELETE FROM sessions WHERE org_id = $1`, &rep.Sessions},
+			{`DELETE FROM org_settings WHERE org_id = $1`, new(int64)},
 			{`DELETE FROM grants WHERE org_id = $1`, &rep.Grants},
 			{`DELETE FROM workloads WHERE agent_id IN (SELECT id FROM agents WHERE org_id = $1)`, new(int64)},
 			{`DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE org_id = $1)`, new(int64)},

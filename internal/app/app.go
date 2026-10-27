@@ -515,6 +515,8 @@ type ItemOpts struct {
 	Passkey      []byte
 	WIF          *material.WIFOpts
 	Owner        protocol.Owner
+	// TravelSafe keeps the item visible while the org's Travel Mode is on.
+	TravelSafe bool
 	// OrgID is the caller's org. Empty falls back to the deployment default —
 	// the local vault path; the origin always sets it from the principal.
 	OrgID string
@@ -592,16 +594,17 @@ func (a *App) putItem(actor string, opts ItemOpts) (protocol.Item, error) {
 		owner = protocol.Owner{Kind: protocol.OwnerOrg, ID: org}
 	}
 	item := protocol.Item{
-		ID:      itemID,
-		OrgID:   org,
-		Name:    name,
-		Kind:    kind,
-		Owner:   owner,
-		URIs:    uris,
-		Tags:    opts.Tags,
-		HasTOTP: len(opts.TOTPSeed) > 0,
-		HasFile: len(opts.File) > 0,
-		Login:   strings.TrimSpace(opts.Login),
+		ID:         itemID,
+		OrgID:      org,
+		Name:       name,
+		Kind:       kind,
+		Owner:      owner,
+		URIs:       uris,
+		Tags:       opts.Tags,
+		HasTOTP:    len(opts.TOTPSeed) > 0,
+		HasFile:    len(opts.File) > 0,
+		Login:      strings.TrimSpace(opts.Login),
+		TravelSafe: opts.TravelSafe,
 	}
 	var blob []byte
 	var err error
@@ -751,16 +754,16 @@ func unionURIs(have, add []string) []string {
 }
 
 func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
-	return a.updateItem(a.HumanID, name, replaceURIs, addURIs, tags, login, token)
+	return a.updateItem(a.HumanID, name, replaceURIs, addURIs, tags, login, token, nil)
 }
 
 // UpdateItemFor is UpdateItem attributed to an explicit actor — the HTTP
-// layer's write-gated path.
-func (a *App) UpdateItemFor(actor protocol.Principal, name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
-	return a.updateItem(actor.ID, name, replaceURIs, addURIs, tags, login, token)
+// layer's write-gated path. travelSafe nil leaves the flag untouched.
+func (a *App) UpdateItemFor(actor protocol.Principal, name string, replaceURIs, addURIs, tags []string, login string, token []byte, travelSafe *bool) (protocol.Item, error) {
+	return a.updateItem(actor.ID, name, replaceURIs, addURIs, tags, login, token, travelSafe)
 }
 
-func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []string, login string, token []byte) (protocol.Item, error) {
+func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []string, login string, token []byte, travelSafe *bool) (protocol.Item, error) {
 	item, err := a.Store.Item(name)
 	if err != nil {
 		return protocol.Item{}, err
@@ -777,6 +780,9 @@ func (a *App) updateItem(actorID, name string, replaceURIs, addURIs, tags []stri
 	}
 	if tags != nil {
 		item.Tags = tags
+	}
+	if travelSafe != nil {
+		item.TravelSafe = *travelSafe
 	}
 	raw := []byte(secret)
 	if len(token) > 0 {
@@ -2011,6 +2017,10 @@ func (a *App) ItemsForPrincipal(p protocol.Principal) ([]protocol.Item, error) {
 		}
 		add(item)
 	}
+	out, err = a.filterTravel(out)
+	if err != nil {
+		return nil, err
+	}
 	// Humans get passkey identity fields on list — the phone/Mac appex
 	// needs cred_id/rp_id/user_handle to register credential identities.
 	// Agents never do: their surface stays metadata-thin, and a passkey's
@@ -3056,7 +3066,52 @@ func (a *App) ItemsForAgent(agentID string) ([]protocol.Item, error) {
 		}
 		out = append(out, item)
 	}
+	return a.filterTravel(out)
+}
+
+// filterTravel strips items hidden by their org's Travel Mode (VTX-788).
+// Every item-listing surface — list, fill match/sync, MCP list_items —
+// routes through ItemsForAgent/ItemsForPrincipal, so this one helper is
+// the enforcement point: a store lookup per org, items without
+// travel_safe drop out while the flag is on.
+func (a *App) filterTravel(items []protocol.Item) ([]protocol.Item, error) {
+	modes := map[string]bool{}
+	out := make([]protocol.Item, 0, len(items))
+	for _, item := range items {
+		on, ok := modes[item.OrgID]
+		if !ok {
+			var err error
+			on, err = a.Store.TravelMode(item.OrgID)
+			if err != nil {
+				return nil, err
+			}
+			modes[item.OrgID] = on
+		}
+		if on && !item.TravelSafe {
+			continue
+		}
+		out = append(out, item)
+	}
 	return out, nil
+}
+
+// TravelMode reads the org's flag — absent is off.
+func (a *App) TravelMode(orgID string) (bool, error) {
+	return a.Store.TravelMode(orgID)
+}
+
+// SetTravelModeFor is the owner-gated toggle: the flag flips and the
+// travel_mode_toggled audit row commits in the same store transaction.
+func (a *App) SetTravelModeFor(actor protocol.Principal, on bool) error {
+	own, err := a.ownsVault(actor)
+	if err != nil {
+		return err
+	}
+	if !own || actor.OrgID == "" {
+		return ErrForbidden
+	}
+	return a.Store.SetTravelMode(actor.OrgID, on,
+		adminEvent(actor.ID, actor.OrgID, "", protocol.ActionTravelModeToggled, fmt.Sprintf("enabled=%v", on)))
 }
 
 func (a *App) mayFillItem(p protocol.Principal, itemID string) bool {

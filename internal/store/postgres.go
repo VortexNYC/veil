@@ -1166,7 +1166,14 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			tags TEXT NOT NULL DEFAULT '[]',
 			archived BOOLEAN NOT NULL DEFAULT FALSE,
 			has_file BOOLEAN NOT NULL DEFAULT FALSE,
-			login TEXT NOT NULL DEFAULT ''
+			login TEXT NOT NULL DEFAULT '',
+			travel_safe BOOLEAN NOT NULL DEFAULT FALSE
+		)`,
+		// VTX-788: org-level flags — an absent row reads as travel_mode off.
+		`CREATE TABLE IF NOT EXISTS org_settings (
+			org_id TEXT PRIMARY KEY,
+			travel_mode BOOLEAN NOT NULL DEFAULT FALSE,
+			updated_at TIMESTAMPTZ NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS grants (
 			id TEXT PRIMARY KEY,
@@ -1479,6 +1486,8 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`ALTER TABLE grants ADD COLUMN IF NOT EXISTS subject_kind TEXT NOT NULL DEFAULT 'agent'`,
 		`ALTER TABLE workloads ADD COLUMN IF NOT EXISTS claims TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE workloads ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT ''`,
+		// VTX-788: items gained the travel_safe filter flag.
+		`ALTER TABLE items ADD COLUMN IF NOT EXISTS travel_safe BOOLEAN NOT NULL DEFAULT FALSE`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err

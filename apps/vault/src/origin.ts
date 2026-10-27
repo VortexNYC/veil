@@ -16,6 +16,7 @@ import {
   enrollRecovery as sdkEnrollRecovery,
   getBilling,
   getRecoveryShare,
+  getTravelMode,
   listAgents,
   listAgentWorkloads as sdkListAgentWorkloads,
   listEvents,
@@ -30,6 +31,7 @@ import {
   removeGroupMember,
   revokeAgent as sdkRevokeAgent,
   rotateItem as sdkRotateItem,
+  setTravelMode as sdkSetTravelMode,
   startRecovery as sdkStartRecovery,
   unbindWorkload as sdkUnbindWorkload,
   updateItem as sdkUpdateItem,
@@ -68,6 +70,7 @@ export function addItem(body: {
   totp_seed?: string;
   tags?: string[];
   login?: string;
+  travel_safe?: boolean;
   kind?: "api_key" | "card" | "identity" | "oauth" | "secure_note" | "ssh";
   card?: {
     number?: string;
@@ -350,6 +353,16 @@ export function watchRequests(onTick: () => void): () => void {
     }
   })();
   return () => ctrl.abort();
+}
+
+// Travel Mode (VTX-788): the org flag — any human reads it so the settings
+// card can explain hidden items; the POST toggle is owner-only server-side.
+export function travelMode() {
+  return getTravelMode({ client: client() });
+}
+
+export function setTravelMode(enabled: boolean) {
+  return sdkSetTravelMode({ client: client(), body: { enabled } });
 }
 
 // VEIL-78 member recovery: the caller's own org-key share. enrolled=false

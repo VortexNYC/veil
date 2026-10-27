@@ -10,6 +10,7 @@ Name | Type | Description | Notes
 **tags** | **List[str]** |  | [optional] 
 **login** | **str** | Fill username. Metadata on the item. Also sealed in the envelope. | [optional] 
 **secret** | **str** | Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone. | [optional] 
+**travel_safe** | **bool** | Set the travel_safe flag. Absent leaves it untouched. | [optional] 
 
 ## Example
 

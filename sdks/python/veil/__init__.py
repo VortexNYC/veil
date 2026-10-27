@@ -90,6 +90,8 @@ __all__ = [
     "SessionsResponse",
     "StartRecoveryRequest",
     "StartRecoveryResponse",
+    "TravelModeRequest",
+    "TravelModeView",
     "UpdateItemRequest",
     "UseRequest",
     "UseResponse",
@@ -180,6 +182,8 @@ from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
 from veil.models.start_recovery_request import StartRecoveryRequest as StartRecoveryRequest
 from veil.models.start_recovery_response import StartRecoveryResponse as StartRecoveryResponse
+from veil.models.travel_mode_request import TravelModeRequest as TravelModeRequest
+from veil.models.travel_mode_view import TravelModeView as TravelModeView
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest
 from veil.models.use_request import UseRequest as UseRequest
 from veil.models.use_response import UseResponse as UseResponse

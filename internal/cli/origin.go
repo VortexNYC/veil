@@ -374,20 +374,21 @@ func originItemList(cmd *cobra.Command) error {
 	return encode(cmd, out.Items)
 }
 
-func originItemAdd(cmd *cobra.Command, name, uri string, tags []string, kind protocol.ItemKind, token, totpSeed []byte, login string, wif *publicapi.WIFItemFields) error {
+func originItemAdd(cmd *cobra.Command, name, uri string, tags []string, kind protocol.ItemKind, token, totpSeed []byte, login string, wif *publicapi.WIFItemFields, travelSafe bool) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {
 		return err
 	}
 	in := publicapi.CreateItemRequest{
-		Name:     name,
-		URI:      uri,
-		Tags:     tags,
-		Kind:     string(kind),
-		Secret:   string(token),
-		TOTPSeed: string(totpSeed),
-		Login:    login,
-		WIF:      wif,
+		Name:       name,
+		URI:        uri,
+		Tags:       tags,
+		Kind:       string(kind),
+		Secret:     string(token),
+		TOTPSeed:   string(totpSeed),
+		Login:      login,
+		WIF:        wif,
+		TravelSafe: travelSafe,
 	}
 	payload, err := json.Marshal(in)
 	if err != nil {

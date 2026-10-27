@@ -265,6 +265,12 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			reported INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (org_id, window_start)
 		)`,
+		// VTX-788: org-level flags — an absent row reads as travel_mode off.
+		`CREATE TABLE IF NOT EXISTS org_settings (
+			org_id TEXT PRIMARY KEY,
+			travel_mode INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			name TEXT PRIMARY KEY,
 			version INTEGER NOT NULL
@@ -284,6 +290,7 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN has_file INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN login TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE items ADD COLUMN travel_safe INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE workloads ADD COLUMN claims TEXT NOT NULL DEFAULT '{}'`)
 	_, _ = s.db.Exec(`ALTER TABLE workloads ADD COLUMN org_id TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0`)
@@ -377,12 +384,13 @@ func (s *SQLite) dropItemsNameUnique() error {
 			tags TEXT NOT NULL DEFAULT '[]',
 			archived INTEGER NOT NULL DEFAULT 0,
 			has_file INTEGER NOT NULL DEFAULT 0,
-			login TEXT NOT NULL DEFAULT ''
+			login TEXT NOT NULL DEFAULT '',
+			travel_safe INTEGER NOT NULL DEFAULT 0
 		)`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT INTO items_noidx(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
-		SELECT id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login FROM items`); err != nil {
+	if _, err := tx.Exec(`INSERT INTO items_noidx(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login, travel_safe)
+		SELECT id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login, travel_safe FROM items`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DROP TABLE items`); err != nil {
@@ -704,17 +712,21 @@ func (s *SQLite) PutItem(item protocol.Item, secret Secret, events ...protocol.A
 	if err := s.snapshot(tx, item.ID); err != nil {
 		return err
 	}
-	res, err := tx.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+	ts := 0
+	if item.TravelSafe {
+		ts = 1
+	}
+	res, err := tx.Exec(`INSERT INTO items(id, org_id, name, kind, owner_kind, owner_id, uris, secret, has_totp, tags, archived, has_file, login, travel_safe)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			org_id=excluded.org_id, name=excluded.name, kind=excluded.kind,
 			owner_kind=excluded.owner_kind, owner_id=excluded.owner_id,
 			uris=excluded.uris, secret=excluded.secret, has_totp=excluded.has_totp,
 			tags=excluded.tags, archived=excluded.archived, has_file=excluded.has_file,
-			login=excluded.login
+			login=excluded.login, travel_safe=excluded.travel_safe
 		WHERE items.owner_kind=excluded.owner_kind AND items.owner_id=excluded.owner_id
 			AND items.org_id=excluded.org_id`,
-		item.ID, item.OrgID, item.Name, item.Kind, item.Owner.Kind, item.Owner.ID, uris, blob, has, tags, arch, hf, item.Login)
+		item.ID, item.OrgID, item.Name, item.Kind, item.Owner.Kind, item.Owner.ID, uris, blob, has, tags, arch, hf, item.Login, ts)
 	if err != nil {
 		return err
 	}
@@ -737,7 +749,8 @@ func (s *SQLite) scanItem(scan func(dest ...any) error) (protocol.Item, error) {
 	var item protocol.Item
 	var uris, tags []byte
 	var has, arch, hf int
-	err := scan(&item.ID, &item.OrgID, &item.Name, &item.Kind, &item.Owner.Kind, &item.Owner.ID, &uris, &has, &tags, &arch, &hf, &item.Login)
+	var ts int
+	err := scan(&item.ID, &item.OrgID, &item.Name, &item.Kind, &item.Owner.Kind, &item.Owner.ID, &uris, &has, &tags, &arch, &hf, &item.Login, &ts)
 	if err == sql.ErrNoRows {
 		return protocol.Item{}, ErrNotFound
 	}
@@ -753,21 +766,50 @@ func (s *SQLite) scanItem(scan func(dest ...any) error) (protocol.Item, error) {
 	item.HasTOTP = has != 0
 	item.Archived = arch != 0
 	item.HasFile = hf != 0
+	item.TravelSafe = ts != 0
 	return item, nil
 }
 
 func (s *SQLite) Item(id string) (protocol.Item, error) {
-	row := s.db.QueryRow(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login FROM items WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe FROM items WHERE id=?`, id)
 	return s.scanItem(row.Scan)
 }
 
 func (s *SQLite) ItemByName(orgID, name string) (protocol.Item, error) {
-	row := s.db.QueryRow(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login FROM items WHERE org_id=? AND name=?`, orgID, name)
+	row := s.db.QueryRow(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe FROM items WHERE org_id=? AND name=?`, orgID, name)
 	return s.scanItem(row.Scan)
 }
 
+// TravelMode reads the org's travel_mode flag — an absent row is off.
+func (s *SQLite) TravelMode(orgID string) (bool, error) {
+	var on int
+	err := s.db.QueryRow(`SELECT travel_mode FROM org_settings WHERE org_id=?`, orgID).Scan(&on)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return on != 0, nil
+}
+
+// SetTravelMode upserts the org_settings row — audited atomically like
+// every administration write.
+func (s *SQLite) SetTravelMode(orgID string, on bool, events ...protocol.AuditEvent) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	return s.writeAudited(events, func(ex sqlExecer) error {
+		_, err := ex.Exec(`INSERT INTO org_settings(org_id, travel_mode, updated_at) VALUES(?,?,?)
+			ON CONFLICT(org_id) DO UPDATE SET travel_mode=excluded.travel_mode, updated_at=excluded.updated_at`,
+			orgID, v, time.Now().UTC().Format(time.RFC3339Nano))
+		return err
+	})
+}
+
 func (s *SQLite) ListItems() ([]protocol.Item, error) {
-	rows, err := s.db.Query(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login FROM items WHERE archived=0 ORDER BY name LIMIT ?`, maxListResults)
+	rows, err := s.db.Query(`SELECT id, org_id, name, kind, owner_kind, owner_id, uris, has_totp, tags, archived, has_file, login, travel_safe FROM items WHERE archived=0 ORDER BY name LIMIT ?`, maxListResults)
 	if err != nil {
 		return nil, err
 	}
@@ -854,6 +896,7 @@ func (s *SQLite) PurgeOrg(ctx context.Context, orgID string) (PurgeReport, error
 		{`DELETE FROM item_versions WHERE item_id IN (SELECT id FROM items WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM approvals WHERE grant_id IN (SELECT id FROM grants WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM sessions WHERE org_id = ?`, &rep.Sessions},
+		{`DELETE FROM org_settings WHERE org_id = ?`, new(int64)},
 		{`DELETE FROM grants WHERE org_id = ?`, &rep.Grants},
 		{`DELETE FROM workloads WHERE agent_id IN (SELECT id FROM agents WHERE org_id = ?)`, new(int64)},
 		{`DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE org_id = ?)`, new(int64)},
@@ -1019,13 +1062,15 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 	row := s.db.QueryRow(`SELECT
 		s.id,
 		a.id, a.org_id, a.owner_kind, a.owner_id, a.revoked_at,
-		i.id, i.org_id, i.name, i.kind, i.owner_kind, i.owner_id, i.uris, i.has_totp, i.tags, i.archived, i.has_file, i.login,
+		i.id, i.org_id, i.name, i.kind, i.owner_kind, i.owner_id, i.uris, i.has_totp, i.tags, i.archived, i.has_file, i.login, i.travel_safe,
+		COALESCE(os.travel_mode, 0) AS org_travel_mode,
 		g.id, g.org_id, g.agent_id, g.subject_kind, g.item_id, g.level, g.actions, g.expires_at,
 		ap.id, ap.grant_id, ap.human_id, ap.expires_at
 	FROM (SELECT ? AS session_hash, ? AS item_id, ? AS now) AS v
 	LEFT JOIN sessions s ON s.secret_hash = v.session_hash AND s.expires_at > v.now AND s.revoked_at IS NULL AND (s.max_uses = 0 OR s.uses < s.max_uses)
 	LEFT JOIN agents a ON a.id = s.agent_id
-	LEFT JOIN items i ON i.id = v.item_id`+fmt.Sprintf(useAuthGrantJoin, "a.id", "a.id"),
+	LEFT JOIN items i ON i.id = v.item_id
+	LEFT JOIN org_settings os ON os.org_id = i.org_id`+fmt.Sprintf(useAuthGrantJoin, "a.id", "a.id"),
 		sessionHash, itemID, now.Unix())
 
 	var (
@@ -1033,7 +1078,7 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 		aID, aOrgID, aOwnerKind, aOwnerID, aRevoked             sql.NullString
 		iID, iOrgID, iName, iKind, iOwnerKind, iOwnerID, iLogin sql.NullString
 		iURIs, iTags                                            []byte
-		iHasTOTP, iArchived, iHasFile                           sql.NullInt64
+		iHasTOTP, iArchived, iHasFile, iTravelSafe, orgTravel   sql.NullInt64
 		gID, gOrgID, gAgentID, gSubjectKind, gItemID, gLevel    sql.NullString
 		gActions                                                []byte
 		gExpires, apExpires                                     sql.NullInt64
@@ -1042,7 +1087,8 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 	if err := row.Scan(
 		&sID,
 		&aID, &aOrgID, &aOwnerKind, &aOwnerID, &aRevoked,
-		&iID, &iOrgID, &iName, &iKind, &iOwnerKind, &iOwnerID, &iURIs, &iHasTOTP, &iTags, &iArchived, &iHasFile, &iLogin,
+		&iID, &iOrgID, &iName, &iKind, &iOwnerKind, &iOwnerID, &iURIs, &iHasTOTP, &iTags, &iArchived, &iHasFile, &iLogin, &iTravelSafe,
+		&orgTravel,
 		&gID, &gOrgID, &gAgentID, &gSubjectKind, &gItemID, &gLevel, &gActions, &gExpires,
 		&apID, &apGrantID, &apHumanID, &apExpires,
 	); err != nil {
@@ -1080,6 +1126,8 @@ func (s *SQLite) UseAuthSession(sessionHash []byte, itemID string, now time.Time
 		r.Item.Archived = iArchived.Int64 != 0
 		r.Item.HasFile = iHasFile.Int64 != 0
 		r.Item.Login = iLogin.String
+		r.Item.TravelSafe = iTravelSafe.Int64 != 0
+		r.TravelMode = orgTravel.Int64 != 0
 	}
 	if gID.Valid && gID.String != "" {
 		g := &protocol.Grant{ID: gID.String, OrgID: gOrgID.String, AgentID: gAgentID.String, SubjectKind: protocol.SubjectKind(gSubjectKind.String), ItemID: gItemID.String, Level: protocol.GrantLevel(gLevel.String)}
@@ -1177,19 +1225,21 @@ func (s *SQLite) consumeSession(sessionHash []byte, now time.Time, e *protocol.A
 func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error) {
 	row := s.db.QueryRow(`SELECT
 		a.id, a.org_id, a.owner_kind, a.owner_id, a.revoked_at,
-		i.id, i.org_id, i.name, i.kind, i.owner_kind, i.owner_id, i.uris, i.has_totp, i.tags, i.archived, i.has_file, i.login,
+		i.id, i.org_id, i.name, i.kind, i.owner_kind, i.owner_id, i.uris, i.has_totp, i.tags, i.archived, i.has_file, i.login, i.travel_safe,
+		COALESCE(os.travel_mode, 0) AS org_travel_mode,
 		g.id, g.org_id, g.agent_id, g.subject_kind, g.item_id, g.level, g.actions, g.expires_at,
 		ap.id, ap.grant_id, ap.human_id, ap.expires_at
 	FROM (SELECT ? AS agent_id, ? AS item_id, ? AS now) AS v
 	LEFT JOIN agents a ON a.id = v.agent_id
-	LEFT JOIN items i ON i.id = v.item_id`+fmt.Sprintf(useAuthGrantJoin, "v.agent_id", "v.agent_id"),
+	LEFT JOIN items i ON i.id = v.item_id
+	LEFT JOIN org_settings os ON os.org_id = i.org_id`+fmt.Sprintf(useAuthGrantJoin, "v.agent_id", "v.agent_id"),
 		agentID, itemID, now.Unix())
 
 	var (
 		aID, aOrgID, aOwnerKind, aOwnerID, aRevoked             sql.NullString
 		iID, iOrgID, iName, iKind, iOwnerKind, iOwnerID, iLogin sql.NullString
 		iURIs, iTags                                            []byte
-		iHasTOTP, iArchived, iHasFile                           sql.NullInt64
+		iHasTOTP, iArchived, iHasFile, iTravelSafe, orgTravel   sql.NullInt64
 		gID, gOrgID, gAgentID, gSubjectKind, gItemID, gLevel    sql.NullString
 		gActions                                                []byte
 		gExpires, apExpires                                     sql.NullInt64
@@ -1197,7 +1247,8 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 	)
 	if err := row.Scan(
 		&aID, &aOrgID, &aOwnerKind, &aOwnerID, &aRevoked,
-		&iID, &iOrgID, &iName, &iKind, &iOwnerKind, &iOwnerID, &iURIs, &iHasTOTP, &iTags, &iArchived, &iHasFile, &iLogin,
+		&iID, &iOrgID, &iName, &iKind, &iOwnerKind, &iOwnerID, &iURIs, &iHasTOTP, &iTags, &iArchived, &iHasFile, &iLogin, &iTravelSafe,
+		&orgTravel,
 		&gID, &gOrgID, &gAgentID, &gSubjectKind, &gItemID, &gLevel, &gActions, &gExpires,
 		&apID, &apGrantID, &apHumanID, &apExpires,
 	); err != nil {
@@ -1232,6 +1283,8 @@ func (s *SQLite) UseAuth(agentID, itemID string, now time.Time) (UseAuth, error)
 		r.Item.Archived = iArchived.Int64 != 0
 		r.Item.HasFile = iHasFile.Int64 != 0
 		r.Item.Login = iLogin.String
+		r.Item.TravelSafe = iTravelSafe.Int64 != 0
+		r.TravelMode = orgTravel.Int64 != 0
 	}
 	if gID.Valid && gID.String != "" {
 		g := &protocol.Grant{ID: gID.String, OrgID: gOrgID.String, AgentID: gAgentID.String, SubjectKind: protocol.SubjectKind(gSubjectKind.String), ItemID: gItemID.String, Level: protocol.GrantLevel(gLevel.String)}

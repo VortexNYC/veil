@@ -191,6 +191,10 @@ const (
 	ActionRecoveryCompleted     ActionKind = "recovery_completed"
 	ActionRecoveryDenied        ActionKind = "recovery_denied"
 	ActionRecoveryExpired       ActionKind = "recovery_expired"
+	// travel_mode_toggled (VTX-788): an org owner flipped Travel Mode. The
+	// Reason carries enabled=true|false. While on, items without
+	// travel_safe are hidden from every list/fill/Use surface.
+	ActionTravelModeToggled ActionKind = "travel_mode_toggled"
 )
 
 type Decision string
@@ -229,6 +233,10 @@ type Item struct {
 	Tags []string `json:"tags,omitempty"`
 	// Archived items are hidden from Use, list, fill. History stays.
 	Archived bool `json:"archived,omitempty"`
+	// TravelSafe marks an item that stays visible while the org's Travel
+	// Mode is on (VTX-788). Metadata, not ACL — it decides which items
+	// cross the border, not who may Use them.
+	TravelSafe bool `json:"travel_safe,omitempty"`
 	// HasTOTP is metadata. The seed is not on this struct.
 	HasTOTP bool `json:"has_totp,omitempty"`
 	// HasFile is metadata. Bytes are not on this struct.

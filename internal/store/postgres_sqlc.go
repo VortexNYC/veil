@@ -34,6 +34,8 @@ func useAuthSessionToUseAuthRow(row sqlc.UseAuthSessionRow) sqlc.UseAuthRow {
 		ItemArchived:      row.ItemArchived,
 		ItemHasFile:       row.ItemHasFile,
 		ItemLogin:         row.ItemLogin,
+		ItemTravelSafe:    row.ItemTravelSafe,
+		OrgTravelMode:     row.OrgTravelMode,
 		GrantID:           row.GrantID,
 		GrantOrgID:        row.GrantOrgID,
 		GrantAgentID:      row.GrantAgentID,
@@ -75,6 +77,8 @@ func useAuthFromSqlcRow(r *sqlc.UseAuthRow) (UseAuth, error) {
 		out.Item.Archived = r.ItemArchived.Bool
 		out.Item.HasFile = r.ItemHasFile.Bool
 		out.Item.Login = r.ItemLogin.String
+		out.Item.TravelSafe = r.ItemTravelSafe.Bool
+		out.TravelMode = r.OrgTravelMode
 	}
 	if r.GrantID.Valid && r.GrantID.String != "" {
 		g := &protocol.Grant{ID: r.GrantID.String, OrgID: r.GrantOrgID.String, AgentID: r.GrantAgentID.String, SubjectKind: protocol.SubjectKind(r.GrantSubjectKind.String), ItemID: r.GrantItemID.String, Level: protocol.GrantLevel(r.GrantLevel.String)}
@@ -364,7 +368,7 @@ func itemByNameToRow(r sqlc.ItemByNameRow) sqlc.ItemByIDRow {
 		ID: r.ID, OrgID: r.OrgID, Name: r.Name, Kind: r.Kind,
 		OwnerKind: r.OwnerKind, OwnerID: r.OwnerID, Uris: r.Uris,
 		HasTotp: r.HasTotp, Tags: r.Tags, Archived: r.Archived,
-		HasFile: r.HasFile, Login: r.Login,
+		HasFile: r.HasFile, Login: r.Login, TravelSafe: r.TravelSafe,
 	}
 }
 
@@ -373,7 +377,7 @@ func listItemsToRow(r sqlc.ListItemsRow) sqlc.ItemByIDRow {
 		ID: r.ID, OrgID: r.OrgID, Name: r.Name, Kind: r.Kind,
 		OwnerKind: r.OwnerKind, OwnerID: r.OwnerID, Uris: r.Uris,
 		HasTotp: r.HasTotp, Tags: r.Tags, Archived: r.Archived,
-		HasFile: r.HasFile, Login: r.Login,
+		HasFile: r.HasFile, Login: r.Login, TravelSafe: r.TravelSafe,
 	}
 }
 
@@ -395,6 +399,7 @@ func itemFromSqlc(r *sqlc.ItemByIDRow) protocol.Item {
 	item.Archived = r.Archived
 	item.HasFile = r.HasFile
 	item.Login = r.Login
+	item.TravelSafe = r.TravelSafe
 	return item
 }
 
@@ -452,7 +457,7 @@ func (p *Postgres) PutItem(item protocol.Item, secret Secret, events ...protocol
 		OwnerKind: string(item.Owner.Kind), OwnerID: item.Owner.ID,
 		Uris: string(uris), Secret: blob, HasTotp: item.HasTOTP,
 		Tags: string(tags), Archived: item.Archived, HasFile: item.HasFile,
-		Login: item.Login,
+		Login: item.Login, TravelSafe: item.TravelSafe,
 	})
 	if err != nil {
 		return err
@@ -508,6 +513,29 @@ func (p *Postgres) ListItems() ([]protocol.Item, error) {
 		out = append(out, itemFromSqlc(&r))
 	}
 	return out, nil
+}
+
+// TravelMode reads the org's travel_mode flag — an absent row is off.
+func (p *Postgres) TravelMode(orgID string) (bool, error) {
+	on, err := p.sqlc.OrgTravelMode(context.Background(), orgID)
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return on, nil
+}
+
+// SetTravelMode upserts the org_settings row — audited atomically like
+// every administration write.
+func (p *Postgres) SetTravelMode(orgID string, on bool, events ...protocol.AuditEvent) error {
+	ctx := context.Background()
+	return p.writeAudited(ctx, events, func(q *sqlc.Queries) error {
+		return q.SetOrgTravelMode(ctx, sqlc.SetOrgTravelModeParams{
+			OrgID: orgID, TravelMode: on, UpdatedAt: time.Now().UTC(),
+		})
+	})
 }
 
 func (p *Postgres) ArchiveItem(id string, events ...protocol.AuditEvent) error {

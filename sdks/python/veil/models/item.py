@@ -39,7 +39,8 @@ class Item(BaseModel):
     has_totp: Optional[StrictBool] = None
     has_file: Optional[StrictBool] = None
     login: Optional[StrictStr] = Field(default=None, description="Fill username. Metadata. Not a secret. Empty if unset.")
-    __properties: ClassVar[List[str]] = ["id", "org_id", "name", "kind", "owner", "uris", "tags", "archived", "has_totp", "has_file", "login"]
+    travel_safe: Optional[StrictBool] = Field(default=None, description="Stays visible while the org's Travel Mode is on (VTX-788). Metadata, not ACL.")
+    __properties: ClassVar[List[str]] = ["id", "org_id", "name", "kind", "owner", "uris", "tags", "archived", "has_totp", "has_file", "login", "travel_safe"]
 
     @field_validator('kind')
     def kind_validate_enum(cls, value):
@@ -112,7 +113,8 @@ class Item(BaseModel):
             "archived": obj.get("archived"),
             "has_totp": obj.get("has_totp"),
             "has_file": obj.get("has_file"),
-            "login": obj.get("login")
+            "login": obj.get("login"),
+            "travel_safe": obj.get("travel_safe")
         })
         return _obj
 

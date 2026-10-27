@@ -33,6 +33,8 @@ type Item struct {
 	HasFile *bool `json:"has_file,omitempty"`
 	// Fill username. Metadata. Not a secret. Empty if unset.
 	Login *string `json:"login,omitempty"`
+	// Stays visible while the org's Travel Mode is on (VTX-788). Metadata, not ACL.
+	TravelSafe *bool `json:"travel_safe,omitempty"`
 }
 
 type _Item Item
@@ -364,6 +366,38 @@ func (o *Item) SetLogin(v string) {
 	o.Login = &v
 }
 
+// GetTravelSafe returns the TravelSafe field value if set, zero value otherwise.
+func (o *Item) GetTravelSafe() bool {
+	if o == nil || IsNil(o.TravelSafe) {
+		var ret bool
+		return ret
+	}
+	return *o.TravelSafe
+}
+
+// GetTravelSafeOk returns a tuple with the TravelSafe field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *Item) GetTravelSafeOk() (*bool, bool) {
+	if o == nil || IsNil(o.TravelSafe) {
+		return nil, false
+	}
+	return o.TravelSafe, true
+}
+
+// HasTravelSafe returns a boolean if a field has been set.
+func (o *Item) HasTravelSafe() bool {
+	if o != nil && !IsNil(o.TravelSafe) {
+		return true
+	}
+
+	return false
+}
+
+// SetTravelSafe gets a reference to the given bool and assigns it to the TravelSafe field.
+func (o *Item) SetTravelSafe(v bool) {
+	o.TravelSafe = &v
+}
+
 func (o Item) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -394,6 +428,9 @@ func (o Item) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Login) {
 		toSerialize["login"] = o.Login
+	}
+	if !IsNil(o.TravelSafe) {
+		toSerialize["travel_safe"] = o.TravelSafe
 	}
 	return toSerialize, nil
 }

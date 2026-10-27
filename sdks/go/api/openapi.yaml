@@ -1545,6 +1545,48 @@ paths:
         \ target member cancels at any aal. First write wins."
       tags:
       - Recovery
+  /v1/org/travel-mode:
+    get:
+      operationId: getTravelMode
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TravelModeView"
+          description: flag state
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: agents cannot read org settings
+      summary: Read the org's Travel Mode flag.
+      tags:
+      - Human
+    post:
+      operationId: setTravelMode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TravelModeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TravelModeView"
+          description: flag state
+        "400":
+          description: bad request
+        "401":
+          description: missing or invalid Bearer
+        "403":
+          description: owner only
+      summary: Toggle Travel Mode — hides non-travel_safe items from list/fill/Use.
+        Audited travel_mode_toggled.
+      tags:
+      - Owner
 components:
   schemas:
     Item:
@@ -1567,6 +1609,7 @@ components:
         has_totp: true
         has_file: true
         login: login
+        travel_safe: true
       properties:
         id:
           type: string
@@ -1607,6 +1650,10 @@ components:
         login:
           description: Fill username. Metadata. Not a secret. Empty if unset.
           type: string
+        travel_safe:
+          description: "Stays visible while the org's Travel Mode is on (VTX-788).\
+            \ Metadata, not ACL."
+          type: boolean
       required:
       - id
       - kind
@@ -1648,6 +1695,7 @@ components:
           has_totp: true
           has_file: true
           login: login
+          travel_safe: true
         - id: id
           org_id: org_id
           name: name
@@ -1665,6 +1713,7 @@ components:
           has_totp: true
           has_file: true
           login: login
+          travel_safe: true
       properties:
         items:
           items:
@@ -1871,6 +1920,7 @@ components:
           organization_id: organization_id
           service_account_id: service_account_id
           workspace_id: workspace_id
+        travel_safe: true
       properties:
         name:
           type: string
@@ -1914,6 +1964,9 @@ components:
           $ref: "#/components/schemas/IdentityFields"
         wif:
           $ref: "#/components/schemas/WIFItemFields"
+        travel_safe:
+          description: Stays visible while the org's Travel Mode is on.
+          type: boolean
       required:
       - name
     UpdateItemRequest:
@@ -1928,6 +1981,7 @@ components:
         - tags
         login: login
         secret: secret
+        travel_safe: true
       properties:
         uri:
           description: Add this autofill host. Does not drop existing hosts.
@@ -1951,6 +2005,9 @@ components:
             \ login, and passkey survive. Blank refuses; absent leaves the secret\
             \ alone."
           type: string
+        travel_safe:
+          description: Set the travel_safe flag. Absent leaves it untouched.
+          type: boolean
     CreateGrantRequest:
       additionalProperties: false
       example:
@@ -3380,6 +3437,24 @@ components:
           description: Optional 32-byte X25519 public key (base64 or hex) to enroll
             the member's recovery share at signup.
           type: string
+    TravelModeRequest:
+      additionalProperties: false
+      example:
+        enabled: true
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
+    TravelModeView:
+      additionalProperties: false
+      example:
+        enabled: true
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
     removeMember_200_response:
       example:
         removed: true

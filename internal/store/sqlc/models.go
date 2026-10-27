@@ -94,19 +94,20 @@ type Human struct {
 }
 
 type Item struct {
-	ID        string
-	OrgID     string
-	Name      string
-	Kind      string
-	OwnerKind string
-	OwnerID   string
-	Uris      string
-	Secret    []byte
-	HasTotp   bool
-	Tags      string
-	Archived  bool
-	HasFile   bool
-	Login     string
+	ID         string
+	OrgID      string
+	Name       string
+	Kind       string
+	OwnerKind  string
+	OwnerID    string
+	Uris       string
+	Secret     []byte
+	HasTotp    bool
+	Tags       string
+	Archived   bool
+	HasFile    bool
+	Login      string
+	TravelSafe bool
 }
 
 type ItemVersion struct {
@@ -142,6 +143,12 @@ type OrgKeyShare struct {
 	OrgKeyVersion   int32
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type OrgSetting struct {
+	OrgID      string
+	TravelMode bool
+	UpdatedAt  time.Time
 }
 
 type OwnerKey struct {

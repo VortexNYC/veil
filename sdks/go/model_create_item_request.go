@@ -35,6 +35,8 @@ type CreateItemRequest struct {
 	Card *CardFields `json:"card,omitempty"`
 	Identity *IdentityFields `json:"identity,omitempty"`
 	Wif *WIFItemFields `json:"wif,omitempty"`
+	// Stays visible while the org's Travel Mode is on.
+	TravelSafe *bool `json:"travel_safe,omitempty"`
 }
 
 type _CreateItemRequest CreateItemRequest
@@ -401,6 +403,38 @@ func (o *CreateItemRequest) SetWif(v WIFItemFields) {
 	o.Wif = &v
 }
 
+// GetTravelSafe returns the TravelSafe field value if set, zero value otherwise.
+func (o *CreateItemRequest) GetTravelSafe() bool {
+	if o == nil || IsNil(o.TravelSafe) {
+		var ret bool
+		return ret
+	}
+	return *o.TravelSafe
+}
+
+// GetTravelSafeOk returns a tuple with the TravelSafe field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *CreateItemRequest) GetTravelSafeOk() (*bool, bool) {
+	if o == nil || IsNil(o.TravelSafe) {
+		return nil, false
+	}
+	return o.TravelSafe, true
+}
+
+// HasTravelSafe returns a boolean if a field has been set.
+func (o *CreateItemRequest) HasTravelSafe() bool {
+	if o != nil && !IsNil(o.TravelSafe) {
+		return true
+	}
+
+	return false
+}
+
+// SetTravelSafe gets a reference to the given bool and assigns it to the TravelSafe field.
+func (o *CreateItemRequest) SetTravelSafe(v bool) {
+	o.TravelSafe = &v
+}
+
 func (o CreateItemRequest) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -441,6 +475,9 @@ func (o CreateItemRequest) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Wif) {
 		toSerialize["wif"] = o.Wif
+	}
+	if !IsNil(o.TravelSafe) {
+		toSerialize["travel_safe"] = o.TravelSafe
 	}
 	return toSerialize, nil
 }

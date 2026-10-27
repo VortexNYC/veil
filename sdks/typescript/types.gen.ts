@@ -19,6 +19,10 @@ export type Item = {
      * Fill username. Metadata. Not a secret. Empty if unset.
      */
     login?: string;
+    /**
+     * Stays visible while the org's Travel Mode is on (VTX-788). Metadata, not ACL.
+     */
+    travel_safe?: boolean;
 };
 
 export type Owner = {
@@ -121,6 +125,10 @@ export type CreateItemRequest = {
     card?: CardFields;
     identity?: IdentityFields;
     wif?: WifItemFields;
+    /**
+     * Stays visible while the org's Travel Mode is on.
+     */
+    travel_safe?: boolean;
 };
 
 export type UpdateItemRequest = {
@@ -141,6 +149,10 @@ export type UpdateItemRequest = {
      * Rotate the sealed secret — a changed password. TOTP seed, login, and passkey survive. Blank refuses; absent leaves the secret alone.
      */
     secret?: string;
+    /**
+     * Set the travel_safe flag. Absent leaves it untouched.
+     */
+    travel_safe?: boolean;
 };
 
 export type CreateGrantRequest = {
@@ -709,6 +721,14 @@ export type ProvisionRequest = {
      * Optional 32-byte X25519 public key (base64 or hex) to enroll the member's recovery share at signup.
      */
     recovery_pubkey?: string;
+};
+
+export type TravelModeRequest = {
+    enabled: boolean;
+};
+
+export type TravelModeView = {
+    enabled: boolean;
 };
 
 export type GetHealthData = {
@@ -2532,3 +2552,61 @@ export type DenyRecoveryResponses = {
 };
 
 export type DenyRecoveryResponse = DenyRecoveryResponses[keyof DenyRecoveryResponses];
+
+export type GetTravelModeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/org/travel-mode';
+};
+
+export type GetTravelModeErrors = {
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * agents cannot read org settings
+     */
+    403: unknown;
+};
+
+export type GetTravelModeResponses = {
+    /**
+     * flag state
+     */
+    200: TravelModeView;
+};
+
+export type GetTravelModeResponse = GetTravelModeResponses[keyof GetTravelModeResponses];
+
+export type SetTravelModeData = {
+    body: TravelModeRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/org/travel-mode';
+};
+
+export type SetTravelModeErrors = {
+    /**
+     * bad request
+     */
+    400: unknown;
+    /**
+     * missing or invalid Bearer
+     */
+    401: unknown;
+    /**
+     * owner only
+     */
+    403: unknown;
+};
+
+export type SetTravelModeResponses = {
+    /**
+     * flag state
+     */
+    200: TravelModeView;
+};
+
+export type SetTravelModeResponse = SetTravelModeResponses[keyof SetTravelModeResponses];

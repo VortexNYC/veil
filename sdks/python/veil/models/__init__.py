@@ -70,6 +70,8 @@ from veil.models.session import Session
 from veil.models.sessions_response import SessionsResponse
 from veil.models.start_recovery_request import StartRecoveryRequest
 from veil.models.start_recovery_response import StartRecoveryResponse
+from veil.models.travel_mode_request import TravelModeRequest
+from veil.models.travel_mode_view import TravelModeView
 from veil.models.update_item_request import UpdateItemRequest
 from veil.models.use_request import UseRequest
 from veil.models.use_response import UseResponse

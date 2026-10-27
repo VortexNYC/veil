@@ -703,6 +703,7 @@ func itemCmd(home *string) *cobra.Command {
 	var updateURIs []string
 	var tags []string
 	var honey bool
+	var travelSafe bool
 	add := &cobra.Command{
 		Use:   "add NAME",
 		Short: "Store material from files. Never argv. OAuth refresh stays in the broker.",
@@ -830,7 +831,7 @@ func itemCmd(home *string) *cobra.Command {
 				if attachFile != "" || sshFile != "" || refreshFile != "" {
 					return fmt.Errorf("origin: item add is --secret-file/--totp-file/--federation-rule-id")
 				}
-				return originItemAdd(cmd, args[0], uri, tags, kind, token, totpSeed, login, wifAPI)
+				return originItemAdd(cmd, args[0], uri, tags, kind, token, totpSeed, login, wifAPI, travelSafe)
 			}
 			a, err := openApp(*home)
 			if err != nil {
@@ -853,6 +854,7 @@ func itemCmd(home *string) *cobra.Command {
 				MIME:         mime,
 				File:         fileBody,
 				WIF:          wifOpts,
+				TravelSafe:   travelSafe,
 			})
 			if err != nil {
 				return err
@@ -865,6 +867,7 @@ func itemCmd(home *string) *cobra.Command {
 	add.Flags().StringVar(&login, "login", "", "fill username. metadata on the item. not a secret")
 	add.Flags().StringVar(&secretFile, "secret-file", "", "file containing the API key (`-` for stdin)")
 	add.Flags().BoolVar(&honey, "honey", false, "tripwire item. any Use is deny + alert. decoy material optional")
+	add.Flags().BoolVar(&travelSafe, "travel-safe", false, "stays visible while the org's Travel Mode is on")
 	add.Flags().StringVar(&sshFile, "ssh-file", "", "OpenSSH/PEM private key file. Never argv. Kind becomes ssh.")
 	add.Flags().StringVar(&totpFile, "totp-file", "", "file containing the TOTP seed, never the 6-digit code")
 	add.Flags().StringVar(&refreshFile, "refresh-file", "", "OAuth refresh token file. Never argv.")
