@@ -389,8 +389,12 @@ use
                                            `mcp stdio` is the laptop adapter
                                            over origin HTTP. not a second protocol.
                                            stale Hydra JWT is reminted via
-                                           client_credentials from VEIL_HYDRA_SECRET_FILE.
-                                           not OAuth refresh_token. not ory/mcp.
+                                           client_credentials from VEIL_HYDRA_SECRET_FILE
+                                           (or bare VEIL_HYDRA_SECRET env — file wins;
+                                           either may hold a `ses_` lease, used as the
+                                           bearer directly). not OAuth refresh_token.
+                                           not ory/mcp. stdin is never a secret source —
+                                           `mcp stdio` owns stdin for JSON-RPC.
   scrub / audit      this process          built. `audit` is owner CLI. not MCP
   passgen            crypto/rand           written. CLI `gen`. not MCP. not a vault item
                                            until item add. Fill `generate` (docs/fill.md)
@@ -776,7 +780,7 @@ Next: Mac helper (slice 32). Typed-save / TOTP-from-page on Chrome are CFT-prove
 - [x] `agent token --secret-file --out-file` mints a Hydra JWT to disk. Never stdout. Same `client_credentials` as cloud agents. Live proof is Bearer `POST /v1/use`.
 - [x] Laptop MCP is `mcp stdio` against origin HTTP. Cursor live: `list_items` then `fetch` GitHub `/user` → allow, 200, token absent from the tool payload. GUI hosts do not interpolate `${file:}`. Token file + remint paths, never the JWT in MCP JSON.
 - [x] One store. Origin is the source of truth. `VEIL_ORIGIN` makes CLI `item` / `grant` / `list` / `fill` / `run` / `proxy` origin HTTP. `openApp` refuses a second *product* vault. Fill host replica is sealed `replica.box`; wrapping key is Keychain (`WhenUnlockedThisDeviceOnly` + UserPresence), not `device.key`. Origin `run` dummy-env + HTTPS_PROXY `POST /v1/use`. `--inject` is local vault. Bearer is agent or Keto member human. Human `POST /v1/items` may send the secret; owner stamps org, member stamps themselves; responses, MCP, and generated SDKs never include it. `POST /v1/fill/logins` is the native-host path only.
-- [x] Owner `POST /v1/sessions` mints a short-lived Use lease onto an existing agent. Token once on create. `session create --out-file`. Sandbox gets that file, not the agent JWT. Default 15m, max 1h. Bearer `ses_` maps to the agent. Not MCP. Not list.
+- [x] Owner `POST /v1/sessions` mints a short-lived Use lease onto an existing agent. Token once on create. `session create --out-file`. Sandbox gets that file, not the agent JWT. Default 15m, max 1h. Bearer `ses_` maps to the agent. Not MCP. Not list. The lease travels through `VEIL_OIDC_TOKEN_FILE`/`VEIL_OIDC_TOKEN`, or the same `VEIL_HYDRA_SECRET_FILE`/`VEIL_HYDRA_SECRET` slots a client secret would use — a `ses_` there is the bearer, never a client_credentials.
 - [x] `agent revoke --id` kills the principal, all its grants, and live sandbox sessions. Use rechecks revocation just before the secret is touched (`agent_revoked`). Incidents close with one command, not per-grant.
 - [x] Dummy placeholders: origin `run` sets `veil-inject` dummies in child env; the proxy substitutes on the wire. `internal/proxy/dummy.go`.
 - [x] Honey items: `item add --honey` (kind `honey`). Any Use denies with reason `honey` before grant evaluation; audit row carries no secret.

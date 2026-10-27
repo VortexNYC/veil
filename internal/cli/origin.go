@@ -79,18 +79,40 @@ func originTokenLive(ctx context.Context, tokenFile string) (string, error) {
 	if err == nil && !jwtNeedsRefresh(tok) {
 		return tok, nil
 	}
-	secretFile := strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE"))
-	if secretFile == "" {
+	cred, ok, credErr := originHydraCred()
+	if !ok {
 		if err != nil {
 			return "", err
 		}
 		return tok, nil
 	}
-	minted, err := originRemint(ctx, tokenFile, secretFile)
+	if credErr != nil {
+		return "", credErr
+	}
+	minted, err := originRemint(ctx, tokenFile, cred)
 	if err != nil {
 		return "", err
 	}
 	return minted, nil
+}
+
+// originHydraCred resolves the bootstrap secret for headless/sandbox runs.
+// The file wins: VEIL_HYDRA_SECRET_FILE may carry issuer and audience
+// metadata alongside the secret, VEIL_HYDRA_SECRET is the bare env-var
+// fallback for sandboxes that cannot materialize files. Either source may
+// hold a `ses_` session lease instead of a Hydra client secret — a session
+// token is already the bearer and is used as-is. Stdin is deliberately not
+// a source: `veil mcp stdio` owns stdin for JSON-RPC, and a lazily-read
+// remint cannot pause the protocol stream.
+func originHydraCred() (hydraCred, bool, error) {
+	if f := strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE")); f != "" {
+		cred, err := readHydraCred(f)
+		return cred, true, err
+	}
+	if s := strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET")); s != "" {
+		return hydraCred{Secret: s}, true, nil
+	}
+	return hydraCred{}, false, nil
 }
 
 func jwtNeedsRefresh(tok string) bool {
@@ -126,13 +148,15 @@ func jwtExpUnix(tok string) (int64, bool) {
 	return claims.Exp, true
 }
 
-func originRemint(ctx context.Context, tokenFile, secretFile string) (string, error) {
-	cred, err := readHydraCred(secretFile)
-	if err != nil {
-		return "", err
-	}
+func originRemint(ctx context.Context, tokenFile string, cred hydraCred) (string, error) {
 	if cred.Secret == "" {
 		return "", fmt.Errorf("origin: empty VEIL_HYDRA_SECRET_FILE")
+	}
+	// A session lease is already the bearer — sandboxes hand it over via
+	// VEIL_HYDRA_SECRET_FILE/VEIL_HYDRA_SECRET exactly like a client secret.
+	// It cannot remint; it must not be sent to Hydra as a client_secret.
+	if app.IsSessionToken(cred.Secret) {
+		return cred.Secret, nil
 	}
 	issuer := strings.TrimSpace(os.Getenv("VEIL_HYDRA_ISSUER"))
 	if issuer == "" {

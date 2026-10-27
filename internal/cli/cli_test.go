@@ -1899,6 +1899,162 @@ func TestOriginDoesNotRemintFreshJWT(t *testing.T) {
 	}
 }
 
+// A sandbox hands the broker lease via the hydra secret slot: VEIL_HYDRA_
+// SECRET_FILE containing a ses_ token is already the bearer — it is used
+// as-is, never offered to Hydra as a client_secret, and needs no VEIL_AGENT.
+func TestOriginSessionTokenInHydraSecretFile(t *testing.T) {
+	ses := "ses_" + strings.Repeat("a1", 32)
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("hydra token endpoint must not be called for a session lease")
+	}))
+	t.Cleanup(issuer.Close)
+	var sawAuth string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"decision":"allow","status":200,"body":"ok"}`)
+	}))
+	t.Cleanup(origin.Close)
+
+	dir := t.TempDir()
+	sec := filepath.Join(dir, "sandbox.hydra")
+	if err := os.WriteFile(sec, []byte(ses+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HYDRA_ISSUER", issuer.URL)
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", sec)
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", "")
+	t.Setenv("VEIL_OIDC_TOKEN", "")
+
+	out, err := run(t, t.TempDir(), "", "use", "--item", "github", "--url", "https://api.github.com/user")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if sawAuth != "Bearer "+ses {
+		t.Fatalf("auth %q, want session lease as bearer", sawAuth)
+	}
+}
+
+// VEIL_HYDRA_SECRET is the file-free equivalent for sandboxes that inject
+// secrets through env only — same ses_ shortcut, same no-Hydra rule.
+func TestOriginSessionTokenInHydraSecretEnv(t *testing.T) {
+	ses := "ses_" + strings.Repeat("b2", 32)
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("hydra token endpoint must not be called for a session lease")
+	}))
+	t.Cleanup(issuer.Close)
+	var sawAuth string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"decision":"allow","status":200,"body":"ok"}`)
+	}))
+	t.Cleanup(origin.Close)
+
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HYDRA_ISSUER", issuer.URL)
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_SECRET", ses)
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", "")
+	t.Setenv("VEIL_OIDC_TOKEN", "")
+
+	out, err := run(t, t.TempDir(), "", "use", "--item", "github", "--url", "https://api.github.com/user")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if sawAuth != "Bearer "+ses {
+		t.Fatalf("auth %q, want session lease as bearer", sawAuth)
+	}
+}
+
+// A bare client secret in VEIL_HYDRA_SECRET mints through client_credentials
+// exactly like the file path — env-only sandboxes get a real JWT.
+func TestOriginHydraSecretEnvMints(t *testing.T) {
+	const hydraSecret = "env-borne-secret"
+	fresh := testJWT("agent-cursor", time.Now().Add(time.Hour))
+	var minted int
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/token" {
+			http.NotFound(w, r)
+			return
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "agent-cursor" || pass != hydraSecret {
+			http.Error(w, "auth", http.StatusUnauthorized)
+			return
+		}
+		minted++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": fresh,
+			"token_type":   "bearer",
+			"expires_in":   3600,
+		})
+	}))
+	t.Cleanup(hydra.Close)
+	var sawAuth string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"decision":"allow","status":200,"body":"ok"}`)
+	}))
+	t.Cleanup(origin.Close)
+
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HYDRA_ISSUER", hydra.URL)
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", "")
+	t.Setenv("VEIL_HYDRA_SECRET", hydraSecret)
+	t.Setenv("VEIL_AGENT", "cursor")
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", "")
+	t.Setenv("VEIL_OIDC_TOKEN", "")
+
+	out, err := run(t, t.TempDir(), "", "use", "--item", "github", "--url", "https://api.github.com/user")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if minted != 1 {
+		t.Fatalf("minted %d", minted)
+	}
+	if sawAuth != "Bearer "+fresh {
+		t.Fatalf("auth %q", sawAuth)
+	}
+}
+
+// Precedence: the file beats the env var — it is the richer source (issuer +
+// audience metadata) so an ambient VEIL_HYDRA_SECRET cannot shadow it.
+func TestOriginHydraSecretFileBeatsEnv(t *testing.T) {
+	ses := "ses_" + strings.Repeat("c3", 32)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+ses {
+			http.Error(w, "auth", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"decision":"allow","status":200,"body":"ok"}`)
+	}))
+	t.Cleanup(origin.Close)
+
+	dir := t.TempDir()
+	sec := filepath.Join(dir, "sandbox.hydra")
+	if err := os.WriteFile(sec, []byte(ses+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", sec)
+	t.Setenv("VEIL_HYDRA_SECRET", "env-secret-that-must-lose")
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", "")
+	t.Setenv("VEIL_OIDC_TOKEN", "")
+
+	out, err := run(t, t.TempDir(), "", "use", "--item", "github", "--url", "https://api.github.com/user")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if !strings.Contains(out, `"decision": "allow"`) {
+		t.Fatalf("use %s", out)
+	}
+}
+
 func TestCLIHumanLoginWritesTokenNotStdout(t *testing.T) {
 	const idTok = "jwt-human-id-token"
 	var hydraURL string
