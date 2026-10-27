@@ -875,6 +875,11 @@ func (s *SQLite) ConsumeShare(id string, now time.Time, events ...protocol.Audit
 		t := time.Unix(revoked.Int64, 0).UTC()
 		sh.RevokedAt = &t
 	}
+	// Redeem is unauthenticated — the audit row's org comes from the claimed
+	// share, not the caller (audit org_id is constrained non-empty).
+	for i := range events {
+		events[i].OrgID = sh.OrgID
+	}
 	if err := auditEventsTx(tx, events); err != nil {
 		return protocol.Share{}, err
 	}

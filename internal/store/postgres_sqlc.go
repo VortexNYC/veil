@@ -566,6 +566,9 @@ func (p *Postgres) ConsumeShare(id string, now time.Time, events ...protocol.Aud
 		return protocol.Share{}, err
 	}
 	for _, e := range events {
+		// Redeem is unauthenticated — the audit row's org comes from the
+		// claimed share, not the caller. Partitions check org_id <> ''.
+		e.OrgID = row.OrgID
 		if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
 			return protocol.Share{}, err
 		}
