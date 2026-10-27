@@ -728,3 +728,28 @@ ON CONFLICT(org_id) DO UPDATE SET
 
 -- name: DeleteOrgSettings :exec
 DELETE FROM org_settings WHERE org_id = @org_id::text;
+
+-- Share links (VTX-783).
+-- name: PutShare :execrows
+INSERT INTO shares(id, org_id, name, blob, meta, created_by, expires_at, created_at)
+VALUES(@id::text, @org_id::text, @name::text, @blob::bytea, @meta::text, @created_by::text, @expires_at::timestamptz, @created_at::timestamptz);
+
+-- name: ConsumeShare :one
+-- Atomic claim-then-return: one read burns the share. Missing, consumed,
+-- revoked, and expired all collapse to no row → generic 404 upstream.
+UPDATE shares SET consumed_at = @now::timestamptz
+WHERE id = @id::text AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz
+RETURNING id, org_id, name, blob, meta, created_by, expires_at, created_at, consumed_at, revoked_at;
+
+-- name: RevokeShare :execrows
+UPDATE shares SET revoked_at = COALESCE(revoked_at, @at::timestamptz)
+WHERE id = @id::text AND org_id = @org_id::text;
+
+-- name: ListShares :many
+SELECT id, org_id, name, meta, created_by, expires_at, created_at, consumed_at, revoked_at
+FROM shares WHERE org_id = @org_id::text ORDER BY created_at DESC LIMIT @max_results::bigint;
+
+-- name: SweepShares :execrows
+DELETE FROM shares WHERE expires_at < @older_than::timestamptz
+   OR consumed_at < @older_than::timestamptz
+   OR revoked_at < @older_than::timestamptz;

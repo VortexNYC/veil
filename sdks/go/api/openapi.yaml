@@ -739,6 +739,101 @@ paths:
         for re-invites. Not MCP.
       tags:
       - Human
+  /v1/shares:
+    get:
+      operationId: listShares
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharesResponse"
+          description: Share metadata
+        "401":
+          description: missing or invalid token
+        "403":
+          description: not an org owner
+      summary: "List the org's share links — metadata only, never the blob."
+      tags:
+      - Owner
+    post:
+      operationId: createShare
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShareRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Share"
+          description: The share metadata
+        "400":
+          description: "malformed body, bad blob_b64, or invalid ttl"
+        "401":
+          description: missing or invalid token
+        "403":
+          description: not an org owner
+      summary: Create a share link. Owner-authenticated. The client seals the payload
+        client-side (nacl secretbox) and POSTs only the envelope — the origin never
+        sees plaintext or the fragment key. One-time redeem; audit share_created.
+      tags:
+      - Owner
+  /v1/shares/{id}:
+    delete:
+      operationId: revokeShare
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          description: revoked
+        "401":
+          description: missing or invalid token
+        "403":
+          description: not an org owner
+        "404":
+          description: unknown share
+      summary: Revoke a share link. Owner-authenticated; the link dies immediately
+        and redeem reads 404. Audit share_revoked.
+      tags:
+      - Owner
+  /v1/shares/{id}/redeem:
+    post:
+      operationId: redeemShare
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedeemShareResponse"
+          description: The sealed envelope
+        "404":
+          description: "missing, consumed, revoked, or expired"
+        "429":
+          description: redeem rate limit
+      security: []
+      summary: "Redeem a share link. Public — the link id is the capability. Returns\
+        \ the sealed envelope exactly once; consumed, revoked, expired, and missing\
+        \ all read a generic 404. Per-id rate limited. Audit share_redeemed."
+      tags:
+      - Public
   /v1/members/{id}:
     delete:
       operationId: removeMember
@@ -902,7 +997,8 @@ paths:
         content:
           application/json:
             schema:
-              additionalProperties: {}
+              additionalProperties: true
+              type: object
         required: true
       responses:
         "204":
@@ -3455,6 +3551,117 @@ components:
           type: boolean
       required:
       - enabled
+    CreateShareRequest:
+      example:
+        name: name
+        blob_b64: blob_b64
+        meta:
+          key: ""
+        ttl_seconds: 0
+      properties:
+        name:
+          description: Label for the link (metadata only).
+          type: string
+        blob_b64:
+          description: Base64 of the client-sealed envelope (nacl secretbox). The
+            origin never sees plaintext or the key.
+          type: string
+        meta:
+          additionalProperties: true
+          description: Envelope params JSON (alg/version/passphrase marker). Opaque
+            to the origin.
+          type: object
+        ttl_seconds:
+          description: "Link lifetime; default 24h, max 30d."
+          format: int64
+          type: integer
+      required:
+      - blob_b64
+    Share:
+      description: Owner metadata for a share link. The sealed blob is never returned
+        by list.
+      example:
+        id: id
+        name: name
+        meta:
+          key: ""
+        created_by: created_by
+        expires_at: 2000-01-23T04:56:07.000+00:00
+        created_at: 2000-01-23T04:56:07.000+00:00
+        consumed_at: 2000-01-23T04:56:07.000+00:00
+        revoked_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        meta:
+          additionalProperties: true
+          type: object
+        created_by:
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        consumed_at:
+          format: date-time
+          type: string
+        revoked_at:
+          format: date-time
+          type: string
+      required:
+      - created_at
+      - expires_at
+      - id
+    SharesResponse:
+      example:
+        shares:
+        - id: id
+          name: name
+          meta:
+            key: ""
+          created_by: created_by
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          created_at: 2000-01-23T04:56:07.000+00:00
+          consumed_at: 2000-01-23T04:56:07.000+00:00
+          revoked_at: 2000-01-23T04:56:07.000+00:00
+        - id: id
+          name: name
+          meta:
+            key: ""
+          created_by: created_by
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          created_at: 2000-01-23T04:56:07.000+00:00
+          consumed_at: 2000-01-23T04:56:07.000+00:00
+          revoked_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        shares:
+          items:
+            $ref: "#/components/schemas/Share"
+          type: array
+          default: null
+      required:
+      - shares
+    RedeemShareResponse:
+      example:
+        name: name
+        blob_b64: blob_b64
+        meta:
+          key: ""
+      properties:
+        name:
+          type: string
+        blob_b64:
+          description: Base64 of the sealed envelope — returned exactly once.
+          type: string
+        meta:
+          additionalProperties: true
+          type: object
+      required:
+      - blob_b64
     removeMember_200_response:
       example:
         removed: true

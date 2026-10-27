@@ -1175,6 +1175,18 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			travel_mode BOOLEAN NOT NULL DEFAULT FALSE,
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS shares (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			blob BYTEA NOT NULL,
+			meta TEXT NOT NULL DEFAULT '{}',
+			created_by TEXT NOT NULL DEFAULT '',
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ,
+			revoked_at TIMESTAMPTZ
+		)`,
 		`CREATE TABLE IF NOT EXISTS grants (
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,

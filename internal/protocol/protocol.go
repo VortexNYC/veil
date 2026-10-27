@@ -195,6 +195,11 @@ const (
 	// Reason carries enabled=true|false. While on, items without
 	// travel_safe are hidden from every list/fill/Use surface.
 	ActionTravelModeToggled ActionKind = "travel_mode_toggled"
+	// Share links (VTX-783): owner-created sealed blobs, one-time redeem.
+	// Audit rows carry metadata only — never the envelope or keys.
+	ActionShareCreated  ActionKind = "share_created"
+	ActionShareRedeemed ActionKind = "share_redeemed"
+	ActionShareRevoked  ActionKind = "share_revoked"
 )
 
 type Decision string
@@ -250,6 +255,22 @@ type Item struct {
 	CredID     string `json:"cred_id,omitempty"`
 	RpID       string `json:"rp_id,omitempty"`
 	UserHandle string `json:"user_handle,omitempty"`
+}
+
+// Share is a sealed share-link row (VTX-783). Blob is the client-encrypted
+// envelope — the origin never sees plaintext or the fragment key. Meta is
+// the envelope JSON (alg/version/passphrase params). Not MCP.
+type Share struct {
+	ID         string     `json:"id"`
+	OrgID      string     `json:"org_id"`
+	Name       string     `json:"name"`
+	Blob       []byte     `json:"-"`
+	Meta       []byte     `json:"meta,omitempty"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ConsumedAt *time.Time `json:"consumed_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	CreatedBy  string     `json:"created_by"`
 }
 
 // ItemVersion is history metadata. The sealed blob is not here.

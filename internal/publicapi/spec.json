@@ -1086,6 +1086,142 @@
     }
    }
   },
+  "/v1/shares": {
+   "post": {
+    "operationId": "createShare",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Create a share link. Owner-authenticated. The client seals the payload client-side (nacl secretbox) and POSTs only the envelope — the origin never sees plaintext or the fragment key. One-time redeem; audit share_created.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreateShareRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The share metadata",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Share"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "malformed body, bad blob_b64, or invalid ttl"
+     },
+     "401": {
+      "description": "missing or invalid token"
+     },
+     "403": {
+      "description": "not an org owner"
+     }
+    }
+   },
+   "get": {
+    "operationId": "listShares",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "List the org's share links — metadata only, never the blob.",
+    "responses": {
+     "200": {
+      "description": "Share metadata",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SharesResponse"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "missing or invalid token"
+     },
+     "403": {
+      "description": "not an org owner"
+     }
+    }
+   }
+  },
+  "/v1/shares/{id}": {
+   "delete": {
+    "operationId": "revokeShare",
+    "tags": [
+     "Owner"
+    ],
+    "summary": "Revoke a share link. Owner-authenticated; the link dies immediately and redeem reads 404. Audit share_revoked.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "revoked"
+     },
+     "401": {
+      "description": "missing or invalid token"
+     },
+     "403": {
+      "description": "not an org owner"
+     },
+     "404": {
+      "description": "unknown share"
+     }
+    }
+   }
+  },
+  "/v1/shares/{id}/redeem": {
+   "post": {
+    "operationId": "redeemShare",
+    "tags": [
+     "Public"
+    ],
+    "summary": "Redeem a share link. Public — the link id is the capability. Returns the sealed envelope exactly once; consumed, revoked, expired, and missing all read a generic 404. Per-id rate limited. Audit share_redeemed.",
+    "security": [],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The sealed envelope",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RedeemShareResponse"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "missing, consumed, revoked, or expired"
+     },
+     "429": {
+      "description": "redeem rate limit"
+     }
+    }
+   }
+  },
   "/v1/members/{id}": {
    "delete": {
     "operationId": "removeMember",
@@ -4088,6 +4224,105 @@
     "properties": {
      "enabled": {
       "type": "boolean"
+     }
+    }
+   },
+   "CreateShareRequest": {
+    "type": "object",
+    "required": [
+     "blob_b64"
+    ],
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "Label for the link (metadata only)."
+     },
+     "blob_b64": {
+      "type": "string",
+      "description": "Base64 of the client-sealed envelope (nacl secretbox). The origin never sees plaintext or the key."
+     },
+     "meta": {
+      "type": "object",
+      "description": "Envelope params JSON (alg/version/passphrase marker). Opaque to the origin.",
+      "additionalProperties": true
+     },
+     "ttl_seconds": {
+      "type": "integer",
+      "format": "int64",
+      "description": "Link lifetime; default 24h, max 30d."
+     }
+    }
+   },
+   "Share": {
+    "type": "object",
+    "required": [
+     "id",
+     "expires_at",
+     "created_at"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "meta": {
+      "type": "object",
+      "additionalProperties": true
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "expires_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "consumed_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+     }
+    },
+    "description": "Owner metadata for a share link. The sealed blob is never returned by list."
+   },
+   "SharesResponse": {
+    "type": "object",
+    "required": [
+     "shares"
+    ],
+    "properties": {
+     "shares": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Share"
+      }
+     }
+    }
+   },
+   "RedeemShareResponse": {
+    "type": "object",
+    "required": [
+     "blob_b64"
+    ],
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "blob_b64": {
+      "type": "string",
+      "description": "Base64 of the sealed envelope — returned exactly once."
+     },
+     "meta": {
+      "type": "object",
+      "additionalProperties": true
      }
     }
    }

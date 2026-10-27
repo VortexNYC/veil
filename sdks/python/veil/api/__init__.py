@@ -6,5 +6,6 @@ from veil.api.audit_api import AuditApi
 from veil.api.billing_api import BillingApi
 from veil.api.human_api import HumanApi
 from veil.api.owner_api import OwnerApi
+from veil.api.public_api import PublicApi
 from veil.api.recovery_api import RecoveryApi
 

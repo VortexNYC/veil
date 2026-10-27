@@ -53,6 +53,70 @@ func (l *inviteLimiter) allowInvite(inviter, email string) bool {
 	return true
 }
 
+// slidingLimiter is the same per-process sliding window, keyed on a single
+// dimension — the public share-redeem gate uses it so link probing is not
+// free (VTX-783). The map is bounded: a caller probing random ids would
+// otherwise grow process memory forever. Past the cap we sweep dead keys;
+// a map still full after the sweep means the origin is under a probe flood
+// and the request fails closed rather than tracking one more attacker key.
+type slidingLimiter struct {
+	mu   sync.Mutex
+	hits map[string][]time.Time
+	max  int
+	win  time.Duration
+	now  func() time.Time
+}
+
+const slidingLimiterMaxKeys = 1 << 16
+
+func newSlidingLimiter(max int, win time.Duration) *slidingLimiter {
+	return &slidingLimiter{max: max, win: win}
+}
+
+func (l *slidingLimiter) allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.hits == nil {
+		l.hits = map[string][]time.Time{}
+	}
+	now := l.now
+	if now == nil {
+		now = time.Now
+	}
+	cutoff := now().Add(-l.win)
+	kept := l.hits[key][:0]
+	for _, t := range l.hits[key] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) >= l.max {
+		l.hits[key] = kept
+		return false
+	}
+	if _, known := l.hits[key]; !known && len(l.hits) >= slidingLimiterMaxKeys {
+		// Drop every key with no live hits — probing traffic is random,
+		// legit links are few, so the sweep usually reclaims the map.
+		for k, ts := range l.hits {
+			live := false
+			for _, t := range ts {
+				if t.After(cutoff) {
+					live = true
+					break
+				}
+			}
+			if !live {
+				delete(l.hits, k)
+			}
+		}
+		if len(l.hits) >= slidingLimiterMaxKeys {
+			return false
+		}
+	}
+	l.hits[key] = append(kept, now())
+	return true
+}
+
 // fresh prunes expired hits for key in place and returns the live tail.
 // Caller holds the lock.
 func (l *inviteLimiter) fresh(key string, now time.Time) []time.Time {

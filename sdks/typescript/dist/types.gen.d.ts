@@ -663,6 +663,54 @@ export type TravelModeRequest = {
 export type TravelModeView = {
     enabled: boolean;
 };
+export type CreateShareRequest = {
+    /**
+     * Label for the link (metadata only).
+     */
+    name?: string;
+    /**
+     * Base64 of the client-sealed envelope (nacl secretbox). The origin never sees plaintext or the key.
+     */
+    blob_b64: string;
+    /**
+     * Envelope params JSON (alg/version/passphrase marker). Opaque to the origin.
+     */
+    meta?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Link lifetime; default 24h, max 30d.
+     */
+    ttl_seconds?: number;
+};
+/**
+ * Owner metadata for a share link. The sealed blob is never returned by list.
+ */
+export type Share = {
+    id: string;
+    name?: string;
+    meta?: {
+        [key: string]: unknown;
+    };
+    created_by?: string;
+    expires_at: string;
+    created_at: string;
+    consumed_at?: string;
+    revoked_at?: string;
+};
+export type SharesResponse = {
+    shares: Array<Share>;
+};
+export type RedeemShareResponse = {
+    name?: string;
+    /**
+     * Base64 of the sealed envelope — returned exactly once.
+     */
+    blob_b64: string;
+    meta?: {
+        [key: string]: unknown;
+    };
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1400,6 +1448,109 @@ export type CreateInviteResponses = {
     200: InviteResponse;
 };
 export type CreateInviteResponse = CreateInviteResponses[keyof CreateInviteResponses];
+export type ListSharesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/shares';
+};
+export type ListSharesErrors = {
+    /**
+     * missing or invalid token
+     */
+    401: unknown;
+    /**
+     * not an org owner
+     */
+    403: unknown;
+};
+export type ListSharesResponses = {
+    /**
+     * Share metadata
+     */
+    200: SharesResponse;
+};
+export type ListSharesResponse = ListSharesResponses[keyof ListSharesResponses];
+export type CreateShareData = {
+    body: CreateShareRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/shares';
+};
+export type CreateShareErrors = {
+    /**
+     * malformed body, bad blob_b64, or invalid ttl
+     */
+    400: unknown;
+    /**
+     * missing or invalid token
+     */
+    401: unknown;
+    /**
+     * not an org owner
+     */
+    403: unknown;
+};
+export type CreateShareResponses = {
+    /**
+     * The share metadata
+     */
+    200: Share;
+};
+export type CreateShareResponse = CreateShareResponses[keyof CreateShareResponses];
+export type RevokeShareData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/shares/{id}';
+};
+export type RevokeShareErrors = {
+    /**
+     * missing or invalid token
+     */
+    401: unknown;
+    /**
+     * not an org owner
+     */
+    403: unknown;
+    /**
+     * unknown share
+     */
+    404: unknown;
+};
+export type RevokeShareResponses = {
+    /**
+     * revoked
+     */
+    200: unknown;
+};
+export type RedeemShareData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/shares/{id}/redeem';
+};
+export type RedeemShareErrors = {
+    /**
+     * missing, consumed, revoked, or expired
+     */
+    404: unknown;
+    /**
+     * redeem rate limit
+     */
+    429: unknown;
+};
+export type RedeemShareResponses = {
+    /**
+     * The sealed envelope
+     */
+    200: RedeemShareResponse;
+};
+export type RedeemShareResponse2 = RedeemShareResponses[keyof RedeemShareResponses];
 export type RemoveMemberData = {
     body?: never;
     path: {
