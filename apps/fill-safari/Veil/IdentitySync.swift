@@ -38,7 +38,7 @@ final class IdentitySync {
     }
 
     func sync() {
-        VaultScheme.syncInBackground()
+        VaultWindowController.VaultScheme.syncInBackground()
         Task {
             let state = await ASCredentialIdentityStore.shared.state()
             guard state.isEnabled else {

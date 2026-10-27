@@ -160,6 +160,19 @@ final class BridgeDaemon {
                 if (try? FileManager.default.copyItem(at: bin, to: tmp)) != nil {
                     try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp.path)
                     _ = try? FileManager.default.replaceItemAt(dst, withItemAt: tmp)
+                    // Keep ~/.local/bin/veil (CLI + veil mcp stdio) in lockstep
+                    // with Veil.app and ~/.veil/native-host.
+                    let localBin = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent(".local/bin/veil")
+                    if FileManager.default.fileExists(atPath: localBin.path) {
+                        let localTmp = FileManager.default.homeDirectoryForCurrentUser
+                            .appendingPathComponent(".local/bin/veil.new")
+                        try? FileManager.default.removeItem(at: localTmp)
+                        if (try? FileManager.default.copyItem(at: bin, to: localTmp)) != nil {
+                            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: localTmp.path)
+                            _ = try? FileManager.default.replaceItemAt(localBin, withItemAt: localTmp)
+                        }
+                    }
                     // Sync unpacked Chrome/Firefox extensions and restart the
                     // launchd bridge so the new binary serves fill.sock immediately.
                     let syncProc = Process()
