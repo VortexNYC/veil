@@ -26,6 +26,14 @@ import {
   writeCache,
 } from "../../cache";
 import {
+  FieldCard,
+  FilterPill,
+  formatAuditAction,
+  formatGrantLevel,
+  formatKind,
+  formatSubjectKind,
+} from "../../ui";
+import {
   addItem,
   archiveVaultItem,
   createShareLink,
@@ -831,20 +839,22 @@ function Items() {
                 {kind === "card" ? (
                   <>
                     <div className="flex flex-col gap-1">
-                      <Label htmlFor="number">Number</Label>
+                      <Label htmlFor="number">Card number</Label>
                       <Input id="number" name="number" autoComplete="cc-number" required />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="exp_month">Month</Label>
-                      <Input id="exp_month" name="exp_month" autoComplete="cc-exp-month" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="exp_year">Year</Label>
-                      <Input id="exp_year" name="exp_year" autoComplete="cc-exp-year" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="cvv">CVV</Label>
-                      <Input id="cvv" name="cvv" autoComplete="cc-csc" />
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="exp_month">Month (MM)</Label>
+                        <Input id="exp_month" name="exp_month" placeholder="08" autoComplete="cc-exp-month" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="exp_year">Year (YY)</Label>
+                        <Input id="exp_year" name="exp_year" placeholder="29" autoComplete="cc-exp-year" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="cvv">CVV</Label>
+                        <Input id="cvv" name="cvv" placeholder="123" autoComplete="cc-csc" />
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="holder">Name on card</Label>
@@ -854,41 +864,49 @@ function Items() {
                 ) : null}
                 {kind === "identity" ? (
                   <>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="given_name">Given name</Label>
-                      <Input id="given_name" name="given_name" autoComplete="given-name" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="given_name">Given name</Label>
+                        <Input id="given_name" name="given_name" autoComplete="given-name" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="family_name">Family name</Label>
+                        <Input id="family_name" name="family_name" autoComplete="family-name" />
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <Label htmlFor="family_name">Family name</Label>
-                      <Input id="family_name" name="family_name" autoComplete="family-name" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="address">Street</Label>
+                      <Label htmlFor="address">Street address</Label>
                       <Input id="address" name="address" autoComplete="address-line1" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="city">City</Label>
-                      <Input id="city" name="city" autoComplete="address-level2" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="city">City</Label>
+                        <Input id="city" name="city" autoComplete="address-level2" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="region">State / Region</Label>
+                        <Input id="region" name="region" autoComplete="address-level1" />
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="region">Region</Label>
-                      <Input id="region" name="region" autoComplete="address-level1" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="postal">Postal code</Label>
+                        <Input id="postal" name="postal" autoComplete="postal-code" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="country">Country</Label>
+                        <Input id="country" name="country" autoComplete="country-name" />
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="postal">Postal</Label>
-                      <Input id="postal" name="postal" autoComplete="postal-code" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="country">Country</Label>
-                      <Input id="country" name="country" autoComplete="country-name" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" name="phone" autoComplete="tel" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="email">Email</Label>
-                      <Input id="email" name="email" autoComplete="email" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="phone">Phone</Label>
+                        <Input id="phone" name="phone" autoComplete="tel" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" name="email" autoComplete="email" />
+                      </div>
                     </div>
                   </>
                 ) : null}
@@ -996,23 +1014,15 @@ function Items() {
         </Button>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-        {QUICK_PILLS.map((pill) => {
-          const active = kindFilter === pill.value;
-          return (
-            <button
-              key={pill.value}
-              type="button"
-              onClick={() => setKindFilter(pill.value)}
-              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                active
-                  ? "bg-kumo-tint text-kumo-default ring-kumo-focus/40 ring"
-                  : "bg-kumo-elevated/60 text-kumo-subtle hover:bg-kumo-elevated hover:text-kumo-default"
-              }`}
-            >
-              {pill.label}
-            </button>
-          );
-        })}
+        {QUICK_PILLS.map((pill) => (
+          <FilterPill
+            key={pill.value}
+            active={kindFilter === pill.value}
+            onClick={() => setKindFilter(pill.value)}
+          >
+            {pill.label}
+          </FilterPill>
+        ))}
       </div>
       <div className="bg-kumo-base ring-kumo-line flex min-h-0 flex-1 overflow-hidden rounded-lg ring">
         {rows === null ? (
@@ -1045,7 +1055,7 @@ function Items() {
                 const active = selectedItem?.id === item.id;
                 const pinned = isPinned(item);
                 const sub =
-                  item.login || firstURIDomain(item) || item.kind;
+                  item.login || firstURIDomain(item) || formatKind(item.kind);
                 return (
                   <button
                     key={item.id}
@@ -1322,6 +1332,9 @@ function ShareItemForm({
           value={ttl}
           hideLabel
           aria-label="Link expiry"
+          renderValue={(v) =>
+            v === "3600" ? "1 hour" : v === "604800" ? "7 days" : "24 hours"
+          }
           onValueChange={(v) => {
             if (typeof v === "string") {
               setTtl(v);
@@ -1618,7 +1631,7 @@ function AccountInspector({
                   className={pinned ? "text-amber-400" : "text-kumo-subtle"}
                 />
               </button>
-              <Badge variant="neutral">{item.kind}</Badge>
+              <Badge variant="neutral">{formatKind(item.kind)}</Badge>
               {item.has_totp || totp ? <Badge variant="neutral">2FA</Badge> : null}
               {item.travel_safe ? (
                 <Badge variant="neutral">travel safe</Badge>
@@ -1754,7 +1767,7 @@ function AccountInspector({
         </div>
       ) : null}
 
-      <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+      <div className="bg-kumo-elevated/40 ring-kumo-hairline divide-kumo-hairline flex flex-col divide-y rounded-lg ring">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
@@ -1977,7 +1990,7 @@ function AccountInspector({
       </div>
 
       {passwordVisible && secret?.card ? (
-        <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+        <div className="bg-kumo-elevated/40 ring-kumo-hairline divide-kumo-hairline flex flex-col divide-y rounded-lg ring">
           {secret.card.holder ? (
             <div className="flex items-center justify-between gap-4 px-4 py-3">
               <div>
@@ -2103,7 +2116,7 @@ function AccountInspector({
               </button>
             ) : null}
           </div>
-          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+          <div className="bg-kumo-elevated/40 ring-kumo-hairline divide-kumo-hairline flex flex-col divide-y rounded-lg ring">
             {visibleURIs.map((u) => {
               const isWeb =
                 u.toLowerCase().startsWith("http://") ||
@@ -2149,27 +2162,29 @@ function AccountInspector({
       {itemGrants.length > 0 ? (
         <div className="flex flex-col gap-2">
           <Label>Granted Access ({itemGrants.length})</Label>
-          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+          <FieldCard>
             {itemGrants.map((g) => (
               <div
                 key={g.id}
                 className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs"
               >
                 <div className="flex items-center gap-2">
-                  <Badge variant="neutral">{g.subject_kind}</Badge>
+                  <Badge variant="neutral">
+                    {formatSubjectKind(g.subject_kind)}
+                  </Badge>
                   <span className="font-mono font-medium">{g.agent_id}</span>
                 </div>
-                <Badge variant="neutral">{g.level}</Badge>
+                <Badge variant="neutral">{formatGrantLevel(g.level)}</Badge>
               </div>
             ))}
-          </div>
+          </FieldCard>
         </div>
       ) : null}
 
       {itemAudit.length > 0 ? (
         <div className="flex flex-col gap-2">
           <Label>Recent Activity</Label>
-          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+          <FieldCard>
             {itemAudit.map((ev, i) => (
               <div
                 key={`${ev.time}-${i}`}
@@ -2177,7 +2192,7 @@ function AccountInspector({
               >
                 <div className="flex items-center gap-2">
                   <Badge variant={ev.decision === "allow" ? "neutral" : "red"}>
-                    {ev.action}
+                    {formatAuditAction(ev.action)}
                   </Badge>
                   <span className="text-kumo-subtle font-mono" title={ev.agent_id}>
                     {ev.agent_id && ev.agent_id.length === 36
@@ -2190,7 +2205,7 @@ function AccountInspector({
                 </span>
               </div>
             ))}
-          </div>
+          </FieldCard>
         </div>
       ) : null}
     </div>

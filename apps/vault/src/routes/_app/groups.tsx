@@ -254,14 +254,15 @@ function MembersDialog({
             value={kind}
             label="Kind"
             hideLabel={false}
+            renderValue={(v) => (v === "human" ? "Human" : "Agent")}
             onValueChange={(value) => {
               if (typeof value === "string" && isMemberKind(value)) {
                 setKind(value);
               }
             }}
           >
-            <Select.Option value="agent">agent</Select.Option>
-            <Select.Option value="human">human</Select.Option>
+            <Select.Option value="agent">Agent</Select.Option>
+            <Select.Option value="human">Human</Select.Option>
           </Select>
           <div className="flex justify-end">
             <Button type="submit" variant="primary">

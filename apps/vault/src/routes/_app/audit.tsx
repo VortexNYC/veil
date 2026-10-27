@@ -15,6 +15,7 @@ import {
   writeCache,
 } from "../../cache";
 import { PageChrome } from "../../page-chrome";
+import { FilterPill, formatAuditAction } from "../../ui";
 import { events } from "../../origin";
 import type { AuditEvent, Item } from "@vortex-api/veil";
 
@@ -100,18 +101,13 @@ function Audit() {
         </div>
         <div className="flex items-center gap-1.5">
           {(["all", "allow", "deny"] as const).map((d) => (
-            <button
+            <FilterPill
               key={d}
-              type="button"
+              active={decisionFilter === d}
               onClick={() => setDecisionFilter(d)}
-              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium ${
-                decisionFilter === d
-                  ? "bg-kumo-tint text-kumo-default ring-kumo-focus/40 ring"
-                  : "bg-kumo-elevated/60 text-kumo-subtle"
-              }`}
             >
               {d === "all" ? "All decisions" : d}
-            </button>
+            </FilterPill>
           ))}
         </div>
       </div>
@@ -144,8 +140,8 @@ function Audit() {
                         >
                           {e.decision}
                         </Badge>
-                        <span className="font-mono text-sm font-medium">
-                          {e.action}
+                        <span className="text-sm font-medium">
+                          {formatAuditAction(e.action)}
                         </span>
                       </div>
                     </Table.Cell>

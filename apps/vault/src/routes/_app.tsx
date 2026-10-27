@@ -30,6 +30,7 @@ import {
 import { useEffect, useState } from "react";
 import { signedIn, signOut, token, amrOf } from "../auth";
 import { CACHE_KEYS, preloadVaultCache, readCache, writeCache } from "../cache";
+import { FilterPill } from "../ui";
 import { billing, billingCheckout, recoveryShare } from "../origin";
 import type { BillingView, RecoveryShare } from "@vortex-api/veil";
 
@@ -271,28 +272,18 @@ function PasswordGeneratorModal({
             </Badge>
           </div>
           <div className="flex gap-1.5">
-            <button
-              type="button"
+            <FilterPill
+              active={mode === "password"}
               onClick={() => setMode("password")}
-              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium ${
-                mode === "password"
-                  ? "bg-kumo-tint text-kumo-default ring-kumo-focus/40 ring"
-                  : "bg-kumo-elevated/60 text-kumo-subtle"
-              }`}
             >
               Random Password
-            </button>
-            <button
-              type="button"
+            </FilterPill>
+            <FilterPill
+              active={mode === "passphrase"}
               onClick={() => setMode("passphrase")}
-              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium ${
-                mode === "passphrase"
-                  ? "bg-kumo-tint text-kumo-default ring-kumo-focus/40 ring"
-                  : "bg-kumo-elevated/60 text-kumo-subtle"
-              }`}
             >
               Memorable Passphrase
-            </button>
+            </FilterPill>
           </div>
           <div className="flex items-center gap-2">
             <Input

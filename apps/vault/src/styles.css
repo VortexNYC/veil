@@ -25,11 +25,13 @@
     user-select: text;
   }
   [role="dialog"] {
+    width: min(32rem, 92vw);
     max-height: 88dvh;
     overflow-y: auto;
   }
   [role="dialog"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-  [role="dialog"] textarea {
+  [role="dialog"] textarea,
+  [role="dialog"] button[role="combobox"] {
     width: 100%;
   }
   * {

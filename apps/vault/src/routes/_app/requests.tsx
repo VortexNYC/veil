@@ -159,6 +159,9 @@ function Requests() {
           value={status}
           label="Status"
           hideLabel
+          renderValue={(v) =>
+            `${String(v).charAt(0).toUpperCase()}${String(v).slice(1)} requests`
+          }
           onValueChange={(value) => {
             if (typeof value === "string" && isStatus(value)) {
               setStatus(value);
