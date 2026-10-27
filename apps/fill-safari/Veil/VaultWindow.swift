@@ -147,7 +147,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     private func showSplash() {
         // Splash already up (e.g. open() re-entered while unlockInFlight) —
         // just front it; rebuilding would drop the live button/subtitle.
-        if let window, web == nil {
+        if let window, web == nil, subtitleField != nil {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             return
@@ -251,6 +251,8 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         let view = WKWebView(frame: window.contentView!.bounds, configuration: cfg)
         view.autoresizingMask = [.width, .height]
         view.navigationDelegate = self
+        subtitleField = nil
+        unlockButton = nil
         window.contentView = view
         web = view
         view.load(URLRequest(url: URL(string: vaultOrigin + pendingPath)!))
