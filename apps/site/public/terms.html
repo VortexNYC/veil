@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veil — Terms of Service</title>
+<meta name="description" content="The terms for using Veil during the public beta: the service, the $1/month offer, your data, acceptable use, and liability.">
+<style>
+  @font-face {
+    font-family: "Hedvig Letters Serif";
+    src: url("/fonts/hedvig-letters-serif.woff2") format("woff2");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Hedvig Letters Sans";
+    src: url("/fonts/hedvig-letters-sans.woff2") format("woff2");
+    font-display: swap;
+  }
+  :root {
+    --void: oklch(0.1 0 0);
+    --surface: oklch(0.165 0 0);
+    --border: oklch(0.26 0 0);
+    --subtle: oklch(0.52 0 0);
+    --secondary: oklch(0.68 0 0);
+    --foreground: oklch(0.9 0 0);
+    --bright: oklch(0.97 0 0);
+    --serif: "Hedvig Letters Serif", Georgia, serif;
+    --sans: "Hedvig Letters Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--void);
+    color: var(--foreground);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 64px 20px;
+  }
+  main { max-width: 640px; width: 100%; margin: 0 auto; }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(36px, 7vw, 56px);
+    font-weight: 400;
+    color: var(--bright);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  h2 {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--bright);
+    margin: 40px 0 12px;
+  }
+  p, li {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--secondary);
+  }
+  ul { padding-left: 20px; margin-top: 8px; }
+  li { margin-bottom: 6px; }
+  li::marker { color: var(--subtle); }
+  a { color: var(--foreground); }
+  .back {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--subtle);
+    text-decoration: none;
+  }
+  .back:hover { color: var(--bright); }
+  .note {
+    margin-top: 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .note p { font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; veil.nyc</a>
+  <h1>Terms of Service</h1>
+  <p style="margin-top:16px">These terms govern your use of Veil during the public beta.
+  They are written in plain terms on purpose; if anything here is unclear, that's a bug.</p>
+
+  <h2>1. Service &amp; Operator</h2>
+  <ul>
+    <li>Veil is operated by <strong>Organization 13 Inc.</strong>, doing business as <strong>Veil NYC</strong>.</li>
+    <li>Veil is a credential broker for humans and AI agents: a vault that holds your secrets under encryption, and a broker that lets an agent <em>use</em> a credential without ever receiving it.</li>
+    <li>By creating an account or using the service, you agree to these terms. If you use Veil on behalf of an organization, you represent that you are authorized to bind it.</li>
+  </ul>
+
+  <h2>2. Public Beta &amp; $1/Month Promotional Offer</h2>
+  <ul>
+    <li>Veil is in <strong>public beta</strong>: signup is open, and organization owners can invite members.</li>
+    <li>The <strong>free tier</strong> includes 100 credential uses per month per organization.</li>
+    <li><strong>Veil Pro Beta</strong> is <strong>$1.00/month through December 31, 2026</strong> for unlimited credential uses. After the promotional period it transitions to the standard <strong>$29/month</strong> pricing unless you cancel prior to renewal.</li>
+    <li>You can cancel anytime; cancellation stops the next renewal and does not retroactively refund fees already paid.</li>
+  </ul>
+
+  <h2>3. Your Data &amp; Zero-Knowledge Boundary</h2>
+  <ul>
+    <li><strong>You own your vault items.</strong> We claim no rights over the secrets you store beyond what is required to operate the service.</li>
+    <li>Secrets are sealed under per-organization keys; Veil never accesses your plaintext secrets and never trains models on customer secrets.</li>
+    <li>What we hold operationally — account identity, audit metadata, and ciphertext — is described in <a href="/privacy">Privacy</a>.</li>
+  </ul>
+
+  <h2>4. Acceptable Use</h2>
+  <ul>
+    <li>No unlawful use, and no use of the service to store or broker credentials you are not authorized to hold.</li>
+    <li>No credential stuffing, password spraying, or using Veil to automate abuse of upstream providers.</li>
+    <li>No abuse of upstream providers: do not use the broker to circumvent a provider's rate limits, terms, or access controls.</li>
+    <li>We may suspend accounts that violate these rules, with notice where practicable.</li>
+  </ul>
+
+  <h2>5. Pre-Release Warranty Disclaimer &amp; Liability Cap</h2>
+  <ul>
+    <li>During the beta the service is provided <strong>"as-is" and "as available"</strong>, without warranty of any kind, express or implied — including merchantability, fitness for a particular purpose, and non-infringement. We publish no uptime SLA.</li>
+    <li>To the maximum extent permitted by law, our aggregate liability arising out of or relating to the service is <strong>capped at the fees you paid in the 12 months preceding the claim</strong>. We are not liable for indirect, incidental, special, consequential, or punitive damages, or for lost profits, data, or goodwill.</li>
+    <li>Do not make Veil your only copy of anything yet. Durability work is real and tested, but the beta is still pre-release.</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>Status.</strong> These terms reflect the public beta and will be updated as the
+    product and pricing change. Questions: the address in
+    <a href="/.well-known/security.txt">security.txt</a>.</p>
+  </div>
+</main>
+</body>
+</html>

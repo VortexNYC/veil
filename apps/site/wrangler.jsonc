@@ -16,6 +16,8 @@
     { "pattern": "veil.nyc/security.html", "custom_domain": false },
     { "pattern": "veil.nyc/privacy", "custom_domain": false },
     { "pattern": "veil.nyc/privacy.html", "custom_domain": false },
+    { "pattern": "veil.nyc/terms", "custom_domain": false },
+    { "pattern": "veil.nyc/terms.html", "custom_domain": false },
     { "pattern": "veil.nyc/.well-known/security.txt", "custom_domain": false },
     { "pattern": "veil.nyc/r/*", "custom_domain": false },
     { "pattern": "veil.nyc/releases/*", "custom_domain": false },
