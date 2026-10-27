@@ -284,7 +284,7 @@ function Settings() {
       title="Settings"
       subtitle="Identity is Ory Elements. This app does not restyle those screens."
     >
-      <div className="flex flex-col items-start gap-3">
+      <div className="flex w-full max-w-3xl flex-col gap-4">
         {paid ? <Banner title="Subscription active — thank you for backing Veil Beta!" /> : null}
         {view ? (
           <LayerCard>

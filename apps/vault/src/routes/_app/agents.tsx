@@ -246,7 +246,7 @@ function Agents() {
             Add
           </Button>
           <Dialog.Root open={open} onOpenChange={setOpen}>
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -286,7 +286,7 @@ function Agents() {
               }
             }}
           >
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -494,7 +494,7 @@ function Agents() {
               }
             }}
           >
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               {mint ? (
                 <div className="flex flex-col gap-4">
                   <Dialog.Title>Connect MCP — {mint.agent_id}</Dialog.Title>

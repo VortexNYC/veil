@@ -24,6 +24,14 @@
     -webkit-user-select: text;
     user-select: text;
   }
+  [role="dialog"] {
+    max-height: 88dvh;
+    overflow-y: auto;
+  }
+  [role="dialog"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  [role="dialog"] textarea {
+    width: 100%;
+  }
   * {
     overscroll-behavior: contain;
   }

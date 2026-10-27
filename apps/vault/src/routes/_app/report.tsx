@@ -179,10 +179,8 @@ function Report() {
               <Table.Header>
                 <Table.Row>
                   <Table.Head>Severity</Table.Head>
-                  <Table.Head>Item</Table.Head>
-                  <Table.Head>Kind</Table.Head>
-                  <Table.Head>URI</Table.Head>
-                  <Table.Head>Findings</Table.Head>
+                  <Table.Head>Account</Table.Head>
+                  <Table.Head>Issues</Table.Head>
                   <Table.Head></Table.Head>
                 </Table.Row>
               </Table.Header>
@@ -195,24 +193,27 @@ function Report() {
                       </Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <button
-                        type="button"
-                        className="cursor-pointer text-left font-medium hover:underline"
-                        onClick={() => {
-                          sessionStorage.setItem(CACHE_KEYS.selectItemId, f.item_id);
-                          void navigate({ to: "/items" });
-                        }}
-                      >
-                        {f.name}
-                      </button>
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          className="cursor-pointer text-left font-medium hover:underline"
+                          onClick={() => {
+                            sessionStorage.setItem(CACHE_KEYS.selectItemId, f.item_id);
+                            void navigate({ to: "/items" });
+                          }}
+                        >
+                          {f.name}
+                        </button>
+                        {f.uri ? (
+                          <span className="text-kumo-subtle max-w-xs truncate font-mono text-xs">
+                            {f.uri}
+                          </span>
+                        ) : null}
+                      </div>
                     </Table.Cell>
-                    <Table.Cell>{f.kind}</Table.Cell>
-                    <Table.Cell>
-                      <Text as="span" variant="mono-secondary">
-                        {f.uri ?? ""}
-                      </Text>
+                    <Table.Cell className="text-sm">
+                      {issueLabels(f).join(", ")}
                     </Table.Cell>
-                    <Table.Cell>{issueLabels(f).join(", ")}</Table.Cell>
                     <Table.Cell>
                       <Button
                         type="button"
@@ -222,7 +223,7 @@ function Report() {
                           void navigate({ to: "/items" });
                         }}
                       >
-                        Open
+                        Fix in Items
                       </Button>
                     </Table.Cell>
                   </Table.Row>
