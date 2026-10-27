@@ -27,11 +27,14 @@ import (
 const indexTTL = time.Minute
 
 type jsonMatchEntry struct {
-	UUID       string   `json:"uuid"`
-	Name       string   `json:"name"`
-	Login      string   `json:"login,omitempty"`
-	Kind       string   `json:"kind"`
-	URIs       []string `json:"uris,omitempty"`
+	UUID  string   `json:"uuid"`
+	Name  string   `json:"name"`
+	Login string   `json:"login,omitempty"`
+	Kind  string   `json:"kind"`
+	URIs  []string `json:"uris,omitempty"`
+	// Tags rides `list` only (the edit prefill) — like URIs it stays off
+	// `match` replies so page-adjacent contexts never see it.
+	Tags       []string `json:"tags,omitempty"`
 	HasTOTP    bool     `json:"hasTotp,omitempty"`
 	HasPasskey bool     `json:"hasPasskey,omitempty"`
 	SavedFor   string   `json:"savedFor,omitempty"`
@@ -69,15 +72,21 @@ type jsonFillEntry struct {
 }
 
 type jsonRequest struct {
-	Action         string          `json:"action"`
-	URL            string          `json:"url"`
-	App            string          `json:"app"`
-	UUID           string          `json:"uuid"`
-	Login          string          `json:"login"`
-	Password       string          `json:"password"`
-	PasswordRules  string          `json:"passwordRules"`
-	Create         bool            `json:"create"`
-	OTPAuth        string          `json:"otpauth"`
+	Action        string `json:"action"`
+	URL           string `json:"url"`
+	App           string `json:"app"`
+	UUID          string `json:"uuid"`
+	Login         string `json:"login"`
+	Password      string `json:"password"`
+	PasswordRules string `json:"passwordRules"`
+	Create        bool   `json:"create"`
+	OTPAuth       string `json:"otpauth"`
+	// Update carries the editable metadata for action "update" — name is
+	// not editable (it is the lookup key) and there is no secret field:
+	// rotation stays on save/generate so a metadata edit can never smuggle
+	// a credential write past the confirm.
+	URIs           []string        `json:"uris"`
+	Tags           []string        `json:"tags"`
 	Origin         string          `json:"origin"`
 	PublicKey      json.RawMessage `json:"publicKey"`
 	RelatedOrigins []string        `json:"relatedOrigins"`
@@ -183,6 +192,8 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 		return h.jsonGenerate(in.URL, in.Login, in.PasswordRules, in.UUID, in.peer)
 	case "save":
 		return h.jsonSave(in.URL, in.Login, in.Password, in.UUID, in.Create, in.peer)
+	case "update":
+		return h.jsonUpdate(in.UUID, in.Login, in.URIs, in.Tags, in.peer)
 	case "enrollTotp":
 		return h.jsonEnrollTotp(in.URL, in.OTPAuth, in.UUID, in.peer)
 	case "passkeyCreate":
@@ -632,6 +643,7 @@ func (h *Host) jsonList() []jsonMatchEntry {
 		}
 		e := matchEntry(item)
 		e.URIs = item.URIs
+		e.Tags = item.Tags
 		if item.Kind == protocol.ItemPasskey && h.Replica != nil {
 			if raw := h.Replica.Material(item.ID); raw != "" {
 				env := material.Unpack([]byte(raw))
@@ -838,6 +850,64 @@ func (h *Host) jsonSave(rawURL, login, password, uuid string, create bool, peer 
 		Name  string `json:"name"`
 		Login string `json:"login,omitempty"`
 	}{UUID: item.ID, Name: item.Name, Login: login})
+}
+
+// jsonUpdate is the extension's item edit: login, URIs, and tags on an
+// existing item. Name is not editable — it is the lookup key — and there
+// is no secret field on this action, so a metadata edit can never replace
+// the credential (rotation stays on save/generate, which prompt the same).
+// Confirm rides the item's own site scope like a fill on that host.
+func (h *Host) jsonUpdate(uuid, login string, uris, tags []string, peer *Peer) []byte {
+	uuid = strings.TrimSpace(uuid)
+	if uuid == "" {
+		return jsonGenerateErr("failed")
+	}
+	h.ensureIndex()
+	item, ok := h.indexItem(uuid)
+	if !ok || item.Archived {
+		return jsonGenerateErr("failed")
+	}
+	scope := "veil.nyc"
+	if len(item.URIs) > 0 {
+		if s := grant.Registrable(item.URIs[0]); s != "" {
+			scope = s
+		}
+	}
+	if err := h.confirm(fillPrompt("edit", "edit a saved item", &jsonMatchEntry{Name: item.Name, Login: item.Login}), scope, true, peer); err != nil {
+		return jsonGenerateErr("canceled")
+	}
+	if err := h.updateItemMeta(item.ID, login, uris, tags); err != nil {
+		if h.loginNeeded() {
+			return jsonGenerateErr("need_login")
+		}
+		return jsonGenerateErr("failed")
+	}
+	h.invalidateIndex()
+	h.replicaSyncSoon()
+	return jsonBytes(struct {
+		OK   bool   `json:"ok"`
+		UUID string `json:"uuid"`
+	}{OK: true, UUID: item.ID})
+}
+
+func (h *Host) updateItemMeta(uuid, login string, uris, tags []string) error {
+	if h.Origin != "" {
+		payload, err := json.Marshal(struct {
+			Login string   `json:"login,omitempty"`
+			URIs  []string `json:"uris,omitempty"`
+			Tags  []string `json:"tags,omitempty"`
+		}{Login: login, URIs: uris, Tags: tags})
+		if err != nil {
+			return err
+		}
+		_, err = h.originCall(http.MethodPatch, "/v1/items/"+url.PathEscape(uuid), payload)
+		return err
+	}
+	if h.App == nil {
+		return errGenerateCreate
+	}
+	_, err := h.App.UpdateItem(uuid, uris, nil, tags, login, nil)
+	return err
 }
 
 func (h *Host) jsonEnrollTotp(rawURL, otpauth, uuid string, peer *Peer) []byte {

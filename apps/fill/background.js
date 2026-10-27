@@ -846,6 +846,33 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     });
     return true;
   }
+  if (msg.type === "popup-update") {
+    // Metadata edit — login/URIs/tags only; the host action has no secret
+    // field, so a popup edit can never rotate the credential.
+    hostSend(
+      {
+        action: "update",
+        uuid: msg.uuid || "",
+        login: msg.login || "",
+        uris: msg.uris || [],
+        tags: msg.tags || [],
+      },
+      90000,
+    ).then(
+      function (res) {
+        if (needLogin(res)) {
+          openLogin();
+          sendResponse({ ok: false, error: "need_login" });
+          return;
+        }
+        sendResponse({ ok: !!(res && res.ok), error: (res && res.error) || "" });
+      },
+      function () {
+        sendResponse({ ok: false, error: "host" });
+      },
+    );
+    return true;
+  }
   if (msg.type === "popup-generate") {
     generateTab(msg.tabId, msg.url, msg.login, msg.passwordRules).then(function (got) {
       sendResponse(got);

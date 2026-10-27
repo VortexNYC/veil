@@ -211,6 +211,45 @@ button.v-row {
 }
 .v-field-icon:hover { color: var(--v-text); background: var(--v-fill-hover); }
 .v-field-icon svg { display: block; }
+/* Row-adjacent edit affordance — the pencil sits beside the fill row. */
+.v-editrow { display: flex; align-items: stretch; }
+.v-editrow > .v-row { flex: 1; min-width: 0; }
+.v-edit {
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--v-subtle);
+  cursor: pointer;
+  font: inherit;
+}
+.v-edit:hover { color: var(--v-text); background: var(--v-fill-hover); }
+/* Edit form — name is shown read-only (it is the vault's lookup key). */
+.v-editform { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.v-editform .v-label { font-size: 11px; color: var(--v-subtle); margin-bottom: 2px; }
+.v-editform .v-inp {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--v-line);
+  border-radius: 6px;
+  background: var(--v-base);
+  color: var(--v-text);
+  font: inherit;
+}
+.v-editform .v-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.v-editform .v-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--v-line);
+  border-radius: 6px;
+  background: var(--v-fill);
+  color: var(--v-text);
+  cursor: pointer;
+  font: inherit;
+}
+.v-editform .v-btn.v-primary { background: var(--v-brand); border-color: transparent; color: #fff; }
 `;
 
   // Stroke glyphs, 24 viewBox — inherit color via currentColor.

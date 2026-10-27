@@ -100,7 +100,104 @@ function entryButton(e, fromSearch) {
   b.addEventListener("click", function () {
     pick(e, fromSearch);
   });
-  return b;
+  // Item metadata (login/URIs/tags) edits in place — the pencil beside the
+  // row opens the form; the secret never leaves the rotate path.
+  const wrap = document.createElement("div");
+  wrap.className = "v-editrow";
+  wrap.appendChild(b);
+  const edit = document.createElement("button");
+  edit.className = "v-edit";
+  edit.type = "button";
+  edit.title = "Edit " + (e.name || "item");
+  edit.textContent = "✎";
+  edit.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    openEdit(e);
+  });
+  wrap.appendChild(edit);
+  return wrap;
+}
+
+// The edit form covers metadata only — name is the vault's lookup key and
+// the secret rotates through generate/save, never through this surface.
+function openEdit(e) {
+  clearList();
+  const form = document.createElement("form");
+  form.className = "v-editform";
+  const nameWrap = document.createElement("div");
+  nameWrap.appendChild(veilUI.el("div", "v-label", "Name"));
+  nameWrap.appendChild(veilUI.el("div", "v-name", e.name || e.uuid || "item"));
+  form.appendChild(nameWrap);
+  function field(label, id, value) {
+    const w = document.createElement("div");
+    const l = veilUI.el("div", "v-label", label);
+    const inp = document.createElement("input");
+    inp.className = "v-inp";
+    inp.name = id;
+    inp.value = value || "";
+    inp.autocomplete = "off";
+    w.appendChild(l);
+    w.appendChild(inp);
+    return w;
+  }
+  form.appendChild(field("Username", "login", e.login));
+  form.appendChild(field("URIs (comma-separated)", "uris", (e.uris || []).join(", ")));
+  form.appendChild(field("Tags (comma-separated)", "tags", (e.tags || []).join(", ")));
+  const actions = document.createElement("div");
+  actions.className = "v-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "v-btn";
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", function () {
+    const s = document.querySelector(".v-search");
+    if (s && s.value.trim()) {
+      renderSearch(s.value.trim());
+    } else {
+      renderSite();
+    }
+  });
+  const save = document.createElement("button");
+  save.className = "v-btn v-primary";
+  save.type = "submit";
+  save.textContent = "Save";
+  actions.appendChild(cancel);
+  actions.appendChild(save);
+  form.appendChild(actions);
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    const list = function (v) {
+      return String(v || "")
+        .split(",")
+        .map(function (s) {
+          return s.trim();
+        })
+        .filter(Boolean);
+    };
+    save.disabled = true;
+    chrome.runtime.sendMessage(
+      {
+        type: "popup-update",
+        uuid: e.uuid,
+        login: form.elements.login.value.trim(),
+        uris: list(form.elements.uris.value),
+        tags: list(form.elements.tags.value),
+      },
+      function (res) {
+        if (res && res.ok) {
+          window.close();
+          return;
+        }
+        save.disabled = false;
+        show('<div class="v-err">Edit canceled or failed.</div>');
+      },
+    );
+  });
+  state.list.appendChild(form);
+  const first = form.elements.login;
+  if (first && typeof first.focus === "function") {
+    first.focus();
+  }
 }
 
 function suggestButton(got) {
