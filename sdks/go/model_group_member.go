@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -21,9 +21,9 @@ var _ MappedNullable = &GroupMember{}
 
 // GroupMember struct for GroupMember
 type GroupMember struct {
-	GroupId    string `json:"group_id"`
+	GroupId string `json:"group_id"`
 	MemberKind string `json:"member_kind"`
-	MemberId   string `json:"member_id"`
+	MemberId string `json:"member_id"`
 }
 
 type _GroupMember GroupMember
@@ -121,7 +121,7 @@ func (o *GroupMember) SetMemberId(v string) {
 }
 
 func (o GroupMember) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -151,10 +151,10 @@ func (o *GroupMember) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -210,3 +210,5 @@ func (v *NullableGroupMember) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

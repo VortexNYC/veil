@@ -19,10 +19,10 @@ var _ MappedNullable = &RotateHookResult{}
 
 // RotateHookResult struct for RotateHookResult
 type RotateHookResult struct {
-	Hook   *string `json:"hook,omitempty"`
-	Ok     *bool   `json:"ok,omitempty"`
-	Status *int32  `json:"status,omitempty"`
-	Error  *string `json:"error,omitempty"`
+	Hook *string `json:"hook,omitempty"`
+	Ok *bool `json:"ok,omitempty"`
+	Status *int32 `json:"status,omitempty"`
+	Error *string `json:"error,omitempty"`
 }
 
 // NewRotateHookResult instantiates a new RotateHookResult object
@@ -171,7 +171,7 @@ func (o *RotateHookResult) SetError(v string) {
 }
 
 func (o RotateHookResult) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -230,3 +230,5 @@ func (v *NullableRotateHookResult) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -21,15 +21,15 @@ var _ MappedNullable = &WIFItemFields{}
 
 // WIFItemFields struct for WIFItemFields
 type WIFItemFields struct {
-	TokenUrl          string  `json:"token_url"`
-	AssertionTokenUrl string  `json:"assertion_token_url"`
-	AssertionClientId string  `json:"assertion_client_id"`
-	AssertionSecret   string  `json:"assertion_secret"`
+	TokenUrl string `json:"token_url"`
+	AssertionTokenUrl string `json:"assertion_token_url"`
+	AssertionClientId string `json:"assertion_client_id"`
+	AssertionSecret string `json:"assertion_secret"`
 	AssertionAudience *string `json:"assertion_audience,omitempty"`
-	FederationRuleId  string  `json:"federation_rule_id"`
-	OrganizationId    *string `json:"organization_id,omitempty"`
-	ServiceAccountId  *string `json:"service_account_id,omitempty"`
-	WorkspaceId       *string `json:"workspace_id,omitempty"`
+	FederationRuleId string `json:"federation_rule_id"`
+	OrganizationId *string `json:"organization_id,omitempty"`
+	ServiceAccountId *string `json:"service_account_id,omitempty"`
+	WorkspaceId *string `json:"workspace_id,omitempty"`
 }
 
 type _WIFItemFields WIFItemFields
@@ -305,7 +305,7 @@ func (o *WIFItemFields) SetWorkspaceId(v string) {
 }
 
 func (o WIFItemFields) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -351,10 +351,10 @@ func (o *WIFItemFields) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -410,3 +410,5 @@ func (v *NullableWIFItemFields) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

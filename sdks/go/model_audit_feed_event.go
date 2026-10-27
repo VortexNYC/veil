@@ -11,10 +11,10 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"time"
+	"bytes"
+	"fmt"
 )
 
 // checks if the AuditFeedEvent type satisfies the MappedNullable interface at compile time
@@ -23,15 +23,15 @@ var _ MappedNullable = &AuditFeedEvent{}
 // AuditFeedEvent struct for AuditFeedEvent
 type AuditFeedEvent struct {
 	// Committed row id — monotonically increasing per append; the feed cursor.
-	Id         int64     `json:"id"`
-	Time       time.Time `json:"time"`
-	OrgId      string    `json:"org_id"`
-	AgentId    string    `json:"agent_id"`
-	ItemId     string    `json:"item_id"`
-	Action     string    `json:"action"`
-	Decision   string    `json:"decision"`
-	Reason     *string   `json:"reason,omitempty"`
-	ApprovalId *string   `json:"approval_id,omitempty"`
+	Id int64 `json:"id"`
+	Time time.Time `json:"time"`
+	OrgId string `json:"org_id"`
+	AgentId string `json:"agent_id"`
+	ItemId string `json:"item_id"`
+	Action string `json:"action"`
+	Decision string `json:"decision"`
+	Reason *string `json:"reason,omitempty"`
+	ApprovalId *string `json:"approval_id,omitempty"`
 }
 
 type _AuditFeedEvent AuditFeedEvent
@@ -293,7 +293,7 @@ func (o *AuditFeedEvent) SetApprovalId(v string) {
 }
 
 func (o AuditFeedEvent) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -337,10 +337,10 @@ func (o *AuditFeedEvent) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -396,3 +396,5 @@ func (v *NullableAuditFeedEvent) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

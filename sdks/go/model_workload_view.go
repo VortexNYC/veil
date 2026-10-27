@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -21,9 +21,9 @@ var _ MappedNullable = &WorkloadView{}
 
 // WorkloadView struct for WorkloadView
 type WorkloadView struct {
-	AgentId  string `json:"agent_id"`
-	Issuer   string `json:"issuer"`
-	Subject  string `json:"subject"`
+	AgentId string `json:"agent_id"`
+	Issuer string `json:"issuer"`
+	Subject string `json:"subject"`
 	Audience string `json:"audience"`
 	// optional OidcPolicy claim rules (every key must match at least one allowed value)
 	Claims map[string][]string `json:"claims,omitempty"`
@@ -181,7 +181,7 @@ func (o *WorkloadView) SetClaims(v map[string][]string) {
 }
 
 func (o WorkloadView) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -216,10 +216,10 @@ func (o *WorkloadView) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -275,3 +275,5 @@ func (v *NullableWorkloadView) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

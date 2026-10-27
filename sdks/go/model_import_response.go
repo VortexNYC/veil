@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"bytes"
 	"encoding/json"
+	"bytes"
 	"fmt"
 )
 
@@ -22,7 +22,7 @@ var _ MappedNullable = &ImportResponse{}
 // ImportResponse struct for ImportResponse
 type ImportResponse struct {
 	Names []string `json:"names"`
-	Count int32    `json:"count"`
+	Count int32 `json:"count"`
 }
 
 type _ImportResponse ImportResponse
@@ -95,7 +95,7 @@ func (o *ImportResponse) SetCount(v int32) {
 }
 
 func (o ImportResponse) MarshalJSON() ([]byte, error) {
-	toSerialize, err := o.ToMap()
+	toSerialize,err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -123,10 +123,10 @@ func (o *ImportResponse) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
-	for _, requiredProperty := range requiredProperties {
+	for _, requiredProperty := range(requiredProperties) {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -182,3 +182,5 @@ func (v *NullableImportResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
+
+

@@ -18,14 +18,15 @@ import (
 	"net/url"
 )
 
+
 // BillingAPIService BillingAPI service
 type BillingAPIService service
 
 type BillingAPIBillingWebhookRequest struct {
-	ctx             context.Context
-	ApiService      *BillingAPIService
+	ctx context.Context
+	ApiService *BillingAPIService
 	vortexSignature *string
-	requestBody     *map[string]interface{}
+	requestBody *map[string]interface{}
 }
 
 // t&#x3D;&lt;ms&gt;,v1&#x3D;&lt;hex-hmac&gt;
@@ -46,22 +47,22 @@ func (r BillingAPIBillingWebhookRequest) Execute() (*http.Response, error) {
 /*
 BillingWebhook Vortex billing webhook receiver. Auth is the Vortex-Signature header (HMAC-SHA256 over the raw body) — no org principal. Subscription and entitlement lifecycle events flip the org's plan state; unknown event types are durable no-ops. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return BillingAPIBillingWebhookRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return BillingAPIBillingWebhookRequest
 */
 func (a *BillingAPIService) BillingWebhook(ctx context.Context) BillingAPIBillingWebhookRequest {
 	return BillingAPIBillingWebhookRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
 func (a *BillingAPIService) BillingWebhookExecute(r BillingAPIBillingWebhookRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod = http.MethodPost
-		localVarPostBody   interface{}
-		formFiles          []formFile
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "BillingAPIService.BillingWebhook")
@@ -130,7 +131,7 @@ func (a *BillingAPIService) BillingWebhookExecute(r BillingAPIBillingWebhookRequ
 }
 
 type BillingAPICreateBillingCheckoutRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *BillingAPIService
 }
 
@@ -141,25 +142,24 @@ func (r BillingAPICreateBillingCheckoutRequest) Execute() (*BillingCheckout, *ht
 /*
 CreateBillingCheckout Owner-only upgrade click: mints a fresh hosted Vortex checkout URL bound to this org. Checkout tokens are single-use and hash-pinned — never cache the URL; mint one per click. The vault's cap-banner Subscribe action. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return BillingAPICreateBillingCheckoutRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return BillingAPICreateBillingCheckoutRequest
 */
 func (a *BillingAPIService) CreateBillingCheckout(ctx context.Context) BillingAPICreateBillingCheckoutRequest {
 	return BillingAPICreateBillingCheckoutRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return BillingCheckout
+//  @return BillingCheckout
 func (a *BillingAPIService) CreateBillingCheckoutExecute(r BillingAPICreateBillingCheckoutRequest) (*BillingCheckout, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodPost
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *BillingCheckout
+		localVarHTTPMethod   = http.MethodPost
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *BillingCheckout
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "BillingAPIService.CreateBillingCheckout")
@@ -228,7 +228,7 @@ func (a *BillingAPIService) CreateBillingCheckoutExecute(r BillingAPICreateBilli
 }
 
 type BillingAPIGetBillingRequest struct {
-	ctx        context.Context
+	ctx context.Context
 	ApiService *BillingAPIService
 }
 
@@ -239,25 +239,24 @@ func (r BillingAPIGetBillingRequest) Execute() (*BillingView, *http.Response, er
 /*
 GetBilling Owner-facing billing state: enforced plan plus this window's use count against the free allowance. included is null when metering is off or the plan is paid. The vault's cap banner reads this. Not MCP.
 
-	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
-	@return BillingAPIGetBillingRequest
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @return BillingAPIGetBillingRequest
 */
 func (a *BillingAPIService) GetBilling(ctx context.Context) BillingAPIGetBillingRequest {
 	return BillingAPIGetBillingRequest{
 		ApiService: a,
-		ctx:        ctx,
+		ctx: ctx,
 	}
 }
 
 // Execute executes the request
-//
-//	@return BillingView
+//  @return BillingView
 func (a *BillingAPIService) GetBillingExecute(r BillingAPIGetBillingRequest) (*BillingView, *http.Response, error) {
 	var (
-		localVarHTTPMethod  = http.MethodGet
-		localVarPostBody    interface{}
-		formFiles           []formFile
-		localVarReturnValue *BillingView
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *BillingView
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "BillingAPIService.GetBilling")
