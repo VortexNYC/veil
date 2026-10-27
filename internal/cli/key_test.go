@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -276,5 +277,211 @@ func TestCombineRejectsMixedSets(t *testing.T) {
 	got, _ := loadHexKey("", out)
 	if !bytes.Equal(got, k1) {
 		t.Fatal("combined key mismatch")
+	}
+}
+
+// VEIL-72 parcel ceremony: stage a 2-of-3 split, keygen two custodians,
+// seal one share to each, open both parcels, and combine the OPENED
+// shares back into the original KEK — the whole path a real custodian
+// drill walks.
+func TestEscrowParcelCeremony(t *testing.T) {
+	key := make([]byte, crypto.KeySize)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	shareDir := t.TempDir() + "/shares"
+	staged, err := stageShares(key, 3, 2, shareDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Finalize like rotate-kek does post-commit.
+	final := make([]string, 0, len(staged))
+	for _, f := range staged {
+		done := strings.TrimSuffix(f, ".tmp")
+		if err := os.Rename(f, done); err != nil {
+			t.Fatal(err)
+		}
+		final = append(final, done)
+	}
+
+	openShare := func(t *testing.T, shareFile, parcelDir, custDir, outDir string) {
+		t.Helper()
+		kg := keyCmd()
+		kg.SetArgs([]string{"escrow-keygen", "--out-dir", custDir})
+		if err := kg.ExecuteContext(context.Background()); err != nil {
+			t.Fatalf("escrow-keygen: %v", err)
+		}
+		if st, _ := os.Stat(custDir); st.Mode().Perm() != 0o700 {
+			t.Fatalf("custodian dir mode = %v, want 0700", st.Mode().Perm())
+		}
+		if st, _ := os.Stat(filepath.Join(custDir, "custodian.key")); st.Mode().Perm() != 0o600 {
+			t.Fatalf("custodian.key mode = %v, want 0600", st.Mode().Perm())
+		}
+
+		parcel := filepath.Join(parcelDir, filepath.Base(shareFile)+".parcel")
+		seal := keyCmd()
+		seal.SetArgs([]string{"escrow-seal", "--in", shareFile,
+			"--to-file", filepath.Join(custDir, "custodian.pub"), "--out", parcel})
+		if err := seal.ExecuteContext(context.Background()); err != nil {
+			t.Fatalf("escrow-seal %s: %v", shareFile, err)
+		}
+		if st, _ := os.Stat(parcel); st.Mode().Perm() != 0o600 {
+			t.Fatalf("parcel mode = %v, want 0600", st.Mode().Perm())
+		}
+		// The parcel must not carry the share bytes in the clear.
+		rawShare, _ := os.ReadFile(shareFile)
+		rawParcel, _ := os.ReadFile(parcel)
+		if bytes.Contains(rawParcel, bytes.TrimSpace(rawShare)) {
+			t.Fatal("parcel contains the share bytes in the clear")
+		}
+
+		open := keyCmd()
+		open.SetArgs([]string{"escrow-open", "--in", parcel,
+			"--key-file", filepath.Join(custDir, "custodian.key"), "--out-dir", outDir})
+		if err := open.ExecuteContext(context.Background()); err != nil {
+			t.Fatalf("escrow-open %s: %v", parcel, err)
+		}
+	}
+
+	tmp := t.TempDir()
+	custA, custB := filepath.Join(tmp, "custA"), filepath.Join(tmp, "custB")
+	openedDir := filepath.Join(tmp, "opened")
+	openShare(t, final[0], tmp, custA, openedDir)
+	openShare(t, final[1], tmp, custB, openedDir)
+
+	// The opened artifacts are combine-compatible share files whose bytes
+	// match the staged shares.
+	ents, err := os.ReadDir(openedDir)
+	if err != nil || len(ents) != 2 {
+		t.Fatalf("opened dir has %d files, want 2 (%v)", len(ents), err)
+	}
+	c := keyCmd()
+	combined := filepath.Join(tmp, "combined.hex")
+	c.SetArgs([]string{"combine", "--shares-dir", openedDir, "--out", combined})
+	if err := c.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("combine opened shares: %v", err)
+	}
+	got, err := loadHexKey("", combined)
+	if err != nil || !bytes.Equal(got, key) {
+		t.Fatalf("reconstructed KEK mismatch: %v", err)
+	}
+}
+
+func TestEscrowRefusesBadInputs(t *testing.T) {
+	tmp := t.TempDir()
+	cust := filepath.Join(tmp, "cust")
+	kg := keyCmd()
+	kg.SetArgs([]string{"escrow-keygen", "--out-dir", cust})
+	if err := kg.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Second keygen in the same dir must not orphan earlier parcels.
+	kg2 := keyCmd()
+	kg2.SetArgs([]string{"escrow-keygen", "--out-dir", cust})
+	if err := kg2.ExecuteContext(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "exists") {
+		t.Fatalf("keygen overwrite should refuse, got %v", err)
+	}
+
+	// A non-canonical share name mislabels custody — refuse.
+	bad := filepath.Join(tmp, "share.hex")
+	if err := os.WriteFile(bad, []byte("deadbeef\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seal := keyCmd()
+	seal.SetArgs([]string{"escrow-seal", "--in", bad, "--to-file",
+		filepath.Join(cust, "custodian.pub"), "--out", filepath.Join(tmp, "p")})
+	if err := seal.ExecuteContext(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "canonical") {
+		t.Fatalf("misnamed share should refuse, got %v", err)
+	}
+
+	// Seal a real share, then: wrong key fails, tampered parcel fails,
+	// and a second open over the same out file refuses.
+	key := make([]byte, crypto.KeySize)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	fp := shareFingerprint(key)
+	parts, err := shamir.Split(key, 3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	share := filepath.Join(tmp, "share-1-"+fp+".hex")
+	if err := os.WriteFile(share, []byte(hex.EncodeToString(parts[0])+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parcel := filepath.Join(tmp, "parcel")
+	seal2 := keyCmd()
+	seal2.SetArgs([]string{"escrow-seal", "--in", share, "--to-file",
+		filepath.Join(cust, "custodian.pub"), "--out", parcel})
+	if err := seal2.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	other := filepath.Join(tmp, "other")
+	kg3 := keyCmd()
+	kg3.SetArgs([]string{"escrow-keygen", "--out-dir", other})
+	if err := kg3.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	openBad := keyCmd()
+	openBad.SetArgs([]string{"escrow-open", "--in", parcel,
+		"--key-file", filepath.Join(other, "custodian.key"), "--out-dir", filepath.Join(tmp, "o1")})
+	if err := openBad.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("parcel opened under the wrong custodian key")
+	}
+
+	rawParcel, _ := os.ReadFile(parcel)
+	rawParcel[len(rawParcel)-1] ^= 0xff
+	tampered := filepath.Join(tmp, "tampered")
+	if err := os.WriteFile(tampered, rawParcel, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openTam := keyCmd()
+	openTam.SetArgs([]string{"escrow-open", "--in", tampered,
+		"--key-file", filepath.Join(cust, "custodian.key"), "--out-dir", filepath.Join(tmp, "o2")})
+	if err := openTam.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("tampered parcel opened — box auth ignored")
+	}
+
+	outDir := filepath.Join(tmp, "o3")
+	open1 := keyCmd()
+	open1.SetArgs([]string{"escrow-open", "--in", parcel,
+		"--key-file", filepath.Join(cust, "custodian.key"), "--out-dir", outDir})
+	if err := open1.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	open2 := keyCmd()
+	open2.SetArgs([]string{"escrow-open", "--in", parcel,
+		"--key-file", filepath.Join(cust, "custodian.key"), "--out-dir", outDir})
+	if err := open2.ExecuteContext(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "exists") {
+		t.Fatalf("second open over same file should refuse, got %v", err)
+	}
+}
+
+func TestEscrowEnvelopeShape(t *testing.T) {
+	var fp [4]byte
+	copy(fp[:], []byte{0xde, 0xad, 0xbe, 0xef})
+	share := make([]byte, crypto.KeySize+1) // 32B secret + x-coord
+	if _, err := rand.Read(share); err != nil {
+		t.Fatal(err)
+	}
+	env := escrowEnvelope(2, fp, share)
+	ord, gotFP, gotShare, err := parseEscrowEnvelope(env)
+	if err != nil || ord != 2 || gotFP != fp || !bytes.Equal(gotShare, share) {
+		t.Fatalf("envelope round trip: ord=%d fp=%x share=%x err=%v", ord, gotFP, gotShare, err)
+	}
+	for _, bad := range [][]byte{
+		nil,
+		[]byte("VEILSHR2" + "\x01\x00\x00\x00\x00ab"),                        // wrong magic/version
+		append(append(append([]byte("VEILSHR1"), 0x00), fp[:]...), share...), // ordinal 0
+		append(append(append([]byte("VEILSHR1"), 0x01), fp[:]...), 0x09),     // 1-byte share
+		env[:len(env)-3], // truncated
+	} {
+		if _, _, _, err := parseEscrowEnvelope(bad); err == nil {
+			t.Fatalf("bad envelope %x accepted", bad)
+		}
 	}
 }

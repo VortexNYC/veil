@@ -34,6 +34,19 @@ physical location. The analog for an infra-level KEK:
   file (existing files are chmod'd, never left permissive). The assembled
   key exists only to be typed into Railway VEIL_KEK; custody is the shares.
 
+- Share distribution is sealed parcels (VEIL-72): a staged share set on
+  one machine is not custody. `veil key escrow-keygen --out-dir D` mints
+  the custodian's X25519 pair on THEIR machine (`custodian.pub` shareable,
+  `custodian.key` mode 600). `veil key escrow-seal --in share-N-FP.hex
+  --to-file custodian.pub --out PARCEL` seals one share inside a VEILSHR1
+  envelope (ordinal + ceremony fingerprint travel inside the box
+  ciphertext — a parcel cannot be relabeled into another share slot).
+  `veil key escrow-open --in PARCEL --key-file custodian.key --out-dir D`
+  is the custodian side and writes back the exact
+  `share-<ordinal>-<fp>.hex` `combine` consumes. Parcels ride any
+  authenticated channel; the founder states the expected ordinal +
+  fingerprint out-of-band and the custodian confirms both after open.
+
 ## Org-level recovery (product, separate layer — filed VEIL-78)
 
 The KEK protects against losing *infra*. The other half of the 1P model —

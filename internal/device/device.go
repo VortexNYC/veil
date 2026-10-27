@@ -46,15 +46,39 @@ func Offer(master, peerPub []byte) ([]byte, error) {
 	if len(master) != crypto.KeySize {
 		return nil, fmt.Errorf("device: master")
 	}
-	pk, err := as32(peerPub)
-	if err != nil {
-		return nil, err
-	}
-	return box.SealAnonymous(nil, master, pk, rand.Reader)
+	return Seal(master, peerPub)
 }
 
 // Accept opens a blob from Offer with the recipient private key.
 func Accept(blob, priv []byte) ([]byte, error) {
+	master, err := Open(blob, priv)
+	if err != nil {
+		return nil, err
+	}
+	if len(master) != crypto.KeySize {
+		return nil, crypto.ErrAuth
+	}
+	return master, nil
+}
+
+// Seal wraps an arbitrary payload to peerPub — escrow parcels carry a
+// KEK share envelope, not a 32-byte master, so they do not fit Offer.
+// Same SealAnonymous primitive: confidential to the holder of the
+// private key, sender-anonymous.
+func Seal(payload, peerPub []byte) ([]byte, error) {
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("device: payload")
+	}
+	pk, err := as32(peerPub)
+	if err != nil {
+		return nil, err
+	}
+	return box.SealAnonymous(nil, payload, pk, rand.Reader)
+}
+
+// Open unwraps a Seal blob with the recipient private key. Callers own
+// payload validation — Open proves integrity, not semantics.
+func Open(blob, priv []byte) ([]byte, error) {
 	sk, err := as32(priv)
 	if err != nil {
 		return nil, err
@@ -67,14 +91,11 @@ func Accept(blob, priv []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	master, ok := box.OpenAnonymous(nil, blob, pk, sk)
+	payload, ok := box.OpenAnonymous(nil, blob, pk, sk)
 	if !ok {
 		return nil, crypto.ErrAuth
 	}
-	if len(master) != crypto.KeySize {
-		return nil, crypto.ErrAuth
-	}
-	return master, nil
+	return payload, nil
 }
 
 func as32(b []byte) (*[32]byte, error) {
