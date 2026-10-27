@@ -528,6 +528,123 @@ export type RotateHookResult = {
 export type RotateHooksFireResponse = {
     results: Array<RotateHookResult>;
 };
+/**
+ * The member's own org-key share state (VEIL-78). pubkey and wrapped_master are ciphertext material only — the 32-byte X25519 public key (base64) and the 80-byte box.SealAnonymous blob (base64). The private key and the plaintext org master never leave the client/store.
+ */
+export type RecoveryShare = {
+    /**
+     * Whether the member has an org_key_shares row.
+     */
+    enrolled: boolean;
+    /**
+     * Member's 32-byte X25519 public key, base64.
+     */
+    pubkey?: string;
+    /**
+     * 80-byte box.SealAnonymous ciphertext of the org master, base64.
+     */
+    wrapped_master?: string;
+    /**
+     * Share wrap epoch; bumps on every completed recovery.
+     */
+    wrap_pubkey_epoch: number;
+    /**
+     * Org master version the share wraps.
+     */
+    org_key_version: number;
+    created_at?: string;
+    updated_at?: string;
+};
+/**
+ * One initiator -> confirmer recovery ceremony row (VEIL-78). Owner callers also see human_email, current_epoch, and confirmer_wrapped_master (the caller's own share blob for the proof_hmac fast path); the initiator/target member sees the bare row.
+ */
+export type RecoveryRequest = {
+    id: string;
+    org_id: string;
+    /**
+     * The member being recovered.
+     */
+    human_id: string;
+    /**
+     * Who filed the request — the member (self) or an owner.
+     */
+    initiated_by: string;
+    /**
+     * Staged 32-byte X25519 public key, base64.
+     */
+    new_pubkey: string;
+    /**
+     * On completion, wipe the member's Kratos totp/webauthn and mail a re-enrollment link to their address.
+     */
+    reset_mfa: boolean;
+    status: 'open' | 'completed' | 'denied' | 'expired' | 'cancelled';
+    created_at: string;
+    /**
+     * Immediate for owner-confirmed paths; created_at+24h for sole-owner self-recovery.
+     */
+    unlock_at: string;
+    expires_at: string;
+    resolved_at?: string;
+    confirmed_by?: string;
+    /**
+     * The member's new wrap_pubkey_epoch after completion.
+     */
+    result_epoch?: number;
+    /**
+     * Owner view only — the member's resolved Kratos address.
+     */
+    human_email?: string;
+    /**
+     * Owner view only — the member's current wrap_pubkey_epoch.
+     */
+    current_epoch: number;
+    /**
+     * Owner view only — the caller's own wrapped share (80B base64) for computing proof_hmac locally.
+     */
+    confirmer_wrapped_master?: string;
+};
+export type RecoveriesResponse = {
+    requests: Array<RecoveryRequest>;
+};
+export type EnrollRequest = {
+    /**
+     * Member's 32-byte X25519 public key, base64 or hex.
+     */
+    pubkey: string;
+};
+export type StartRecoveryRequest = {
+    /**
+     * Omit for self-recovery; set for owner-initiated recovery of a member.
+     */
+    human_id?: string;
+    /**
+     * Staged 32-byte X25519 public key, base64 or hex. Must not match any enrolled share pubkey.
+     */
+    new_pubkey: string;
+    /**
+     * Also wipe the member's Kratos second factors on completion.
+     */
+    reset_mfa?: boolean;
+};
+export type CompleteRecoveryRequest = {
+    /**
+     * hex(HMAC-SHA256(org master, request id)) — the sole-owner fast path that bypasses the 24h timelock.
+     */
+    proof_hmac?: string;
+};
+export type StartRecoveryResponse = {
+    request: RecoveryRequest;
+    /**
+     * false means an open request already existed — the live row is returned and notifications were suppressed.
+     */
+    created: boolean;
+};
+export type ProvisionRequest = {
+    /**
+     * Optional 32-byte X25519 public key (base64 or hex) to enroll the member's recovery share at signup.
+     */
+    recovery_pubkey?: string;
+};
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -1224,7 +1341,7 @@ export type VaultReportResponses = {
 };
 export type VaultReportResponse = VaultReportResponses[keyof VaultReportResponses];
 export type ProvisionData = {
-    body?: never;
+    body?: ProvisionRequest;
     path?: never;
     query?: never;
     url: '/v1/provision';
@@ -1907,3 +2024,224 @@ export type FireRotateHooksResponses = {
     200: RotateHooksFireResponse;
 };
 export type FireRotateHooksResponse = FireRotateHooksResponses[keyof FireRotateHooksResponses];
+export type GetRecoveryShareData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/recovery/share';
+};
+export type GetRecoveryShareErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+};
+export type GetRecoveryShareResponses = {
+    /**
+     * Share state
+     */
+    200: RecoveryShare;
+};
+export type GetRecoveryShareResponse = GetRecoveryShareResponses[keyof GetRecoveryShareResponses];
+export type EnrollRecoveryData = {
+    body: EnrollRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/recovery/enroll';
+};
+export type EnrollRecoveryErrors = {
+    /**
+     * missing or malformed pubkey
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * aal1 token — enrollment requires a second factor
+     */
+    403: unknown;
+    /**
+     * already enrolled
+     */
+    409: unknown;
+};
+export type EnrollRecoveryResponses = {
+    /**
+     * The planted share
+     */
+    200: RecoveryShare;
+};
+export type EnrollRecoveryResponse = EnrollRecoveryResponses[keyof EnrollRecoveryResponses];
+export type StartRecoveryData = {
+    body: StartRecoveryRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/recovery/start';
+};
+export type StartRecoveryErrors = {
+    /**
+     * malformed new_pubkey or a pubkey already enrolled on a share
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * non-owner naming another human, or aal1 owner-initiated start
+     */
+    403: unknown;
+    /**
+     * named human is not an org member
+     */
+    404: unknown;
+    /**
+     * recovery start rate limit
+     */
+    429: unknown;
+    /**
+     * identity plane unavailable
+     */
+    502: unknown;
+};
+export type StartRecoveryResponses = {
+    /**
+     * The request (created=false when deduped)
+     */
+    200: StartRecoveryResponse;
+};
+export type StartRecoveryResponse2 = StartRecoveryResponses[keyof StartRecoveryResponses];
+export type ListRecoveriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        status?: 'open' | 'completed' | 'denied' | 'expired' | 'cancelled';
+    };
+    url: '/v1/recovery';
+};
+export type ListRecoveriesErrors = {
+    /**
+     * bad status
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * not owner or aal1
+     */
+    403: unknown;
+};
+export type ListRecoveriesResponses = {
+    /**
+     * The org's requests
+     */
+    200: RecoveriesResponse;
+};
+export type ListRecoveriesResponse = ListRecoveriesResponses[keyof ListRecoveriesResponses];
+export type GetRecoveryData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/recovery/{id}';
+};
+export type GetRecoveryErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * not owner, initiator, or target — or aal1 owner
+     */
+    403: unknown;
+    /**
+     * no such request in this org
+     */
+    404: unknown;
+};
+export type GetRecoveryResponses = {
+    /**
+     * The request
+     */
+    200: RecoveryRequest;
+};
+export type GetRecoveryResponse = GetRecoveryResponses[keyof GetRecoveryResponses];
+export type CompleteRecoveryData = {
+    body?: CompleteRecoveryRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/recovery/{id}/complete';
+};
+export type CompleteRecoveryErrors = {
+    /**
+     * malformed proof_hmac
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * not owner, aal1, or two-person integrity violation
+     */
+    403: unknown;
+    /**
+     * no such request, or target was offboarded
+     */
+    404: unknown;
+    /**
+     * already resolved or expired
+     */
+    409: unknown;
+    /**
+     * still inside the unlock_at timelock
+     */
+    423: unknown;
+};
+export type CompleteRecoveryResponses = {
+    /**
+     * The completed request
+     */
+    200: RecoveryRequest;
+};
+export type CompleteRecoveryResponse = CompleteRecoveryResponses[keyof CompleteRecoveryResponses];
+export type DenyRecoveryData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/v1/recovery/{id}/deny';
+};
+export type DenyRecoveryErrors = {
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * not owner, initiator, or target — or aal1 owner
+     */
+    403: unknown;
+    /**
+     * no such request in this org
+     */
+    404: unknown;
+    /**
+     * already resolved
+     */
+    409: unknown;
+};
+export type DenyRecoveryResponses = {
+    /**
+     * The resolved request
+     */
+    200: RecoveryRequest;
+};
+export type DenyRecoveryResponse = DenyRecoveryResponses[keyof DenyRecoveryResponses];

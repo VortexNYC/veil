@@ -24,6 +24,7 @@ from veil.models.device_register_request import DeviceRegisterRequest
 from veil.models.invite_request import InviteRequest
 from veil.models.invite_response import InviteResponse
 from veil.models.promote_owner200_response import PromoteOwner200Response
+from veil.models.provision_request import ProvisionRequest
 from veil.models.provision_response import ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response
 from veil.models.vault_report import VaultReport
@@ -1364,6 +1365,7 @@ class HumanApi:
     @validate_call
     def provision(
         self,
+        provision_request: Optional[ProvisionRequest] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1380,6 +1382,8 @@ class HumanApi:
         """Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
 
+        :param provision_request:
+        :type provision_request: ProvisionRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1403,6 +1407,7 @@ class HumanApi:
         """ # noqa: E501
 
         _param = self._provision_serialize(
+            provision_request=provision_request,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1427,6 +1432,7 @@ class HumanApi:
     @validate_call
     def provision_with_http_info(
         self,
+        provision_request: Optional[ProvisionRequest] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1443,6 +1449,8 @@ class HumanApi:
         """Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
 
+        :param provision_request:
+        :type provision_request: ProvisionRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1466,6 +1474,7 @@ class HumanApi:
         """ # noqa: E501
 
         _param = self._provision_serialize(
+            provision_request=provision_request,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1490,6 +1499,7 @@ class HumanApi:
     @validate_call
     def provision_without_preload_content(
         self,
+        provision_request: Optional[ProvisionRequest] = None,
         _request_timeout: Union[
             None,
             Annotated[StrictFloat, Field(gt=0)],
@@ -1506,6 +1516,8 @@ class HumanApi:
         """Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
 
+        :param provision_request:
+        :type provision_request: ProvisionRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1529,6 +1541,7 @@ class HumanApi:
         """ # noqa: E501
 
         _param = self._provision_serialize(
+            provision_request=provision_request,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1548,6 +1561,7 @@ class HumanApi:
 
     def _provision_serialize(
         self,
+        provision_request,
         _request_auth,
         _content_type,
         _headers,
@@ -1573,6 +1587,8 @@ class HumanApi:
         # process the header parameters
         # process the form parameters
         # process the body parameter
+        if provision_request is not None:
+            _body_params = provision_request
 
 
         # set the HTTP header `Accept`
@@ -1583,6 +1599,19 @@ class HumanApi:
                 ]
             )
 
+        # set the HTTP header `Content-Type`
+        if _content_type:
+            _header_params['Content-Type'] = _content_type
+        else:
+            _default_content_type = (
+                self.api_client.select_header_content_type(
+                    [
+                        'application/json'
+                    ]
+                )
+            )
+            if _default_content_type is not None:
+                _header_params['Content-Type'] = _default_content_type
 
         # authentication setting
         _auth_settings: List[str] = [

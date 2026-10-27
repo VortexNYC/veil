@@ -106,6 +106,13 @@ func monitorCmd() *cobra.Command {
 					findings = append(findings,
 						fmt.Sprintf("audit_outbox backlog: %d rows, oldest %s", depth, oldest.Round(time.Second)))
 				}
+				// VEIL-78 recovery tripwire: any live ceremony, any ask
+				// sitting in its timelock, or a refile flood is a page.
+				if f, err := store.RecoveryMonitorFindings(ctx, pool); err != nil {
+					findings = append(findings, "recovery findings unreadable: "+err.Error())
+				} else {
+					findings = append(findings, f...)
+				}
 			}
 			if readyURL != "" {
 				if err := probeReady(ctx, readyURL); err != nil {

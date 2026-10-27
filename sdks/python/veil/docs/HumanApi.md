@@ -404,7 +404,7 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **provision**
-> ProvisionResponse provision()
+> ProvisionResponse provision(provision_request=provision_request)
 
 Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
 
@@ -414,6 +414,7 @@ Signup provisioning. Subject-authenticated — the bearer is a verified human ID
 
 ```python
 import veil
+from veil.models.provision_request import ProvisionRequest
 from veil.models.provision_response import ProvisionResponse
 from veil.rest import ApiException
 from pprint import pprint
@@ -438,10 +439,11 @@ configuration = veil.Configuration(
 with veil.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = veil.HumanApi(api_client)
+    provision_request = veil.ProvisionRequest() # ProvisionRequest |  (optional)
 
     try:
         # Signup provisioning. Subject-authenticated — the bearer is a verified human ID token, not a member yet. Creates the org, seals the org master under the deployment KEK, plants the humans row, and writes the Keto owner/member tuples plus the Kratos organization_id stamp. Idempotent; safe to retry. Not MCP.
-        api_response = api_instance.provision()
+        api_response = api_instance.provision(provision_request=provision_request)
         print("The response of HumanApi->provision:\n")
         pprint(api_response)
     except Exception as e:
@@ -452,7 +454,10 @@ with veil.ApiClient(configuration) as api_client:
 
 ### Parameters
 
-This endpoint does not need any parameter.
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **provision_request** | [**ProvisionRequest**](ProvisionRequest.md)|  | [optional] 
 
 ### Return type
 
@@ -464,7 +469,7 @@ This endpoint does not need any parameter.
 
 ### HTTP request headers
 
- - **Content-Type**: Not defined
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 ### HTTP response details

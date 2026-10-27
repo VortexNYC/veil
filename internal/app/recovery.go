@@ -66,6 +66,10 @@ type StartRecoveryInput struct {
 func (a *App) requireMember(ctx context.Context, rawToken string) (protocol.Principal, error) {
 	p, err := a.PrincipalFromOIDC(ctx, rawToken)
 	if err != nil {
+		// A Keto/Hydra outage is a bad gateway, not a bad credential.
+		if errors.Is(err, ErrIdentityUnavailable) {
+			return protocol.Principal{}, err
+		}
 		return protocol.Principal{}, fmt.Errorf("%w: %v", ErrUnauthorized, err)
 	}
 	if p.Kind != protocol.PrincipalHuman || a.Members == nil {

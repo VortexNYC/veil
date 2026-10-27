@@ -23,6 +23,7 @@ __all__ = [
     "BillingApi",
     "HumanApi",
     "OwnerApi",
+    "RecoveryApi",
     "ApiResponse",
     "ApiClient",
     "Configuration",
@@ -44,6 +45,7 @@ __all__ = [
     "BillingView",
     "BindWorkloadRequest",
     "CardFields",
+    "CompleteRecoveryRequest",
     "CreateAgentRequest",
     "CreateGrantRequest",
     "CreateGroupRequest",
@@ -53,6 +55,7 @@ __all__ = [
     "DeleteMe200Response",
     "DeleteOrg200Response",
     "DeviceRegisterRequest",
+    "EnrollRequest",
     "EventsResponse",
     "Grant",
     "GrantsResponse",
@@ -68,7 +71,11 @@ __all__ = [
     "ItemsResponse",
     "Owner",
     "PromoteOwner200Response",
+    "ProvisionRequest",
     "ProvisionResponse",
+    "RecoveriesResponse",
+    "RecoveryRequest",
+    "RecoveryShare",
     "RemoveMember200Response",
     "RequestsResponse",
     "RotateHook",
@@ -81,6 +88,8 @@ __all__ = [
     "RotateProvidersResponse",
     "Session",
     "SessionsResponse",
+    "StartRecoveryRequest",
+    "StartRecoveryResponse",
     "UpdateItemRequest",
     "UseRequest",
     "UseResponse",
@@ -100,6 +109,7 @@ from veil.api.audit_api import AuditApi as AuditApi
 from veil.api.billing_api import BillingApi as BillingApi
 from veil.api.human_api import HumanApi as HumanApi
 from veil.api.owner_api import OwnerApi as OwnerApi
+from veil.api.recovery_api import RecoveryApi as RecoveryApi
 
 # import ApiClient
 from veil.api_response import ApiResponse as ApiResponse
@@ -125,6 +135,7 @@ from veil.models.billing_checkout import BillingCheckout as BillingCheckout
 from veil.models.billing_view import BillingView as BillingView
 from veil.models.bind_workload_request import BindWorkloadRequest as BindWorkloadRequest
 from veil.models.card_fields import CardFields as CardFields
+from veil.models.complete_recovery_request import CompleteRecoveryRequest as CompleteRecoveryRequest
 from veil.models.create_agent_request import CreateAgentRequest as CreateAgentRequest
 from veil.models.create_grant_request import CreateGrantRequest as CreateGrantRequest
 from veil.models.create_group_request import CreateGroupRequest as CreateGroupRequest
@@ -134,6 +145,7 @@ from veil.models.create_session_response import CreateSessionResponse as CreateS
 from veil.models.delete_me200_response import DeleteMe200Response as DeleteMe200Response
 from veil.models.delete_org200_response import DeleteOrg200Response as DeleteOrg200Response
 from veil.models.device_register_request import DeviceRegisterRequest as DeviceRegisterRequest
+from veil.models.enroll_request import EnrollRequest as EnrollRequest
 from veil.models.events_response import EventsResponse as EventsResponse
 from veil.models.grant import Grant as Grant
 from veil.models.grants_response import GrantsResponse as GrantsResponse
@@ -149,7 +161,11 @@ from veil.models.item import Item as Item
 from veil.models.items_response import ItemsResponse as ItemsResponse
 from veil.models.owner import Owner as Owner
 from veil.models.promote_owner200_response import PromoteOwner200Response as PromoteOwner200Response
+from veil.models.provision_request import ProvisionRequest as ProvisionRequest
 from veil.models.provision_response import ProvisionResponse as ProvisionResponse
+from veil.models.recoveries_response import RecoveriesResponse as RecoveriesResponse
+from veil.models.recovery_request import RecoveryRequest as RecoveryRequest
+from veil.models.recovery_share import RecoveryShare as RecoveryShare
 from veil.models.remove_member200_response import RemoveMember200Response as RemoveMember200Response
 from veil.models.requests_response import RequestsResponse as RequestsResponse
 from veil.models.rotate_hook import RotateHook as RotateHook
@@ -162,6 +178,8 @@ from veil.models.rotate_item_request import RotateItemRequest as RotateItemReque
 from veil.models.rotate_providers_response import RotateProvidersResponse as RotateProvidersResponse
 from veil.models.session import Session as Session
 from veil.models.sessions_response import SessionsResponse as SessionsResponse
+from veil.models.start_recovery_request import StartRecoveryRequest as StartRecoveryRequest
+from veil.models.start_recovery_response import StartRecoveryResponse as StartRecoveryResponse
 from veil.models.update_item_request import UpdateItemRequest as UpdateItemRequest
 from veil.models.use_request import UseRequest as UseRequest
 from veil.models.use_response import UseResponse as UseResponse

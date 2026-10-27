@@ -530,6 +530,12 @@ func (a *HumanAPIService) PromoteOwnerExecute(r HumanAPIPromoteOwnerRequest) (*P
 type HumanAPIProvisionRequest struct {
 	ctx context.Context
 	ApiService *HumanAPIService
+	provisionRequest *ProvisionRequest
+}
+
+func (r HumanAPIProvisionRequest) ProvisionRequest(provisionRequest ProvisionRequest) HumanAPIProvisionRequest {
+	r.provisionRequest = &provisionRequest
+	return r
 }
 
 func (r HumanAPIProvisionRequest) Execute() (*ProvisionResponse, *http.Response, error) {
@@ -571,7 +577,7 @@ func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*Provisi
 	localVarFormParams := url.Values{}
 
 	// to determine the Content-Type header
-	localVarHTTPContentTypes := []string{}
+	localVarHTTPContentTypes := []string{"application/json"}
 
 	// set Content-Type header
 	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
@@ -587,6 +593,8 @@ func (a *HumanAPIService) ProvisionExecute(r HumanAPIProvisionRequest) (*Provisi
 	if localVarHTTPHeaderAccept != "" {
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
+	// body params
+	localVarPostBody = r.provisionRequest
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {
 		return localVarReturnValue, nil, err

@@ -232,6 +232,75 @@ func ExportableAudits(ctx context.Context, pool *pgxpool.Pool, afterID int64, li
 	return out, rows.Err()
 }
 
+// RecoveryMonitorFindings is the VEIL-78 tripwire — the honey-style page on
+// recovery ceremony signals the ops plane must see:
+//
+//	(a) any open or completed request on the local org in the last 24h;
+//	(b) any open request still inside its sole-owner timelock window (the
+//	    only flow that files a future unlock_at — a rogue-owner or stolen-
+//	    token ask is killable inside it);
+//	(c) any org with >= 3 denied or expired requests in the last hour —
+//	    a deny-then-refile or brute-force pattern.
+//
+// The table is created by EnsurePostgresSchema; a missing-table error is
+// reported to the caller, which surfaces it as a finding.
+func RecoveryMonitorFindings(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	var findings []string
+	var live int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM recovery_requests
+		 WHERE org_id = $1 AND status IN ('open','completed')
+		   AND created_at > now() - interval '24 hours'`,
+		protocol.LocalOrgID).Scan(&live); err != nil {
+		return nil, fmt.Errorf("recovery findings: %w", err)
+	}
+	if live > 0 {
+		findings = append(findings,
+			fmt.Sprintf("recovery: %d open/completed request(s) on %s in the last 24h", live, protocol.LocalOrgID))
+	}
+	locked, err := pool.Query(ctx,
+		`SELECT id, org_id, human_id, unlock_at FROM recovery_requests
+		 WHERE status = 'open' AND unlock_at > now()`)
+	if err != nil {
+		return nil, fmt.Errorf("recovery findings: %w", err)
+	}
+	for locked.Next() {
+		var id, org, human string
+		var unlock time.Time
+		if err := locked.Scan(&id, &org, &human, &unlock); err != nil {
+			locked.Close()
+			return nil, fmt.Errorf("recovery findings: %w", err)
+		}
+		findings = append(findings, fmt.Sprintf(
+			"recovery: %s on %s/%s is inside the sole-owner timelock — unlocks %s, deny it if unauthorized",
+			id, org, human, unlock.UTC().Format(time.RFC3339)))
+	}
+	locked.Close()
+	if err := locked.Err(); err != nil {
+		return nil, fmt.Errorf("recovery findings: %w", err)
+	}
+	rows, err := pool.Query(ctx,
+		`SELECT org_id, count(*) FROM recovery_requests
+		 WHERE status IN ('denied','expired')
+		   AND resolved_at > now() - interval '1 hour'
+		 GROUP BY org_id HAVING count(*) >= 3`)
+	if err != nil {
+		return nil, fmt.Errorf("recovery findings: %w", err)
+	}
+	for rows.Next() {
+		var org string
+		var n int
+		if err := rows.Scan(&org, &n); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("recovery findings: %w", err)
+		}
+		findings = append(findings,
+			fmt.Sprintf("recovery: %d denied/expired requests on %s in the last hour — possible refile flood", n, org))
+	}
+	rows.Close()
+	return findings, rows.Err()
+}
+
 // PushDevicesFromPool lists registered phone endpoints for an org —
 // the monitor runs at pool level (no full Store) but still needs the
 // same device list to send ops pages.

@@ -10,8 +10,10 @@ package publicapi
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,6 +27,7 @@ import (
 	"github.com/VortexNYC/veil/internal/app"
 	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/broker"
+	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/dpop"
 	"github.com/VortexNYC/veil/internal/health"
 	"github.com/VortexNYC/veil/internal/id"
@@ -253,8 +256,46 @@ type ProvisionResponse struct {
 	OrgID   string `json:"org_id"`
 }
 
+// ProvisionRequest is the optional signup body — recovery_pubkey lets a
+// client that generated its X25519 recovery keypair before signup enroll
+// the share in the same call (VEIL-78). Base64 or hex, 32 bytes.
+type ProvisionRequest struct {
+	RecoveryPubkey string `json:"recovery_pubkey,omitempty"`
+}
+
 type InviteRequest struct {
 	Email string `json:"email"`
+}
+
+// EnrollRecoveryRequest is POST /v1/recovery/enroll — the member's 32-byte
+// X25519 public key as base64 or hex. The private half never leaves the
+// client.
+type EnrollRecoveryRequest struct {
+	Pubkey string `json:"pubkey"`
+}
+
+// StartRecoveryRequest is POST /v1/recovery/start — an empty human_id is
+// self-recovery; a named one is owner-initiated for a locked-out member.
+type StartRecoveryRequest struct {
+	HumanID   string `json:"human_id,omitempty"`
+	NewPubkey string `json:"new_pubkey"`
+	ResetMFA  bool   `json:"reset_mfa,omitempty"`
+}
+
+// CompleteRecoveryRequest is POST /v1/recovery/{id}/complete — proof_hmac is
+// hex(HMAC-SHA256(org master, request id)), the sole-owner fast path that
+// bypasses the 24h timelock.
+type CompleteRecoveryRequest struct {
+	ProofHMAC string `json:"proof_hmac,omitempty"`
+}
+
+type StartRecoveryResponse struct {
+	Request app.RecoveryView `json:"request"`
+	Created bool             `json:"created"`
+}
+
+type RecoveriesResponse struct {
+	Requests []app.RecoveryView `json:"requests"`
 }
 
 type InviteResponse struct {
@@ -395,6 +436,13 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/me", s.deleteMe)
 	mux.HandleFunc("DELETE /v1/org", s.deleteOrg)
 	mux.HandleFunc("POST /v1/use", s.useItem)
+	mux.HandleFunc("GET /v1/recovery/share", s.getRecoveryShare)
+	mux.HandleFunc("POST /v1/recovery/enroll", s.enrollRecovery)
+	mux.HandleFunc("POST /v1/recovery/start", s.startRecovery)
+	mux.HandleFunc("GET /v1/recovery", s.listRecoveries)
+	mux.HandleFunc("GET /v1/recovery/{id}", s.getRecovery)
+	mux.HandleFunc("POST /v1/recovery/{id}/complete", s.completeRecovery)
+	mux.HandleFunc("POST /v1/recovery/{id}/deny", s.denyRecovery)
 	mux.HandleFunc("GET /v1/requests", s.listRequests)
 	mux.HandleFunc("GET /v1/requests/stream", s.streamRequests)
 	mux.HandleFunc("POST /v1/requests/{id}/approve", s.approveRequest)
@@ -1174,12 +1222,237 @@ func (s *Server) provision(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	p, err := s.App.ProvisionHuman(r.Context(), raw)
+	var in ProvisionRequest
+	var recoveryPubkey []byte
+	if r.Body != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil && err != io.EOF {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+	}
+	if strings.TrimSpace(in.RecoveryPubkey) != "" {
+		pk, err := decodePubkey(in.RecoveryPubkey)
+		if err != nil {
+			http.Error(w, "bad recovery_pubkey", http.StatusBadRequest)
+			return
+		}
+		recoveryPubkey = pk
+	}
+	p, err := s.App.ProvisionHuman(r.Context(), raw, recoveryPubkey)
 	if err != nil {
 		http.Error(w, "provision failed", http.StatusUnauthorized)
 		return
 	}
 	writeJSON(w, ProvisionResponse{Subject: p.ID, OrgID: p.OrgID})
+}
+
+// decodePubkey accepts a 32-byte X25519 key as base64 (std or URL) or hex —
+// the CLI prints hex, the SDKs send base64.
+func decodePubkey(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	for _, dec := range []*base64.Encoding{base64.StdEncoding, base64.RawURLEncoding, base64.RawStdEncoding} {
+		if b, err := dec.DecodeString(s); err == nil && len(b) == device.PublicSize {
+			return b, nil
+		}
+	}
+	if b, err := hex.DecodeString(s); err == nil && len(b) == device.PublicSize {
+		return b, nil
+	}
+	return nil, fmt.Errorf("pubkey must be a %d-byte base64 or hex string", device.PublicSize)
+}
+
+// recoveryStatus maps app/store recovery errors to HTTP codes: 401 for
+// unresolvable principals, 403 for wrong role or missing aal2, 404 for
+// unknown requests, 409 for resolved/expired/already-enrolled, 423 for a
+// live timelock, 429 for the start limiter, 502 for identity-plane outages.
+func recoveryStatus(err error) int {
+	switch {
+	case errors.Is(err, app.ErrUnauthorized):
+		return http.StatusUnauthorized
+	case errors.Is(err, app.ErrForbidden):
+		return http.StatusForbidden
+	case errors.Is(err, store.ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, store.ErrRequestResolved), errors.Is(err, store.ErrRecoveryExpired):
+		return http.StatusConflict
+	case errors.Is(err, store.ErrRecoveryLocked):
+		return http.StatusLocked
+	case errors.Is(err, app.ErrRecoveryLimit):
+		return http.StatusTooManyRequests
+	case errors.Is(err, app.ErrIdentityUnavailable):
+		return http.StatusBadGateway
+	case errors.Is(err, store.ErrRecoveryPubkey):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// GET /v1/recovery/share — the caller's own enrollment state: enrolled
+// flag, pubkey, and the 80-byte sealed blob. Never the plaintext master.
+func (s *Server) getRecoveryShare(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	v, err := s.App.GetRecoveryShare(r.Context(), raw)
+	if err != nil {
+		http.Error(w, "share failed", recoveryStatus(err))
+		return
+	}
+	writeJSON(w, v)
+}
+
+// POST /v1/recovery/enroll — first enrollment only: a member's pubkey never
+// rotates outside the ceremony, so an existing share is a 409.
+func (s *Server) enrollRecovery(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var in EnrollRecoveryRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	pubkey, err := decodePubkey(in.Pubkey)
+	if err != nil {
+		http.Error(w, "bad pubkey", http.StatusBadRequest)
+		return
+	}
+	share, created, err := s.App.EnrollRecoveryShare(r.Context(), raw, pubkey)
+	if err != nil {
+		http.Error(w, "enroll failed", recoveryStatus(err))
+		return
+	}
+	if !created {
+		http.Error(w, "already enrolled", http.StatusConflict)
+		return
+	}
+	writeJSON(w, share)
+}
+
+// POST /v1/recovery/start — files (or returns the existing open) request.
+// Self-start needs no aal2: the locked-out member may hold only aal1.
+func (s *Server) startRecovery(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var in StartRecoveryRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	pubkey, err := decodePubkey(in.NewPubkey)
+	if err != nil {
+		http.Error(w, "bad new_pubkey", http.StatusBadRequest)
+		return
+	}
+	req, created, err := s.App.StartRecovery(r.Context(), raw, app.StartRecoveryInput{
+		HumanID:   in.HumanID,
+		NewPubkey: pubkey,
+		ResetMFA:  in.ResetMFA,
+	})
+	if err != nil {
+		http.Error(w, "start failed", recoveryStatus(err))
+		return
+	}
+	writeJSON(w, StartRecoveryResponse{
+		Request: app.RecoveryView{RecoveryRequest: req},
+		Created: created,
+	})
+}
+
+// GET /v1/recovery — owner-only list filtered by ?status (default open).
+func (s *Server) listRecoveries(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	status := protocol.RecoveryStatus(r.URL.Query().Get("status"))
+	if status == "" {
+		status = protocol.RecoveryOpen
+	}
+	switch status {
+	case protocol.RecoveryOpen, protocol.RecoveryCompleted, protocol.RecoveryDenied,
+		protocol.RecoveryExpired, protocol.RecoveryCancelled:
+	default:
+		http.Error(w, "bad status", http.StatusBadRequest)
+		return
+	}
+	reqs, err := s.App.ListRecoveries(r.Context(), raw, status)
+	if err != nil {
+		http.Error(w, "list failed", recoveryStatus(err))
+		return
+	}
+	writeJSON(w, RecoveriesResponse{Requests: reqs})
+}
+
+// GET /v1/recovery/{id} — owners get the confirmer view (member email,
+// epoch, own wrapped share); the initiator/target member gets the bare row.
+func (s *Server) getRecovery(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	v, err := s.App.GetRecovery(r.Context(), raw, r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "not found", recoveryStatus(err))
+		return
+	}
+	writeJSON(w, v)
+}
+
+// POST /v1/recovery/{id}/complete — the confirmer's commit: re-wraps the org
+// master to the staged pubkey, rotates owner DEKs, and fires the Kratos MFA
+// reset when reset_mfa was filed. The reset code never rides the response.
+func (s *Server) completeRecovery(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var in CompleteRecoveryRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in)
+	}
+	var proof []byte
+	if strings.TrimSpace(in.ProofHMAC) != "" {
+		b, err := hex.DecodeString(strings.TrimSpace(in.ProofHMAC))
+		if err != nil || len(b) != 32 {
+			http.Error(w, "bad proof_hmac", http.StatusBadRequest)
+			return
+		}
+		proof = b
+	}
+	v, err := s.App.CompleteRecovery(r.Context(), raw, r.PathValue("id"), proof)
+	if err != nil {
+		http.Error(w, "complete failed", recoveryStatus(err))
+		return
+	}
+	writeJSON(w, v)
+}
+
+// POST /v1/recovery/{id}/deny — an owner denies (aal2); the initiator or
+// target member cancels at any aal.
+func (s *Server) denyRecovery(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	req, err := s.App.DenyRecovery(r.Context(), raw, r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "deny failed", recoveryStatus(err))
+		return
+	}
+	writeJSON(w, app.RecoveryView{RecoveryRequest: req})
 }
 
 // createInvite is the private-alpha gate: a provisioned human invites an email

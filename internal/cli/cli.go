@@ -93,6 +93,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(monitorCmd())
 	root.AddCommand(auditExportCmd())
 	root.AddCommand(reportCmd(&home))
+	root.AddCommand(recoveryCmd(&home))
 	root.AddCommand(keyCmd())
 	root.AddCommand(updateCmd(&home, version))
 	return root
@@ -642,7 +643,7 @@ func humanCmd(home *string) *cobra.Command {
 		Use:   "login",
 		Short: "Mint a Hydra ID token for this human. Writes --out-file. Never stdout.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return humanLogin(cmd, outFile, nil)
+			return humanLogin(cmd, *home, outFile, nil)
 		},
 	}
 	login.Flags().StringVar(&outFile, "out-file", "", "write the ID token here. never stdout.")
