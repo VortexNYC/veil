@@ -295,7 +295,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     /// falling back to Contents/Resources/vault). Answering WKURLSchemeTask
     /// synchronously on the caller's thread avoids WebKit dropping ES module
     /// script loads on custom schemes.
-    private final class VaultScheme: NSObject, WKURLSchemeHandler {
+    final class VaultScheme: NSObject, WKURLSchemeHandler {
         private let mime: [String: String] = [
             "html": "text/html", "js": "text/javascript", "mjs": "text/javascript",
             "css": "text/css", "json": "application/json", "svg": "image/svg+xml",

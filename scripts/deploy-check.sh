@@ -58,3 +58,8 @@ if [ "$fail" = 1 ]; then
 	exit 1
 fi
 echo "deploy-check: all surfaces ok"
+origin_ready=$(curl -sS --max-time 5 "https://veil.nyc/ready" 2>/dev/null | tr -d '\n')
+main_sha=$(git rev-parse --short origin/main 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "")
+if [ -n "$origin_ready" ]; then
+	echo "info origin /ready: $origin_ready (origin/main=$main_sha)"
+fi
