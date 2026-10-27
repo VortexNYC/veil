@@ -42,7 +42,7 @@ func originHumanTokenLive(ctx context.Context) (string, error) {
 		return tok, nil
 	}
 	out := strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN_FILE"))
-	minted, merr := remintHumanHTTP(ctx, out)
+	minted, merr := mintHumanToken(ctx, out)
 	if merr == nil {
 		return minted, nil
 	}
@@ -80,6 +80,14 @@ func originOwnerToken(ctx context.Context) (string, error) {
 func humanLogin(cmd *cobra.Command, home, outFile string, visit func(string) error) error {
 	if outFile == "" {
 		return fmt.Errorf("human login: --out-file is required")
+	}
+	// One Touch ID beats the password+TOTP files: when the fill bridge is
+	// installed on this Mac its `token` action mints the same JWT.
+	if tok, err := bridgeTokenFn(cmd.Context()); err == nil && tok != "" {
+		if err := os.WriteFile(outFile, []byte(tok+"\n"), 0o600); err != nil {
+			return err
+		}
+		return encode(cmd, map[string]string{"out_file": outFile})
 	}
 	if httpLoginReady() {
 		raw, err := remintHumanHTTP(cmd.Context(), outFile)
