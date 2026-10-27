@@ -268,25 +268,102 @@ export function verifyVaultItem(name: string) {
   return sdkVerifyItem({ client: client(), path: { name } });
 }
 
+export type RevealedItem = {
+  login: string;
+  name: string;
+  password: string;
+  uuid: string;
+  totp?: string;
+  card?: {
+    number?: string;
+    exp_month?: string;
+    exp_year?: string;
+    cvv?: string;
+    holder?: string;
+  };
+  identity?: {
+    given_name?: string;
+    family_name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    region?: string;
+    postal?: string;
+    country?: string;
+  };
+};
+
 // reveal is the deliberate human read-back — off-contract like /v1/fill, so
-// raw fetch rather than the generated SDK.
+// raw fetch rather than the generated SDK. Falls back to /v1/fill/logins if
+// the origin hasn't rolled the dedicated /reveal route yet.
 export async function revealVaultItem(
   name: string,
-): Promise<{ data?: { login: string; name: string; password: string; uuid: string; totp?: string }; error?: string }> {
+  hasTotp?: boolean,
+): Promise<{ data?: RevealedItem; error?: string }> {
   const t = token();
   if (!t) {
     throw new Error("signed out");
   }
+  const headers = { Authorization: `Bearer ${t}`, "Content-Type": "application/json" };
   const res = await fetch(`${originAPI}/v1/items/${encodeURIComponent(name)}/reveal`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ mint_totp: true }),
+  });
+  if (res.ok) {
+    const data = (await res.json()) as RevealedItem;
+    if (data.totp === "*") {
+      data.totp = undefined;
+    }
+    return { data };
+  }
+  if (res.status === 404) {
+    let fb = await fetch(`${originAPI}/v1/fill/logins`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ uuid: name, mintTotp: Boolean(hasTotp) }),
+    });
+    if (!fb.ok && hasTotp) {
+      fb = await fetch(`${originAPI}/v1/fill/logins`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ uuid: name, mintTotp: false }),
+      });
+    }
+    if (fb.ok) {
+      const body = (await fb.json()) as { entries?: RevealedItem[] };
+      const first = body.entries?.[0];
+      if (first) {
+        if (first.totp === "*") {
+          first.totp = undefined;
+        }
+        return { data: first };
+      }
+    }
+  }
+  const msg = await res.text().catch(() => "");
+  return { error: msg || `reveal failed (${res.status})` };
+}
+
+export async function mintVaultTOTP(
+  uuid: string,
+): Promise<{ totp?: string; error?: string }> {
+  const t = token();
+  if (!t) {
+    throw new Error("signed out");
+  }
+  const res = await fetch(`${originAPI}/v1/fill/totp`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ uuid }),
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => "");
-    return { error: msg || `reveal failed (${res.status})` };
+    return { error: msg || `totp failed (${res.status})` };
   }
-  return { data: (await res.json()) as { login: string; name: string; password: string; uuid: string; totp?: string } };
+  const body = (await res.json()) as { totp?: string };
+  return { totp: body.totp };
 }
 
 export function events() {

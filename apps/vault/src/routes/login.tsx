@@ -24,36 +24,50 @@ export const Route = createFileRoute("/login")({
     // Hydra returns here carrying the login_challenge flow. A dead flow id
     // self-heals the same way.
     if (!deps.flow) {
-      const session = await frontend.toSession().catch(() => null)
-      const url = new URL("/self-service/login/browser", kratosURL)
+      const whoami = await fetch(new URL("/sessions/whoami", kratosURL), {
+        credentials: "include",
+      }).catch(() => null)
       if (deps.login_challenge) {
+        const url = new URL("/self-service/login/browser", kratosURL)
         url.searchParams.set("login_challenge", deps.login_challenge)
-        if (session) {
-          // Hydra bounced the session back for step-up: the browser flow
-          // must ask for refresh at the session's assurance level. A bare
-          // aal1 refresh on an aal2 session mints a csrf-only flow the
-          // loader cannot render — the redirect loop this used to spin on.
+        if (whoami?.ok) {
+          const session = (await whoami.json().catch(() => null)) as {
+            authenticator_assurance_level?: string
+          } | null
           url.searchParams.set("refresh", "true")
-          if (session.authenticator_assurance_level === "aal2") {
+          if (session?.authenticator_assurance_level === "aal2") {
             url.searchParams.set("aal", "aal2")
           }
+        } else if (whoami?.status === 403) {
+          // 403 on whoami is session_aal2_required — an aal1 cookie is
+          // already present, so ask Kratos for the aal2 second factor.
+          url.searchParams.set("aal", "aal2")
         }
-      } else if (session) {
-        // No challenge yet: kratos session exists → OIDC hop silently mints
-        // the token; no session → browser flow bounces straight back here
-        // with ?flow= — skipping the Hydra round-trip cuts a visible hop.
-        window.location.assign(await beginLogin())
+        window.location.assign(url)
         return new Promise<never>(() => {})
-      } else {
-        url.searchParams.set("return_to", `${window.location.origin}/login`)
       }
-      window.location.assign(url)
+      // Always start through OIDC authorize so the very first login flow
+      // carries Hydra's login_challenge. A bare /self-service/login/browser
+      // flow without a challenge cannot mint an id_token and bounces an
+      // aal1 session in a 303 loop between /login and Kratos.
+      window.location.assign(await beginLogin(whoami?.status === 403))
       return new Promise<never>(() => {})
     }
     try {
       const flow = await frontend.getLoginFlow({ id: deps.flow })
       if ((flow.ui?.nodes ?? []).some((n) => (n.group ?? "default") !== "default")) {
         sessionStorage.removeItem("veil.aal2_flow")
+        // Kratos ships both totp and lookup_secret nodes on every aal2 flow,
+        // which makes Ory Elements stop on the "Choose a way" picker first.
+        // Default active to totp so the 6-digit input renders immediately
+        // ("Choose another method" stays available below).
+        if (
+          flow.requested_aal === "aal2" &&
+          !flow.active &&
+          (flow.ui?.nodes ?? []).some((n) => n.group === "totp")
+        ) {
+          flow.active = "totp"
+        }
         return flow
       }
       // A csrf-only flow is Kratos answering a refresh login/browser request

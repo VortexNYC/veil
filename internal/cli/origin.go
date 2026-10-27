@@ -971,13 +971,36 @@ func originItemReveal(cmd *cobra.Command, name string) error {
 	}
 	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+url.PathEscape(name)+"/reveal", tok, []byte(`{"mint_totp":true}`))
 	if err != nil {
-		return err
+		// Fallback to /v1/fill/logins if origin hasn't rolled the reveal route yet.
+		fbReq, _ := json.Marshal(publicapi.FillLoginsRequest{UUID: name, MintTOTP: true})
+		fbRaw, fbErr := originDo(cmd.Context(), http.MethodPost, "/v1/fill/logins", tok, fbReq)
+		if fbErr != nil {
+			fbReq, _ = json.Marshal(publicapi.FillLoginsRequest{UUID: name, MintTOTP: false})
+			fbRaw, fbErr = originDo(cmd.Context(), http.MethodPost, "/v1/fill/logins", tok, fbReq)
+		}
+		if fbErr != nil {
+			return err
+		}
+		var fbOut publicapi.FillLoginsResponse
+		if err := json.Unmarshal(fbRaw, &fbOut); err != nil || len(fbOut.Entries) == 0 {
+			return err
+		}
+		e := fbOut.Entries[0]
+		totp := e.TOTP
+		if totp == "*" {
+			totp = ""
+		}
+		return printReveal(cmd, e.Login, e.Password, totp)
 	}
 	var out publicapi.FillLogin
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return err
 	}
-	return printReveal(cmd, out.Login, out.Password, out.TOTP)
+	totp := out.TOTP
+	if totp == "*" {
+		totp = ""
+	}
+	return printReveal(cmd, out.Login, out.Password, totp)
 }
 
 func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string, claims map[string][]string) error {

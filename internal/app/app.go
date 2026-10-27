@@ -2074,12 +2074,34 @@ func (a *App) Match(p protocol.Principal, rawURL string) ([]protocol.Item, error
 // Never fall back to item.Name on the URL form.
 // TOTP is "*" when a seed exists so KeePassXC-Browser will call get-totp.
 // FillLogin(mintTotp) puts a 6-digit code instead. Never the seed.
+type FillCard struct {
+	Number   string `json:"number,omitempty"`
+	ExpMonth string `json:"exp_month,omitempty"`
+	ExpYear  string `json:"exp_year,omitempty"`
+	CVV      string `json:"cvv,omitempty"`
+	Holder   string `json:"holder,omitempty"`
+}
+
+type FillIdentity struct {
+	GivenName  string `json:"given_name,omitempty"`
+	FamilyName string `json:"family_name,omitempty"`
+	Email      string `json:"email,omitempty"`
+	Phone      string `json:"phone,omitempty"`
+	Address    string `json:"address,omitempty"`
+	City       string `json:"city,omitempty"`
+	Region     string `json:"region,omitempty"`
+	Postal     string `json:"postal,omitempty"`
+	Country    string `json:"country,omitempty"`
+}
+
 type FillEntry struct {
 	Login    string
 	Name     string
 	Password string
 	UUID     string
 	TOTP     string
+	Card     *FillCard
+	Identity *FillIdentity
 }
 
 func (a *App) FillLogins(p protocol.Principal, rawURL string) ([]FillEntry, error) {
@@ -2186,7 +2208,7 @@ func (a *App) RevealItem(p protocol.Principal, ref string, mintTotp bool) (FillE
 	if !a.mayFillItem(p, item.ID) {
 		return FillEntry{}, fmt.Errorf("app: reveal")
 	}
-	e, env, ok := a.unlockFill(item)
+	e, env, ok := a.unlockReveal(item)
 	if !ok {
 		return FillEntry{}, fmt.Errorf("app: reveal")
 	}
@@ -2208,6 +2230,64 @@ func (a *App) RevealItem(p protocol.Principal, ref string, mintTotp bool) (FillE
 	}
 	e.TOTP = code
 	return e, nil
+}
+
+func (a *App) unlockReveal(item protocol.Item) (FillEntry, material.Envelope, bool) {
+	if item.Kind == protocol.ItemHoney || item.Kind == protocol.ItemPasskey {
+		return FillEntry{}, material.Envelope{}, false
+	}
+	sec, err := a.Store.Secret(item.ID)
+	if err != nil {
+		return FillEntry{}, material.Envelope{}, false
+	}
+	env := material.Unpack([]byte(sec))
+	if env.PasskeyPEM != "" {
+		return FillEntry{}, material.Envelope{}, false
+	}
+	pass := env.Token
+	if pass == "" && item.Kind != protocol.ItemCard && item.Kind != protocol.ItemIdentity {
+		pass = string(sec)
+	}
+	totp := ""
+	if env.TOTP != "" {
+		totp = "*"
+	}
+	out := FillEntry{
+		Login:    env.Login,
+		Name:     item.Name,
+		Password: pass,
+		UUID:     item.ID,
+		TOTP:     totp,
+	}
+	if item.Kind == protocol.ItemCard || env.Number != "" {
+		out.Card = &FillCard{
+			Number:   env.Number,
+			ExpMonth: env.ExpMonth,
+			ExpYear:  env.ExpYear,
+			CVV:      env.CVV,
+			Holder:   env.Login,
+		}
+		if out.Password == "" {
+			out.Password = env.Number
+		}
+	}
+	if item.Kind == protocol.ItemIdentity || env.GivenName != "" || env.FamilyName != "" || env.Email != "" {
+		out.Identity = &FillIdentity{
+			GivenName:  env.GivenName,
+			FamilyName: env.FamilyName,
+			Email:      env.Email,
+			Phone:      env.Phone,
+			Address:    env.Address,
+			City:       env.City,
+			Region:     env.Region,
+			Postal:     env.Postal,
+			Country:    env.Country,
+		}
+		if out.Login == "" {
+			out.Login = env.Email
+		}
+	}
+	return out, env, true
 }
 
 // FillEventReport is a client-reported disclosure. When the fill host serves
