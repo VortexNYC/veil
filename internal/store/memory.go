@@ -150,6 +150,30 @@ func (m *Memory) RecoverOrgKey(context.Context, string, protocol.Owner, []byte) 
 	return ErrUnsupported
 }
 
+// VEIL-78 member recovery needs an org master — a single-key store has
+// none, so the whole ceremony surface is unsupported here.
+func (m *Memory) EnrollOrgKeyShare(context.Context, string, string, []byte, ...protocol.AuditEvent) (protocol.OrgKeyShare, bool, error) {
+	return protocol.OrgKeyShare{}, false, ErrUnsupported
+}
+func (m *Memory) OrgKeyShare(context.Context, string, string) (protocol.OrgKeyShare, error) {
+	return protocol.OrgKeyShare{}, ErrUnsupported
+}
+func (m *Memory) FileRecoveryRequest(context.Context, protocol.RecoveryRequest, ...protocol.AuditEvent) (protocol.RecoveryRequest, bool, error) {
+	return protocol.RecoveryRequest{}, false, ErrUnsupported
+}
+func (m *Memory) RecoveryRequest(context.Context, string) (protocol.RecoveryRequest, error) {
+	return protocol.RecoveryRequest{}, ErrUnsupported
+}
+func (m *Memory) ListRecoveryRequests(context.Context, string, protocol.RecoveryStatus) ([]protocol.RecoveryRequest, error) {
+	return nil, ErrUnsupported
+}
+func (m *Memory) CompleteRecovery(context.Context, string, string, string, []byte) (protocol.RecoveryRequest, error) {
+	return protocol.RecoveryRequest{}, ErrUnsupported
+}
+func (m *Memory) DenyRecovery(context.Context, string, string, protocol.RecoveryStatus) (protocol.RecoveryRequest, error) {
+	return protocol.RecoveryRequest{}, ErrUnsupported
+}
+
 func (m *Memory) Human(id string) (protocol.Principal, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -26,6 +26,16 @@ var (
 	// expired, or its grant died before the resolution landed — nothing was
 	// written.
 	ErrRequestResolved = errors.New("store: request already resolved")
+	// ErrRecoveryPubkey means a recovery request named a new_pubkey that is
+	// already enrolled on an org_key_shares row — the unique pubkey
+	// invariant rejects the reuse (VEIL-78).
+	ErrRecoveryPubkey = errors.New("store: recovery pubkey already enrolled")
+	// ErrRecoveryLocked means the request is still inside its unlock_at
+	// timelock and no valid proof_hmac bypassed it.
+	ErrRecoveryLocked = errors.New("store: recovery still locked")
+	// ErrRecoveryExpired means the request's expires_at already passed —
+	// the sweep, not a confirmer, resolves it.
+	ErrRecoveryExpired = errors.New("store: recovery request expired")
 	// ErrGrantNotLive means the grant's edge is dead — expired grant,
 	// revoked agent, or archived item — so an approval minted on it could
 	// never be used.
@@ -59,12 +69,14 @@ type FileOutcome struct {
 	ExpiredID string
 }
 
-// SweepReport counts rows deleted by a Sweep — Requests marks, not deletes.
+// SweepReport counts rows deleted by a Sweep — Requests and Recoveries
+// mark, not delete.
 type SweepReport struct {
-	Sessions  int64
-	Grants    int64
-	Approvals int64
-	Requests  int64
+	Sessions   int64
+	Grants     int64
+	Approvals  int64
+	Requests   int64
+	Recoveries int64
 }
 
 // OrgBilling is the org's billing state as last reported by the billing
@@ -140,7 +152,44 @@ type Store interface {
 	// master under this store's KEK, and marks the wrap used — atomically,
 	// in one transaction, so a failed reseed cannot burn the wrap. It is the
 	// safe composition of OpenRecoveryWrap + ReseedOrgKey; prefer it.
+	// When the owner has no symmetric wrap, the member's org_key_shares row
+	// is the fallback: recoveryKey is then their X25519 recovery private
+	// key and the share opens via box (VEIL-78).
 	RecoverOrgKey(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte) error
+
+	// EnrollOrgKeyShare wraps the committed org master under the member's
+	// 32-byte X25519 pubkey and plants an org_key_shares row — only when
+	// none exists. Created=false means the member was already enrolled and
+	// the returned share is the committed row, unchanged: a member's pubkey
+	// never rotates outside the recovery ceremony. Single-key stores have
+	// no org master and return ErrUnsupported.
+	EnrollOrgKeyShare(ctx context.Context, orgID, humanID string, pubkey []byte, audit ...protocol.AuditEvent) (share protocol.OrgKeyShare, created bool, err error)
+	// OrgKeyShare returns the member's enrolled share, ErrNotFound when
+	// the member never enrolled.
+	OrgKeyShare(ctx context.Context, orgID, humanID string) (protocol.OrgKeyShare, error)
+	// FileRecoveryRequest records an open recovery request for
+	// (orgID, humanID). req's CreatedAt/UnlockAt/ExpiresAt are the
+	// caller-computed windows — the timelock is app policy, not store
+	// policy. One open row per member: a refile returns the live request
+	// with Created=false so the caller does not re-notify. A new_pubkey
+	// already enrolled on any share is rejected with ErrRecoveryPubkey.
+	FileRecoveryRequest(ctx context.Context, req protocol.RecoveryRequest, audit ...protocol.AuditEvent) (protocol.RecoveryRequest, bool, error)
+	// RecoveryRequest returns one request by id, ErrNotFound when absent.
+	RecoveryRequest(ctx context.Context, id string) (protocol.RecoveryRequest, error)
+	// ListRecoveryRequests returns an org's requests filtered by status.
+	ListRecoveryRequests(ctx context.Context, orgID string, status protocol.RecoveryStatus) ([]protocol.RecoveryRequest, error)
+	// CompleteRecovery is the confirmer's atomic commit: it verifies the
+	// request is open, unexpired, and unlocked — a valid proofHMAC
+	// (HMAC-SHA256(org master, req.ID)) bypasses the unlock_at timelock —
+	// then mints a fresh org master, re-wraps every owner DEK and every
+	// member share, upserts the recovering member's share at epoch+1,
+	// marks the request completed, and writes the recovery_completed
+	// audit row, all in one transaction.
+	CompleteRecovery(ctx context.Context, orgID, id, confirmerID string, proofHMAC []byte) (protocol.RecoveryRequest, error)
+	// DenyRecovery flips an open request to a terminal status (denied by
+	// an owner, cancelled by the initiator) and writes the audit row in
+	// the same transaction. ErrRequestResolved when already resolved.
+	DenyRecovery(ctx context.Context, id, actorID string, status protocol.RecoveryStatus) (protocol.RecoveryRequest, error)
 
 	PutItem(protocol.Item, Secret, ...protocol.AuditEvent) error
 	Item(id string) (protocol.Item, error)

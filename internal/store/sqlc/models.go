@@ -7,6 +7,8 @@ package sqlc
 import (
 	"database/sql"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Agent struct {
@@ -131,11 +133,38 @@ type OrgKey struct {
 	RotatedAt  sql.NullTime
 }
 
+type OrgKeyShare struct {
+	OrgID           string
+	HumanID         string
+	Pubkey          []byte
+	WrappedMaster   []byte
+	WrapPubkeyEpoch int32
+	OrgKeyVersion   int32
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type OwnerKey struct {
 	OrgID     string
 	OwnerKind string
 	OwnerID   string
 	Wrapped   []byte
+}
+
+type RecoveryRequest struct {
+	ID          string
+	OrgID       string
+	HumanID     string
+	InitiatedBy string
+	NewPubkey   []byte
+	ResetMfa    bool
+	Status      string
+	CreatedAt   time.Time
+	UnlockAt    time.Time
+	ExpiresAt   time.Time
+	ResolvedAt  sql.NullTime
+	ConfirmedBy sql.NullString
+	ResultEpoch pgtype.Int4
 }
 
 type RecoveryWrap struct {

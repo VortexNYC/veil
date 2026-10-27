@@ -520,6 +520,30 @@ func (s *SQLite) RecoverOrgKey(context.Context, string, protocol.Owner, []byte) 
 	return ErrUnsupported
 }
 
+// VEIL-78 member recovery needs an org master — a single-key store has
+// none, so the whole ceremony surface is unsupported here.
+func (s *SQLite) EnrollOrgKeyShare(context.Context, string, string, []byte, ...protocol.AuditEvent) (protocol.OrgKeyShare, bool, error) {
+	return protocol.OrgKeyShare{}, false, ErrUnsupported
+}
+func (s *SQLite) OrgKeyShare(context.Context, string, string) (protocol.OrgKeyShare, error) {
+	return protocol.OrgKeyShare{}, ErrUnsupported
+}
+func (s *SQLite) FileRecoveryRequest(context.Context, protocol.RecoveryRequest, ...protocol.AuditEvent) (protocol.RecoveryRequest, bool, error) {
+	return protocol.RecoveryRequest{}, false, ErrUnsupported
+}
+func (s *SQLite) RecoveryRequest(context.Context, string) (protocol.RecoveryRequest, error) {
+	return protocol.RecoveryRequest{}, ErrUnsupported
+}
+func (s *SQLite) ListRecoveryRequests(context.Context, string, protocol.RecoveryStatus) ([]protocol.RecoveryRequest, error) {
+	return nil, ErrUnsupported
+}
+func (s *SQLite) CompleteRecovery(context.Context, string, string, string, []byte) (protocol.RecoveryRequest, error) {
+	return protocol.RecoveryRequest{}, ErrUnsupported
+}
+func (s *SQLite) DenyRecovery(context.Context, string, string, protocol.RecoveryStatus) (protocol.RecoveryRequest, error) {
+	return protocol.RecoveryRequest{}, ErrUnsupported
+}
+
 func (s *SQLite) Human(id string) (protocol.Principal, error) {
 	var p protocol.Principal
 	p.Kind = protocol.PrincipalHuman

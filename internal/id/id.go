@@ -71,6 +71,15 @@ func NewRequest() (string, error) {
 	return "req-" + hex.EncodeToString(b[:]), nil
 }
 
+// NewRecovery is a random recovery-request row id (VEIL-78).
+func NewRecovery() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "rec-" + hex.EncodeToString(b[:]), nil
+}
+
 // NewApproval is a random approval row id.
 func NewApproval() (string, error) {
 	var b [8]byte
