@@ -14,10 +14,16 @@ import {
   UsersThree,
   type Icon,
 } from "@phosphor-icons/react";
-import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { signedIn, signOut, token, amrOf } from "../auth";
-import { billing, billingCheckout } from "../origin";
+import { billing, billingCheckout, recoveryShare } from "../origin";
 import type { BillingView } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app")({
@@ -34,7 +40,16 @@ export const Route = createFileRoute("/_app")({
 });
 
 const nav: ReadonlyArray<{
-  to: "/items" | "/grants" | "/groups" | "/requests" | "/agents" | "/invites" | "/audit" | "/report" | "/settings";
+  to:
+    | "/items"
+    | "/grants"
+    | "/groups"
+    | "/requests"
+    | "/agents"
+    | "/invites"
+    | "/audit"
+    | "/report"
+    | "/settings";
   label: string;
   icon: Icon;
 }> = [
@@ -108,6 +123,40 @@ function BillingBanner() {
   );
 }
 
+// RecoveryKitBanner is the lazy VEIL-78 backfill: any signed-in human with
+// no enrolled org-key share gets the nudge — the private half is minted in
+// the browser on Settings, so this banner is the only reminder they get.
+function RecoveryKitBanner() {
+  const navigate = useNavigate();
+  const [unenrolled, setUnenrolled] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void recoveryShare().then((res) => {
+      if (live) {
+        setUnenrolled(!res.error && res.data?.enrolled === false);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!unenrolled) {
+    return null;
+  }
+  return (
+    <Banner
+      variant="alert"
+      title="Save your Recovery Kit to protect your account against device loss"
+      description="Generate a recovery key in Settings — your vault stays recoverable even if every device is lost."
+      action={
+        <Banner.Action onClick={() => void navigate({ to: "/settings" })}>
+          Open Settings
+        </Banner.Action>
+      }
+    />
+  );
+}
+
 function Shell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -173,6 +222,7 @@ function Shell() {
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-auto">
             <BillingBanner />
+            <RecoveryKitBanner />
             <Outlet />
           </div>
         </main>
