@@ -4,9 +4,7 @@ import { Dialog } from "@cloudflare/kumo/components/dialog";
 import { Empty } from "@cloudflare/kumo/components/empty";
 import { Input, Textarea } from "@cloudflare/kumo/components/input";
 import { Label } from "@cloudflare/kumo/components/label";
-import { LayerCard } from "@cloudflare/kumo/components/layer-card";
 import { Select } from "@cloudflare/kumo/components/select";
-import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import {
   CreditCard,
@@ -20,7 +18,6 @@ import {
 } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { PageChrome } from "../../page-chrome";
 import {
   addItem,
   archiveVaultItem,
@@ -189,12 +186,14 @@ function Items() {
   const [rotateTarget, setRotateTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Item | null>(null);
   const [shareTarget, setShareTarget] = useState<Item | null>(null);
-  const [revealTarget, setRevealTarget] = useState<Item | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
-  const [iconsOn, setIconsOn] = useState(false);
+  const [iconsOn, setIconsOn] = useState<boolean>(
+    () => localStorage.getItem("veil.icons") !== "0",
+  );
   const [addSecret, setAddSecret] = useState("");
   const [addSecretVisible, setAddSecretVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -206,6 +205,9 @@ function Items() {
         (kindFilter === "2fa" ? Boolean(item.has_totp) : item.kind === kindFilter)) &&
       itemMatches(item, query),
   );
+
+  const selectedItem =
+    filtered.find((item) => item.id === selectedId) ?? filtered[0] ?? null;
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -239,10 +241,20 @@ function Items() {
   }, []);
 
   return (
-    <PageChrome
-      title="Items"
-      subtitle="Fill is the read path. Reveal is a deliberate, audited read-back — humans only."
-      actions={
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <Text as="h1" variant="heading">
+            Items
+          </Text>
+          {rows !== null ? (
+            <Text as="span" variant="secondary" size="sm">
+              {filtered.length === rows.length
+                ? `${rows.length} accounts`
+                : `${filtered.length} of ${rows.length} accounts`}
+            </Text>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2">
           <input
             ref={fileRef}
@@ -643,8 +655,7 @@ function Items() {
             </Dialog>
           </Dialog.Root>
         </div>
-      }
-    >
+      </div>
       {error ? (
         <Text as="p" variant="error">
           {error}
@@ -655,7 +666,7 @@ function Items() {
           {notice}
         </Text>
       ) : null}
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         <div className="flex flex-1 items-center gap-2">
           <Input
             ref={searchRef}
@@ -664,6 +675,27 @@ function Items() {
             placeholder="Search accounts by name, username/email, domain, tag, or '2fa'… (⌘K)"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (filtered.length === 0) {
+                return;
+              }
+              const curIdx = selectedItem
+                ? filtered.findIndex((i) => i.id === selectedItem.id)
+                : 0;
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                const next = filtered[Math.min(filtered.length - 1, curIdx + 1)];
+                if (next) {
+                  setSelectedId(next.id);
+                }
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                const prev = filtered[Math.max(0, curIdx - 1)];
+                if (prev) {
+                  setSelectedId(prev.id);
+                }
+              }
+            }}
           />
           {query ? (
             <Button
@@ -681,6 +713,9 @@ function Items() {
         <Select
           aria-label="Filter by kind"
           value={kindFilter}
+          renderValue={(val) =>
+            KIND_FILTER_OPTIONS.find((o) => o.value === val)?.label ?? val
+          }
           onValueChange={(value) => {
             if (typeof value === "string" && isKindFilter(value)) {
               setKindFilter(value);
@@ -697,266 +732,99 @@ function Items() {
           type="button"
           variant={iconsOn ? "primary" : "outline"}
           title="Load each site's favicon — sites see this device fetching them"
-          onClick={() => setIconsOn((v) => !v)}
+          onClick={() =>
+            setIconsOn((v) => {
+              const next = !v;
+              localStorage.setItem("veil.icons", next ? "1" : "0");
+              return next;
+            })
+          }
         >
           Icons
         </Button>
       </div>
-      {rows !== null ? (
-        <Text as="p" variant="secondary" size="sm">
-          Showing {filtered.length} of {rows.length} items
-        </Text>
-      ) : null}
-      <LayerCard>
-        <LayerCard.Primary className="overflow-x-auto">
-          {rows === null ? (
-            <Text variant="secondary">Loading…</Text>
-          ) : rows.length === 0 ? (
+      <div className="bg-kumo-base ring-kumo-line flex min-h-0 flex-1 overflow-hidden rounded-lg ring">
+        {rows === null ? (
+          <div className="flex flex-1 items-center justify-center p-8">
+            <Text variant="secondary">Loading accounts…</Text>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center p-8">
             <Empty
               title="No items"
               description="Add a password, card, or identity, or import a 1Password export."
             />
-          ) : filtered.length === 0 ? (
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center p-8">
             <Empty
               title="No matches"
               description="Nothing matches that search or filter."
             />
-          ) : (
-            <Table>
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head>Account</Table.Head>
-                  <Table.Head>Username / Email</Table.Head>
-                  <Table.Head>Kind</Table.Head>
-                  <Table.Head>Website / URIs</Table.Head>
-                  <Table.Head>Actions</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {filtered.map((item) => {
-                  const canReveal = item.kind !== "passkey" && item.kind !== "file";
-                  return (
-                    <Table.Row key={item.id}>
-                      <Table.Cell>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <ItemIcon item={item} enabled={iconsOn} />
-                          {canReveal ? (
-                            <button
-                              type="button"
-                              className="cursor-pointer text-left font-medium hover:underline"
-                              onClick={() => setRevealTarget(item)}
-                            >
-                              {item.name}
-                            </button>
-                          ) : (
-                            <Text as="span">{item.name}</Text>
-                          )}
-                          {item.has_totp ? (
-                            <Badge variant="neutral">2FA</Badge>
-                          ) : null}
-                          {item.travel_safe ? (
-                            <Badge variant="neutral">travel safe</Badge>
-                          ) : null}
-                          {(item.tags ?? []).map((tag) => (
-                            <Badge key={tag} variant="neutral">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>
-                        {item.login ? (
-                          <button
-                            type="button"
-                            title="Click to copy username / email"
-                            className="max-w-xs cursor-pointer truncate text-left text-sm opacity-80 hover:underline hover:opacity-100"
-                            onClick={() => {
-                              void navigator.clipboard
-                                ?.writeText(item.login!)
-                                .then(() => {
-                                  setError(null);
-                                  setNotice(`Copied username for ${item.name}`);
-                                });
-                            }}
-                          >
-                            {item.login}
-                          </button>
-                        ) : (
-                          <Text as="span" variant="secondary" size="sm">
-                            —
-                          </Text>
-                        )}
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text as="span" variant="secondary" size="sm">
-                          {item.kind}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <div
-                          className="max-w-xs truncate text-sm opacity-75"
-                          title={(item.uris ?? []).join(" · ")}
-                        >
-                          {(item.uris ?? []).join(" · ") || "—"}
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {canReveal ? (
-                            <>
-                              <Button
-                                type="button"
-                                variant="primary"
-                                title="View username, password, 2FA code, and details"
-                                onClick={() => setRevealTarget(item)}
-                              >
-                                Reveal
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                title="Copy password / secret to clipboard"
-                                onClick={() => {
-                                  void revealVaultItem(item.id, item.has_totp).then(
-                                    (res) => {
-                                      if (res.error || !res.data?.password) {
-                                        setError(
-                                          res.error ??
-                                            `copy password failed for ${item.name}`,
-                                        );
-                                        return;
-                                      }
-                                      void navigator.clipboard
-                                        ?.writeText(res.data.password)
-                                        .then(() => {
-                                          setError(null);
-                                          setNotice(
-                                            `Copied password for ${item.name}`,
-                                          );
-                                        });
-                                    },
-                                  );
-                                }}
-                              >
-                                Copy Pass
-                              </Button>
-                            </>
-                          ) : null}
-                          {item.has_totp ? (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              title="Copy live 6-digit 2FA verification code"
-                              onClick={() => {
-                                void mintVaultTOTP(item.id).then((res) => {
-                                  if (res.error || !res.totp) {
-                                    setError(
-                                      res.error ?? `2FA failed for ${item.name}`,
-                                    );
-                                    return;
-                                  }
-                                  void navigator.clipboard
-                                    ?.writeText(res.totp)
-                                    .then(() => {
-                                      setError(null);
-                                      setNotice(
-                                        `Copied 2FA code for ${item.name}: ${res.totp}`,
-                                      );
-                                    });
-                                });
-                              }}
-                            >
-                              Copy 2FA
-                            </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => setEditTarget(item)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            title="One-time share link — sealed in this browser, the origin stores only the envelope"
-                            onClick={() => setShareTarget(item)}
-                          >
-                            Share
-                          </Button>
-                          {item.kind === "api_key" ? (
-                            <>
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => {
-                                  void verifyVaultItem(item.name).then((res) => {
-                                    if (res.error || !res.data) {
-                                      setError(`verify failed for ${item.name}`);
-                                      return;
-                                    }
-                                    setError(null);
-                                    setNotice(
-                                      `Verified ${item.name} (${res.data.mode})`,
-                                    );
-                                  });
-                                }}
-                              >
-                                Verify
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => setRotateTarget(item.name)}
-                              >
-                                Rotate
-                              </Button>
-                            </>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              void archiveVaultItem(item.id).then((res) => {
-                                if (res.error) {
-                                  setError(`archive failed for ${item.name}`);
-                                  return;
-                                }
-                                setError(null);
-                                setNotice(`Archived ${item.name}`);
-                                void reload();
-                              });
-                            }}
-                          >
-                            Archive
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              void deleteVaultItem(item.id).then((res) => {
-                                if (res.error) {
-                                  setError(`delete failed for ${item.name}`);
-                                  return;
-                                }
-                                setError(null);
-                                setNotice(`Deleted ${item.name}`);
-                                void reload();
-                              });
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </Table.Cell>
-                    </Table.Row>
-                  );
-                })}
-              </Table.Body>
-            </Table>
-          )}
-        </LayerCard.Primary>
-      </LayerCard>
+          </div>
+        ) : (
+          <div className="grid h-full min-h-0 w-full flex-1 grid-cols-[340px_minmax(0,1fr)] overflow-hidden">
+            <div
+              role="listbox"
+              aria-label="Accounts"
+              className="border-kumo-hairline flex h-full min-h-0 flex-col overflow-y-auto border-r"
+            >
+              {filtered.map((item) => {
+                const active = selectedItem?.id === item.id;
+                const sub =
+                  item.login || firstURIDomain(item) || item.kind;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => setSelectedId(item.id)}
+                    className={`border-kumo-hairline/50 flex w-full shrink-0 cursor-pointer items-center gap-3 border-b px-3.5 py-2.5 text-left transition-colors ${
+                      active
+                        ? "bg-kumo-tint text-kumo-default"
+                        : "hover:bg-kumo-elevated/60"
+                    }`}
+                  >
+                    <div className="bg-kumo-elevated flex size-8 shrink-0 items-center justify-center rounded-md">
+                      <ItemIcon item={item} enabled={iconsOn} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {item.name}
+                      </div>
+                      <div className="text-kumo-subtle truncate text-xs opacity-75">
+                        {sub}
+                      </div>
+                    </div>
+                    {item.has_totp ? (
+                      <Badge variant="neutral">2FA</Badge>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-6">
+              {selectedItem ? (
+                <AccountInspector
+                  key={selectedItem.id}
+                  item={selectedItem}
+                  iconsOn={iconsOn}
+                  onError={setError}
+                  onNotice={(msg) => {
+                    setError(null);
+                    setNotice(msg);
+                  }}
+                  onEdit={() => setEditTarget(selectedItem)}
+                  onShare={() => setShareTarget(selectedItem)}
+                  onRotate={() => setRotateTarget(selectedItem.name)}
+                  onReload={() => void reload()}
+                />
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
       <Dialog.Root
         open={editTarget !== null}
         onOpenChange={(next) => {
@@ -1048,24 +916,6 @@ function Items() {
         </Dialog>
       </Dialog.Root>
       <Dialog.Root
-        open={revealTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) {
-            setRevealTarget(null);
-          }
-        }}
-      >
-        <Dialog size="sm" className="p-6">
-          {revealTarget ? (
-            <RevealItemBody
-              key={revealTarget.id}
-              item={revealTarget}
-              onError={setError}
-            />
-          ) : null}
-        </Dialog>
-      </Dialog.Root>
-      <Dialog.Root
         open={shareTarget !== null}
         onOpenChange={(next) => {
           if (!next) {
@@ -1084,7 +934,7 @@ function Items() {
           ) : null}
         </Dialog>
       </Dialog.Root>
-    </PageChrome>
+    </div>
   );
 }
 
@@ -1333,48 +1183,54 @@ function EditItemForm({
   );
 }
 
-function RevealItemBody({
+function AccountInspector({
   item,
+  iconsOn,
   onError,
+  onNotice,
+  onEdit,
+  onShare,
+  onRotate,
+  onReload,
 }: {
   item: Item;
+  iconsOn: boolean;
   onError: (msg: string) => void;
+  onNotice: (msg: string) => void;
+  onEdit: () => void;
+  onShare: () => void;
+  onRotate: () => void;
+  onReload: () => void;
 }) {
   const [secret, setSecret] = useState<RevealedItem | null>(null);
+  const [loadingSecret, setLoadingSecret] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [totp, setTotp] = useState<string | undefined>(undefined);
   const [totpRemaining, setTotpRemaining] = useState<number>(
     30 - (Math.floor(Date.now() / 1000) % 30),
   );
-  const [passwordVisible, setPasswordVisible] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
+  const [showAllURIs, setShowAllURIs] = useState(false);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
+  const canReveal = item.kind !== "passkey" && item.kind !== "file";
+
+  // Auto-load live 2FA code as soon as a 2FA-enabled account is selected.
   useEffect(() => {
+    if (!item.has_totp) {
+      return;
+    }
     let live = true;
-    void revealVaultItem(item.id, item.has_totp).then((res) => {
-      if (!live) {
-        return;
-      }
-      if (res.error || !res.data) {
-        onErrorRef.current(res.error ?? `reveal failed for ${item.name}`);
-        return;
-      }
-      setSecret(res.data);
-      if (res.data.totp) {
-        setTotp(res.data.totp);
-      } else if (item.has_totp) {
-        void mintVaultTOTP(item.id).then((tRes) => {
-          if (live && tRes.totp) {
-            setTotp(tRes.totp);
-          }
-        });
+    void mintVaultTOTP(item.id).then((res) => {
+      if (live && res.totp) {
+        setTotp(res.totp);
       }
     });
     return () => {
       live = false;
     };
-  }, [item.id, item.name, item.has_totp]);
+  }, [item.id, item.has_totp]);
 
   useEffect(() => {
     if (!item.has_totp && !totp) {
@@ -1401,245 +1257,451 @@ function RevealItemBody({
     };
   }, [item.id, item.has_totp, totp]);
 
-  function copy(label: string, value: string) {
-    void navigator.clipboard?.writeText(value).then(() => setCopied(label));
+  async function ensureRevealed(): Promise<RevealedItem | null> {
+    if (secret) {
+      return secret;
+    }
+    setLoadingSecret(true);
+    const res = await revealVaultItem(item.id, item.has_totp);
+    setLoadingSecret(false);
+    if (res.error || !res.data) {
+      onErrorRef.current(res.error ?? `reveal failed for ${item.name}`);
+      return null;
+    }
+    setSecret(res.data);
+    if (res.data.totp) {
+      setTotp(res.data.totp);
+    }
+    return res.data;
+  }
+
+  function copy(label: string, value: string, noticeText?: string) {
+    void navigator.clipboard?.writeText(value).then(() => {
+      setCopied(label);
+      if (noticeText) {
+        onNotice(noticeText);
+      }
+    });
   }
 
   const loginVal = secret?.login || item.login || "";
   const formattedTotp =
     totp && totp.length === 6 ? `${totp.slice(0, 3)} ${totp.slice(3)}` : totp;
+  const uris = item.uris ?? [];
+  const visibleURIs = showAllURIs ? uris : uris.slice(0, 5);
 
   return (
-    <div className="flex flex-col gap-4">
-      <Dialog.Title>{item.name}</Dialog.Title>
-      <Dialog.Description>
-        Account details & credentials — deliberate reads land in your audit feed.
-      </Dialog.Description>
-      {secret === null ? (
-        <Text variant="secondary">Unlocking…</Text>
-      ) : (
-        <>
+    <div className="flex flex-col gap-6">
+      <div className="border-kumo-hairline flex flex-wrap items-start justify-between gap-4 border-b pb-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="bg-kumo-elevated flex size-11 shrink-0 items-center justify-center rounded-lg">
+            <ItemIcon item={item} enabled={iconsOn} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Text as="h2" variant="heading">
+                {item.name}
+              </Text>
+              <Badge variant="neutral">{item.kind}</Badge>
+              {item.has_totp ? <Badge variant="neutral">2FA</Badge> : null}
+              {item.travel_safe ? (
+                <Badge variant="neutral">travel safe</Badge>
+              ) : null}
+              {(item.tags ?? []).map((tag) => (
+                <Badge key={tag} variant="neutral">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+            {loginVal ? (
+              <Text variant="secondary" size="sm">
+                {loginVal}
+              </Text>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" onClick={onEdit}>
+            Edit
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            title="Create a one-time sealed share link"
+            onClick={onShare}
+          >
+            Share
+          </Button>
+          {item.kind === "api_key" ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  void verifyVaultItem(item.name).then((res) => {
+                    if (res.error || !res.data) {
+                      onError(`verify failed for ${item.name}`);
+                      return;
+                    }
+                    onNotice(`Verified ${item.name} (${res.data.mode})`);
+                  });
+                }}
+              >
+                Verify
+              </Button>
+              <Button type="button" variant="secondary" onClick={onRotate}>
+                Rotate
+              </Button>
+            </>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void archiveVaultItem(item.id).then((res) => {
+                if (res.error) {
+                  onError(`archive failed for ${item.name}`);
+                  return;
+                }
+                onNotice(`Archived ${item.name}`);
+                onReload();
+              });
+            }}
+          >
+            Archive
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void deleteVaultItem(item.id).then((res) => {
+                if (res.error) {
+                  onError(`delete failed for ${item.name}`);
+                  return;
+                }
+                onNotice(`Deleted ${item.name}`);
+                onReload();
+              });
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+              Username / Email
+            </div>
+            <div className="mt-0.5 truncate font-mono text-sm">
+              {loginVal || "—"}
+            </div>
+          </div>
           {loginVal ? (
-            <div className="flex flex-col gap-1">
-              <Label>Username / Email</Label>
-              <div className="flex items-center gap-2">
-                <Input className="w-full" readOnly value={loginVal} />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                copy("login", loginVal, `Copied username for ${item.name}`)
+              }
+            >
+              {copied === "login" ? "Copied" : "Copy"}
+            </Button>
+          ) : null}
+        </div>
+
+        {canReveal ? (
+          <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                  {item.kind === "secure_note"
+                    ? "Secure Note"
+                    : item.kind === "ssh"
+                      ? "SSH Private Key"
+                      : item.kind === "card"
+                        ? "Card Details"
+                        : item.kind === "identity"
+                          ? "Identity Details"
+                          : "Password / Secret"}
+                </div>
+                {!passwordVisible || !secret ? (
+                  <div className="mt-0.5 font-mono text-sm tracking-widest opacity-70">
+                    {loadingSecret ? "Unlocking…" : "••••••••••••••••"}
+                  </div>
+                ) : secret.password &&
+                  !secret.password.includes("\n") &&
+                  item.kind !== "secure_note" &&
+                  item.kind !== "ssh" ? (
+                  <div className="mt-0.5 break-all font-mono text-sm">
+                    {secret.password}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => copy("login", loginVal)}
+                  disabled={loadingSecret}
+                  onClick={() => {
+                    if (passwordVisible && secret) {
+                      setPasswordVisible(false);
+                      return;
+                    }
+                    void ensureRevealed().then((data) => {
+                      if (data) {
+                        setPasswordVisible(true);
+                      }
+                    });
+                  }}
                 >
-                  {copied === "login" ? "Copied" : "Copy"}
+                  {passwordVisible && secret ? "Hide" : "Reveal"}
                 </Button>
-              </div>
-            </div>
-          ) : null}
-          {secret.password ? (
-            <div className="flex flex-col gap-1">
-              <Label>
-                {item.kind === "secure_note"
-                  ? "Note"
-                  : item.kind === "ssh"
-                    ? "SSH Private Key"
-                    : "Password / Secret"}
-              </Label>
-              {secret.password.includes("\n") || item.kind === "secure_note" || item.kind === "ssh" ? (
-                <div className="flex flex-col gap-2">
-                  <Textarea
-                    className="w-full font-mono text-xs"
-                    rows={6}
-                    readOnly
-                    value={secret.password}
-                  />
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => copy("password", secret.password)}
-                    >
-                      {copied === "password" ? "Copied" : "Copy"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Input
-                    className="w-full font-mono"
-                    type={passwordVisible ? "text" : "password"}
-                    readOnly
-                    value={secret.password}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setPasswordVisible((v) => !v)}
-                  >
-                    {passwordVisible ? "Hide" : "Show"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={() => copy("password", secret.password)}
-                  >
-                    {copied === "password" ? "Copied" : "Copy"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : null}
-          {totp ? (
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between">
-                <Label>One-Time Password (2FA)</Label>
-                <Badge variant="neutral">{totpRemaining}s</Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  className="w-full font-mono text-lg tracking-widest"
-                  readOnly
-                  value={formattedTotp}
-                />
                 <Button
                   type="button"
                   variant="primary"
-                  onClick={() => copy("totp", totp)}
+                  disabled={loadingSecret}
+                  onClick={() => {
+                    void ensureRevealed().then((data) => {
+                      if (data?.password) {
+                        copy(
+                          "password",
+                          data.password,
+                          `Copied password for ${item.name}`,
+                        );
+                      }
+                    });
+                  }}
                 >
-                  {copied === "totp" ? "Copied" : "Copy 2FA"}
+                  {copied === "password" ? "Copied" : "Copy Password"}
                 </Button>
               </div>
             </div>
+            {passwordVisible &&
+            secret?.password &&
+            (secret.password.includes("\n") ||
+              item.kind === "secure_note" ||
+              item.kind === "ssh") ? (
+              <Textarea
+                className="w-full font-mono text-xs"
+                rows={7}
+                readOnly
+                value={secret.password}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
+        {item.has_totp || totp ? (
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                  One-Time Password (2FA)
+                </span>
+                <Badge variant="neutral">{totpRemaining}s</Badge>
+              </div>
+              <div className="mt-0.5 font-mono text-lg font-semibold tracking-widest">
+                {formattedTotp ?? "Loading…"}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                if (totp) {
+                  copy("totp", totp, `Copied 2FA code for ${item.name}: ${totp}`);
+                  return;
+                }
+                void mintVaultTOTP(item.id).then((res) => {
+                  if (res.totp) {
+                    setTotp(res.totp);
+                    copy(
+                      "totp",
+                      res.totp,
+                      `Copied 2FA code for ${item.name}: ${res.totp}`,
+                    );
+                  }
+                });
+              }}
+            >
+              {copied === "totp" ? "Copied" : "Copy 2FA"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      {passwordVisible && secret?.card ? (
+        <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+          {secret.card.holder ? (
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div>
+                <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                  Cardholder
+                </div>
+                <div className="mt-0.5 text-sm">{secret.card.holder}</div>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => copy("holder", secret.card!.holder!)}
+              >
+                {copied === "holder" ? "Copied" : "Copy"}
+              </Button>
+            </div>
           ) : null}
-          {secret.card ? (
-            <div className="flex flex-col gap-3">
-              {secret.card.holder ? (
-                <div className="flex flex-col gap-1">
-                  <Label>Name on card</Label>
-                  <div className="flex items-center gap-2">
-                    <Input className="w-full" readOnly value={secret.card.holder} />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => copy("holder", secret.card!.holder!)}
-                    >
-                      {copied === "holder" ? "Copied" : "Copy"}
-                    </Button>
-                  </div>
+          {secret.card.number ? (
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div>
+                <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                  Card Number
                 </div>
-              ) : null}
-              {secret.card.number ? (
-                <div className="flex flex-col gap-1">
-                  <Label>Card number</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      className="w-full font-mono"
-                      readOnly
-                      value={secret.card.number}
-                    />
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={() => copy("number", secret.card!.number!)}
-                    >
-                      {copied === "number" ? "Copied" : "Copy"}
-                    </Button>
-                  </div>
+                <div className="mt-0.5 font-mono text-sm">
+                  {secret.card.number}
                 </div>
-              ) : null}
-              <div className="grid grid-cols-2 gap-2">
-                {secret.card.exp_month || secret.card.exp_year ? (
-                  <div className="flex flex-col gap-1">
-                    <Label>Expires</Label>
-                    <Input
-                      readOnly
-                      value={`${secret.card.exp_month ?? ""}/${secret.card.exp_year ?? ""}`}
-                    />
-                  </div>
-                ) : null}
-                {secret.card.cvv ? (
-                  <div className="flex flex-col gap-1">
-                    <Label>CVV</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        className="w-full font-mono"
-                        readOnly
-                        value={secret.card.cvv}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => copy("cvv", secret.card!.cvv!)}
-                      >
-                        {copied === "cvv" ? "Copied" : "Copy"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => copy("number", secret.card!.number!)}
+              >
+                {copied === "number" ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          ) : null}
+          {secret.card.exp_month || secret.card.exp_year ? (
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div>
+                <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                  Expires
+                </div>
+                <div className="mt-0.5 font-mono text-sm">
+                  {secret.card.exp_month ?? ""}/{secret.card.exp_year ?? ""}
+                </div>
               </div>
             </div>
           ) : null}
-          {secret.identity ? (
-            <div className="flex flex-col gap-2 text-sm">
-              {secret.identity.given_name || secret.identity.family_name ? (
-                <div className="flex items-center justify-between gap-2">
-                  <Text variant="secondary">Name</Text>
-                  <Text>
-                    {[secret.identity.given_name, secret.identity.family_name]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </Text>
+          {secret.card.cvv ? (
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div>
+                <div className="text-kumo-subtle text-xs font-medium uppercase tracking-wide">
+                  CVV
                 </div>
-              ) : null}
-              {secret.identity.email ? (
-                <div className="flex items-center justify-between gap-2">
-                  <Text variant="secondary">Email</Text>
-                  <Text>{secret.identity.email}</Text>
-                </div>
-              ) : null}
-              {secret.identity.phone ? (
-                <div className="flex items-center justify-between gap-2">
-                  <Text variant="secondary">Phone</Text>
-                  <Text>{secret.identity.phone}</Text>
-                </div>
-              ) : null}
-              {secret.identity.address ? (
-                <div className="flex items-center justify-between gap-2">
-                  <Text variant="secondary">Address</Text>
-                  <Text>
-                    {[
-                      secret.identity.address,
-                      secret.identity.city,
-                      secret.identity.region,
-                      secret.identity.postal,
-                      secret.identity.country,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")}
-                  </Text>
-                </div>
-              ) : null}
+                <div className="mt-0.5 font-mono text-sm">{secret.card.cvv}</div>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => copy("cvv", secret.card!.cvv!)}
+              >
+                {copied === "cvv" ? "Copied" : "Copy"}
+              </Button>
             </div>
           ) : null}
-          {(item.uris ?? []).length > 0 ? (
-            <div className="flex flex-col gap-1">
-              <Label>Websites / URIs</Label>
-              <div className="flex flex-col gap-1.5">
-                {(item.uris ?? []).map((u) => (
-                  <div key={u} className="flex items-center gap-2">
-                    <Input className="w-full text-xs" readOnly value={u} />
+        </div>
+      ) : null}
+
+      {passwordVisible && secret?.identity ? (
+        <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg p-4 text-sm ring">
+          {secret.identity.given_name || secret.identity.family_name ? (
+            <div className="flex items-center justify-between py-1.5">
+              <Text variant="secondary">Name</Text>
+              <Text>
+                {[secret.identity.given_name, secret.identity.family_name]
+                  .filter(Boolean)
+                  .join(" ")}
+              </Text>
+            </div>
+          ) : null}
+          {secret.identity.email ? (
+            <div className="flex items-center justify-between py-1.5">
+              <Text variant="secondary">Email</Text>
+              <Text>{secret.identity.email}</Text>
+            </div>
+          ) : null}
+          {secret.identity.phone ? (
+            <div className="flex items-center justify-between py-1.5">
+              <Text variant="secondary">Phone</Text>
+              <Text>{secret.identity.phone}</Text>
+            </div>
+          ) : null}
+          {secret.identity.address ? (
+            <div className="flex items-center justify-between py-1.5">
+              <Text variant="secondary">Address</Text>
+              <Text>
+                {[
+                  secret.identity.address,
+                  secret.identity.city,
+                  secret.identity.region,
+                  secret.identity.postal,
+                  secret.identity.country,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </Text>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {uris.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label>Websites / URIs ({uris.length})</Label>
+            {uris.length > 5 ? (
+              <button
+                type="button"
+                className="cursor-pointer text-xs underline opacity-75 hover:opacity-100"
+                onClick={() => setShowAllURIs((v) => !v)}
+              >
+                {showAllURIs ? "Show fewer" : `Show all ${uris.length} URIs`}
+              </button>
+            ) : null}
+          </div>
+          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+            {visibleURIs.map((u) => {
+              const isWeb =
+                u.toLowerCase().startsWith("http://") ||
+                u.toLowerCase().startsWith("https://");
+              return (
+                <div
+                  key={u}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5"
+                >
+                  <span
+                    className="min-w-0 flex-1 truncate font-mono text-xs"
+                    title={u}
+                  >
+                    {u}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isWeb ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() =>
+                          window.open(u, "_blank", "noopener,noreferrer")
+                        }
+                      >
+                        Open
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => copy(u, u)}
+                      onClick={() => copy(u, u, `Copied URI`)}
                     >
                       {copied === u ? "Copied" : "Copy"}
                     </Button>
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </>
-      )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
