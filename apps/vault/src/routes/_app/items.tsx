@@ -95,8 +95,9 @@ function generateSecret(): string {
 
 // Row icons the way 1Password's rich icons make items recognizable. Like
 // the fill host's icon cache, the favicon is fetched from the site itself —
-// no aggregator learns which domains this vault holds. The kind glyph is
-// the fallback for URI-less items and hosts with no icon.
+// no aggregator learns which domains this vault holds. Remote icons stay
+// opt-in: rendering them pings every saved domain with the member's IP, so
+// rows draw kind glyphs until the human flips the toggle.
 const KIND_ICON = {
   api_key: Key,
   passkey: Fingerprint,
@@ -123,11 +124,11 @@ function firstURIDomain(item: Item): string {
   return "";
 }
 
-function ItemIcon({ item }: { item: Item }) {
+function ItemIcon({ item, enabled }: { item: Item; enabled: boolean }) {
   const [failed, setFailed] = useState(false);
   const host = firstURIDomain(item);
   const Glyph = KIND_ICON[item.kind] ?? Key;
-  if (host && !failed) {
+  if (host && enabled && !failed) {
     return (
       <img
         src={`https://${host}/favicon.ico`}
@@ -176,6 +177,7 @@ function Items() {
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [iconsOn, setIconsOn] = useState(false);
   const [addSecret, setAddSecret] = useState("");
   const [addSecretVisible, setAddSecretVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -633,6 +635,14 @@ function Items() {
             </Select.Option>
           ))}
         </Select>
+        <Button
+          type="button"
+          variant={iconsOn ? "primary" : "outline"}
+          title="Load each site's favicon — sites see this device fetching them"
+          onClick={() => setIconsOn((v) => !v)}
+        >
+          Icons
+        </Button>
       </div>
       {rows !== null ? (
         <Text as="p" variant="secondary" size="sm">
@@ -669,7 +679,7 @@ function Items() {
                   <Table.Row key={item.id}>
                     <Table.Cell>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <ItemIcon item={item} />
+                        <ItemIcon item={item} enabled={iconsOn} />
                         <Text as="span">{item.name}</Text>
                         {(item.tags ?? []).map((tag) => (
                           <Badge key={tag} variant="neutral">
