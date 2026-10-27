@@ -52,13 +52,37 @@ func interactive() bool {
 
 // callerKey is the stable consent key: "b:<bundleID>" for a real app,
 // "p:<exe path>" for an unbundled parent (agent CLIs, `go run`, CI) —
-// the full path, so a same-named binary elsewhere does not inherit it.
+// the full path, so a same-named binary elsewhere does not inherit it,
+// combined with the terminal pane / agent session anchor so separate
+// tabs, tmux panes, or agent threads never piggyback on each other.
 func callerKey() string {
+	base := ""
 	if b := callerBundle(); b != "" {
-		return "b:" + b
+		base = "b:" + b
+	} else if p := callerLabel(); p != "" {
+		base = "p:" + p
 	}
-	if p := callerLabel(); p != "" {
-		return "p:" + p
+	if base == "" {
+		return ""
+	}
+	if s := sessionAnchor(); s != "" {
+		return base + "|" + s
+	}
+	return base
+}
+
+func sessionAnchor() string {
+	for _, k := range []string{
+		"CLAUDE_CODE_SESSION_ID",
+		"CODEX_THREAD_ID",
+		"DEVIN_SESSION_ID",
+		"TMUX_PANE",
+		"ZELLIJ_PANE_ID",
+		"TERM_SESSION_ID",
+	} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return k + "=" + v
+		}
 	}
 	return ""
 }

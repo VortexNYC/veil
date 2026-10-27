@@ -14,6 +14,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     private var window: NSWindow?
     private var web: WKWebView?
     private var unlocked = false
+    var isUnlocked: Bool { unlocked && window != nil }
     private var unlockInFlight = false
     private weak var subtitleField: NSTextField?
     private weak var unlockButton: NSButton?

@@ -13,10 +13,12 @@ import ServiceManagement
 import Sparkle
 
 @main
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem!
     private var updaterController: SPUStandardUpdaterController!
+    private var statusHeaderItem: NSMenuItem?
+    private var lockMenuItem: NSMenuItem?
 
     // No storyboard: NSApplicationDelegate.main() alone only creates the
     // delegate from NSMainNibFile/NSMainStoryboardFile — both are gone.
@@ -89,6 +91,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.delegate = self
+
+        let header = NSMenuItem(title: "Veil · Locked", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        statusHeaderItem = header
+        menu.addItem(.separator())
 
         let fill = NSMenuItem(
             title: "Fill with Veil",
@@ -141,6 +150,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         lockItem.target = self
         menu.addItem(lockItem)
+        lockMenuItem = lockItem
 
         let settings = NSMenuItem(
             title: "Settings…",
@@ -179,6 +189,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
 
         statusItem.menu = menu
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        let isUnlocked = VaultWindowController.shared.isUnlocked
+        let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        statusHeaderItem?.title = isUnlocked
+            ? "Veil \(ver) · Unlocked"
+            : "Veil \(ver) · Locked"
+        lockMenuItem?.isEnabled = isUnlocked
     }
 
     // The standard app menu set — the process is created in code so the
