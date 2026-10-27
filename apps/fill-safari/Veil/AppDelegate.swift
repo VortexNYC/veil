@@ -13,10 +13,12 @@ import ServiceManagement
 import Sparkle
 
 @main
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem!
     private var updaterController: SPUStandardUpdaterController!
+    private var statusHeaderItem: NSMenuItem?
+    private var lockMenuItem: NSMenuItem?
 
     // No storyboard: NSApplicationDelegate.main() alone only creates the
     // delegate from NSMainNibFile/NSMainStoryboardFile — both are gone.
@@ -89,6 +91,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.delegate = self
+
+        let header = NSMenuItem(title: "Veil · Locked", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        statusHeaderItem = header
+        menu.addItem(.separator())
 
         let fill = NSMenuItem(
             title: "Fill with Veil",
@@ -129,10 +138,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let vault = NSMenuItem(
             title: "Open Veil…",
             action: #selector(openVault),
-            keyEquivalent: "",
+            keyEquivalent: "o",
         )
         vault.target = self
         menu.addItem(vault)
+
+        let lockItem = NSMenuItem(
+            title: "Lock Vault",
+            action: #selector(lockVault),
+            keyEquivalent: "l",
+        )
+        lockItem.target = self
+        menu.addItem(lockItem)
+        lockMenuItem = lockItem
 
         let settings = NSMenuItem(
             title: "Settings…",
@@ -173,6 +191,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        let isUnlocked = VaultWindowController.shared.isUnlocked
+        let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        statusHeaderItem?.title = isUnlocked
+            ? "Veil \(ver) · Unlocked"
+            : "Veil \(ver) · Locked"
+        lockMenuItem?.isEnabled = isUnlocked
+    }
+
     // The standard app menu set — the process is created in code so the
     // menu bar is ours to build. Edit exists because the vault window's
     // WKWebView fields need copy/paste through the responder chain.
@@ -188,6 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Fill with Veil", #selector(fillNow), "\\"),
             ("Quick Access…", #selector(quickAccess), " "),
             ("Open Veil", #selector(openVault), "o"),
+            ("Lock Vault", #selector(lockVault), "l"),
             ("", nil, ""),
             ("Hide Veil", #selector(NSApplication.hide(_:)), "h"),
             ("Quit Veil", #selector(quit), "q"),
@@ -204,7 +232,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if sel == #selector(SPUStandardUpdaterController.checkForUpdates(_:)) {
                 item.target = updaterController
             } else {
-                item.target = sel == #selector(fillNow) || sel == #selector(quickAccess) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
+                item.target = sel == #selector(fillNow) || sel == #selector(quickAccess) || sel == #selector(openVault) || sel == #selector(lockVault) || sel == #selector(quit) ? self : NSApp
             }
         }
         appItem.submenu = appMenu
@@ -267,6 +295,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         VaultWindowController.shared.open()
     }
 
+    @objc private func lockVault() {
+        VaultWindowController.shared.lock()
+        DispatchQueue.global().async { FillBridge.shared.relock() }
+    }
+
     @objc private func openSettings() {
         SettingsWindowController.shared.open()
     }
@@ -313,7 +346,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // enrolls on sight alone.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            handleOTPAuth(url)
+            let scheme = url.scheme?.lowercased() ?? ""
+            if scheme == "otpauth" {
+                handleOTPAuth(url)
+            } else if scheme == "veil" {
+                handleDeepLink(url)
+            }
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        let host = url.host?.lowercased() ?? ""
+        switch host {
+        case "quick-access", "palette":
+            UniversalFill.shared.trigger()
+        case "lock":
+            lockVault()
+        case "settings":
+            openSettings()
+        default:
+            let path = url.path.isEmpty ? (host.isEmpty ? "" : "/\(host)") : url.path
+            VaultWindowController.shared.open(path: path)
         }
     }
 

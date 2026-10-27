@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 )
 
 const Redacted = "[redacted]"
@@ -42,4 +43,32 @@ func JSON(v any, secrets ...[]byte) ([]byte, error) {
 		return nil, err
 	}
 	return Bytes(b, secrets...), nil
+}
+
+type writer struct {
+	dst     io.Writer
+	secrets [][]byte
+}
+
+// NewWriter wraps dst so any written bytes have known secrets scrubbed before
+// reaching the underlying stream (used for non-TTY stdout/stderr in `veil run`).
+func NewWriter(dst io.Writer, secrets ...[]byte) io.Writer {
+	var clean [][]byte
+	for _, s := range secrets {
+		if len(s) > 0 {
+			clean = append(clean, s)
+		}
+	}
+	if len(clean) == 0 {
+		return dst
+	}
+	return &writer{dst: dst, secrets: clean}
+}
+
+func (w *writer) Write(p []byte) (int, error) {
+	redacted := Bytes(p, w.secrets...)
+	if _, err := w.dst.Write(redacted); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

@@ -121,15 +121,19 @@ macos-app:
 		|| killall veil-bin 2>/dev/null || true
 	xcodebuild -project apps/fill-safari/Veil.xcodeproj -scheme Veil -configuration Release -derivedDataPath /tmp/VeilBuild build ENABLE_USER_SCRIPT_SANDBOXING=NO
 	rm -rf /Applications/Veil.app && ditto /tmp/VeilBuild/Build/Products/Release/Veil.app /Applications/Veil.app
-	cp -p /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
+	rm -f $(HOME)/.veil/native-host && cp -p /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
+	@if [ -d "$(HOME)/.local/bin" ]; then rm -f $(HOME)/.local/bin/veil && cp -p /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.local/bin/veil; fi
 	launchctl kickstart -k gui/$$(id -u)/nyc.veil.fill.bridge 2>/dev/null || true
 	open -g /Applications/Veil.app
 
 # deploy ships the Vault SPA (app.veil.nyc), Origin API (veil.nyc on Railway),
-# and verifies every production surface via scripts/deploy-check.sh.
+# rebuilds the local Mac app + CLI + Chrome/Firefox/Safari extensions, and
+# verifies every production surface via scripts/deploy-check.sh.
 deploy:
 	pnpm --filter veil-vault run deploy
 	railway up --service veil --detach
+	$(MAKE) macos-app
+	$(MAKE) fill-pack
 	./scripts/deploy-check.sh
 
 # Store payloads: zips the two installed extension dirs for CWS / AMO

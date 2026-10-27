@@ -14,6 +14,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     private var window: NSWindow?
     private var web: WKWebView?
     private var unlocked = false
+    var isUnlocked: Bool { unlocked && window != nil }
     private var unlockInFlight = false
     private weak var subtitleField: NSTextField?
     private weak var unlockButton: NSButton?
@@ -167,6 +168,8 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
             )
             w.title = "Veil"
             w.minSize = NSSize(width: 800, height: 560)
+            w.appearance = NSAppearance(named: .darkAqua)
+            w.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.063, alpha: 1.0)
             // A restored window would return with the vault already loaded —
             // past the gate. The window must only ever exist through open().
             w.isRestorable = false
@@ -175,6 +178,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
             w.isReleasedWhenClosed = false
             w.delegate = self
             w.center()
+            w.setFrameAutosaveName("VeilVaultWindow")
             window = w
             win = w
         }
@@ -200,7 +204,11 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         btn.controlSize = .large
         btn.keyEquivalent = "\r"
 
-        let stack = NSStackView(views: [lockIcon, title, subtitle, btn])
+        let quickBtn = NSButton(title: "Quick Access (⌘⇧Space)", target: self, action: #selector(openQuickAccessFromSplash))
+        quickBtn.bezelStyle = .rounded
+        quickBtn.controlSize = .regular
+
+        let stack = NSStackView(views: [lockIcon, title, subtitle, btn, quickBtn])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12
@@ -217,6 +225,10 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         web = nil
         NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openQuickAccessFromSplash() {
+        UniversalFill.shared.trigger()
     }
 
     /// The SPA authenticates on a sessionStorage bearer — inject the

@@ -41,3 +41,20 @@ func FuzzBytes(f *testing.F) {
 		}
 	})
 }
+
+func TestNewWriterRedactsStream(t *testing.T) {
+	var buf bytes.Buffer
+	secret := []byte("sk_live_stream_secret_123")
+	w := NewWriter(&buf, secret)
+	msg := []byte("connecting with token sk_live_stream_secret_123\n")
+	n, err := w.Write(msg)
+	if err != nil || n != len(msg) {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if Contains(buf.Bytes(), secret) {
+		t.Fatalf("secret leaked in stream: %s", buf.String())
+	}
+	if !bytes.Contains(buf.Bytes(), []byte(Redacted)) {
+		t.Fatalf("missing redaction marker: %s", buf.String())
+	}
+}
