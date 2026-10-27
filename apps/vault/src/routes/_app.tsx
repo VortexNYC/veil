@@ -416,6 +416,7 @@ function Shell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [genOpen, setGenOpen] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
   const raw = token();
   const aal2 = raw ? amrOf(raw).includes("totp") : false;
 
@@ -430,8 +431,31 @@ function Shell() {
         setGenOpen(true);
       }
     }
+    const currentScript = document
+      .querySelector<HTMLScriptElement>(
+        'script[type="module"][src*="/assets/index-"]',
+      )
+      ?.getAttribute("src");
+    function checkBundleUpdate() {
+      if (!currentScript) return;
+      void fetch("https://app.veil.nyc/", { cache: "no-store" })
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((html) => {
+          const m = html.match(/\/assets\/index-[A-Za-z0-9_-]+\.js/);
+          if (m && m[0] && m[0] !== currentScript) {
+            setUpdateReady(true);
+          }
+        })
+        .catch(() => {});
+    }
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("focus", checkBundleUpdate);
+    const t = setInterval(checkBundleUpdate, 300_000);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("focus", checkBundleUpdate);
+      clearInterval(t);
+    };
   }, []);
 
   return (
@@ -492,6 +516,15 @@ function Shell() {
               </Badge>
             </div>
             <div className="flex items-center gap-2">
+              {updateReady ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => window.location.reload()}
+                >
+                  Update available — Reload
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"

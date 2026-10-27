@@ -2601,6 +2601,7 @@ func fillCmd(home *string) *cobra.Command {
 					return nil
 				}
 				defer lock.Close()
+				_ = syncLocalExtensions(dir)
 				// Confirms live in a persistent --confirm-server child —
 				// the daemon itself stays a pure Go process with no
 				// AppKit, so macOS never manages it as an app
