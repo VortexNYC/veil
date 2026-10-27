@@ -63,6 +63,9 @@ const (
 	ItemPasskey  ItemKind = "passkey"
 	ItemCard     ItemKind = "card"
 	ItemIdentity ItemKind = "identity"
+	// ItemSecureNote is a 1Password Secure Note: the note body seals in
+	// secret like a file — human read-only, never injected or filled.
+	ItemSecureNote ItemKind = "secure_note"
 	// ItemHoney is a tripwire. Any Use is deny + alert; material is a decoy
 	// or empty. Never injected, never filled.
 	ItemHoney ItemKind = "honey"
@@ -73,7 +76,7 @@ const (
 // fill-host only. PAN/CVV never enter a child env.
 func (k ItemKind) Injects() bool {
 	switch k {
-	case ItemSSH, ItemFile, ItemPasskey, ItemCard, ItemIdentity, ItemHoney:
+	case ItemSSH, ItemFile, ItemPasskey, ItemCard, ItemIdentity, ItemSecureNote, ItemHoney:
 		return false
 	default:
 		return true

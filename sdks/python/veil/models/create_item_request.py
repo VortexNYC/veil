@@ -49,8 +49,8 @@ class CreateItemRequest(BaseModel):
         if value is None:
             return value
 
-        if value not in set(['api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity', 'honey']):
-            raise ValueError("must be one of enum values ('api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity', 'honey')")
+        if value not in set(['api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity', 'secure_note', 'honey']):
+            raise ValueError("must be one of enum values ('api_key', 'oauth', 'ssh', 'file', 'passkey', 'card', 'identity', 'secure_note', 'honey')")
         return value
 
     model_config = ConfigDict(
