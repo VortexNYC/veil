@@ -6,6 +6,7 @@ import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { BillingView, RecoveryShare } from "@vortex-api/veil";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import {
   billing,
   billingCheckout,
@@ -37,8 +38,12 @@ const isMacApp = typeof window !== "undefined" && window.location.protocol === "
 // X25519 pair, downloads the private half as the kit file, then posts only
 // the pubkey to enroll. The org master never crosses this boundary.
 function RecoveryKitCard() {
-  const [share, setShare] = useState<RecoveryShare | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [share, setShare] = useState<RecoveryShare | null>(() =>
+    readCache<RecoveryShare>(CACHE_KEYS.recoveryShare),
+  );
+  const [loaded, setLoaded] = useState<boolean>(
+    () => readCache<RecoveryShare>(CACHE_KEYS.recoveryShare) !== null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -50,6 +55,7 @@ function RecoveryKitCard() {
         return;
       }
       if (!res.error && res.data) {
+        writeCache(CACHE_KEYS.recoveryShare, res.data);
         setShare(res.data);
       }
       setLoaded(true);
@@ -171,7 +177,9 @@ function RecoveryKitCard() {
 // human so members see why items vanished; the POST is owner-only — a
 // member click fails 403 and the card says so.
 function TravelModeCard() {
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [enabled, setEnabled] = useState<boolean | null>(() =>
+    readCache<boolean>(CACHE_KEYS.travelMode),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [readonly, setReadonly] = useState(false);
@@ -183,6 +191,7 @@ function TravelModeCard() {
         return;
       }
       if (!res.error && res.data) {
+        writeCache(CACHE_KEYS.travelMode, res.data.enabled);
         setEnabled(res.data.enabled);
       }
     });
@@ -248,12 +257,15 @@ function TravelModeCard() {
 }
 
 function Settings() {
-  const [view, setView] = useState<BillingView | null>(null);
+  const [view, setView] = useState<BillingView | null>(() =>
+    readCache<BillingView>(CACHE_KEYS.billing),
+  );
   useEffect(() => {
     let live = true;
     void billing().then((res) => {
-      if (live) {
-        setView(res.error || !res.data ? null : res.data);
+      if (live && !res.error && res.data) {
+        writeCache(CACHE_KEYS.billing, res.data);
+        setView(res.data);
       }
     });
     return () => {

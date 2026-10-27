@@ -1,3 +1,4 @@
+import { Badge } from "@cloudflare/kumo/components/badge";
 import { Button } from "@cloudflare/kumo/components/button";
 import { Dialog } from "@cloudflare/kumo/components/dialog";
 import { Empty } from "@cloudflare/kumo/components/empty";
@@ -9,6 +10,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import { addGrant, agents, grants, groups, items } from "../../origin";
 import type { Agent, Grant, Group, Item } from "@vortex-api/veil";
@@ -38,12 +40,21 @@ const EXPIRES_OPTIONS: { value: string; label: string }[] = [
 ];
 
 function Grants() {
-  const [rows, setRows] = useState<Grant[] | null>(null);
-  const [allItems, setAllItems] = useState<Item[]>([]);
-  const [allAgents, setAllAgents] = useState<Agent[]>([]);
-  const [allGroups, setAllGroups] = useState<Group[]>([]);
+  const [rows, setRows] = useState<Grant[] | null>(() =>
+    readCache<Grant[]>(CACHE_KEYS.grants),
+  );
+  const [allItems, setAllItems] = useState<Item[]>(
+    () => readCache<Item[]>(CACHE_KEYS.items) ?? [],
+  );
+  const [allAgents, setAllAgents] = useState<Agent[]>(
+    () => readCache<Agent[]>(CACHE_KEYS.agents) ?? [],
+  );
+  const [allGroups, setAllGroups] = useState<Group[]>(
+    () => readCache<Group[]>(CACHE_KEYS.groups) ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [level, setLevel] = useState<Level>("level2");
   const [item, setItem] = useState("");
   const [targetKind, setTargetKind] = useState<TargetKind>("agent");
@@ -59,19 +70,23 @@ function Grants() {
     const res = await grants();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) setRows([]);
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.grants, res.data.grants);
     setRows(res.data.grants);
     const [ires, ares, gres] = await Promise.all([items(), agents(), groups()]);
     if (ires.data) {
+      writeCache(CACHE_KEYS.items, ires.data.items);
       setAllItems(ires.data.items);
     }
     if (ares.data) {
+      writeCache(CACHE_KEYS.agents, ares.data.agents);
       setAllAgents(ares.data.agents);
     }
     if (gres.data) {
+      writeCache(CACHE_KEYS.groups, gres.data.groups);
       setAllGroups(gres.data.groups);
     }
   }
@@ -263,6 +278,13 @@ function Grants() {
           {error}
         </Text>
       ) : null}
+      <Input
+        className="w-full"
+        aria-label="Filter grants"
+        placeholder="Search grants by item, agent, group, or level…"
+        value={query}
+        onChange={(e) => setQuery(e.currentTarget.value)}
+      />
       <LayerCard>
         <LayerCard.Primary>
           {rows === null ? (
@@ -280,14 +302,33 @@ function Grants() {
                 </Table.Row>
               </Table.Header>
               <Table.Body>
-                {rows.map((g) => (
-                  <Table.Row key={g.id}>
-                    <Table.Cell>{itemNameById[g.item_id] ?? g.item_id}</Table.Cell>
-                    <Table.Cell>{g.agent_id}</Table.Cell>
-                    <Table.Cell>{g.subject_kind}</Table.Cell>
-                    <Table.Cell>{g.level}</Table.Cell>
-                  </Table.Row>
-                ))}
+                {rows
+                  .filter((g) => {
+                    if (!query.trim()) return true;
+                    const name = itemNameById[g.item_id] ?? g.item_id;
+                    const hay = `${name} ${g.agent_id} ${g.subject_kind} ${g.level}`.toLowerCase();
+                    return query
+                      .trim()
+                      .toLowerCase()
+                      .split(/\s+/)
+                      .every((t) => hay.includes(t));
+                  })
+                  .map((g) => (
+                    <Table.Row key={g.id}>
+                      <Table.Cell className="font-medium">
+                        {itemNameById[g.item_id] ?? g.item_id}
+                      </Table.Cell>
+                      <Table.Cell className="font-mono text-sm">
+                        {g.agent_id}
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge variant="neutral">{g.subject_kind}</Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge variant="neutral">{g.level}</Badge>
+                      </Table.Cell>
+                    </Table.Row>
+                  ))}
               </Table.Body>
             </Table>
           )}

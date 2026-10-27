@@ -7,6 +7,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import {
   approveReq,
@@ -49,7 +50,9 @@ function ago(iso: string): string {
 }
 
 function Requests() {
-  const [rows, setRows] = useState<ApprovalRequest[] | null>(null);
+  const [rows, setRows] = useState<ApprovalRequest[] | null>(() =>
+    readCache<ApprovalRequest[]>(CACHE_KEYS.requestsOpen),
+  );
   const [status, setStatus] = useState<Status>("open");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -82,6 +85,9 @@ function Requests() {
         setRows([]);
       } else {
         setError(null);
+        if (s === "open") {
+          writeCache(CACHE_KEYS.requestsOpen, res.data.requests);
+        }
         setRows(res.data.requests);
       }
       await reloadRecoveries();
@@ -90,7 +96,9 @@ function Requests() {
   );
 
   useEffect(() => {
-    setRows(null);
+    if (status !== "open") {
+      setRows(null);
+    }
     void reload(status);
     if (status !== "open") {
       return;

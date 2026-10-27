@@ -4,8 +4,9 @@ import { Empty } from "@cloudflare/kumo/components/empty";
 import { LayerCard } from "@cloudflare/kumo/components/layer-card";
 import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import { report } from "../../origin";
 import type { VaultReport } from "@vortex-api/veil";
@@ -76,17 +77,22 @@ function StatCard({ label, value, tone }: { label: string; value: string; tone?:
 }
 
 function Report() {
-  const [rep, setRep] = useState<VaultReport | null>(null)
+  const navigate = useNavigate();
+  const [rep, setRep] = useState<VaultReport | null>(() =>
+    readCache<VaultReport>(CACHE_KEYS.report),
+  )
   const [error, setError] = useState<string | null>(null)
   const [hibp, setHibp] = useState(false)
 
   useEffect(() => {
-    setRep(null)
     setError(null)
     void report(hibp).then((res) => {
       if (res.error || !res.data) {
         setError("report failed")
         return
+      }
+      if (!hibp) {
+        writeCache(CACHE_KEYS.report, res.data)
       }
       setRep(res.data)
     })
@@ -177,6 +183,7 @@ function Report() {
                   <Table.Head>Kind</Table.Head>
                   <Table.Head>URI</Table.Head>
                   <Table.Head>Findings</Table.Head>
+                  <Table.Head></Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
@@ -187,7 +194,18 @@ function Report() {
                         {SEVERITY_LABEL[severity(f)]}
                       </Badge>
                     </Table.Cell>
-                    <Table.Cell>{f.name}</Table.Cell>
+                    <Table.Cell>
+                      <button
+                        type="button"
+                        className="cursor-pointer text-left font-medium hover:underline"
+                        onClick={() => {
+                          sessionStorage.setItem(CACHE_KEYS.selectItemId, f.item_id);
+                          void navigate({ to: "/items" });
+                        }}
+                      >
+                        {f.name}
+                      </button>
+                    </Table.Cell>
                     <Table.Cell>{f.kind}</Table.Cell>
                     <Table.Cell>
                       <Text as="span" variant="mono-secondary">
@@ -195,6 +213,18 @@ function Report() {
                       </Text>
                     </Table.Cell>
                     <Table.Cell>{issueLabels(f).join(", ")}</Table.Cell>
+                    <Table.Cell>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          sessionStorage.setItem(CACHE_KEYS.selectItemId, f.item_id);
+                          void navigate({ to: "/items" });
+                        }}
+                      >
+                        Open
+                      </Button>
+                    </Table.Cell>
                   </Table.Row>
                 ))}
               </Table.Body>
