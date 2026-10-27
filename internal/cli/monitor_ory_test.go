@@ -41,6 +41,41 @@ func TestCheckOryDepsFiresOnAdvisory(t *testing.T) {
 	}
 }
 
+func TestCheckOryDepsSuppressesTriagedAdvisories(t *testing.T) {
+	// The live OSV picture for oryd/hydra:v26.2.0 — CVE-2026-33504 is
+	// fixed AT the pinned tag, CVE-2019-8400 was fixed in 2019. Both
+	// must stay quiet, under any alias OSV chooses to emit.
+	for _, advs := range [][]string{
+		{"CVE-2026-33504", "CVE-2019-8400"},            // CVE-first, what OSV emits today
+		{"GO-2026-4807", "GO-2026-4861"},               // bare GO- ids
+		{"GHSA-r9w3-57w2-gch2", "GHSA-7v6r-w4r6-mhch"}, // bare GHSA ids
+	} {
+		src := fakeDepSource{
+			latest: map[string]string{"ory/hydra": "v26.2.0", "ory/kratos": "v26.2.0", "ory/keto": "v26.2.0"},
+			advs:   map[string][]string{"ory/hydra@v26.2.0": advs},
+		}
+		if f := checkOryDeps(context.Background(), src); len(f) != 0 {
+			t.Fatalf("triaged advisories %v still paged: %v", advs, f)
+		}
+	}
+}
+
+func TestCheckOryDepsNewAdvisoryStillFires(t *testing.T) {
+	// Suppression is per-advisory-id: a triaged id alongside a new one
+	// must not mute the new finding.
+	src := fakeDepSource{
+		latest: map[string]string{"ory/hydra": "v26.2.0", "ory/kratos": "v26.2.0", "ory/keto": "v26.2.0"},
+		advs:   map[string][]string{"ory/hydra@v26.2.0": {"CVE-2019-8400", "CVE-2026-9999"}},
+	}
+	findings := checkOryDeps(context.Background(), src)
+	if len(findings) != 1 || !strings.Contains(findings[0], "CVE-2026-9999") {
+		t.Fatalf("new advisory muted: %v", findings)
+	}
+	if strings.Contains(findings[0], "CVE-2019-8400") {
+		t.Fatalf("suppressed advisory leaked into finding text: %q", findings[0])
+	}
+}
+
 func TestCheckOryDepsQuietWhenCurrent(t *testing.T) {
 	src := fakeDepSource{
 		latest: map[string]string{"ory/hydra": "v26.2.0", "ory/kratos": "v26.2.0", "ory/keto": "v26.2.0"},
