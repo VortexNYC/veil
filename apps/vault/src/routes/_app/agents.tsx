@@ -15,10 +15,12 @@ import {
   agents,
   agentWorkloads,
   bindAgentWorkload,
+  mintAgentHydra,
   revokeVaultAgent,
   unbindAgentWorkload,
   verifyWorkloadIssuer,
 } from "../../origin";
+import type { HydraAgentMint } from "../../origin";
 import type { Agent, BindWorkloadRequest, WorkloadView } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/agents")({
@@ -169,6 +171,30 @@ function compilePresetPolicy(
   };
 }
 
+// mcpBlock is the paste-ready Cursor/GUI stdio config. Paths — never the
+// secret itself — go in env: GUI hosts cannot interpolate ${file:} or Bearer.
+function mcpBlock(name: string, issuer: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        veil: {
+          command: "veil",
+          args: ["mcp", "stdio"],
+          env: {
+            VEIL_ORIGIN: "https://veil.nyc",
+            VEIL_AGENT: name,
+            VEIL_HYDRA_ISSUER: issuer,
+            VEIL_HYDRA_SECRET_FILE: `~/.config/vortex/veil/${name}.hydra`,
+            VEIL_OIDC_TOKEN_FILE: `~/.config/vortex/veil/${name}.jwt`,
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
 function Agents() {
   const [rows, setRows] = useState<Agent[] | null>(null);
   const [byAgent, setByAgent] = useState<Record<string, WorkloadView[]>>({});
@@ -177,6 +203,9 @@ function Agents() {
   const [bindTarget, setBindTarget] = useState<string | null>(null);
   const [preset, setPreset] = useState<Preset>("vercel");
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  const [mint, setMint] = useState<HydraAgentMint | null>(null);
+  const [mintBusy, setMintBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   async function reload() {
     const res = await agents();
@@ -452,6 +481,78 @@ function Agents() {
               </form>
             </Dialog>
           </Dialog.Root>
+          <Dialog.Root
+            open={mint !== null}
+            onOpenChange={(next) => {
+              if (!next) {
+                setMint(null);
+                setCopied(false);
+              }
+            }}
+          >
+            <Dialog size="sm" className="p-6">
+              {mint ? (
+                <div className="flex flex-col gap-4">
+                  <Dialog.Title>Connect MCP — {mint.agent_id}</Dialog.Title>
+                  <Dialog.Description>
+                    The client secret is shown once. Store it in a file — never in
+                    mcp.json or on argv.
+                  </Dialog.Description>
+                  <div className="flex flex-col gap-1">
+                    <Label>Client ID</Label>
+                    <pre className="overflow-x-auto rounded-md border border-kumo-fill bg-kumo-base p-2.5 font-mono text-xs text-kumo-default">
+                      {mint.client_id}
+                    </pre>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label>Issuer</Label>
+                    <pre className="overflow-x-auto rounded-md border border-kumo-fill bg-kumo-base p-2.5 font-mono text-xs text-kumo-default">
+                      {mint.issuer}
+                    </pre>
+                  </div>
+                  {mint.client_secret ? (
+                    <div className="flex flex-col gap-1">
+                      <Label>Client Secret — one-time</Label>
+                      <div className="flex items-center gap-2">
+                        <pre className="flex-1 overflow-x-auto rounded-md border border-kumo-fill bg-kumo-base p-2.5 font-mono text-xs text-kumo-default">
+                          {mint.client_secret}
+                        </pre>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            void navigator.clipboard
+                              ?.writeText(mint.client_secret ?? "")
+                              .then(() => setCopied(true))
+                              .catch(() => {});
+                          }}
+                        >
+                          {copied ? "Copied" : "Copy secret"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Text variant="secondary">
+                      An existing secret on file was verified — use the .hydra file
+                      already on disk.
+                    </Text>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <Label>CLI setup — writes the secret file for this agent</Label>
+                    <pre className="overflow-x-auto rounded-md border border-kumo-fill bg-kumo-base p-2.5 font-mono text-xs text-kumo-default">
+                      veil agent hydra {mint.agent_id}
+                    </pre>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label>mcp.json — Cursor / GUI stdio adapter</Label>
+                    <pre className="overflow-x-auto rounded-md border border-kumo-fill bg-kumo-base p-2.5 font-mono text-xs text-kumo-default">
+                      {mcpBlock(mint.agent_id, mint.issuer)}
+                    </pre>
+                  </div>
+                </div>
+              ) : null}
+            </Dialog>
+          </Dialog.Root>
         </>
       }
     >
@@ -499,7 +600,7 @@ function Agents() {
                             </Button>
                           </div>
                         ))}
-                        <div>
+                        <div className="flex gap-2">
                           <Button
                             type="button"
                             variant="secondary"
@@ -510,6 +611,32 @@ function Agents() {
                           >
                             Bind OIDC
                           </Button>
+                          {!a.revoked_at ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={mintBusy}
+                              onClick={() => {
+                                setMintBusy(true);
+                                void mintAgentHydra(a.id)
+                                  .then((res) => {
+                                    if (res.error || !res.data) {
+                                      setError(res.error ?? `mint failed for ${a.id}`);
+                                      return;
+                                    }
+                                    setError(null);
+                                    setCopied(false);
+                                    setMint(res.data);
+                                    // The mint also binds the Hydra issuer as a
+                                    // workload — refresh the federation column.
+                                    void reload();
+                                  })
+                                  .finally(() => setMintBusy(false));
+                              }}
+                            >
+                              Connect MCP
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     </Table.Cell>

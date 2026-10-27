@@ -190,6 +190,48 @@ export function unbindAgentWorkload(name: string, issuer: string, subject: strin
   return sdkUnbindWorkload({ client: client(), path: { name }, query: { issuer, subject } })
 }
 
+export interface HydraAgentMint {
+  agent_id: string
+  client_id: string
+  client_secret?: string
+  issuer: string
+  audience: string
+}
+
+// mintAgentHydra calls POST /v1/agents/{name}/hydra — not yet in the OpenAPI
+// spec, so this is a raw fetch like importItems. The client_secret is returned
+// once, at mint time; the dialog that shows it must not persist it.
+export async function mintAgentHydra(name: string): Promise<{ data?: HydraAgentMint; error?: string }> {
+  const t = token()
+  if (!t) {
+    throw new Error("signed out")
+  }
+  const res = await fetch(`${originAPI}/v1/agents/${encodeURIComponent(name)}/hydra`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t}` },
+  })
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "")
+    return { error: msg || `mint failed (${res.status})` }
+  }
+  const body = (await res.json()) as {
+    agent_id: string
+    client_id: string
+    secret?: string
+    issuer: string
+    audience: string
+  }
+  return {
+    data: {
+      agent_id: body.agent_id,
+      client_id: body.client_id,
+      client_secret: body.secret,
+      issuer: body.issuer,
+      audience: body.audience,
+    },
+  }
+}
+
 export function rotateVaultItem(name: string, body?: RotateItemRequest) {
   return sdkRotateItem({ client: client(), path: { name }, body })
 }
