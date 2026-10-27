@@ -264,6 +264,12 @@ func TestAuditMatrix_HumanReadPlane(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionFillSync), owner.ID, "", "")
+
+	// Deliberate reveal is its own action, not conflated with fill.
+	if _, err := a.RevealItem(owner, item.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	checkEvent(t, lastOf(t, auditRows(t, a), protocol.ActionReveal), owner.ID, item.ID, "reveal")
 }
 
 func TestAuditMatrix_FileWrite(t *testing.T) {

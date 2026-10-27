@@ -15,6 +15,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SIdRouteImport } from './routes/s/$id'
 import { Route as OidcCallbackRouteImport } from './routes/oidc.callback'
+import { Route as AppSharesRouteImport } from './routes/_app/shares'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppRequestsRouteImport } from './routes/_app/requests'
 import { Route as AppReportRouteImport } from './routes/_app/report'
@@ -53,6 +54,11 @@ const OidcCallbackRoute = OidcCallbackRouteImport.update({
   id: '/oidc/callback',
   path: '/oidc/callback',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppSharesRoute = AppSharesRouteImport.update({
+  id: '/shares',
+  path: '/shares',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/report': typeof AppReportRoute
   '/requests': typeof AppRequestsRoute
   '/settings': typeof AppSettingsRoute
+  '/shares': typeof AppSharesRoute
   '/oidc/callback': typeof OidcCallbackRoute
   '/s/$id': typeof SIdRoute
 }
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/report': typeof AppReportRoute
   '/requests': typeof AppRequestsRoute
   '/settings': typeof AppSettingsRoute
+  '/shares': typeof AppSharesRoute
   '/oidc/callback': typeof OidcCallbackRoute
   '/s/$id': typeof SIdRoute
 }
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/_app/report': typeof AppReportRoute
   '/_app/requests': typeof AppRequestsRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/shares': typeof AppSharesRoute
   '/oidc/callback': typeof OidcCallbackRoute
   '/s/$id': typeof SIdRoute
 }
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/requests'
     | '/settings'
+    | '/shares'
     | '/oidc/callback'
     | '/s/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/requests'
     | '/settings'
+    | '/shares'
     | '/oidc/callback'
     | '/s/$id'
   id:
@@ -198,6 +209,7 @@ export interface FileRouteTypes {
     | '/_app/report'
     | '/_app/requests'
     | '/_app/settings'
+    | '/_app/shares'
     | '/oidc/callback'
     | '/s/$id'
   fileRoutesById: FileRoutesById
@@ -254,6 +266,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/oidc/callback'
       preLoaderRoute: typeof OidcCallbackRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/shares': {
+      id: '/_app/shares'
+      path: '/shares'
+      fullPath: '/shares'
+      preLoaderRoute: typeof AppSharesRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/settings': {
       id: '/_app/settings'
@@ -331,6 +350,7 @@ interface AppRouteChildren {
   AppReportRoute: typeof AppReportRoute
   AppRequestsRoute: typeof AppRequestsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppSharesRoute: typeof AppSharesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -343,6 +363,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppReportRoute: AppReportRoute,
   AppRequestsRoute: AppRequestsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppSharesRoute: AppSharesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -65,6 +65,11 @@ type slidingLimiter struct {
 	max  int
 	win  time.Duration
 	now  func() time.Time
+	// failOpenFull: when the key map is full, unknown keys are allowed rather
+	// than refused. Only for best-effort buckets where a stricter bound exists
+	// elsewhere — an attacker minting keys can evade the bucket but can never
+	// turn it into a lockout of real callers (VTX-790 review).
+	failOpenFull bool
 }
 
 const slidingLimiterMaxKeys = 1 << 16
@@ -110,7 +115,7 @@ func (l *slidingLimiter) allow(key string) bool {
 			}
 		}
 		if len(l.hits) >= slidingLimiterMaxKeys {
-			return false
+			return l.failOpenFull
 		}
 	}
 	l.hits[key] = append(kept, now())
