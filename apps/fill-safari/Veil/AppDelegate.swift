@@ -129,10 +129,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let vault = NSMenuItem(
             title: "Open Veil…",
             action: #selector(openVault),
-            keyEquivalent: "",
+            keyEquivalent: "o",
         )
         vault.target = self
         menu.addItem(vault)
+
+        let lockItem = NSMenuItem(
+            title: "Lock Vault",
+            action: #selector(lockVault),
+            keyEquivalent: "l",
+        )
+        lockItem.target = self
+        menu.addItem(lockItem)
 
         let settings = NSMenuItem(
             title: "Settings…",
@@ -188,6 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ("Fill with Veil", #selector(fillNow), "\\"),
             ("Quick Access…", #selector(quickAccess), " "),
             ("Open Veil", #selector(openVault), "o"),
+            ("Lock Vault", #selector(lockVault), "l"),
             ("", nil, ""),
             ("Hide Veil", #selector(NSApplication.hide(_:)), "h"),
             ("Quit Veil", #selector(quit), "q"),
@@ -204,7 +213,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if sel == #selector(SPUStandardUpdaterController.checkForUpdates(_:)) {
                 item.target = updaterController
             } else {
-                item.target = sel == #selector(fillNow) || sel == #selector(quickAccess) || sel == #selector(openVault) || sel == #selector(quit) ? self : NSApp
+                item.target = sel == #selector(fillNow) || sel == #selector(quickAccess) || sel == #selector(openVault) || sel == #selector(lockVault) || sel == #selector(quit) ? self : NSApp
             }
         }
         appItem.submenu = appMenu
@@ -267,6 +276,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         VaultWindowController.shared.open()
     }
 
+    @objc private func lockVault() {
+        VaultWindowController.shared.lock()
+        DispatchQueue.global().async { FillBridge.shared.relock() }
+    }
+
     @objc private func openSettings() {
         SettingsWindowController.shared.open()
     }
@@ -313,7 +327,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // enrolls on sight alone.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            handleOTPAuth(url)
+            let scheme = url.scheme?.lowercased() ?? ""
+            if scheme == "otpauth" {
+                handleOTPAuth(url)
+            } else if scheme == "veil" {
+                handleDeepLink(url)
+            }
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        let host = url.host?.lowercased() ?? ""
+        switch host {
+        case "quick-access", "palette":
+            UniversalFill.shared.trigger()
+        case "lock":
+            lockVault()
+        case "settings":
+            openSettings()
+        default:
+            let path = url.path.isEmpty ? (host.isEmpty ? "" : "/\(host)") : url.path
+            VaultWindowController.shared.open(path: path)
         }
     }
 
