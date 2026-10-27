@@ -109,8 +109,35 @@ export function addItem(body: {
   return createItem({ client: client(), body });
 }
 
-export function updateVaultItem(id: string, body: UpdateItemRequest) {
-  return sdkUpdateItem({ client: client(), path: { name: id }, body });
+export type ExtendedUpdateItemRequest = UpdateItemRequest & {
+  archived?: boolean;
+  notes?: string;
+  card?: {
+    number?: string;
+    exp_month?: string;
+    exp_year?: string;
+    cvv?: string;
+    holder?: string;
+  };
+  identity?: {
+    given_name?: string;
+    family_name?: string;
+    address?: string;
+    city?: string;
+    region?: string;
+    postal?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+  };
+};
+
+export function updateVaultItem(id: string, body: ExtendedUpdateItemRequest) {
+  return sdkUpdateItem({
+    client: client(),
+    path: { name: id },
+    body: body as UpdateItemRequest,
+  });
 }
 
 export function archiveVaultItem(id: string) {
@@ -274,6 +301,7 @@ export type RevealedItem = {
   password: string;
   uuid: string;
   totp?: string;
+  notes?: string;
   card?: {
     number?: string;
     exp_month?: string;

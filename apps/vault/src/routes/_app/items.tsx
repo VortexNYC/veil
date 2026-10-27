@@ -34,11 +34,15 @@ import {
   formatSubjectKind,
 } from "../../ui";
 import {
+  addGrant,
   addItem,
+  agents,
   archiveVaultItem,
   createShareLink,
   deleteVaultItem,
   enrollVaultTOTP,
+  grants,
+  groups,
   importItems,
   items,
   mintVaultTOTP,
@@ -52,8 +56,10 @@ import {
 } from "../../origin";
 import { sealShare } from "../../share";
 import type {
+  Agent,
   AuditEvent,
   Grant,
+  Group,
   Item,
   VaultReport,
 } from "@vortex-api/veil";
@@ -75,13 +81,14 @@ function isKind(value: string): value is Kind {
   );
 }
 
-type KindFilter = "all" | "pinned" | "2fa" | Item["kind"];
+type KindFilter = "all" | "pinned" | "2fa" | "archived" | Item["kind"];
 
 function isKindFilter(value: string): value is KindFilter {
   return (
     value === "all" ||
     value === "pinned" ||
     value === "2fa" ||
+    value === "archived" ||
     value === "api_key" ||
     value === "passkey" ||
     value === "card" ||
@@ -105,6 +112,7 @@ const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "oauth", label: "OAuth / WIF" },
   { value: "file", label: "Files" },
   { value: "secure_note", label: "Secure notes" },
+  { value: "archived", label: "Archived" },
 ];
 
 const QUICK_PILLS: { value: KindFilter; label: string }[] = [
@@ -115,6 +123,7 @@ const QUICK_PILLS: { value: KindFilter; label: string }[] = [
   { value: "card", label: "Cards" },
   { value: "ssh", label: "SSH" },
   { value: "secure_note", label: "Notes" },
+  { value: "archived", label: "Archived" },
 ];
 
 // CSPRNG password for the inline Generate buttons — 24 chars from a
@@ -295,16 +304,22 @@ function Items() {
   }
 
   const filtered = (rows ?? [])
-    .filter(
-      (item) =>
-        (kindFilter === "all" ||
-          (kindFilter === "pinned"
-            ? isPinned(item)
-            : kindFilter === "2fa"
-              ? Boolean(item.has_totp)
-              : item.kind === kindFilter)) &&
-        itemMatches(item, query),
-    )
+    .filter((item) => {
+      if (kindFilter === "archived") {
+        return Boolean(item.archived) && itemMatches(item, query);
+      }
+      if (item.archived) {
+        return false;
+      }
+      const matchesFilter =
+        kindFilter === "all" ||
+        (kindFilter === "pinned"
+          ? isPinned(item)
+          : kindFilter === "2fa"
+            ? Boolean(item.has_totp)
+            : item.kind === kindFilter);
+      return matchesFilter && itemMatches(item, query);
+    })
     .sort((a, b) => {
       const ap = isPinned(a) ? 0 : 1;
       const bp = isPinned(b) ? 0 : 1;
@@ -1391,6 +1406,63 @@ function EditItemForm({
 }) {
   const [secret, setSecret] = useState("");
   const [secretVisible, setSecretVisible] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [card, setCard] = useState({
+    number: "",
+    exp_month: "",
+    exp_year: "",
+    cvv: "",
+    holder: "",
+  });
+  const [identity, setIdentity] = useState({
+    given_name: "",
+    family_name: "",
+    address: "",
+    city: "",
+    region: "",
+    postal: "",
+    country: "",
+    phone: "",
+    email: "",
+  });
+
+  useEffect(() => {
+    let live = true;
+    void revealVaultItem(item.id, item.has_totp).then((res) => {
+      if (!live || !res.data) {
+        return;
+      }
+      if (res.data.notes) {
+        setNotes(res.data.notes);
+      }
+      if (res.data.card) {
+        setCard({
+          number: res.data.card.number ?? "",
+          exp_month: res.data.card.exp_month ?? "",
+          exp_year: res.data.card.exp_year ?? "",
+          cvv: res.data.card.cvv ?? "",
+          holder: res.data.card.holder ?? "",
+        });
+      }
+      if (res.data.identity) {
+        setIdentity({
+          given_name: res.data.identity.given_name ?? "",
+          family_name: res.data.identity.family_name ?? "",
+          address: res.data.identity.address ?? "",
+          city: res.data.identity.city ?? "",
+          region: res.data.identity.region ?? "",
+          postal: res.data.identity.postal ?? "",
+          country: res.data.identity.country ?? "",
+          phone: res.data.identity.phone ?? "",
+          email: res.data.identity.email ?? "",
+        });
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [item.id, item.has_totp]);
+
   return (
     <form
       className="flex flex-col gap-4"
@@ -1406,7 +1478,10 @@ function EditItemForm({
           uris,
           tags,
           travel_safe: fd.get("travel_safe") === "on",
+          notes,
           ...(newSecret ? { secret: newSecret } : {}),
+          ...(item.kind === "card" ? { card } : {}),
+          ...(item.kind === "identity" ? { identity } : {}),
         }).then((res) => {
           if (res.error) {
             onError(`update failed for ${item.name}`);
@@ -1421,15 +1496,176 @@ function EditItemForm({
         Metadata saves in place. A new secret rotates the sealed value; leave it
         blank to keep the current one.
       </Dialog.Description>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="edit-login">Fill username</Label>
-        <Input
-          id="edit-login"
-          name="login"
-          defaultValue={item.login ?? ""}
-          autoComplete="username"
-        />
-      </div>
+      {item.kind === "card" ? (
+        <>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="edit-card-number">Card number</Label>
+            <Input
+              id="edit-card-number"
+              value={card.number}
+              onChange={(e) =>
+                setCard((c) => ({ ...c, number: e.currentTarget.value }))
+              }
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-card-month">Month (MM)</Label>
+              <Input
+                id="edit-card-month"
+                value={card.exp_month}
+                onChange={(e) =>
+                  setCard((c) => ({ ...c, exp_month: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-card-year">Year (YY)</Label>
+              <Input
+                id="edit-card-year"
+                value={card.exp_year}
+                onChange={(e) =>
+                  setCard((c) => ({ ...c, exp_year: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-card-cvv">CVV</Label>
+              <Input
+                id="edit-card-cvv"
+                value={card.cvv}
+                onChange={(e) =>
+                  setCard((c) => ({ ...c, cvv: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="edit-card-holder">Name on card</Label>
+            <Input
+              id="edit-card-holder"
+              value={card.holder}
+              onChange={(e) =>
+                setCard((c) => ({ ...c, holder: e.currentTarget.value }))
+              }
+            />
+          </div>
+        </>
+      ) : item.kind === "identity" ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-given">Given name</Label>
+              <Input
+                id="edit-id-given"
+                value={identity.given_name}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, given_name: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-family">Family name</Label>
+              <Input
+                id="edit-id-family"
+                value={identity.family_name}
+                onChange={(e) =>
+                  setIdentity((i) => ({
+                    ...i,
+                    family_name: e.currentTarget.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="edit-id-address">Street address</Label>
+            <Input
+              id="edit-id-address"
+              value={identity.address}
+              onChange={(e) =>
+                setIdentity((i) => ({ ...i, address: e.currentTarget.value }))
+              }
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-city">City</Label>
+              <Input
+                id="edit-id-city"
+                value={identity.city}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, city: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-region">State / Region</Label>
+              <Input
+                id="edit-id-region"
+                value={identity.region}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, region: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-postal">Postal code</Label>
+              <Input
+                id="edit-id-postal"
+                value={identity.postal}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, postal: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-country">Country</Label>
+              <Input
+                id="edit-id-country"
+                value={identity.country}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, country: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-phone">Phone</Label>
+              <Input
+                id="edit-id-phone"
+                value={identity.phone}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, phone: e.currentTarget.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="edit-id-email">Email</Label>
+              <Input
+                id="edit-id-email"
+                value={identity.email}
+                onChange={(e) =>
+                  setIdentity((i) => ({ ...i, email: e.currentTarget.value }))
+                }
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="edit-login">Username / Email</Label>
+          <Input
+            id="edit-login"
+            name="login"
+            defaultValue={item.login ?? ""}
+            autoComplete="username"
+          />
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <Label htmlFor="edit-uris">URIs (comma-separated)</Label>
         <Input
@@ -1450,6 +1686,47 @@ function EditItemForm({
           autoComplete="off"
         />
       </div>
+      {item.kind !== "card" && item.kind !== "identity" ? (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="edit-secret">New secret / password (optional)</Label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <Input
+                id="edit-secret"
+                name="secret"
+                type={secretVisible ? "text" : "password"}
+                autoComplete="new-password"
+                value={secret}
+                onChange={(e) => setSecret(e.currentTarget.value)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                const generated = generateSecret();
+                setSecret(generated);
+                setSecretVisible(true);
+                void navigator.clipboard?.writeText(generated).catch(() => {});
+              }}
+            >
+              Generate
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="edit-notes">
+          Notes (optional — backup codes, PINs, security questions)
+        </Label>
+        <Textarea
+          id="edit-notes"
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.currentTarget.value)}
+          placeholder="Recovery codes, PINs, or account notes…"
+        />
+      </div>
       <label className="flex items-center gap-2" htmlFor="edit-travel-safe">
         <input
           id="edit-travel-safe"
@@ -1461,33 +1738,6 @@ function EditItemForm({
           Travel safe — stays visible when Travel Mode is on
         </Text>
       </label>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="edit-secret">New secret / password (optional)</Label>
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <Input
-              id="edit-secret"
-              name="secret"
-              type={secretVisible ? "text" : "password"}
-              autoComplete="new-password"
-              value={secret}
-              onChange={(e) => setSecret(e.currentTarget.value)}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              const generated = generateSecret();
-              setSecret(generated);
-              setSecretVisible(true);
-              void navigator.clipboard?.writeText(generated).catch(() => {});
-            }}
-          >
-            Generate
-          </Button>
-        </div>
-      </div>
       <div className="flex justify-end">
         <Button type="submit" variant="primary">
           Save
@@ -1533,6 +1783,12 @@ function AccountInspector({
   const [enrollingTotp, setEnrollingTotp] = useState(false);
   const [totpSeedInput, setTotpSeedInput] = useState("");
   const [totpBusy, setTotpBusy] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [grantTargetKind, setGrantTargetKind] = useState<"agent" | "group">("agent");
+  const [grantTarget, setGrantTarget] = useState("");
+  const [grantLevel, setGrantLevel] = useState<"level1" | "level2">("level2");
+  const [grantBusy, setGrantBusy] = useState(false);
+  const [localGrants, setLocalGrants] = useState<Grant[] | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
@@ -1615,9 +1871,14 @@ function AccountInspector({
   const visibleURIs = showAllURIs ? uris : uris.slice(0, 5);
   const cachedReport = readCache<VaultReport>(CACHE_KEYS.report);
   const finding = cachedReport?.findings.find((f) => f.item_id === item.id);
-  const itemGrants = (readCache<Grant[]>(CACHE_KEYS.grants) ?? []).filter(
+  const allGrants = localGrants ?? readCache<Grant[]>(CACHE_KEYS.grants) ?? [];
+  const itemGrants = allGrants.filter(
     (g) => g.item_id === item.id || g.item_id === item.name,
   );
+  const cachedAgents = (readCache<Agent[]>(CACHE_KEYS.agents) ?? []).filter(
+    (a) => !a.revoked_at,
+  );
+  const cachedGroups = readCache<Group[]>(CACHE_KEYS.groups) ?? [];
   const itemAudit = (readCache<AuditEvent[]>(CACHE_KEYS.audit) ?? [])
     .filter((e) => e.item_id === item.id || e.item_id === item.name)
     .slice(0, 5);
@@ -1647,6 +1908,7 @@ function AccountInspector({
                 />
               </button>
               <Badge variant="neutral">{formatKind(item.kind)}</Badge>
+              {item.archived ? <Badge variant="warning">Archived</Badge> : null}
               {item.has_totp || totp ? <Badge variant="neutral">2FA</Badge> : null}
               {item.travel_safe ? (
                 <Badge variant="neutral">travel safe</Badge>
@@ -1703,22 +1965,41 @@ function AccountInspector({
               </Button>
             </>
           ) : null}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              void archiveVaultItem(item.id).then((res) => {
-                if (res.error) {
-                  onError(`archive failed for ${item.name}`);
-                  return;
-                }
-                onNotice(`Archived ${item.name}`);
-                onReload();
-              });
-            }}
-          >
-            Archive
-          </Button>
+          {item.archived ? (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                void updateVaultItem(item.id, { archived: false }).then((res) => {
+                  if (res.error) {
+                    onError(`restore failed for ${item.name}`);
+                    return;
+                  }
+                  onNotice(`Restored ${item.name}`);
+                  onReload();
+                });
+              }}
+            >
+              Restore
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                void archiveVaultItem(item.id).then((res) => {
+                  if (res.error) {
+                    onError(`archive failed for ${item.name}`);
+                    return;
+                  }
+                  onNotice(`Archived ${item.name}`);
+                  onReload();
+                });
+              }}
+            >
+              Archive
+            </Button>
+          )}
           {confirmDelete ? (
             <>
               <Button
@@ -2117,6 +2398,28 @@ function AccountInspector({
         </div>
       ) : null}
 
+      {secret?.notes ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label>Notes</Label>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                copy("notes", secret.notes!, `Copied notes for ${item.name}`)
+              }
+            >
+              {copied === "notes" ? "Copied" : "Copy Notes"}
+            </Button>
+          </div>
+          <FieldCard>
+            <div className="whitespace-pre-wrap px-4 py-3 font-mono text-xs">
+              {secret.notes}
+            </div>
+          </FieldCard>
+        </div>
+      ) : null}
+
       {uris.length > 0 ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -2174,9 +2477,123 @@ function AccountInspector({
         </div>
       ) : null}
 
-      {itemGrants.length > 0 ? (
-        <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
           <Label>Granted Access ({itemGrants.length})</Label>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setGrantOpen((v) => !v);
+              if (cachedAgents.length === 0) {
+                void agents().then((r) => {
+                  if (r.data) writeCache(CACHE_KEYS.agents, r.data.agents);
+                });
+              }
+              if (cachedGroups.length === 0) {
+                void groups().then((r) => {
+                  if (r.data) writeCache(CACHE_KEYS.groups, r.data.groups);
+                });
+              }
+            }}
+          >
+            {grantOpen ? "Cancel" : "+ Grant Access"}
+          </Button>
+        </div>
+        {grantOpen ? (
+          <FieldCard>
+            <div className="flex flex-col gap-3 p-4">
+              <div className="grid grid-cols-3 gap-2">
+                <Select
+                  aria-label="Principal kind"
+                  value={grantTargetKind}
+                  renderValue={(v) => formatSubjectKind(String(v))}
+                  onValueChange={(v) => {
+                    if (v === "agent" || v === "group") {
+                      setGrantTargetKind(v);
+                      setGrantTarget("");
+                    }
+                  }}
+                >
+                  <Select.Option value="agent">Agent</Select.Option>
+                  <Select.Option value="group">Group</Select.Option>
+                </Select>
+                <Select
+                  aria-label="Principal"
+                  value={grantTarget}
+                  placeholder={
+                    grantTargetKind === "agent" ? "Pick agent…" : "Pick group…"
+                  }
+                  renderValue={(v) => String(v || "Pick…")}
+                  onValueChange={(v) => {
+                    if (typeof v === "string") setGrantTarget(v);
+                  }}
+                >
+                  {(grantTargetKind === "agent"
+                    ? cachedAgents.map((a) => a.id)
+                    : cachedGroups.map((g) => g.name)
+                  ).map((id) => (
+                    <Select.Option key={id} value={id}>
+                      {id}
+                    </Select.Option>
+                  ))}
+                </Select>
+                <Select
+                  aria-label="Approval policy"
+                  value={grantLevel}
+                  renderValue={(v) => formatGrantLevel(String(v))}
+                  onValueChange={(v) => {
+                    if (v === "level1" || v === "level2") setGrantLevel(v);
+                  }}
+                >
+                  <Select.Option value="level2">
+                    Level 2 · Auto-approve
+                  </Select.Option>
+                  <Select.Option value="level1">
+                    Level 1 · Ask approval
+                  </Select.Option>
+                </Select>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={grantBusy || !grantTarget}
+                  onClick={() => {
+                    setGrantBusy(true);
+                    void addGrant({
+                      item: item.name,
+                      level: grantLevel,
+                      ...(grantTargetKind === "agent"
+                        ? { agent: grantTarget }
+                        : { group: grantTarget }),
+                    }).then((res) => {
+                      setGrantBusy(false);
+                      if (res.error) {
+                        onError("grant failed");
+                        return;
+                      }
+                      setGrantOpen(false);
+                      setGrantTarget("");
+                      onNotice(
+                        `Granted ${grantTarget} access to ${item.name}`,
+                      );
+                      void grants().then((gRes) => {
+                        if (gRes.data) {
+                          writeCache(CACHE_KEYS.grants, gRes.data.grants);
+                          setLocalGrants(gRes.data.grants);
+                        }
+                      });
+                    });
+                  }}
+                >
+                  {grantBusy ? "Saving…" : "Save Grant"}
+                </Button>
+              </div>
+            </div>
+          </FieldCard>
+        ) : null}
+        {itemGrants.length > 0 ? (
           <FieldCard>
             {itemGrants.map((g) => (
               <div
@@ -2193,8 +2610,8 @@ function AccountInspector({
               </div>
             ))}
           </FieldCard>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {itemAudit.length > 0 ? (
         <div className="flex flex-col gap-2">

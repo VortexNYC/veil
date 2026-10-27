@@ -4,6 +4,7 @@ const KIND_LABELS: Record<string, string> = {
   all: "All accounts",
   pinned: "Pinned",
   "2fa": "2FA enabled",
+  archived: "Archived",
   api_key: "Login",
   passkey: "Passkey",
   card: "Card",

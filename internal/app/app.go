@@ -760,8 +760,90 @@ func (a *App) UpdateItem(name string, replaceURIs, addURIs, tags []string, login
 	return a.updateItem(a.HumanID, name, replaceURIs, addURIs, tags, login, token, nil)
 }
 
-// UpdateItemFor is UpdateItem attributed to an explicit actor — the HTTP
-// layer's write-gated path. travelSafe nil leaves the flag untouched.
+// UpdateItemPatch carries optional extended edits (unarchive, notes, card,
+// identity) alongside the standard UpdateItemFor parameters.
+type UpdateItemPatch struct {
+	Archived *bool
+	Notes    *string
+	Card     *FillCard
+	Identity *FillIdentity
+}
+
+func (a *App) UpdateItemPatchFor(actor protocol.Principal, name string, replaceURIs, addURIs, tags []string, login string, token []byte, travelSafe *bool, patch UpdateItemPatch) (protocol.Item, error) {
+	item, err := a.Store.Item(name)
+	if err != nil {
+		return protocol.Item{}, err
+	}
+	secret, err := a.Store.Secret(item.ID)
+	if err != nil {
+		return protocol.Item{}, err
+	}
+	if replaceURIs != nil {
+		item.URIs = replaceURIs
+	}
+	if len(addURIs) > 0 {
+		item.URIs = unionURIs(item.URIs, addURIs)
+	}
+	if tags != nil {
+		item.Tags = tags
+	}
+	if travelSafe != nil {
+		item.TravelSafe = *travelSafe
+	}
+	if patch.Archived != nil {
+		item.Archived = *patch.Archived
+	}
+	raw := []byte(secret)
+	if len(token) > 0 {
+		raw, err = material.WithToken(raw, token)
+		if err != nil {
+			return protocol.Item{}, err
+		}
+	}
+	login = strings.TrimSpace(login)
+	if login != "" {
+		item.Login = login
+		raw, err = material.WithLogin(raw, login)
+		if err != nil {
+			return protocol.Item{}, err
+		}
+	}
+	if patch.Notes != nil {
+		raw, err = material.WithNotes(raw, *patch.Notes)
+		if err != nil {
+			return protocol.Item{}, err
+		}
+	}
+	if patch.Card != nil {
+		c := patch.Card
+		raw, err = material.WithCard(raw, c.Number, c.ExpMonth, c.ExpYear, c.CVV, c.Holder)
+		if err != nil {
+			return protocol.Item{}, err
+		}
+	}
+	if patch.Identity != nil {
+		id := patch.Identity
+		raw, err = material.WithIdentity(raw, id.GivenName, id.FamilyName, id.Address, id.City, id.Region, id.Postal, id.Country, id.Phone, id.Email)
+		if err != nil {
+			return protocol.Item{}, err
+		}
+		if id.Email != "" && item.Login == "" {
+			item.Login = strings.TrimSpace(id.Email)
+		}
+	}
+	if err := a.Store.PutItem(item, store.Secret(raw), adminEvent(actorIDOr(actor.ID, a.HumanID), item.OrgID, item.ID, protocol.ActionItemUpdated, "")); err != nil {
+		return protocol.Item{}, err
+	}
+	return item, nil
+}
+
+func actorIDOr(id, fallback string) string {
+	if id != "" {
+		return id
+	}
+	return fallback
+}
+
 func (a *App) UpdateItemFor(actor protocol.Principal, name string, replaceURIs, addURIs, tags []string, login string, token []byte, travelSafe *bool) (protocol.Item, error) {
 	return a.updateItem(actor.ID, name, replaceURIs, addURIs, tags, login, token, travelSafe)
 }
@@ -2100,6 +2182,7 @@ type FillEntry struct {
 	Password string
 	UUID     string
 	TOTP     string
+	Notes    string
 	Card     *FillCard
 	Identity *FillIdentity
 }
@@ -2258,14 +2341,19 @@ func (a *App) unlockReveal(item protocol.Item) (FillEntry, material.Envelope, bo
 		Password: pass,
 		UUID:     item.ID,
 		TOTP:     totp,
+		Notes:    env.Notes,
 	}
 	if item.Kind == protocol.ItemCard || env.Number != "" {
+		holder := env.GivenName
+		if holder == "" {
+			holder = env.Login
+		}
 		out.Card = &FillCard{
 			Number:   env.Number,
 			ExpMonth: env.ExpMonth,
 			ExpYear:  env.ExpYear,
 			CVV:      env.CVV,
-			Holder:   env.Login,
+			Holder:   holder,
 		}
 		if out.Password == "" {
 			out.Password = env.Number
