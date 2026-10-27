@@ -19,8 +19,8 @@ var _ MappedNullable = &RotateItem200Response{}
 
 // RotateItem200Response struct for RotateItem200Response
 type RotateItem200Response struct {
-	Item *string `json:"item,omitempty"`
-	Rotated *bool `json:"rotated,omitempty"`
+	Item    *string `json:"item,omitempty"`
+	Rotated *bool   `json:"rotated,omitempty"`
 }
 
 // NewRotateItem200Response instantiates a new RotateItem200Response object
@@ -105,7 +105,7 @@ func (o *RotateItem200Response) SetRotated(v bool) {
 }
 
 func (o RotateItem200Response) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -158,5 +158,3 @@ func (v *NullableRotateItem200Response) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

@@ -20,6 +20,8 @@ import (
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+
+	"github.com/VortexNYC/veil/internal/protocol"
 )
 
 const (
@@ -70,6 +72,10 @@ type Envelope struct {
 	FederationOrgID    string `json:"federation_org_id,omitempty"`
 	ServiceAccountID   string `json:"service_account_id,omitempty"`
 	WorkspaceID        string `json:"workspace_id,omitempty"`
+	// RotateHooks are owner-configured post-rotation fan-outs (VEIL-92).
+	// Sealed like the rest of rotate metadata — agents never see consumer
+	// endpoints, and hook payloads never carry the secret.
+	RotateHooks []protocol.RotateHook `json:"rotate_hooks,omitempty"`
 }
 
 func PackFile(name, mime string, body []byte) ([]byte, error) {
@@ -208,6 +214,15 @@ func PackWIF(opts WIFOpts) ([]byte, error) {
 		ServiceAccountID:   strings.TrimSpace(opts.ServiceAccountID),
 		WorkspaceID:        strings.TrimSpace(opts.WorkspaceID),
 	})
+}
+
+// WithRotateHooks seals the post-rotation fan-out list into the envelope,
+// preserving all other fields. Empty list clears the hooks.
+func WithRotateHooks(raw []byte, hooks []protocol.RotateHook) ([]byte, error) {
+	env := Unpack(raw)
+	env.V = Version
+	env.RotateHooks = hooks
+	return pack(env)
 }
 
 // WithRefresh seals a rotated OAuth refresh token into an existing envelope,

@@ -11,8 +11,8 @@ API version: 0.1.1
 package veil
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"fmt"
 )
 
@@ -21,8 +21,8 @@ var _ MappedNullable = &VerifyIssuerResponse{}
 
 // VerifyIssuerResponse struct for VerifyIssuerResponse
 type VerifyIssuerResponse struct {
-	Code string `json:"code"`
-	Issuer string `json:"issuer"`
+	Code    string `json:"code"`
+	Issuer  string `json:"issuer"`
 	Message string `json:"message"`
 }
 
@@ -121,7 +121,7 @@ func (o *VerifyIssuerResponse) SetMessage(v string) {
 }
 
 func (o VerifyIssuerResponse) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -151,10 +151,10 @@ func (o *VerifyIssuerResponse) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err;
+		return err
 	}
 
-	for _, requiredProperty := range(requiredProperties) {
+	for _, requiredProperty := range requiredProperties {
 		if _, exists := allProperties[requiredProperty]; !exists {
 			return fmt.Errorf("no value given for required property %v", requiredProperty)
 		}
@@ -210,5 +210,3 @@ func (v *NullableVerifyIssuerResponse) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-

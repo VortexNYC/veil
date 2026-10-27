@@ -1069,6 +1069,25 @@ var verifyItem = (options) => (options.client ?? client).post({
   url: "/v1/items/{name}/verify",
   ...options
 });
+var listRotateHooks = (options) => (options.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/items/{name}/rotate-hooks",
+  ...options
+});
+var setRotateHooks = (options) => (options.client ?? client).put({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/items/{name}/rotate-hooks",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var fireRotateHooks = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/items/{name}/rotate-hooks/fire",
+  ...options
+});
 
 // sdks/typescript/ambient-oidc.ts
 function b64url(bytes) {
@@ -1228,6 +1247,7 @@ export {
   deleteOrg,
   demoteOwner,
   denyRequest,
+  fireRotateHooks,
   generateDPoPKeyPair,
   getBilling,
   getHealth,
@@ -1241,6 +1261,7 @@ export {
   listGroups,
   listItems,
   listRequests,
+  listRotateHooks,
   listRotateProviders,
   listSessions,
   promoteOwner,
@@ -1250,6 +1271,7 @@ export {
   removeMember,
   revokeAgent,
   rotateItem,
+  setRotateHooks,
   signDPoPProof,
   streamRequests,
   unbindWorkload,

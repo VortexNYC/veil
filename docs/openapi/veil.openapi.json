@@ -1830,6 +1830,134 @@
           }
         }
       }
+    },
+    "/v1/items/{name}/rotate-hooks": {
+      "get": {
+        "operationId": "listRotateHooks",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "List an item's post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Configured hooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateHooksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "no such item"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRotateHooks",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Replace an item's post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateHooksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Hooks stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateHooksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid hook config"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
+    },
+    "/v1/items/{name}/rotate-hooks/fire": {
+      "post": {
+        "operationId": "fireRotateHooks",
+        "tags": [
+          "Owner"
+        ],
+        "summary": "Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-hook outcomes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateHooksFireResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "no such item"
+          },
+          "401": {
+            "description": "missing or invalid bearer"
+          },
+          "403": {
+            "description": "not the owner"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3241,6 +3369,90 @@
               "provider_ok",
               "sealed_ok"
             ]
+          }
+        }
+      },
+      "RotateHook": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "consumer label for audit, e.g. ci-resecrets"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "webhook"
+            ],
+            "description": "hook type; only webhook exists"
+          },
+          "url": {
+            "type": "string",
+            "description": "consumer endpoint; a capability token may ride in path/query — sealed, never in audit"
+          }
+        }
+      },
+      "RotateHooksRequest": {
+        "type": "object",
+        "required": [
+          "hooks"
+        ],
+        "properties": {
+          "hooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RotateHook"
+            }
+          }
+        }
+      },
+      "RotateHooksResponse": {
+        "type": "object",
+        "required": [
+          "hooks"
+        ],
+        "properties": {
+          "hooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RotateHook"
+            }
+          }
+        }
+      },
+      "RotateHookResult": {
+        "type": "object",
+        "properties": {
+          "hook": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "RotateHooksFireResponse": {
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RotateHookResult"
+            }
           }
         }
       }

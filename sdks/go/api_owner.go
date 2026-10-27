@@ -16,18 +16,17 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"os"
+	"strings"
 )
-
 
 // OwnerAPIService OwnerAPI service
 type OwnerAPIService service
 
 type OwnerAPIAddGroupMemberRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
-	name string
+	ctx                   context.Context
+	ApiService            *OwnerAPIService
+	name                  string
 	addGroupMemberRequest *AddGroupMemberRequest
 }
 
@@ -43,24 +42,24 @@ func (r OwnerAPIAddGroupMemberRequest) Execute() (*http.Response, error) {
 /*
 AddGroupMember Add an agent or human to the group. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIAddGroupMemberRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIAddGroupMemberRequest
 */
 func (a *OwnerAPIService) AddGroupMember(ctx context.Context, name string) OwnerAPIAddGroupMemberRequest {
 	return OwnerAPIAddGroupMemberRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) AddGroupMemberExecute(r OwnerAPIAddGroupMemberRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodPost
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.AddGroupMember")
@@ -126,9 +125,9 @@ func (a *OwnerAPIService) AddGroupMemberExecute(r OwnerAPIAddGroupMemberRequest)
 }
 
 type OwnerAPIApproveRequestRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
-	id string
+	ctx                context.Context
+	ApiService         *OwnerAPIService
+	id                 string
 	approveRequestBody *ApproveRequestBody
 }
 
@@ -144,26 +143,27 @@ func (r OwnerAPIApproveRequestRequest) Execute() (*ApprovalRequest, *http.Respon
 /*
 ApproveRequest Approve an open request — unlocks its level-1 grant for ttl. First write wins.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param id
- @return OwnerAPIApproveRequestRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param id
+	@return OwnerAPIApproveRequestRequest
 */
 func (a *OwnerAPIService) ApproveRequest(ctx context.Context, id string) OwnerAPIApproveRequestRequest {
 	return OwnerAPIApproveRequestRequest{
 		ApiService: a,
-		ctx: ctx,
-		id: id,
+		ctx:        ctx,
+		id:         id,
 	}
 }
 
 // Execute executes the request
-//  @return ApprovalRequest
+//
+//	@return ApprovalRequest
 func (a *OwnerAPIService) ApproveRequestExecute(r OwnerAPIApproveRequestRequest) (*ApprovalRequest, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *ApprovalRequest
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ApprovalRequest
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ApproveRequest")
@@ -235,9 +235,9 @@ func (a *OwnerAPIService) ApproveRequestExecute(r OwnerAPIApproveRequestRequest)
 }
 
 type OwnerAPIArchiveItemRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIArchiveItemRequest) Execute() (*http.Response, error) {
@@ -247,24 +247,24 @@ func (r OwnerAPIArchiveItemRequest) Execute() (*http.Response, error) {
 /*
 ArchiveItem Hide from Use and list. History stays.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIArchiveItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIArchiveItemRequest
 */
 func (a *OwnerAPIService) ArchiveItem(ctx context.Context, name string) OwnerAPIArchiveItemRequest {
 	return OwnerAPIArchiveItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) ArchiveItemExecute(r OwnerAPIArchiveItemRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodPost
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ArchiveItem")
@@ -325,9 +325,9 @@ func (a *OwnerAPIService) ArchiveItemExecute(r OwnerAPIArchiveItemRequest) (*htt
 }
 
 type OwnerAPIBindWorkloadRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
-	name string
+	ctx                 context.Context
+	ApiService          *OwnerAPIService
+	name                string
 	bindWorkloadRequest *BindWorkloadRequest
 }
 
@@ -343,26 +343,27 @@ func (r OwnerAPIBindWorkloadRequest) Execute() (*WorkloadView, *http.Response, e
 /*
 BindWorkload Bind an existing agent to an external OIDC issuer, subject, and audience (workload identity federation). Owner-only — binding an auth method to an agent is a grant-adjacent write.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIBindWorkloadRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIBindWorkloadRequest
 */
 func (a *OwnerAPIService) BindWorkload(ctx context.Context, name string) OwnerAPIBindWorkloadRequest {
 	return OwnerAPIBindWorkloadRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return WorkloadView
+//
+//	@return WorkloadView
 func (a *OwnerAPIService) BindWorkloadExecute(r OwnerAPIBindWorkloadRequest) (*WorkloadView, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *WorkloadView
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *WorkloadView
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.BindWorkload")
@@ -437,8 +438,8 @@ func (a *OwnerAPIService) BindWorkloadExecute(r OwnerAPIBindWorkloadRequest) (*W
 }
 
 type OwnerAPICreateAgentRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                context.Context
+	ApiService         *OwnerAPIService
 	createAgentRequest *CreateAgentRequest
 }
 
@@ -454,24 +455,25 @@ func (r OwnerAPICreateAgentRequest) Execute() (*Agent, *http.Response, error) {
 /*
 CreateAgent Register an agent principal. Not a Hydra secret. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateAgentRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateAgentRequest
 */
 func (a *OwnerAPIService) CreateAgent(ctx context.Context) OwnerAPICreateAgentRequest {
 	return OwnerAPICreateAgentRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Agent
+//
+//	@return Agent
 func (a *OwnerAPIService) CreateAgentExecute(r OwnerAPICreateAgentRequest) (*Agent, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Agent
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Agent
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateAgent")
@@ -545,8 +547,8 @@ func (a *OwnerAPIService) CreateAgentExecute(r OwnerAPICreateAgentRequest) (*Age
 }
 
 type OwnerAPICreateGrantRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                context.Context
+	ApiService         *OwnerAPIService
 	createGrantRequest *CreateGrantRequest
 }
 
@@ -562,24 +564,25 @@ func (r OwnerAPICreateGrantRequest) Execute() (*Grant, *http.Response, error) {
 /*
 CreateGrant Grant an agent or a Kratos human Use on an item. Same grant object. Not MCP. Not a family vault.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateGrantRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateGrantRequest
 */
 func (a *OwnerAPIService) CreateGrant(ctx context.Context) OwnerAPICreateGrantRequest {
 	return OwnerAPICreateGrantRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Grant
+//
+//	@return Grant
 func (a *OwnerAPIService) CreateGrantExecute(r OwnerAPICreateGrantRequest) (*Grant, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Grant
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Grant
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateGrant")
@@ -653,8 +656,8 @@ func (a *OwnerAPIService) CreateGrantExecute(r OwnerAPICreateGrantRequest) (*Gra
 }
 
 type OwnerAPICreateGroupRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                context.Context
+	ApiService         *OwnerAPIService
 	createGroupRequest *CreateGroupRequest
 }
 
@@ -670,24 +673,25 @@ func (r OwnerAPICreateGroupRequest) Execute() (*Group, *http.Response, error) {
 /*
 CreateGroup Create an org group. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateGroupRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateGroupRequest
 */
 func (a *OwnerAPIService) CreateGroup(ctx context.Context) OwnerAPICreateGroupRequest {
 	return OwnerAPICreateGroupRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Group
+//
+//	@return Group
 func (a *OwnerAPIService) CreateGroupExecute(r OwnerAPICreateGroupRequest) (*Group, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Group
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Group
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateGroup")
@@ -761,8 +765,8 @@ func (a *OwnerAPIService) CreateGroupExecute(r OwnerAPICreateGroupRequest) (*Gro
 }
 
 type OwnerAPICreateItemRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx               context.Context
+	ApiService        *OwnerAPIService
 	createItemRequest *CreateItemRequest
 }
 
@@ -778,24 +782,25 @@ func (r OwnerAPICreateItemRequest) Execute() (*Item, *http.Response, error) {
 /*
 CreateItem Create an item. Secret is in the request over TLS. Never in the response. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateItemRequest
 */
 func (a *OwnerAPIService) CreateItem(ctx context.Context) OwnerAPICreateItemRequest {
 	return OwnerAPICreateItemRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return Item
+//
+//	@return Item
 func (a *OwnerAPIService) CreateItemExecute(r OwnerAPICreateItemRequest) (*Item, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Item
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Item
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateItem")
@@ -869,8 +874,8 @@ func (a *OwnerAPIService) CreateItemExecute(r OwnerAPICreateItemRequest) (*Item,
 }
 
 type OwnerAPICreateSessionRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                  context.Context
+	ApiService           *OwnerAPIService
 	createSessionRequest *CreateSessionRequest
 }
 
@@ -886,24 +891,25 @@ func (r OwnerAPICreateSessionRequest) Execute() (*CreateSessionResponse, *http.R
 /*
 CreateSession Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPICreateSessionRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPICreateSessionRequest
 */
 func (a *OwnerAPIService) CreateSession(ctx context.Context) OwnerAPICreateSessionRequest {
 	return OwnerAPICreateSessionRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return CreateSessionResponse
+//
+//	@return CreateSessionResponse
 func (a *OwnerAPIService) CreateSessionExecute(r OwnerAPICreateSessionRequest) (*CreateSessionResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *CreateSessionResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *CreateSessionResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.CreateSession")
@@ -977,9 +983,9 @@ func (a *OwnerAPIService) CreateSessionExecute(r OwnerAPICreateSessionRequest) (
 }
 
 type OwnerAPIDeleteItemRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIDeleteItemRequest) Execute() (*http.Response, error) {
@@ -989,24 +995,24 @@ func (r OwnerAPIDeleteItemRequest) Execute() (*http.Response, error) {
 /*
 DeleteItem Remove the item and its grants. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIDeleteItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIDeleteItemRequest
 */
 func (a *OwnerAPIService) DeleteItem(ctx context.Context, name string) OwnerAPIDeleteItemRequest {
 	return OwnerAPIDeleteItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) DeleteItemExecute(r OwnerAPIDeleteItemRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodDelete
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodDelete
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.DeleteItem")
@@ -1067,9 +1073,9 @@ func (a *OwnerAPIService) DeleteItemExecute(r OwnerAPIDeleteItemRequest) (*http.
 }
 
 type OwnerAPIDenyRequestRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	id string
+	id         string
 }
 
 func (r OwnerAPIDenyRequestRequest) Execute() (*ApprovalRequest, *http.Response, error) {
@@ -1079,26 +1085,27 @@ func (r OwnerAPIDenyRequestRequest) Execute() (*ApprovalRequest, *http.Response,
 /*
 DenyRequest Deny an open request. First write wins; the agent's next use files a fresh ask.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param id
- @return OwnerAPIDenyRequestRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param id
+	@return OwnerAPIDenyRequestRequest
 */
 func (a *OwnerAPIService) DenyRequest(ctx context.Context, id string) OwnerAPIDenyRequestRequest {
 	return OwnerAPIDenyRequestRequest{
 		ApiService: a,
-		ctx: ctx,
-		id: id,
+		ctx:        ctx,
+		id:         id,
 	}
 }
 
 // Execute executes the request
-//  @return ApprovalRequest
+//
+//	@return ApprovalRequest
 func (a *OwnerAPIService) DenyRequestExecute(r OwnerAPIDenyRequestRequest) (*ApprovalRequest, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *ApprovalRequest
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ApprovalRequest
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.DenyRequest")
@@ -1167,11 +1174,113 @@ func (a *OwnerAPIService) DenyRequestExecute(r OwnerAPIDenyRequestRequest) (*App
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
-type OwnerAPIImportItemsRequest struct {
-	ctx context.Context
+type OwnerAPIFireRotateHooksRequest struct {
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	body *os.File
-	filename *string
+	name       string
+}
+
+func (r OwnerAPIFireRotateHooksRequest) Execute() (*RotateHooksFireResponse, *http.Response, error) {
+	return r.ApiService.FireRotateHooksExecute(r)
+}
+
+/*
+FireRotateHooks Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIFireRotateHooksRequest
+*/
+func (a *OwnerAPIService) FireRotateHooks(ctx context.Context, name string) OwnerAPIFireRotateHooksRequest {
+	return OwnerAPIFireRotateHooksRequest{
+		ApiService: a,
+		ctx:        ctx,
+		name:       name,
+	}
+}
+
+// Execute executes the request
+//
+//	@return RotateHooksFireResponse
+func (a *OwnerAPIService) FireRotateHooksExecute(r OwnerAPIFireRotateHooksRequest) (*RotateHooksFireResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RotateHooksFireResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.FireRotateHooks")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/items/{name}/rotate-hooks/fire"
+	localVarPath = strings.Replace(localVarPath, "{"+"name"+"}", url.PathEscape(parameterValueToString(r.name, "name")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type OwnerAPIImportItemsRequest struct {
+	ctx        context.Context
+	ApiService *OwnerAPIService
+	body       *os.File
+	filename   *string
 }
 
 func (r OwnerAPIImportItemsRequest) Body(body *os.File) OwnerAPIImportItemsRequest {
@@ -1192,24 +1301,25 @@ func (r OwnerAPIImportItemsRequest) Execute() (*ImportResponse, *http.Response, 
 /*
 ImportItems One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIImportItemsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIImportItemsRequest
 */
 func (a *OwnerAPIService) ImportItems(ctx context.Context) OwnerAPIImportItemsRequest {
 	return OwnerAPIImportItemsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return ImportResponse
+//
+//	@return ImportResponse
 func (a *OwnerAPIService) ImportItemsExecute(r OwnerAPIImportItemsRequest) (*ImportResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *ImportResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *ImportResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ImportItems")
@@ -1286,9 +1396,9 @@ func (a *OwnerAPIService) ImportItemsExecute(r OwnerAPIImportItemsRequest) (*Imp
 }
 
 type OwnerAPIListAgentWorkloadsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIListAgentWorkloadsRequest) Execute() (*WorkloadsResponse, *http.Response, error) {
@@ -1298,26 +1408,27 @@ func (r OwnerAPIListAgentWorkloadsRequest) Execute() (*WorkloadsResponse, *http.
 /*
 ListAgentWorkloads List bound OIDC workload policies for an agent. Owner-only.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIListAgentWorkloadsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIListAgentWorkloadsRequest
 */
 func (a *OwnerAPIService) ListAgentWorkloads(ctx context.Context, name string) OwnerAPIListAgentWorkloadsRequest {
 	return OwnerAPIListAgentWorkloadsRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return WorkloadsResponse
+//
+//	@return WorkloadsResponse
 func (a *OwnerAPIService) ListAgentWorkloadsExecute(r OwnerAPIListAgentWorkloadsRequest) (*WorkloadsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *WorkloadsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *WorkloadsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListAgentWorkloads")
@@ -1387,7 +1498,7 @@ func (a *OwnerAPIService) ListAgentWorkloadsExecute(r OwnerAPIListAgentWorkloads
 }
 
 type OwnerAPIListAgentsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -1398,24 +1509,25 @@ func (r OwnerAPIListAgentsRequest) Execute() (*AgentsResponse, *http.Response, e
 /*
 ListAgents Agents in this org. Ids only. Never secrets. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListAgentsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListAgentsRequest
 */
 func (a *OwnerAPIService) ListAgents(ctx context.Context) OwnerAPIListAgentsRequest {
 	return OwnerAPIListAgentsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return AgentsResponse
+//
+//	@return AgentsResponse
 func (a *OwnerAPIService) ListAgentsExecute(r OwnerAPIListAgentsRequest) (*AgentsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *AgentsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *AgentsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListAgents")
@@ -1484,7 +1596,7 @@ func (a *OwnerAPIService) ListAgentsExecute(r OwnerAPIListAgentsRequest) (*Agent
 }
 
 type OwnerAPIListGrantsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -1495,24 +1607,25 @@ func (r OwnerAPIListGrantsRequest) Execute() (*GrantsResponse, *http.Response, e
 /*
 ListGrants Grants in this org. No secrets. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListGrantsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListGrantsRequest
 */
 func (a *OwnerAPIService) ListGrants(ctx context.Context) OwnerAPIListGrantsRequest {
 	return OwnerAPIListGrantsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return GrantsResponse
+//
+//	@return GrantsResponse
 func (a *OwnerAPIService) ListGrantsExecute(r OwnerAPIListGrantsRequest) (*GrantsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *GrantsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *GrantsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListGrants")
@@ -1581,9 +1694,9 @@ func (a *OwnerAPIService) ListGrantsExecute(r OwnerAPIListGrantsRequest) (*Grant
 }
 
 type OwnerAPIListGroupMembersRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIListGroupMembersRequest) Execute() (*GroupMembersResponse, *http.Response, error) {
@@ -1593,26 +1706,27 @@ func (r OwnerAPIListGroupMembersRequest) Execute() (*GroupMembersResponse, *http
 /*
 ListGroupMembers Members of the group — agent or human edges. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIListGroupMembersRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIListGroupMembersRequest
 */
 func (a *OwnerAPIService) ListGroupMembers(ctx context.Context, name string) OwnerAPIListGroupMembersRequest {
 	return OwnerAPIListGroupMembersRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return GroupMembersResponse
+//
+//	@return GroupMembersResponse
 func (a *OwnerAPIService) ListGroupMembersExecute(r OwnerAPIListGroupMembersRequest) (*GroupMembersResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *GroupMembersResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *GroupMembersResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListGroupMembers")
@@ -1682,7 +1796,7 @@ func (a *OwnerAPIService) ListGroupMembersExecute(r OwnerAPIListGroupMembersRequ
 }
 
 type OwnerAPIListGroupsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -1693,24 +1807,25 @@ func (r OwnerAPIListGroupsRequest) Execute() (*GroupsResponse, *http.Response, e
 /*
 ListGroups Org groups. A grant to a group is the shared vault. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListGroupsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListGroupsRequest
 */
 func (a *OwnerAPIService) ListGroups(ctx context.Context) OwnerAPIListGroupsRequest {
 	return OwnerAPIListGroupsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return GroupsResponse
+//
+//	@return GroupsResponse
 func (a *OwnerAPIService) ListGroupsExecute(r OwnerAPIListGroupsRequest) (*GroupsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *GroupsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *GroupsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListGroups")
@@ -1779,9 +1894,9 @@ func (a *OwnerAPIService) ListGroupsExecute(r OwnerAPIListGroupsRequest) (*Group
 }
 
 type OwnerAPIListRequestsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	status *string
+	status     *string
 }
 
 func (r OwnerAPIListRequestsRequest) Status(status string) OwnerAPIListRequestsRequest {
@@ -1796,24 +1911,25 @@ func (r OwnerAPIListRequestsRequest) Execute() (*RequestsResponse, *http.Respons
 /*
 ListRequests Approval requests filed by level-1 agents. status=open lists only unexpired asks. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListRequestsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListRequestsRequest
 */
 func (a *OwnerAPIService) ListRequests(ctx context.Context) OwnerAPIListRequestsRequest {
 	return OwnerAPIListRequestsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return RequestsResponse
+//
+//	@return RequestsResponse
 func (a *OwnerAPIService) ListRequestsExecute(r OwnerAPIListRequestsRequest) (*RequestsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RequestsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RequestsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListRequests")
@@ -1888,8 +2004,110 @@ func (a *OwnerAPIService) ListRequestsExecute(r OwnerAPIListRequestsRequest) (*R
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type OwnerAPIListRotateHooksRequest struct {
+	ctx        context.Context
+	ApiService *OwnerAPIService
+	name       string
+}
+
+func (r OwnerAPIListRotateHooksRequest) Execute() (*RotateHooksResponse, *http.Response, error) {
+	return r.ApiService.ListRotateHooksExecute(r)
+}
+
+/*
+ListRotateHooks List an item's post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIListRotateHooksRequest
+*/
+func (a *OwnerAPIService) ListRotateHooks(ctx context.Context, name string) OwnerAPIListRotateHooksRequest {
+	return OwnerAPIListRotateHooksRequest{
+		ApiService: a,
+		ctx:        ctx,
+		name:       name,
+	}
+}
+
+// Execute executes the request
+//
+//	@return RotateHooksResponse
+func (a *OwnerAPIService) ListRotateHooksExecute(r OwnerAPIListRotateHooksRequest) (*RotateHooksResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RotateHooksResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListRotateHooks")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/items/{name}/rotate-hooks"
+	localVarPath = strings.Replace(localVarPath, "{"+"name"+"}", url.PathEscape(parameterValueToString(r.name, "name")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type OwnerAPIListRotateProvidersRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -1900,24 +2118,25 @@ func (r OwnerAPIListRotateProvidersRequest) Execute() (*RotateProvidersResponse,
 /*
 ListRotateProviders List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListRotateProvidersRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListRotateProvidersRequest
 */
 func (a *OwnerAPIService) ListRotateProviders(ctx context.Context) OwnerAPIListRotateProvidersRequest {
 	return OwnerAPIListRotateProvidersRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return RotateProvidersResponse
+//
+//	@return RotateProvidersResponse
 func (a *OwnerAPIService) ListRotateProvidersExecute(r OwnerAPIListRotateProvidersRequest) (*RotateProvidersResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RotateProvidersResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RotateProvidersResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListRotateProviders")
@@ -1986,7 +2205,7 @@ func (a *OwnerAPIService) ListRotateProvidersExecute(r OwnerAPIListRotateProvide
 }
 
 type OwnerAPIListSessionsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -1997,24 +2216,25 @@ func (r OwnerAPIListSessionsRequest) Execute() (*SessionsResponse, *http.Respons
 /*
 ListSessions Active sandbox sessions. Metadata only. Never the token. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIListSessionsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIListSessionsRequest
 */
 func (a *OwnerAPIService) ListSessions(ctx context.Context) OwnerAPIListSessionsRequest {
 	return OwnerAPIListSessionsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return SessionsResponse
+//
+//	@return SessionsResponse
 func (a *OwnerAPIService) ListSessionsExecute(r OwnerAPIListSessionsRequest) (*SessionsResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *SessionsResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *SessionsResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.ListSessions")
@@ -2083,11 +2303,11 @@ func (a *OwnerAPIService) ListSessionsExecute(r OwnerAPIListSessionsRequest) (*S
 }
 
 type OwnerAPIRemoveGroupMemberRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
-	kind string
-	id string
+	name       string
+	kind       string
+	id         string
 }
 
 func (r OwnerAPIRemoveGroupMemberRequest) Execute() (*http.Response, error) {
@@ -2097,28 +2317,28 @@ func (r OwnerAPIRemoveGroupMemberRequest) Execute() (*http.Response, error) {
 /*
 RemoveGroupMember Remove a member from the group. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @param kind
- @param id
- @return OwnerAPIRemoveGroupMemberRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@param kind
+	@param id
+	@return OwnerAPIRemoveGroupMemberRequest
 */
 func (a *OwnerAPIService) RemoveGroupMember(ctx context.Context, name string, kind string, id string) OwnerAPIRemoveGroupMemberRequest {
 	return OwnerAPIRemoveGroupMemberRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
-		kind: kind,
-		id: id,
+		ctx:        ctx,
+		name:       name,
+		kind:       kind,
+		id:         id,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) RemoveGroupMemberExecute(r OwnerAPIRemoveGroupMemberRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodDelete
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodDelete
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.RemoveGroupMember")
@@ -2181,9 +2401,9 @@ func (a *OwnerAPIService) RemoveGroupMemberExecute(r OwnerAPIRemoveGroupMemberRe
 }
 
 type OwnerAPIRevokeAgentRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIRevokeAgentRequest) Execute() (*Agent, *http.Response, error) {
@@ -2193,26 +2413,27 @@ func (r OwnerAPIRevokeAgentRequest) Execute() (*Agent, *http.Response, error) {
 /*
 RevokeAgent Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIRevokeAgentRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIRevokeAgentRequest
 */
 func (a *OwnerAPIService) RevokeAgent(ctx context.Context, name string) OwnerAPIRevokeAgentRequest {
 	return OwnerAPIRevokeAgentRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return Agent
+//
+//	@return Agent
 func (a *OwnerAPIService) RevokeAgentExecute(r OwnerAPIRevokeAgentRequest) (*Agent, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Agent
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Agent
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.RevokeAgent")
@@ -2282,9 +2503,9 @@ func (a *OwnerAPIService) RevokeAgentExecute(r OwnerAPIRevokeAgentRequest) (*Age
 }
 
 type OwnerAPIRotateItemRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
-	name string
+	ctx               context.Context
+	ApiService        *OwnerAPIService
+	name              string
 	rotateItemRequest *RotateItemRequest
 }
 
@@ -2300,26 +2521,27 @@ func (r OwnerAPIRotateItemRequest) Execute() (*RotateItem200Response, *http.Resp
 /*
 RotateItem Rotate an item's credential via the provider's key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIRotateItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIRotateItemRequest
 */
 func (a *OwnerAPIService) RotateItem(ctx context.Context, name string) OwnerAPIRotateItemRequest {
 	return OwnerAPIRotateItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return RotateItem200Response
+//
+//	@return RotateItem200Response
 func (a *OwnerAPIService) RotateItemExecute(r OwnerAPIRotateItemRequest) (*RotateItem200Response, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RotateItem200Response
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RotateItem200Response
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.RotateItem")
@@ -2390,8 +2612,121 @@ func (a *OwnerAPIService) RotateItemExecute(r OwnerAPIRotateItemRequest) (*Rotat
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type OwnerAPISetRotateHooksRequest struct {
+	ctx                context.Context
+	ApiService         *OwnerAPIService
+	name               string
+	rotateHooksRequest *RotateHooksRequest
+}
+
+func (r OwnerAPISetRotateHooksRequest) RotateHooksRequest(rotateHooksRequest RotateHooksRequest) OwnerAPISetRotateHooksRequest {
+	r.rotateHooksRequest = &rotateHooksRequest
+	return r
+}
+
+func (r OwnerAPISetRotateHooksRequest) Execute() (*RotateHooksResponse, *http.Response, error) {
+	return r.ApiService.SetRotateHooksExecute(r)
+}
+
+/*
+SetRotateHooks Replace an item's post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPISetRotateHooksRequest
+*/
+func (a *OwnerAPIService) SetRotateHooks(ctx context.Context, name string) OwnerAPISetRotateHooksRequest {
+	return OwnerAPISetRotateHooksRequest{
+		ApiService: a,
+		ctx:        ctx,
+		name:       name,
+	}
+}
+
+// Execute executes the request
+//
+//	@return RotateHooksResponse
+func (a *OwnerAPIService) SetRotateHooksExecute(r OwnerAPISetRotateHooksRequest) (*RotateHooksResponse, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodPut
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RotateHooksResponse
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.SetRotateHooks")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/items/{name}/rotate-hooks"
+	localVarPath = strings.Replace(localVarPath, "{"+"name"+"}", url.PathEscape(parameterValueToString(r.name, "name")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.rotateHooksRequest == nil {
+		return localVarReturnValue, nil, reportError("rotateHooksRequest is required and must be specified")
+	}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	// body params
+	localVarPostBody = r.rotateHooksRequest
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type OwnerAPIStreamRequestsRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
 }
 
@@ -2402,24 +2737,25 @@ func (r OwnerAPIStreamRequestsRequest) Execute() (string, *http.Response, error)
 /*
 StreamRequests Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIStreamRequestsRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIStreamRequestsRequest
 */
 func (a *OwnerAPIService) StreamRequests(ctx context.Context) OwnerAPIStreamRequestsRequest {
 	return OwnerAPIStreamRequestsRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return string
+//
+//	@return string
 func (a *OwnerAPIService) StreamRequestsExecute(r OwnerAPIStreamRequestsRequest) (string, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  string
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue string
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.StreamRequests")
@@ -2488,11 +2824,11 @@ func (a *OwnerAPIService) StreamRequestsExecute(r OwnerAPIStreamRequestsRequest)
 }
 
 type OwnerAPIUnbindWorkloadRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
-	issuer *string
-	subject *string
+	name       string
+	issuer     *string
+	subject    *string
 }
 
 func (r OwnerAPIUnbindWorkloadRequest) Issuer(issuer string) OwnerAPIUnbindWorkloadRequest {
@@ -2512,24 +2848,24 @@ func (r OwnerAPIUnbindWorkloadRequest) Execute() (*http.Response, error) {
 /*
 UnbindWorkload Remove an OIDC workload binding from an agent. Owner-only.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIUnbindWorkloadRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIUnbindWorkloadRequest
 */
 func (a *OwnerAPIService) UnbindWorkload(ctx context.Context, name string) OwnerAPIUnbindWorkloadRequest {
 	return OwnerAPIUnbindWorkloadRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
 func (a *OwnerAPIService) UnbindWorkloadExecute(r OwnerAPIUnbindWorkloadRequest) (*http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodDelete
-		localVarPostBody     interface{}
-		formFiles            []formFile
+		localVarHTTPMethod = http.MethodDelete
+		localVarPostBody   interface{}
+		formFiles          []formFile
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.UnbindWorkload")
@@ -2598,9 +2934,9 @@ func (a *OwnerAPIService) UnbindWorkloadExecute(r OwnerAPIUnbindWorkloadRequest)
 }
 
 type OwnerAPIUpdateItemRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
-	name string
+	ctx               context.Context
+	ApiService        *OwnerAPIService
+	name              string
 	updateItemRequest *UpdateItemRequest
 }
 
@@ -2616,26 +2952,27 @@ func (r OwnerAPIUpdateItemRequest) Execute() (*Item, *http.Response, error) {
 /*
 UpdateItem Replace URIs, tags, and fill username. No secret.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIUpdateItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIUpdateItemRequest
 */
 func (a *OwnerAPIService) UpdateItem(ctx context.Context, name string) OwnerAPIUpdateItemRequest {
 	return OwnerAPIUpdateItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return Item
+//
+//	@return Item
 func (a *OwnerAPIService) UpdateItemExecute(r OwnerAPIUpdateItemRequest) (*Item, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPatch
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *Item
+		localVarHTTPMethod  = http.MethodPatch
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *Item
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.UpdateItem")
@@ -2710,8 +3047,8 @@ func (a *OwnerAPIService) UpdateItemExecute(r OwnerAPIUpdateItemRequest) (*Item,
 }
 
 type OwnerAPIVerifyIssuerRequest struct {
-	ctx context.Context
-	ApiService *OwnerAPIService
+	ctx                 context.Context
+	ApiService          *OwnerAPIService
 	verifyIssuerRequest *VerifyIssuerRequest
 }
 
@@ -2727,24 +3064,25 @@ func (r OwnerAPIVerifyIssuerRequest) Execute() (*VerifyIssuerResponse, *http.Res
 /*
 VerifyIssuer Dry-run OIDC discovery against an issuer URL before saving a workload binding. Owner-only — never mounted on /mcp.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return OwnerAPIVerifyIssuerRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return OwnerAPIVerifyIssuerRequest
 */
 func (a *OwnerAPIService) VerifyIssuer(ctx context.Context) OwnerAPIVerifyIssuerRequest {
 	return OwnerAPIVerifyIssuerRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return VerifyIssuerResponse
+//
+//	@return VerifyIssuerResponse
 func (a *OwnerAPIService) VerifyIssuerExecute(r OwnerAPIVerifyIssuerRequest) (*VerifyIssuerResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *VerifyIssuerResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *VerifyIssuerResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.VerifyIssuer")
@@ -2818,9 +3156,9 @@ func (a *OwnerAPIService) VerifyIssuerExecute(r OwnerAPIVerifyIssuerRequest) (*V
 }
 
 type OwnerAPIVerifyItemRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *OwnerAPIService
-	name string
+	name       string
 }
 
 func (r OwnerAPIVerifyItemRequest) Execute() (*VerifyItemResponse, *http.Response, error) {
@@ -2830,26 +3168,27 @@ func (r OwnerAPIVerifyItemRequest) Execute() (*VerifyItemResponse, *http.Respons
 /*
 VerifyItem Dry-run an item's credential (outbound WIF exchange, OAuth refresh, or provider rotator verify) without revealing the secret. Owner-only.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param name
- @return OwnerAPIVerifyItemRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param name
+	@return OwnerAPIVerifyItemRequest
 */
 func (a *OwnerAPIService) VerifyItem(ctx context.Context, name string) OwnerAPIVerifyItemRequest {
 	return OwnerAPIVerifyItemRequest{
 		ApiService: a,
-		ctx: ctx,
-		name: name,
+		ctx:        ctx,
+		name:       name,
 	}
 }
 
 // Execute executes the request
-//  @return VerifyItemResponse
+//
+//	@return VerifyItemResponse
 func (a *OwnerAPIService) VerifyItemExecute(r OwnerAPIVerifyItemRequest) (*VerifyItemResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *VerifyItemResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *VerifyItemResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "OwnerAPIService.VerifyItem")

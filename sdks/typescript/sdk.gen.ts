@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddGroupMemberData, AddGroupMemberErrors, AddGroupMemberResponses, ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, BindWorkloadData, BindWorkloadErrors, BindWorkloadResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateGroupData, CreateGroupErrors, CreateGroupResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAgentWorkloadsData, ListAgentWorkloadsErrors, ListAgentWorkloadsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListGroupMembersData, ListGroupMembersErrors, ListGroupMembersResponses, ListGroupsData, ListGroupsErrors, ListGroupsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListRotateProvidersData, ListRotateProvidersErrors, ListRotateProvidersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RegisterDeviceData, RegisterDeviceErrors, RegisterDeviceResponses, RemoveGroupMemberData, RemoveGroupMemberErrors, RemoveGroupMemberResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RotateItemData, RotateItemErrors, RotateItemResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UnbindWorkloadData, UnbindWorkloadErrors, UnbindWorkloadResponses, UnregisterDeviceData, UnregisterDeviceErrors, UnregisterDeviceResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses, VerifyIssuerData, VerifyIssuerErrors, VerifyIssuerResponses, VerifyItemData, VerifyItemErrors, VerifyItemResponses } from './types.gen';
+import type { AddGroupMemberData, AddGroupMemberErrors, AddGroupMemberResponses, ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, BindWorkloadData, BindWorkloadErrors, BindWorkloadResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateGroupData, CreateGroupErrors, CreateGroupResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, FireRotateHooksData, FireRotateHooksErrors, FireRotateHooksResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAgentWorkloadsData, ListAgentWorkloadsErrors, ListAgentWorkloadsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListGroupMembersData, ListGroupMembersErrors, ListGroupMembersResponses, ListGroupsData, ListGroupsErrors, ListGroupsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListRotateHooksData, ListRotateHooksErrors, ListRotateHooksResponses, ListRotateProvidersData, ListRotateProvidersErrors, ListRotateProvidersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RegisterDeviceData, RegisterDeviceErrors, RegisterDeviceResponses, RemoveGroupMemberData, RemoveGroupMemberErrors, RemoveGroupMemberResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RotateItemData, RotateItemErrors, RotateItemResponses, SetRotateHooksData, SetRotateHooksErrors, SetRotateHooksResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UnbindWorkloadData, UnbindWorkloadErrors, UnbindWorkloadResponses, UnregisterDeviceData, UnregisterDeviceErrors, UnregisterDeviceResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses, VerifyIssuerData, VerifyIssuerErrors, VerifyIssuerResponses, VerifyItemData, VerifyItemErrors, VerifyItemResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -494,5 +494,36 @@ export const listRotateProviders = <ThrowOnError extends boolean = false>(option
 export const verifyItem = <ThrowOnError extends boolean = false>(options: Options<VerifyItemData, ThrowOnError>): RequestResult<VerifyItemResponses, VerifyItemErrors, ThrowOnError> => (options.client ?? client).post<VerifyItemResponses, VerifyItemErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/v1/items/{name}/verify',
+    ...options
+});
+
+/**
+ * List an item's post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.
+ */
+export const listRotateHooks = <ThrowOnError extends boolean = false>(options: Options<ListRotateHooksData, ThrowOnError>): RequestResult<ListRotateHooksResponses, ListRotateHooksErrors, ThrowOnError> => (options.client ?? client).get<ListRotateHooksResponses, ListRotateHooksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/items/{name}/rotate-hooks',
+    ...options
+});
+
+/**
+ * Replace an item's post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.
+ */
+export const setRotateHooks = <ThrowOnError extends boolean = false>(options: Options<SetRotateHooksData, ThrowOnError>): RequestResult<SetRotateHooksResponses, SetRotateHooksErrors, ThrowOnError> => (options.client ?? client).put<SetRotateHooksResponses, SetRotateHooksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/items/{name}/rotate-hooks',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
+ */
+export const fireRotateHooks = <ThrowOnError extends boolean = false>(options: Options<FireRotateHooksData, ThrowOnError>): RequestResult<FireRotateHooksResponses, FireRotateHooksErrors, ThrowOnError> => (options.client ?? client).post<FireRotateHooksResponses, FireRotateHooksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/items/{name}/rotate-hooks/fire',
     ...options
 });

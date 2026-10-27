@@ -364,6 +364,9 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /v1/items/{name}", s.updateItem)
 	mux.HandleFunc("POST /v1/items/{name}/archive", s.archiveItem)
 	mux.HandleFunc("POST /v1/items/{name}/rotate", s.rotateItem)
+	mux.HandleFunc("GET /v1/items/{name}/rotate-hooks", s.listRotateHooks)
+	mux.HandleFunc("PUT /v1/items/{name}/rotate-hooks", s.setRotateHooks)
+	mux.HandleFunc("POST /v1/items/{name}/rotate-hooks/fire", s.fireRotateHooks)
 	mux.HandleFunc("POST /v1/items/{name}/verify", s.verifyItem)
 	mux.HandleFunc("GET /v1/rotate/providers", s.listRotateProviders)
 	mux.HandleFunc("DELETE /v1/items/{name}", s.deleteItem)
@@ -603,6 +606,80 @@ func (s *Server) rotateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"item": item.Name, "rotated": true})
+}
+
+// RotateHooksRequest replaces an item's post-rotation fan-out list (VEIL-92).
+// Hook URLs may embed capability tokens — they are sealed metadata, owner-only.
+type RotateHooksRequest struct {
+	Hooks []protocol.RotateHook `json:"hooks"`
+}
+
+type RotateHooksResponse struct {
+	Hooks []protocol.RotateHook `json:"hooks"`
+}
+
+type RotateHooksFireResponse struct {
+	Results []app.RotateHookResult `json:"results"`
+}
+
+func (s *Server) listRotateHooks(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	hooks, err := s.App.RotateHooks(p, r.PathValue("name"))
+	if err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "rotate hooks failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, RotateHooksResponse{Hooks: hooks})
+}
+
+func (s *Server) setRotateHooks(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	var in RotateHooksRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if in.Hooks == nil {
+		in.Hooks = []protocol.RotateHook{}
+	}
+	if _, err := s.App.SetRotateHooks(p, r.PathValue("name"), in.Hooks); err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "rotate hooks: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, RotateHooksResponse{Hooks: in.Hooks})
+}
+
+// fireRotateHooks re-sends the rotation notification to each configured
+// consumer without rotating — the retry path after a consumer outage.
+func (s *Server) fireRotateHooks(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireOwner(w, r)
+	if !ok {
+		return
+	}
+	results, err := s.App.FireRotateHooks(r.Context(), p, r.PathValue("name"))
+	if err != nil {
+		if errors.Is(err, app.ErrForbidden) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "rotate hooks failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, RotateHooksFireResponse{Results: results})
 }
 
 type RotateProvidersResponse struct {

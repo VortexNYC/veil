@@ -71,6 +71,11 @@ __all__ = [
     "ProvisionResponse",
     "RemoveMember200Response",
     "RequestsResponse",
+    "RotateHook",
+    "RotateHookResult",
+    "RotateHooksFireResponse",
+    "RotateHooksRequest",
+    "RotateHooksResponse",
     "RotateItem200Response",
     "RotateItemRequest",
     "RotateProvidersResponse",
@@ -147,6 +152,11 @@ from veil.models.promote_owner200_response import PromoteOwner200Response as Pro
 from veil.models.provision_response import ProvisionResponse as ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response as RemoveMember200Response
 from veil.models.requests_response import RequestsResponse as RequestsResponse
+from veil.models.rotate_hook import RotateHook as RotateHook
+from veil.models.rotate_hook_result import RotateHookResult as RotateHookResult
+from veil.models.rotate_hooks_fire_response import RotateHooksFireResponse as RotateHooksFireResponse
+from veil.models.rotate_hooks_request import RotateHooksRequest as RotateHooksRequest
+from veil.models.rotate_hooks_response import RotateHooksResponse as RotateHooksResponse
 from veil.models.rotate_item200_response import RotateItem200Response as RotateItem200Response
 from veil.models.rotate_item_request import RotateItemRequest as RotateItemRequest
 from veil.models.rotate_providers_response import RotateProvidersResponse as RotateProvidersResponse

@@ -15,6 +15,7 @@ Method | HTTP request | Description
 [**create_session**](OwnerApi.md#create_session) | **POST** /v1/sessions | Mint a short-lived Use lease onto an existing agent. Token is in this response once. Sandbox gets the session file, not the agent JWT. Default 15m, max 1h. Not MCP.
 [**delete_item**](OwnerApi.md#delete_item) | **DELETE** /v1/items/{name} | Remove the item and its grants. Not MCP.
 [**deny_request**](OwnerApi.md#deny_request) | **POST** /v1/requests/{id}/deny | Deny an open request. First write wins; the agent&#39;s next use files a fresh ask.
+[**fire_rotate_hooks**](OwnerApi.md#fire_rotate_hooks) | **POST** /v1/items/{name}/rotate-hooks/fire | Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
 [**import_items**](OwnerApi.md#import_items) | **POST** /v1/import | One-shot 1Password .1pux or CSV onto origin. Secret in the file, never in the response. Not MCP.
 [**list_agent_workloads**](OwnerApi.md#list_agent_workloads) | **GET** /v1/agents/{name}/workloads | List bound OIDC workload policies for an agent. Owner-only.
 [**list_agents**](OwnerApi.md#list_agents) | **GET** /v1/agents | Agents in this org. Ids only. Never secrets. Not MCP.
@@ -22,11 +23,13 @@ Method | HTTP request | Description
 [**list_group_members**](OwnerApi.md#list_group_members) | **GET** /v1/groups/{name}/members | Members of the group — agent or human edges. Not MCP.
 [**list_groups**](OwnerApi.md#list_groups) | **GET** /v1/groups | Org groups. A grant to a group is the shared vault. Not MCP.
 [**list_requests**](OwnerApi.md#list_requests) | **GET** /v1/requests | Approval requests filed by level-1 agents. status&#x3D;open lists only unexpired asks. Not MCP.
+[**list_rotate_hooks**](OwnerApi.md#list_rotate_hooks) | **GET** /v1/items/{name}/rotate-hooks | List an item&#39;s post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.
 [**list_rotate_providers**](OwnerApi.md#list_rotate_providers) | **GET** /v1/rotate/providers | List zero-touch rotation provider hosts and assisted rotation capability. Owner-only.
 [**list_sessions**](OwnerApi.md#list_sessions) | **GET** /v1/sessions | Active sandbox sessions. Metadata only. Never the token. Not MCP.
 [**remove_group_member**](OwnerApi.md#remove_group_member) | **DELETE** /v1/groups/{name}/members/{kind}/{id} | Remove a member from the group. Not MCP.
 [**revoke_agent**](OwnerApi.md#revoke_agent) | **POST** /v1/agents/{name}/revoke | Revoke an agent. Idempotent. Kills grants, sessions, and in-flight Use. Record stays for audit.
 [**rotate_item**](OwnerApi.md#rotate_item) | **POST** /v1/items/{name}/rotate | Rotate an item&#39;s credential via the provider&#39;s key-management API. The new secret is verified and sealed in place — item id and grants are untouched, agents keep calling Use. Owner-only. 422 when the provider has no rotator.
+[**set_rotate_hooks**](OwnerApi.md#set_rotate_hooks) | **PUT** /v1/items/{name}/rotate-hooks | Replace an item&#39;s post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.
 [**stream_requests**](OwnerApi.md#stream_requests) | **GET** /v1/requests/stream | Server-sent events feed of approval-request changes for the owner org. Each event is an empty tick — refetch GET /v1/requests for the authoritative rows. Not MCP.
 [**unbind_workload**](OwnerApi.md#unbind_workload) | **DELETE** /v1/agents/{name}/workloads | Remove an OIDC workload binding from an agent. Owner-only.
 [**update_item**](OwnerApi.md#update_item) | **PATCH** /v1/items/{name} | Replace URIs, tags, and fill username. No secret.
@@ -910,6 +913,85 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **fire_rotate_hooks**
+> RotateHooksFireResponse fire_rotate_hooks(name)
+
+Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.rotate_hooks_fire_response import RotateHooksFireResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+
+    try:
+        # Re-send the rotation notification to each configured consumer without rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
+        api_response = api_instance.fire_rotate_hooks(name)
+        print("The response of OwnerApi->fire_rotate_hooks:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->fire_rotate_hooks: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+
+### Return type
+
+[**RotateHooksFireResponse**](RotateHooksFireResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Per-hook outcomes |  -  |
+**400** | no such item |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **import_items**
 > ImportResponse import_items(body, filename=filename)
 
@@ -1450,6 +1532,85 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **list_rotate_hooks**
+> RotateHooksResponse list_rotate_hooks(name)
+
+List an item's post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.rotate_hooks_response import RotateHooksResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+
+    try:
+        # List an item's post-rotation fan-outs. Owner only — hook URLs may embed capability tokens.
+        api_response = api_instance.list_rotate_hooks(name)
+        print("The response of OwnerApi->list_rotate_hooks:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->list_rotate_hooks: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+
+### Return type
+
+[**RotateHooksResponse**](RotateHooksResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Configured hooks |  -  |
+**400** | no such item |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **list_rotate_providers**
 > RotateProvidersResponse list_rotate_providers()
 
@@ -1837,6 +1998,88 @@ Name | Type | Description  | Notes
 **401** | missing or invalid bearer |  -  |
 **403** | not the owner |  -  |
 **422** | provider has no key-management API |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **set_rotate_hooks**
+> RotateHooksResponse set_rotate_hooks(name, rotate_hooks_request)
+
+Replace an item's post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.rotate_hooks_request import RotateHooksRequest
+from veil.models.rotate_hooks_response import RotateHooksResponse
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.OwnerApi(api_client)
+    name = 'name_example' # str | 
+    rotate_hooks_request = veil.RotateHooksRequest() # RotateHooksRequest | 
+
+    try:
+        # Replace an item's post-rotation fan-out list. Each webhook gets rotation metadata (item, rotated_at, key version) — never the secret.
+        api_response = api_instance.set_rotate_hooks(name, rotate_hooks_request)
+        print("The response of OwnerApi->set_rotate_hooks:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling OwnerApi->set_rotate_hooks: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **name** | **str**|  | 
+ **rotate_hooks_request** | [**RotateHooksRequest**](RotateHooksRequest.md)|  | 
+
+### Return type
+
+[**RotateHooksResponse**](RotateHooksResponse.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Hooks stored |  -  |
+**400** | invalid hook config |  -  |
+**401** | missing or invalid bearer |  -  |
+**403** | not the owner |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

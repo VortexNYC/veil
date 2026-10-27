@@ -552,6 +552,40 @@ export type VerifyItemResponse = {
     mode: 'wif_ok' | 'oauth_ok' | 'provider_ok' | 'sealed_ok';
 };
 
+export type RotateHook = {
+    /**
+     * consumer label for audit, e.g. ci-resecrets
+     */
+    name: string;
+    /**
+     * hook type; only webhook exists
+     */
+    type: 'webhook';
+    /**
+     * consumer endpoint; a capability token may ride in path/query — sealed, never in audit
+     */
+    url: string;
+};
+
+export type RotateHooksRequest = {
+    hooks: Array<RotateHook>;
+};
+
+export type RotateHooksResponse = {
+    hooks: Array<RotateHook>;
+};
+
+export type RotateHookResult = {
+    hook?: string;
+    ok?: boolean;
+    status?: number;
+    error?: string;
+};
+
+export type RotateHooksFireResponse = {
+    results: Array<RotateHookResult>;
+};
+
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -2025,3 +2059,102 @@ export type VerifyItemResponses = {
 };
 
 export type VerifyItemResponse2 = VerifyItemResponses[keyof VerifyItemResponses];
+
+export type ListRotateHooksData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/items/{name}/rotate-hooks';
+};
+
+export type ListRotateHooksErrors = {
+    /**
+     * no such item
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+
+export type ListRotateHooksResponses = {
+    /**
+     * Configured hooks
+     */
+    200: RotateHooksResponse;
+};
+
+export type ListRotateHooksResponse = ListRotateHooksResponses[keyof ListRotateHooksResponses];
+
+export type SetRotateHooksData = {
+    body: RotateHooksRequest;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/items/{name}/rotate-hooks';
+};
+
+export type SetRotateHooksErrors = {
+    /**
+     * invalid hook config
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+
+export type SetRotateHooksResponses = {
+    /**
+     * Hooks stored
+     */
+    200: RotateHooksResponse;
+};
+
+export type SetRotateHooksResponse = SetRotateHooksResponses[keyof SetRotateHooksResponses];
+
+export type FireRotateHooksData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/v1/items/{name}/rotate-hooks/fire';
+};
+
+export type FireRotateHooksErrors = {
+    /**
+     * no such item
+     */
+    400: unknown;
+    /**
+     * missing or invalid bearer
+     */
+    401: unknown;
+    /**
+     * not the owner
+     */
+    403: unknown;
+};
+
+export type FireRotateHooksResponses = {
+    /**
+     * Per-hook outcomes
+     */
+    200: RotateHooksFireResponse;
+};
+
+export type FireRotateHooksResponse = FireRotateHooksResponses[keyof FireRotateHooksResponses];

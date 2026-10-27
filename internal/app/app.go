@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -129,6 +130,9 @@ type App struct {
 	// BillingCustomers is the merchant-scoped Vortex client — nil when the
 	// VEIL_VORTEX_* envs are unset (billing off; dev and tests unaffected).
 	BillingCustomers *billing.Client
+	// HookClient fires post-rotation webhooks — nil falls back to a
+	// 10s-timeout default. Tests inject an httptest transport.
+	HookClient *http.Client
 
 	inviteLim            inviteLimiter
 	usageStop, usageDone chan struct{}
@@ -910,6 +914,10 @@ func (a *App) rotateItemInternal(actorID string, item protocol.Item, opts Rotate
 			slog.Warn("rotate: pending provider key not retired", "item", name, "key_id", pendingID, "err", err)
 		}
 	}
+	// Post-commit fan-out (VEIL-92): consumers get rotation metadata — never
+	// the secret. Best-effort: a hook failure is audited, not retried here;
+	// FireRotateHooks is the replay path.
+	a.fireRotateHooks(ctx, actorID, item, material.Unpack(sealed), false)
 	return item, nil
 }
 

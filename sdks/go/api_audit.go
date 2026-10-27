@@ -18,15 +18,14 @@ import (
 	"net/url"
 )
 
-
 // AuditAPIService AuditAPI service
 type AuditAPIService service
 
 type AuditAPIAuditFeedRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *AuditAPIService
-	after *int64
-	limit *int32
+	after      *int64
+	limit      *int32
 }
 
 // Resume cursor — return committed events with id &gt; after.
@@ -48,24 +47,25 @@ func (r AuditAPIAuditFeedRequest) Execute() (*AuditFeedResponse, *http.Response,
 /*
 AuditFeed Committed audit feed for this owner’s org — the customer SIEM pull. Keyset-paginated: poll with ?after=<next_after> until a short page lands. Events queued in the outbox join the feed on relay. Owner-only. Not MCP.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return AuditAPIAuditFeedRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return AuditAPIAuditFeedRequest
 */
 func (a *AuditAPIService) AuditFeed(ctx context.Context) AuditAPIAuditFeedRequest {
 	return AuditAPIAuditFeedRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return AuditFeedResponse
+//
+//	@return AuditFeedResponse
 func (a *AuditAPIService) AuditFeedExecute(r AuditAPIAuditFeedRequest) (*AuditFeedResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *AuditFeedResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *AuditFeedResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "AuditAPIService.AuditFeed")

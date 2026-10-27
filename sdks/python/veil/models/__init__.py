@@ -52,6 +52,11 @@ from veil.models.promote_owner200_response import PromoteOwner200Response
 from veil.models.provision_response import ProvisionResponse
 from veil.models.remove_member200_response import RemoveMember200Response
 from veil.models.requests_response import RequestsResponse
+from veil.models.rotate_hook import RotateHook
+from veil.models.rotate_hook_result import RotateHookResult
+from veil.models.rotate_hooks_fire_response import RotateHooksFireResponse
+from veil.models.rotate_hooks_request import RotateHooksRequest
+from veil.models.rotate_hooks_response import RotateHooksResponse
 from veil.models.rotate_item200_response import RotateItem200Response
 from veil.models.rotate_item_request import RotateItemRequest
 from veil.models.rotate_providers_response import RotateProvidersResponse

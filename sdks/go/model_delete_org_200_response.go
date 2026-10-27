@@ -19,12 +19,12 @@ var _ MappedNullable = &DeleteOrg200Response{}
 
 // DeleteOrg200Response struct for DeleteOrg200Response
 type DeleteOrg200Response struct {
-	Items *int32 `json:"items,omitempty"`
-	Grants *int32 `json:"grants,omitempty"`
+	Items    *int32 `json:"items,omitempty"`
+	Grants   *int32 `json:"grants,omitempty"`
 	Sessions *int32 `json:"sessions,omitempty"`
-	Agents *int32 `json:"agents,omitempty"`
-	Humans *int32 `json:"humans,omitempty"`
-	Keys *int32 `json:"keys,omitempty"`
+	Agents   *int32 `json:"agents,omitempty"`
+	Humans   *int32 `json:"humans,omitempty"`
+	Keys     *int32 `json:"keys,omitempty"`
 }
 
 // NewDeleteOrg200Response instantiates a new DeleteOrg200Response object
@@ -237,7 +237,7 @@ func (o *DeleteOrg200Response) SetKeys(v int32) {
 }
 
 func (o DeleteOrg200Response) MarshalJSON() ([]byte, error) {
-	toSerialize,err := o.ToMap()
+	toSerialize, err := o.ToMap()
 	if err != nil {
 		return []byte{}, err
 	}
@@ -302,5 +302,3 @@ func (v *NullableDeleteOrg200Response) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }
-
-
