@@ -38,6 +38,7 @@ import (
 	"github.com/VortexNYC/veil/internal/health"
 	"github.com/VortexNYC/veil/internal/human"
 	"github.com/VortexNYC/veil/internal/id"
+	"github.com/VortexNYC/veil/internal/inject"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/mcpserver"
 	"github.com/VortexNYC/veil/internal/oneimport"
@@ -48,6 +49,7 @@ import (
 	"github.com/VortexNYC/veil/internal/publicapi"
 	"github.com/VortexNYC/veil/internal/replica"
 	"github.com/VortexNYC/veil/internal/rotate"
+	"github.com/VortexNYC/veil/internal/scrub"
 	"github.com/VortexNYC/veil/internal/share"
 	"github.com/VortexNYC/veil/internal/socket"
 	"github.com/VortexNYC/veil/internal/sshagent"
@@ -2313,8 +2315,9 @@ func proxyCmd(home *string) *cobra.Command {
 }
 
 func runCmd(home *string) *cobra.Command {
-	var agent, tokenFile string
+	var agent, tokenFile, envFile string
 	var injects []string
+	var noRedact bool
 	c := &cobra.Command{
 		Use:   "run --agent NAME -- COMMAND [args...]",
 		Short: "Run COMMAND with granted secrets in env and HTTP(S)_PROXY. Infisical vault run. Never the prompt.",
@@ -2346,6 +2349,23 @@ func runCmd(home *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			schemaPath := strings.TrimSpace(envFile)
+			if schemaPath == "" {
+				if _, err := os.Stat(".env.schema"); err == nil {
+					schemaPath = ".env.schema"
+				}
+			}
+			if schemaPath != "" {
+				rawSchema, err := os.ReadFile(schemaPath)
+				if err != nil {
+					return err
+				}
+				schemaPairs, err := inject.ExpandEnvSchema(rawSchema, inject.Map(pairs))
+				if err != nil {
+					return err
+				}
+				pairs = append(pairs, schemaPairs...)
+			}
 			for _, spec := range injects {
 				src, dest, err := parseInject(spec)
 				if err != nil {
@@ -2355,19 +2375,47 @@ func runCmd(home *string) *cobra.Command {
 					return err
 				}
 			}
+			var secrets [][]byte
+			for _, p := range pairs {
+				if _, v, ok := strings.Cut(p, "="); ok && len(v) >= 6 {
+					secrets = append(secrets, []byte(v))
+				}
+			}
 			proc := exec.CommandContext(cmd.Context(), args[0], args[1:]...)
 			proc.Stdin = cmd.InOrStdin()
-			proc.Stdout = cmd.OutOrStdout()
-			proc.Stderr = cmd.ErrOrStderr()
+			outW := cmd.OutOrStdout()
+			errW := cmd.ErrOrStderr()
+			if !noRedact && !isStreamCharDevice(outW) {
+				outW = scrub.NewWriter(outW, secrets...)
+			}
+			if !noRedact && !isStreamCharDevice(errW) {
+				errW = scrub.NewWriter(errW, secrets...)
+			}
+			proc.Stdout = outW
+			proc.Stderr = errW
 			proc.Env = append(os.Environ(), s.Env()...)
 			proc.Env = append(proc.Env, pairs...)
 			return proc.Run()
 		},
 	}
 	c.Flags().StringVar(&agent, "agent", "", "agent id (or VEIL_AGENT)")
+	c.Flags().StringVar(&envFile, "env-file", "", "declarative .env.schema file with veil:// or veil() references (auto-detected if .env.schema exists)")
+	c.Flags().BoolVar(&noRedact, "no-redact-stdout", false, "disable automatic secret redaction on non-TTY stdout/stderr")
 	c.Flags().StringArrayVar(&injects, "inject", nil, "template:dest. ${NAME} or veil://name. dest is 0600. never stdout")
 	c.Flags().StringVar(&tokenFile, "oidc-token-file", "", "agent token file for VEIL_ORIGIN. Never argv.")
 	return c
+}
+
+func isStreamCharDevice(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	st, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return st.Mode()&os.ModeCharDevice != 0
 }
 
 func parseInject(spec string) (src, dest string, err error) {
