@@ -193,7 +193,8 @@ func applyMCPStdioDefaults() {
 	}
 	if strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN_FILE")) != "" ||
 		strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN")) != "" ||
-		strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE")) != "" {
+		strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE")) != "" ||
+		strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET")) != "" {
 		return
 	}
 	home, err := os.UserHomeDir()
