@@ -126,8 +126,13 @@ func unlockCmd(home *string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// --print is the internal child mode: an unattested CLI
 			// re-execs the signed native-host binary so the bridge sees a
-			// trusted peer, and the token returns on the stdout pipe.
+			// trusted peer, and the token returns on the stdout pipe. The
+			// marker env proves the re-exec — a bare `veil unlock --print`
+			// refuses so a human JWT can never reach an interactive stdout.
 			if printTok {
+				if os.Getenv(bridgeChildEnv) != "1" {
+					return fmt.Errorf("unlock: --print is internal (re-exec child only)")
+				}
 				tok, err := bridgeTokenFn(cmd.Context())
 				if err != nil {
 					return err

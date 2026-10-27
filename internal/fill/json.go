@@ -892,10 +892,13 @@ func (h *Host) jsonUpdate(uuid, login string, uris, tags []string, peer *Peer) [
 
 func (h *Host) updateItemMeta(uuid, login string, uris, tags []string) error {
 	if h.Origin != "" {
+		// URIs/Tags serialize without omitempty: an explicit [] clears the
+		// field while null leaves it untouched — the edit form must be able
+		// to empty a list, not just grow it.
 		payload, err := json.Marshal(struct {
 			Login string   `json:"login,omitempty"`
-			URIs  []string `json:"uris,omitempty"`
-			Tags  []string `json:"tags,omitempty"`
+			URIs  []string `json:"uris"`
+			Tags  []string `json:"tags"`
 		}{Login: login, URIs: uris, Tags: tags})
 		if err != nil {
 			return err

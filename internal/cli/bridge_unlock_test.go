@@ -98,7 +98,16 @@ func TestReexecBridgeTokenNoHost(t *testing.T) {
 	}
 }
 
+func TestUnlockPrintRequiresChildMarker(t *testing.T) {
+	cmd := unlockCmd(new(string))
+	cmd.SetArgs([]string{"--print"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected internal-only error")
+	}
+}
+
 func TestUnlockPrintWritesTokenToStdout(t *testing.T) {
+	t.Setenv(bridgeChildEnv, "1")
 	orig := bridgeTokenFn
 	bridgeTokenFn = func(context.Context) (string, error) { return "child-tok", nil }
 	defer func() { bridgeTokenFn = orig }()
