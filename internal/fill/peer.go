@@ -136,6 +136,21 @@ func attested(path string) bool {
 	return ok
 }
 
+// SelfAttested reports whether this process would pass the bridge peer
+// check — the signed, app-bundled binary the socket trusts. Callers use it
+// to decide between serving a socket action directly or re-executing
+// through the attested native-host binary.
+func SelfAttested() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return attested(exe)
+}
+
 // DisplayName is the human-readable name of the connecting Veil surface —
 // the Touch ID prompt says "in Safari" so the human sees which piece of
 // the product is asking, not just which site.

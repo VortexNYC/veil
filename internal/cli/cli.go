@@ -95,6 +95,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(reportCmd(&home))
 	root.AddCommand(recoveryCmd(&home))
 	root.AddCommand(keyCmd())
+	root.AddCommand(unlockCmd(&home))
 	root.AddCommand(updateCmd(&home, version))
 	return root
 }
