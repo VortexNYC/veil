@@ -57,7 +57,7 @@ export function addItem(body: {
   totp_seed?: string
   tags?: string[]
   login?: string
-  kind?: "api_key" | "card" | "identity" | "oauth" | "ssh"
+  kind?: "api_key" | "card" | "identity" | "oauth" | "secure_note" | "ssh"
   card?: {
     number?: string
     exp_month?: string
