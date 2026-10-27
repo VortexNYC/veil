@@ -2163,6 +2163,53 @@ func (a *App) FillLogin(p protocol.Principal, uuid string, mintTotp bool) (FillE
 	return e, nil
 }
 
+// RevealItem is a deliberate human read-back of an item's plaintext: vault UI
+// and `veil item reveal`. Same access shape as FillLogin — the difference is
+// the audit action, so an intentional reveal is not conflated with an
+// autofill. The audit row lands before the secret leaves; a failed write
+// denies the reveal.
+func (a *App) RevealItem(p protocol.Principal, ref string, mintTotp bool) (FillEntry, error) {
+	if p.Kind != protocol.PrincipalHuman {
+		return FillEntry{}, fmt.Errorf("app: reveal is human")
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return FillEntry{}, fmt.Errorf("app: reveal item")
+	}
+	item, err := a.Store.Item(ref)
+	if err != nil {
+		item, err = a.Store.ItemByName(p.OrgID, ref)
+		if err != nil {
+			return FillEntry{}, fmt.Errorf("app: reveal")
+		}
+	}
+	if !a.mayFillItem(p, item.ID) {
+		return FillEntry{}, fmt.Errorf("app: reveal")
+	}
+	e, env, ok := a.unlockFill(item)
+	if !ok {
+		return FillEntry{}, fmt.Errorf("app: reveal")
+	}
+	if e.Login == "" {
+		e.Login = item.Login
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionReveal, "reveal")); err != nil {
+		return FillEntry{}, fmt.Errorf("app: audit reveal: %w", err)
+	}
+	if !mintTotp || env.TOTP == "" {
+		return e, nil
+	}
+	code, err := material.Mint(env.TOTP, time.Now())
+	if err != nil || code == "" {
+		return FillEntry{}, fmt.Errorf("app: no totp")
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionTOTPMint, "")); err != nil {
+		return FillEntry{}, fmt.Errorf("app: audit totp: %w", err)
+	}
+	e.TOTP = code
+	return e, nil
+}
+
 // FillEventReport is a client-reported disclosure. When the fill host serves
 // a secret from the sealed replica instead of calling origin, it attests the
 // release here so the audit feed sees the same row an online fill writes.
@@ -3010,14 +3057,23 @@ func (a *App) CreateShareFor(actor protocol.Principal, name string, blob, meta [
 
 // shareLimiter bounds public redeem attempts per share id — link probing
 // must not be free. Per-process sliding window, same shape as the invite
-// limiter.
-var shareLim = newSlidingLimiter(10, time.Minute)
+// limiter. shareIPLim bounds attempts per caller IP across all shares: a
+// single noisy client may not burn every share's quota (VTX-790). The
+// per-share cap stays the hard bound on distributed brute force — guessing
+// fan-out across IPs never widens it.
+var (
+	shareLim = newSlidingLimiter(10, time.Minute)
+	// shareIPLim degrades rather than locks out: the per-share cap is the hard
+	// bound, so a caller minting header values may evade this bucket — and a
+	// full map of forged keys must not 429 real callers.
+	shareIPLim = &slidingLimiter{max: 60, win: time.Minute, failOpenFull: true}
+)
 
 // RedeemShare is the public one-time read: atomic claim-then-return. All
 // failure modes collapse to ErrNotFound so the 404 is generic. The redeem
 // audit row commits in the consume transaction.
-func (a *App) RedeemShare(id string) (protocol.Share, error) {
-	if !shareLim.allow(id) {
+func (a *App) RedeemShare(id, ip string) (protocol.Share, error) {
+	if !shareIPLim.allow(ip) || !shareLim.allow(id) {
 		return protocol.Share{}, ErrShareLimit
 	}
 	now := time.Now().UTC()

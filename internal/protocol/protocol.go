@@ -160,6 +160,10 @@ const (
 	ActionPasskeyAssert ActionKind = "passkey_assert"
 	ActionFillSync      ActionKind = "fill_sync"
 	ActionFileWrite     ActionKind = "file_write"
+	// reveal: a human deliberately read an item's plaintext back (vault UI,
+	// `veil item reveal`). Distinct from fill so an intentional read is not
+	// indistinguishable from a page autofill in the audit feed.
+	ActionReveal ActionKind = "reveal"
 
 	// Org plane (VEIL-86): Keto/identity-side membership changes. These
 	// commit after the external write — the external system owns the tx.

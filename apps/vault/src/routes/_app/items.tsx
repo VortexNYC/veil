@@ -28,6 +28,7 @@ import {
   deleteVaultItem,
   importItems,
   items,
+  revealVaultItem,
   rotateProviders,
   rotateVaultItem,
   updateVaultItem,
@@ -176,6 +177,7 @@ function Items() {
   const [rotateTarget, setRotateTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Item | null>(null);
   const [shareTarget, setShareTarget] = useState<Item | null>(null);
+  const [revealTarget, setRevealTarget] = useState<Item | null>(null);
   const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
@@ -213,7 +215,7 @@ function Items() {
   return (
     <PageChrome
       title="Items"
-      subtitle="Secrets go in. They do not come back out. Fill is the read path."
+      subtitle="Fill is the read path. Reveal is a deliberate, audited read-back — humans only."
       actions={
         <div className="flex items-center gap-2">
           <input
@@ -370,7 +372,7 @@ function Items() {
               >
                 <Dialog.Title>Add item</Dialog.Title>
                 <Dialog.Description>
-                  The secret is sent once. This page will never show it.
+                  The secret is sent once. Reveal it later from the row actions — audited, humans only.
                 </Dialog.Description>
                 <Select
                   value={kind}
@@ -723,6 +725,16 @@ function Items() {
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex items-center gap-2">
+                        {item.kind === "api_key" || item.kind === "oauth" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            title="Show this secret — a deliberate read, written to the audit feed"
+                            onClick={() => setRevealTarget(item)}
+                          >
+                            Reveal
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="secondary"
@@ -896,6 +908,24 @@ function Items() {
               </Button>
             </div>
           </form>
+        </Dialog>
+      </Dialog.Root>
+      <Dialog.Root
+        open={revealTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setRevealTarget(null);
+          }
+        }}
+      >
+        <Dialog size="sm" className="p-6">
+          {revealTarget ? (
+            <RevealItemBody
+              key={revealTarget.id}
+              item={revealTarget}
+              onError={setError}
+            />
+          ) : null}
         </Dialog>
       </Dialog.Root>
       <Dialog.Root
@@ -1163,5 +1193,100 @@ function EditItemForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function RevealItemBody({
+  item,
+  onError,
+}: {
+  item: Item;
+  onError: (msg: string) => void;
+}) {
+  const [secret, setSecret] = useState<{
+    login: string;
+    password: string;
+    totp?: string;
+  } | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void revealVaultItem(item.id).then((res) => {
+      if (!live) {
+        return;
+      }
+      if (res.error || !res.data) {
+        onError(res.error ?? `reveal failed for ${item.name}`);
+        return;
+      }
+      setSecret(res.data);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+
+  function copy(label: string, value: string) {
+    void navigator.clipboard?.writeText(value).then(() => setCopied(label));
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Dialog.Title>Reveal {item.name}</Dialog.Title>
+      <Dialog.Description>
+        A deliberate read-back — this lands in your audit feed.
+      </Dialog.Description>
+      {secret === null ? (
+        <Text variant="secondary">Unlocking…</Text>
+      ) : (
+        <>
+          {secret.login ? (
+            <div className="flex flex-col gap-1">
+              <Label>Login</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={secret.login} />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => copy("login", secret.login)}
+                >
+                  {copied === "login" ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-1">
+            <Label>Secret</Label>
+            <div className="flex items-center gap-2">
+              <Input readOnly value={secret.password} />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => copy("password", secret.password)}
+              >
+                {copied === "password" ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </div>
+          {secret.totp ? (
+            <div className="flex flex-col gap-1">
+              <Label>One-time code</Label>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={secret.totp} />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => copy("totp", secret.totp!)}
+                >
+                  {copied === "totp" ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
