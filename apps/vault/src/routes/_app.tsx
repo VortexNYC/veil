@@ -11,7 +11,6 @@ import {
   Heartbeat,
   Key,
   ListBullets,
-  LockSimple,
   Robot,
   EnvelopeSimple,
   ShareNetwork,
@@ -261,7 +260,7 @@ function PasswordGeneratorModal({
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog size="sm" className="p-6">
+      <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <Dialog.Title>Password Generator</Dialog.Title>
@@ -475,15 +474,6 @@ function Shell() {
           </Sidebar.Content>
           <Sidebar.Footer>
             <Sidebar.Menu>
-              <Sidebar.MenuItem>
-                <Sidebar.MenuButton
-                  icon={LockSimple}
-                  tooltip="Lock Vault (⌘L)"
-                  onClick={lockVaultNow}
-                >
-                  Lock Vault
-                </Sidebar.MenuButton>
-              </Sidebar.MenuItem>
               <Sidebar.MenuItem>
                 <Sidebar.MenuButton
                   icon={SignOut}

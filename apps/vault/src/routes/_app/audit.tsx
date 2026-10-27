@@ -7,6 +7,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { claimsOf, token } from "../../auth";
 import {
   CACHE_KEYS,
   fmtRelativeTime,
@@ -15,7 +16,7 @@ import {
 } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import { events } from "../../origin";
-import type { AuditEvent } from "@vortex-api/veil";
+import type { AuditEvent, Item } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/audit")({
   component: Audit,
@@ -30,6 +31,12 @@ function Audit() {
   const [decisionFilter, setDecisionFilter] = useState<"all" | "allow" | "deny">(
     "all",
   );
+  const mySub = String(claimsOf(token() ?? "").sub ?? "");
+  const cachedItems = readCache<Item[]>(CACHE_KEYS.items) ?? [];
+  const itemNameById: Record<string, string> = {};
+  for (const it of cachedItems) {
+    itemNameById[it.id] = it.name;
+  }
 
   function reload() {
     void events().then((res) => {
@@ -56,7 +63,9 @@ function Audit() {
     if (!query.trim()) {
       return true;
     }
-    const hay = `${e.decision} ${e.action} ${e.item_id ?? ""} ${e.agent_id ?? ""} ${e.reason ?? ""}`.toLowerCase();
+    const itemName = (e.item_id && itemNameById[e.item_id]) || e.item_id || "";
+    const actor = e.agent_id === mySub ? "you human" : e.agent_id || "";
+    const hay = `${e.decision} ${e.action} ${itemName} ${e.item_id ?? ""} ${actor} ${e.reason ?? ""}`.toLowerCase();
     return query
       .trim()
       .toLowerCase()
@@ -141,13 +150,18 @@ function Audit() {
                       </div>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="font-mono text-sm">
-                        {e.item_id || "—"}
+                      <span className="text-sm font-medium">
+                        {(e.item_id && itemNameById[e.item_id]) ||
+                          e.item_id ||
+                          "—"}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="font-mono text-xs opacity-80">
-                        {e.agent_id || "—"}
+                      <span
+                        className="font-mono text-xs opacity-80"
+                        title={e.agent_id}
+                      >
+                        {e.agent_id === mySub ? "You" : e.agent_id || "—"}
                       </span>
                     </Table.Cell>
                     <Table.Cell>

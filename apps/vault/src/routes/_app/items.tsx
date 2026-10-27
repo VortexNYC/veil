@@ -553,7 +553,7 @@ function Items() {
               }
             }}
           >
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -1119,7 +1119,7 @@ function Items() {
           }
         }}
       >
-        <Dialog size="sm" className="p-6">
+        <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
           {editTarget ? (
             <EditItemForm
               key={editTarget.id}
@@ -1145,7 +1145,7 @@ function Items() {
           }
         }}
       >
-        <Dialog size="sm" className="p-6">
+        <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
           <form
             key={rotateTarget ?? "closed"}
             className="flex flex-col gap-4"
@@ -1209,7 +1209,7 @@ function Items() {
           }
         }}
       >
-        <Dialog size="sm" className="p-6">
+        <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
           {shareTarget ? (
             <ShareItemForm
               key={shareTarget.id}
@@ -2179,8 +2179,10 @@ function AccountInspector({
                   <Badge variant={ev.decision === "allow" ? "neutral" : "red"}>
                     {ev.action}
                   </Badge>
-                  <span className="text-kumo-subtle font-mono">
-                    {ev.agent_id}
+                  <span className="text-kumo-subtle font-mono" title={ev.agent_id}>
+                    {ev.agent_id && ev.agent_id.length === 36
+                      ? "You"
+                      : ev.agent_id}
                   </span>
                 </div>
                 <span className="text-kumo-subtle" title={ev.time}>

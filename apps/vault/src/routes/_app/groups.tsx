@@ -58,7 +58,7 @@ function Groups() {
             New group
           </Button>
           <Dialog.Root open={open} onOpenChange={setOpen}>
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -175,7 +175,7 @@ function MembersDialog({
         }
       }}
     >
-      <Dialog size="sm" className="p-6">
+      <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
         <Dialog.Title>{group?.name} members</Dialog.Title>
         <Dialog.Description>Agents by id; humans by Kratos identity id.</Dialog.Description>
         {error ? (
