@@ -5,12 +5,14 @@
 // server never sees either. Format, implemented identically by the SPA:
 //
 //	key   = 32 random bytes          → fragment, base64url
-//	keff  = key XOR SHA-256("veil-share-pw\x00"+passphrase)   (key alone when no passphrase)
+//	pwk   = PBKDF2-SHA-256("veil-share-pw\x00"+pass, salt, 600k)   when passphrase set
+//	keff  = key XOR pwk              (key alone when no passphrase)
 //	blob  = nonce(24) || secretbox(plaintext, nonce, keff)
-//	meta  = {"v":1,"alg":"nacl.secretbox","pw":true}
+//	meta  = {"v":1,"alg":"nacl.secretbox","pw":true,"kdf":"pbkdf2-sha256","pw_salt":b64,"pw_iter":600000}
 //
 // Do not invent AEAD or KDFs — secretbox is golang.org/x/crypto, the
-// passphrase mix is crypto/sha256.
+// passphrase mix is PBKDF2 (x/crypto/pbkdf2, WebCrypto deriveBits on the
+// SPA side) so a stolen link still costs real work per guess.
 package share
 
 import (
@@ -21,21 +23,29 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/nacl/secretbox"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
 	Version  = 1
 	alg      = "nacl.secretbox"
+	kdfAlg   = "pbkdf2-sha256"
+	pwIter   = 600000
 	keyLen   = 32
 	nonceLen = 24
+	saltLen  = 16
 )
 
 // Meta is the envelope params JSON the origin stores verbatim — it marks
-// the algorithm and whether a passphrase mixed into the key. No secret.
+// the algorithm and, for passphrase shares, the KDF params. The salt is
+// not secret; the passphrase still never leaves the sender.
 type Meta struct {
-	V   int    `json:"v"`
-	Alg string `json:"alg"`
-	PW  bool   `json:"pw,omitempty"`
+	V    int    `json:"v"`
+	Alg  string `json:"alg"`
+	PW   bool   `json:"pw,omitempty"`
+	KDF  string `json:"kdf,omitempty"`
+	Salt string `json:"pw_salt,omitempty"`
+	Iter int    `json:"pw_iter,omitempty"`
 }
 
 // Seal encrypts plaintext under a fresh link key, optionally mixed with a
@@ -49,7 +59,16 @@ func Seal(plaintext []byte, passphrase string) (blob []byte, meta json.RawMessag
 	if _, err := rand.Read(key); err != nil {
 		return nil, nil, "", err
 	}
-	keff := mix(key, passphrase)
+	m := Meta{V: Version, Alg: alg}
+	keff := key
+	if passphrase != "" {
+		salt := make([]byte, saltLen)
+		if _, err := rand.Read(salt); err != nil {
+			return nil, nil, "", err
+		}
+		keff = mix(key, passKey(passphrase, salt, pwIter))
+		m.PW, m.KDF, m.Salt, m.Iter = true, kdfAlg, base64.StdEncoding.EncodeToString(salt), pwIter
+	}
 	var nonce [nonceLen]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, nil, "", err
@@ -61,11 +80,11 @@ func Seal(plaintext []byte, passphrase string) (blob []byte, meta json.RawMessag
 	out := make([]byte, 0, nonceLen+len(plaintext)+secretbox.Overhead)
 	out = append(out, nonce[:]...)
 	out = secretbox.Seal(out, plaintext, &nn, &nk)
-	m, err := json.Marshal(Meta{V: Version, Alg: alg, PW: passphrase != ""})
+	raw, err := json.Marshal(m)
 	if err != nil {
 		return nil, nil, "", err
 	}
-	return out, m, base64.RawURLEncoding.EncodeToString(key), nil
+	return out, raw, base64.RawURLEncoding.EncodeToString(key), nil
 }
 
 // Open reverses Seal. The base64url key comes from the link fragment; the
@@ -85,13 +104,23 @@ func Open(blob []byte, meta json.RawMessage, keyB64, passphrase string) ([]byte,
 	if m.Alg != alg || m.V != Version {
 		return nil, fmt.Errorf("share: unsupported envelope")
 	}
-	if m.PW && passphrase == "" {
-		return nil, fmt.Errorf("share: passphrase required")
+	keff := key
+	if m.PW {
+		if passphrase == "" {
+			return nil, fmt.Errorf("share: passphrase required")
+		}
+		if m.KDF != kdfAlg || m.Iter <= 0 || m.Iter > 4_000_000 {
+			return nil, fmt.Errorf("share: unsupported kdf")
+		}
+		salt, err := base64.StdEncoding.DecodeString(m.Salt)
+		if err != nil || len(salt) == 0 {
+			return nil, fmt.Errorf("share: bad salt")
+		}
+		keff = mix(key, passKey(passphrase, salt, m.Iter))
 	}
 	if len(blob) < nonceLen+secretbox.Overhead {
 		return nil, fmt.Errorf("share: short blob")
 	}
-	keff := mix(key, passphrase)
 	var nk [keyLen]byte
 	var nn [nonceLen]byte
 	copy(nk[:], keff)
@@ -103,16 +132,17 @@ func Open(blob []byte, meta json.RawMessage, keyB64, passphrase string) ([]byte,
 	return plain, nil
 }
 
-// mix returns key, XORed with the passphrase key when pass is non-empty.
-func mix(key []byte, pass string) []byte {
+// passKey stretches the passphrase — a domain-separated PBKDF2 output the
+// SPA reproduces with WebCrypto deriveBits.
+func passKey(pass string, salt []byte, iter int) []byte {
+	return pbkdf2.Key(append([]byte("veil-share-pw\x00"), pass...), salt, iter, keyLen, sha256.New)
+}
+
+// mix returns key XORed with the derived passphrase key.
+func mix(key, pwKey []byte) []byte {
 	out := make([]byte, keyLen)
-	copy(out, key)
-	if pass == "" {
-		return out
-	}
-	sum := sha256.Sum256(append([]byte("veil-share-pw\x00"), pass...))
 	for i := range out {
-		out[i] ^= sum[i]
+		out[i] = key[i] ^ pwKey[i]
 	}
 	return out
 }
