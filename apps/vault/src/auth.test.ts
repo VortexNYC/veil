@@ -22,8 +22,12 @@ describe("buildAuthorizeURL", () => {
       challenge: "ch",
       force: true,
     }))
-    expect(forced.searchParams.get("prompt")).toBe("login")
+    // prompt=login loops: the authorize URL is the kratos flow's return_to,
+    // so an unconditional re-prompt mints a fresh challenge after every
+    // completed reauth. aal2 is demanded via acr_values instead.
+    expect(forced.searchParams.get("prompt")).toBeNull()
     expect(forced.searchParams.get("max_age")).toBe("0")
+    expect(forced.searchParams.get("acr_values")).toBe("aal2")
     expect(u.searchParams.get("code_challenge_method")).toBe("S256")
     expect(u.searchParams.get("scope")).toBe("openid")
     expect([...u.searchParams.keys()]).not.toEqual(

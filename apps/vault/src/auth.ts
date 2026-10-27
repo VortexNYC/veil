@@ -21,8 +21,12 @@ export function buildAuthorizeURL(input: AuthorizeInput): string {
   u.searchParams.set("code_challenge", input.challenge)
   u.searchParams.set("code_challenge_method", "S256")
   if (input.force) {
+    // aal2 retry: demand the second factor once via acr_values. Never set
+    // prompt=login here — the authorize URL is the kratos flow's return_to,
+    // so an unconditional re-prompt mints a fresh login challenge after every
+    // completed reauth and the card flickers through reauthenticate forever.
     u.searchParams.set("max_age", "0")
-    u.searchParams.set("prompt", "login")
+    u.searchParams.set("acr_values", "aal2")
   }
   u.searchParams.set("redirect_uri", input.redirectURI)
   u.searchParams.set("response_type", "code")
