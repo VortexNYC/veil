@@ -1081,6 +1081,27 @@ func itemCmd(home *string) *cobra.Command {
 	}
 	write.Flags().StringVar(&outFile, "out-file", "", "destination path. never stdout.")
 	_ = write.MarkFlagRequired("out-file")
+	reveal := &cobra.Command{
+		Use:   "reveal NAME",
+		Short: "Owner/human: print the item's secret and live TOTP code. Not MCP.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originItemReveal(cmd, args[0])
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			e, err := a.RevealItem(actor, args[0], true)
+			if err != nil {
+				return err
+			}
+			return printReveal(cmd, e.Login, e.Password, e.TOTP)
+		},
+	}
 	verify := &cobra.Command{
 		Use:   "verify NAME",
 		Short: "Dry-run an item's credential (WIF exchange, OAuth refresh, or provider verify) without revealing the secret",
@@ -1363,7 +1384,7 @@ func itemCmd(home *string) *cobra.Command {
 	shareCmd.Flags().StringVar(&sharePassFile, "passphrase-file", "", "optional passphrase file — second factor on top of the link key")
 	shareCmd.Flags().DurationVar(&shareTTL, "expires", 24*time.Hour, "link lifetime (max 30d)")
 	shareCmd.Flags().StringVar(&shareLinkBase, "link-base", envOr("VEIL_SHARE_BASE", "https://app.veil.nyc"), "SPA base the link resolves on")
-	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, verify, addHook, removeHook, listHooks, fireHooks, shareCmd)
+	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, reveal, verify, addHook, removeHook, listHooks, fireHooks, shareCmd)
 	return c
 }
 
@@ -2917,6 +2938,20 @@ func useView(got protocol.UseResult) useDTO {
 		}
 	}
 	return v
+}
+
+// printReveal is the one place a secret reaches stdout — a human ran
+// `veil item reveal` asking for exactly that. Not reachable from MCP.
+func printReveal(cmd *cobra.Command, login, password, totp string) error {
+	w := cmd.OutOrStdout()
+	if login != "" {
+		fmt.Fprintf(w, "login:    %s\n", login)
+	}
+	fmt.Fprintf(w, "password: %s\n", password)
+	if totp != "" {
+		fmt.Fprintf(w, "totp:     %s\n", totp)
+	}
+	return nil
 }
 
 func encode(cmd *cobra.Command, v any) error {

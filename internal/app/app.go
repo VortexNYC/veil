@@ -2163,6 +2163,53 @@ func (a *App) FillLogin(p protocol.Principal, uuid string, mintTotp bool) (FillE
 	return e, nil
 }
 
+// RevealItem is a deliberate human read-back of an item's plaintext: vault UI
+// and `veil item reveal`. Same access shape as FillLogin — the difference is
+// the audit action, so an intentional reveal is not conflated with an
+// autofill. The audit row lands before the secret leaves; a failed write
+// denies the reveal.
+func (a *App) RevealItem(p protocol.Principal, ref string, mintTotp bool) (FillEntry, error) {
+	if p.Kind != protocol.PrincipalHuman {
+		return FillEntry{}, fmt.Errorf("app: reveal is human")
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return FillEntry{}, fmt.Errorf("app: reveal item")
+	}
+	item, err := a.Store.Item(ref)
+	if err != nil {
+		item, err = a.Store.ItemByName(p.OrgID, ref)
+		if err != nil {
+			return FillEntry{}, fmt.Errorf("app: reveal")
+		}
+	}
+	if !a.mayFillItem(p, item.ID) {
+		return FillEntry{}, fmt.Errorf("app: reveal")
+	}
+	e, env, ok := a.unlockFill(item)
+	if !ok {
+		return FillEntry{}, fmt.Errorf("app: reveal")
+	}
+	if e.Login == "" {
+		e.Login = item.Login
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionReveal, "reveal")); err != nil {
+		return FillEntry{}, fmt.Errorf("app: audit reveal: %w", err)
+	}
+	if !mintTotp || env.TOTP == "" {
+		return e, nil
+	}
+	code, err := material.Mint(env.TOTP, time.Now())
+	if err != nil || code == "" {
+		return FillEntry{}, fmt.Errorf("app: no totp")
+	}
+	if err := a.auditAdmin(adminEvent(p.ID, item.OrgID, item.ID, protocol.ActionTOTPMint, "")); err != nil {
+		return FillEntry{}, fmt.Errorf("app: audit totp: %w", err)
+	}
+	e.TOTP = code
+	return e, nil
+}
+
 // FillEventReport is a client-reported disclosure. When the fill host serves
 // a secret from the sealed replica instead of calling origin, it attests the
 // release here so the audit feed sees the same row an online fill writes.
