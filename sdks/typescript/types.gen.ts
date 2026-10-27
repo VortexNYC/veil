@@ -8,7 +8,7 @@ export type Item = {
     id: string;
     org_id: string;
     name: string;
-    kind: 'api_key' | 'oauth' | 'ssh' | 'file' | 'passkey' | 'card' | 'identity' | 'honey';
+    kind: 'api_key' | 'oauth' | 'ssh' | 'file' | 'passkey' | 'card' | 'identity' | 'secure_note' | 'honey';
     owner: Owner;
     uris: Array<string>;
     tags?: Array<string>;
@@ -105,7 +105,7 @@ export type CreateItemRequest = {
     uri?: string;
     uris?: Array<string>;
     tags?: Array<string>;
-    kind?: 'api_key' | 'oauth' | 'ssh' | 'file' | 'passkey' | 'card' | 'identity' | 'honey';
+    kind?: 'api_key' | 'oauth' | 'ssh' | 'file' | 'passkey' | 'card' | 'identity' | 'secure_note' | 'honey';
     /**
      * Vault material. Request only. Never returned.
      */

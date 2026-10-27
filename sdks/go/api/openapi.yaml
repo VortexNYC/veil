@@ -1365,6 +1365,7 @@ components:
           - passkey
           - card
           - identity
+          - secure_note
           - honey
           type: string
         owner:
@@ -1676,6 +1677,7 @@ components:
           - passkey
           - card
           - identity
+          - secure_note
           - honey
           type: string
         secret:

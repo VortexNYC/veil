@@ -28,7 +28,7 @@ export const Route = createFileRoute("/_app/items")({
   component: Items,
 });
 
-type Kind = "api_key" | "ssh" | "wif" | "card" | "identity";
+type Kind = "api_key" | "ssh" | "wif" | "card" | "identity" | "secure_note";
 
 function isKind(value: string): value is Kind {
   return (
@@ -36,7 +36,8 @@ function isKind(value: string): value is Kind {
     value === "ssh" ||
     value === "wif" ||
     value === "card" ||
-    value === "identity"
+    value === "identity" ||
+    value === "secure_note"
   );
 }
 
@@ -51,7 +52,8 @@ function isKindFilter(value: string): value is KindFilter {
     value === "identity" ||
     value === "ssh" ||
     value === "oauth" ||
-    value === "file"
+    value === "file" ||
+    value === "secure_note"
   );
 }
 
@@ -64,6 +66,7 @@ const KIND_FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "ssh", label: "SSH keys" },
   { value: "oauth", label: "OAuth / WIF" },
   { value: "file", label: "Files" },
+  { value: "secure_note", label: "Secure notes" },
 ];
 
 // CSPRNG password for the inline Generate buttons — 24 chars from a
@@ -263,7 +266,14 @@ function Items() {
                             secret: String(fd.get("secret") ?? "") || undefined,
                             ...(tags.length > 0 ? { tags } : {}),
                           }
-                        : {
+                        : kind === "secure_note"
+                          ? {
+                              name,
+                              kind,
+                              secret: String(fd.get("secret") ?? "") || undefined,
+                              ...(tags.length > 0 ? { tags } : {}),
+                            }
+                          : {
                             name,
                             kind,
                             uri: String(fd.get("uri") ?? "") || undefined,
@@ -303,7 +313,9 @@ function Items() {
                           ? "Outbound WIF (Anthropic / RFC 7523)"
                           : value === "card"
                             ? "Card"
-                            : "Identity"
+                            : value === "secure_note"
+                              ? "Secure note"
+                              : "Identity"
                   }
                   onValueChange={(value) => {
                     if (typeof value === "string" && isKind(value)) {
@@ -316,6 +328,7 @@ function Items() {
                   <Select.Option value="wif">Outbound WIF (Anthropic / RFC 7523)</Select.Option>
                   <Select.Option value="card">Card</Select.Option>
                   <Select.Option value="identity">Identity</Select.Option>
+                  <Select.Option value="secure_note">Secure note</Select.Option>
                 </Select>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="name">Name</Label>
@@ -390,6 +403,24 @@ function Items() {
                     <div className="flex flex-col gap-1">
                       <Label htmlFor="tags">Tags (optional)</Label>
                       <Input id="tags" name="tags" placeholder="prod, deploy" autoComplete="off" />
+                    </div>
+                  </>
+                ) : null}
+                {kind === "secure_note" ? (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="note-secret">Note</Label>
+                      <Textarea
+                        id="note-secret"
+                        name="secret"
+                        placeholder="Recovery codes, serial numbers, instructions…"
+                        rows={8}
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="tags">Tags (optional)</Label>
+                      <Input id="tags" name="tags" placeholder="personal, reference" autoComplete="off" />
                     </div>
                   </>
                 ) : null}
