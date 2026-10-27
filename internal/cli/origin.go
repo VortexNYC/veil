@@ -962,6 +962,24 @@ func originItemVerify(cmd *cobra.Command, name string) error {
 	return encode(cmd, out)
 }
 
+// originItemReveal is the origin leg of `veil item reveal` — human token
+// only, POSTs to the off-contract reveal path and prints the plaintext.
+func originItemReveal(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+url.PathEscape(name)+"/reveal", tok, []byte(`{"mint_totp":true}`))
+	if err != nil {
+		return err
+	}
+	var out publicapi.FillLogin
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return printReveal(cmd, out.Login, out.Password, out.TOTP)
+}
+
 func originAgentBind(cmd *cobra.Command, name, issuer, subject, audience string, claims map[string][]string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {

@@ -458,6 +458,9 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /v1/items/{name}/rotate-hooks", s.setRotateHooks)
 	mux.HandleFunc("POST /v1/items/{name}/rotate-hooks/fire", s.fireRotateHooks)
 	mux.HandleFunc("POST /v1/items/{name}/verify", s.verifyItem)
+	// reveal is a deliberate human read-back — the secret path like /v1/fill,
+	// so it stays off the OpenAPI contract and out of every generated SDK.
+	mux.HandleFunc("POST /v1/items/{name}/reveal", s.revealItem)
 	mux.HandleFunc("GET /v1/rotate/providers", s.listRotateProviders)
 	mux.HandleFunc("DELETE /v1/items/{name}", s.deleteItem)
 	mux.HandleFunc("GET /v1/grants", s.listGrants)
@@ -2283,6 +2286,35 @@ func (s *Server) fillLogins(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, FillLogin{Login: e.Login, Name: e.Name, Password: e.Password, UUID: e.UUID, TOTP: e.TOTP})
 	}
 	writeJSON(w, FillLoginsResponse{Entries: entries})
+}
+
+// revealItem answers a human's deliberate "show me this secret" — vault UI
+// and `veil item reveal`. Body may carry {"mint_totp": true} to also mint the
+// current TOTP code. Agents and sessions are 403.
+func (s *Server) revealItem(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		MintTOTP bool `json:"mint_totp"`
+	}
+	// An empty body is a plain reveal.
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil && err != io.EOF {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	got, err := s.App.RevealItem(p, r.PathValue("name"), in.MintTOTP)
+	if err != nil {
+		msg := err.Error()
+		if strings.HasSuffix(msg, "no totp") {
+			http.Error(w, "no totp", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "reveal failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, FillLogin{Login: got.Login, Name: got.Name, Password: got.Password, UUID: got.UUID, TOTP: got.TOTP})
 }
 
 // fillEvents ingests client-reported disclosures (replica-served fills).

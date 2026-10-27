@@ -2068,6 +2068,53 @@ func TestFillLoginsURLFormAuditsEveryReveal(t *testing.T) {
 	}
 }
 
+// Reveal is the deliberate human read-back: human 200 with plaintext, agent
+// 403, and the audit row says reveal — not fill.
+func TestRevealItemEndpoint(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/items", "human", CreateItemRequest{
+		Name: "stripe-r", URI: "https://dashboard.stripe.com", Secret: secret, Login: "u@x",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("create %d %s", code, raw)
+	}
+
+	code, _ = doJSON(t, srv, http.MethodPost, "/v1/items/stripe-r/reveal", "agent", map[string]bool{"mint_totp": true})
+	if code != http.StatusForbidden {
+		t.Fatalf("agent reveal got %d", code)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/items/stripe-r/reveal", "human", map[string]bool{"mint_totp": true})
+	if code != http.StatusOK {
+		t.Fatalf("human reveal %d %s", code, raw)
+	}
+	var got FillLogin
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != secret || got.Login != "u@x" {
+		t.Fatalf("reveal %+v", got)
+	}
+
+	events, err := a.Store.Audit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawReveal bool
+	for _, e := range events {
+		if e.Action == protocol.ActionReveal && e.ItemID == "stripe-r" {
+			sawReveal = true
+		}
+		if e.Action == protocol.ActionFill && e.ItemID == "stripe-r" {
+			t.Fatalf("reveal must not audit as fill: %+v", e)
+		}
+	}
+	if !sawReveal {
+		t.Fatalf("no reveal audit row: %+v", events)
+	}
+}
+
 // Fill approval requests: a device files the ask, an owner resolves it on
 // the generic requests surface, the device polls for the decision. Fill
 // requests carry no grant — resolve is direct, no approval mint.

@@ -268,6 +268,27 @@ export function verifyVaultItem(name: string) {
   return sdkVerifyItem({ client: client(), path: { name } });
 }
 
+// reveal is the deliberate human read-back — off-contract like /v1/fill, so
+// raw fetch rather than the generated SDK.
+export async function revealVaultItem(
+  name: string,
+): Promise<{ data?: { login: string; name: string; password: string; uuid: string; totp?: string }; error?: string }> {
+  const t = token();
+  if (!t) {
+    throw new Error("signed out");
+  }
+  const res = await fetch(`${originAPI}/v1/items/${encodeURIComponent(name)}/reveal`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ mint_totp: true }),
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => "");
+    return { error: msg || `reveal failed (${res.status})` };
+  }
+  return { data: (await res.json()) as { login: string; name: string; password: string; uuid: string; totp?: string } };
+}
+
 export function events() {
   return listEvents({ client: client() });
 }
