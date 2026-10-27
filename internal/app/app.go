@@ -3010,14 +3010,23 @@ func (a *App) CreateShareFor(actor protocol.Principal, name string, blob, meta [
 
 // shareLimiter bounds public redeem attempts per share id — link probing
 // must not be free. Per-process sliding window, same shape as the invite
-// limiter.
-var shareLim = newSlidingLimiter(10, time.Minute)
+// limiter. shareIPLim bounds attempts per caller IP across all shares: a
+// single noisy client may not burn every share's quota (VTX-790). The
+// per-share cap stays the hard bound on distributed brute force — guessing
+// fan-out across IPs never widens it.
+var (
+	shareLim = newSlidingLimiter(10, time.Minute)
+	// shareIPLim degrades rather than locks out: the per-share cap is the hard
+	// bound, so a caller minting header values may evade this bucket — and a
+	// full map of forged keys must not 429 real callers.
+	shareIPLim = &slidingLimiter{max: 60, win: time.Minute, failOpenFull: true}
+)
 
 // RedeemShare is the public one-time read: atomic claim-then-return. All
 // failure modes collapse to ErrNotFound so the 404 is generic. The redeem
 // audit row commits in the consume transaction.
-func (a *App) RedeemShare(id string) (protocol.Share, error) {
-	if !shareLim.allow(id) {
+func (a *App) RedeemShare(id, ip string) (protocol.Share, error) {
+	if !shareIPLim.allow(ip) || !shareLim.allow(id) {
 		return protocol.Share{}, ErrShareLimit
 	}
 	now := time.Now().UTC()

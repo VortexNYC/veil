@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -1623,11 +1624,41 @@ func (s *Server) createShare(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, shareView(sh))
 }
 
+// clientIP is the limiter key for the public redeem path. Cloudflare sets
+// CF-Connecting-IP (overwriting client values at the edge); X-Forwarded-For
+// left-most and RemoteAddr are the direct-hit fallbacks. Values are parsed
+// and canonicalized — spelling variants share one bucket, and anything that
+// is not an IP collapses to RemoteAddr rather than becoming its own key.
+// A forged header can only move a caller between per-IP buckets; it cannot
+// widen the per-share bound, and shareIPLim degrades fail-open when its key
+// map floods rather than locking out real clients.
+func clientIP(r *http.Request) string {
+	for _, cand := range [3]string{
+		strings.TrimSpace(r.Header.Get("CF-Connecting-IP")),
+		func() string {
+			ip, _, _ := strings.Cut(r.Header.Get("X-Forwarded-For"), ",")
+			return strings.TrimSpace(ip)
+		}(),
+		func() string {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err == nil {
+				return host
+			}
+			return r.RemoteAddr
+		}(),
+	} {
+		if ip := net.ParseIP(cand); ip != nil {
+			return ip.String()
+		}
+	}
+	return r.RemoteAddr
+}
+
 // redeemShare is the public one-time read — no auth; the link id is the
 // capability and the per-id limiter keeps probing from being free.
 // Missing, consumed, revoked, and expired all collapse to a generic 404.
 func (s *Server) redeemShare(w http.ResponseWriter, r *http.Request) {
-	sh, err := s.App.RedeemShare(r.PathValue("id"))
+	sh, err := s.App.RedeemShare(r.PathValue("id"), clientIP(r))
 	if err != nil {
 		if errors.Is(err, app.ErrShareLimit) {
 			http.Error(w, "redeem rate limit", http.StatusTooManyRequests)
