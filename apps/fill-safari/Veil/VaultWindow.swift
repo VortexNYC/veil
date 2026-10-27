@@ -287,8 +287,10 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         decisionHandler(.allow)
     }
 
-    /// veil-app://vault/<path> → Contents/Resources/vault/<path>; unknown
-    /// paths fall back to index.html so TanStack routes resolve.
+    /// veil-app://vault/<path> fetches live from https://app.veil.nyc (so UI
+    /// deploys land in Veil.app automatically without rebuilding the .app)
+    /// and falls back to the disk cache / bundled Contents/Resources/vault
+    /// when offline.
     private final class VaultScheme: NSObject, WKURLSchemeHandler {
         private let mime: [String: String] = [
             "html": "text/html", "js": "text/javascript", "mjs": "text/javascript",
@@ -298,30 +300,119 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
             "ico": "image/x-icon", "map": "application/json", "txt": "text/plain",
             "wasm": "application/wasm",
         ]
+        private let lock = NSLock()
+        private var stopped = Set<ObjectIdentifier>()
+        private lazy var session: URLSession = {
+            let cfg = URLSessionConfiguration.default
+            cfg.timeoutIntervalForRequest = 4
+            cfg.timeoutIntervalForResource = 8
+            return URLSession(configuration: cfg)
+        }()
+        private let cacheRoot: URL = {
+            let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            return base.appendingPathComponent("nyc.veil.fill/vault-live", isDirectory: true)
+        }()
 
-        func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
-            guard let url = task.request.url, url.scheme == "veil-app" else {
-                task.didFailWithError(URLError(.unsupportedURL)); return
+        private func isStopped(_ task: WKURLSchemeTask) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return stopped.contains(ObjectIdentifier(task as AnyObject))
+        }
+
+        private func finish(_ task: WKURLSchemeTask, url: URL, mimeType: String, data: Data) {
+            lock.lock()
+            let id = ObjectIdentifier(task as AnyObject)
+            if stopped.contains(id) {
+                lock.unlock()
+                return
             }
-            let root = Bundle.main.resourceURL!.appendingPathComponent("vault")
-            var path = url.path.isEmpty ? "/index.html" : url.path
-            var file = root.appendingPathComponent(String(path.dropFirst()))
-            var isDir: ObjCBool = false
-            if !FileManager.default.fileExists(atPath: file.path, isDirectory: &isDir) || isDir.boolValue {
-                file = root.appendingPathComponent("index.html")
-                path = "/index.html"
-            }
-            guard let data = try? Data(contentsOf: file) else {
-                task.didFailWithError(URLError(.fileDoesNotExist)); return
-            }
-            let ext = (path as NSString).pathExtension.lowercased()
-            let res = URLResponse(url: url, mimeType: mime[ext] ?? "application/octet-stream",
-                                  expectedContentLength: data.count, textEncodingName: nil)
+            stopped.insert(id)
+            lock.unlock()
+            let res = URLResponse(
+                url: url, mimeType: mimeType,
+                expectedContentLength: data.count, textEncodingName: nil,
+            )
             task.didReceive(res)
             task.didReceive(data)
             task.didFinish()
         }
 
-        func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
+        private func fail(_ task: WKURLSchemeTask, error: Error) {
+            lock.lock()
+            let id = ObjectIdentifier(task as AnyObject)
+            if stopped.contains(id) {
+                lock.unlock()
+                return
+            }
+            stopped.insert(id)
+            lock.unlock()
+            task.didFailWithError(error)
+        }
+
+        func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+            guard let url = task.request.url, url.scheme == "veil-app" else {
+                fail(task, error: URLError(.unsupportedURL))
+                return
+            }
+            let rawPath = url.path
+            let ext = (rawPath as NSString).pathExtension.lowercased()
+            let isAsset = !ext.isEmpty && mime[ext] != nil
+            let fetchPath = isAsset ? rawPath : "/index.html"
+            let serveExt = isAsset ? ext : "html"
+            let fallbackMime = mime[serveExt] ?? "application/octet-stream"
+
+            if let remoteURL = URL(string: "https://app.veil.nyc" + fetchPath) {
+                var req = URLRequest(url: remoteURL)
+                // Always revalidate index.html so new asset hashes show up
+                // immediately; hashed /assets/* files can use HTTP cache.
+                req.cachePolicy = isAsset ? .returnCacheDataElseLoad : .reloadIgnoringLocalCacheData
+                session.dataTask(with: req) { [weak self] data, response, err in
+                    guard let self else { return }
+                    if self.isStopped(task) { return }
+                    if err == nil,
+                       let http = response as? HTTPURLResponse,
+                       http.statusCode == 200,
+                       let data, !data.isEmpty {
+                        let cacheFile = self.cacheRoot.appendingPathComponent(String(fetchPath.dropFirst()))
+                        try? FileManager.default.createDirectory(
+                            at: cacheFile.deletingLastPathComponent(),
+                            withIntermediateDirectories: true,
+                        )
+                        try? data.write(to: cacheFile, options: .atomic)
+                        self.finish(task, url: url, mimeType: fallbackMime, data: data)
+                        return
+                    }
+                    self.serveFallback(task: task, url: url, fetchPath: fetchPath, mimeType: fallbackMime)
+                }.resume()
+                return
+            }
+            serveFallback(task: task, url: url, fetchPath: fetchPath, mimeType: fallbackMime)
+        }
+
+        private func serveFallback(task: WKURLSchemeTask, url: URL, fetchPath: String, mimeType: String) {
+            let rel = String(fetchPath.dropFirst())
+            let cached = cacheRoot.appendingPathComponent(rel)
+            if let data = try? Data(contentsOf: cached), !data.isEmpty {
+                finish(task, url: url, mimeType: mimeType, data: data)
+                return
+            }
+            let root = Bundle.main.resourceURL!.appendingPathComponent("vault")
+            var file = root.appendingPathComponent(rel)
+            var isDir: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: file.path, isDirectory: &isDir) || isDir.boolValue {
+                file = root.appendingPathComponent("index.html")
+            }
+            guard let data = try? Data(contentsOf: file) else {
+                fail(task, error: URLError(.fileDoesNotExist))
+                return
+            }
+            finish(task, url: url, mimeType: mimeType, data: data)
+        }
+
+        func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {
+            lock.lock()
+            stopped.insert(ObjectIdentifier(task as AnyObject))
+            lock.unlock()
+        }
     }
 }

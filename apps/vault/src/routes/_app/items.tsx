@@ -455,6 +455,26 @@ function Items() {
 
   useEffect(() => {
     void reload();
+    function onFocus() {
+      void reload();
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") {
+        void reload();
+      }
+    }
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void reload();
+      }
+    }, 60_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   return (
