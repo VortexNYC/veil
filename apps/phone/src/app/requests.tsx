@@ -119,7 +119,7 @@ export default function Requests() {
               paddingVertical: 14,
               gap: 10,
               borderBottomWidth: 1,
-              borderBottomColor: "#1e1b18",
+              borderBottomColor: "#27272a",
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -129,14 +129,14 @@ export default function Requests() {
                   height: 36,
                   borderRadius: 10,
                   borderCurve: "continuous",
-                  backgroundColor: "#1e1b18",
+                  backgroundColor: "#18181b",
                   borderWidth: 1,
-                  borderColor: "#2e2924",
+                  borderColor: "#27272a",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Text style={{ color: "#f0ede8", fontWeight: "700" }}>
+                <Text style={{ color: "#f4f4f5", fontWeight: "700" }}>
                   {r.agent_id.slice(0, 1).toUpperCase()}
                 </Text>
               </View>
@@ -163,9 +163,9 @@ export default function Requests() {
                   borderRadius: 10,
                   borderCurve: "continuous",
                   borderWidth: 1,
-                  borderColor: "#2e2924",
+                  borderColor: "#27272a",
                   alignItems: "center",
-                  backgroundColor: pressed ? "#1e1b18" : "transparent",
+                  backgroundColor: pressed ? "#18181b" : "transparent",
                   opacity: busy === null || busy === r.id + "deny" ? 1 : 0.4,
                 })}
               >
@@ -182,11 +182,11 @@ export default function Requests() {
                   borderRadius: 10,
                   borderCurve: "continuous",
                   alignItems: "center",
-                  backgroundColor: pressed ? "#2c7a4b" : "#1f6a3d",
+                  backgroundColor: pressed ? "#1d4ed8" : "#2563eb",
                   opacity: busy === null || busy === r.id + "approve" ? 1 : 0.4,
                 })}
               >
-                <Text style={{ color: "#f0ede8", fontWeight: "700" }}>
+                <Text style={{ color: "#ffffff", fontWeight: "700" }}>
                   Approve
                 </Text>
               </Pressable>

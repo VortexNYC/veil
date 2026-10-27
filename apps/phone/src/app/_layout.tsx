@@ -33,10 +33,10 @@ export default function Layout() {
       <StatusBar style="light" />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: "#141210" },
-          headerTintColor: "#f0ede8",
+          headerStyle: { backgroundColor: "#0e0e10" },
+          headerTintColor: "#f4f4f5",
           headerTitleStyle: { fontWeight: "600" },
-          contentStyle: { backgroundColor: "#141210" },
+          contentStyle: { backgroundColor: "#0e0e10" },
         }}
       >
         <Stack.Screen
@@ -47,12 +47,12 @@ export default function Layout() {
             headerRight: () => (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
                 <Pressable onPress={() => router.push("/requests")} hitSlop={12}>
-                  <Text style={{ color: "#f0ede8", fontSize: 16, fontWeight: "600" }}>
+                  <Text style={{ color: "#f4f4f5", fontSize: 16, fontWeight: "600" }}>
                     Requests
                   </Text>
                 </Pressable>
                 <Pressable onPress={() => router.push("/add")} hitSlop={12}>
-                  <Text style={{ color: "#f0ede8", fontSize: 28, fontWeight: "300" }}>+</Text>
+                  <Text style={{ color: "#3b82f6", fontSize: 28, fontWeight: "400" }}>+</Text>
                 </Pressable>
               </View>
             ),

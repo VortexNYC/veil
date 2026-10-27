@@ -153,6 +153,37 @@ button.v-row {
 }
 .v-mark svg { color: var(--v-brand); }
 .v-where { font-size: 12px; color: var(--v-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-head-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.v-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--v-line);
+  border-radius: 6px;
+  background: var(--v-overlay);
+  color: var(--v-subtle);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.v-btn:hover {
+  color: var(--v-text);
+  background: var(--v-fill);
+}
+.v-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
+}
 /* Popup vault search — a quiet field between the header and the list, same
    chrome as the in-page menu so the two surfaces read as one. */
 .v-search-wrap {

@@ -92,14 +92,98 @@ function pick(e, fromSearch) {
   });
 }
 
+function copyText(val, btn, label) {
+  if (!val || !navigator.clipboard) {
+    return;
+  }
+  navigator.clipboard.writeText(val).then(function () {
+    if (btn) {
+      btn.textContent = "Copied";
+      setTimeout(function () {
+        btn.textContent = label;
+      }, 1200);
+    }
+  });
+}
+
+function actionBtn(label, title, onClick) {
+  const btn = veilUI.el("button", "v-btn", label);
+  btn.type = "button";
+  if (title) {
+    btn.title = title;
+  }
+  btn.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    onClick(btn);
+  });
+  return btn;
+}
+
 function entryButton(e, fromSearch) {
   const b = veilUI.entryRow(
-    { name: e.name || e.uuid || "item", sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""), kind: e.kind, icon: e.icon },
-    "button",
+    {
+      name: e.name || e.uuid || "item",
+      sub: e.login || (e.kind && e.kind !== "login" ? e.kind : ""),
+      kind: e.kind,
+      icon: e.icon,
+    },
+    "div",
   );
   b.addEventListener("click", function () {
     pick(e, fromSearch);
   });
+  const actions = veilUI.el("div", "v-actions");
+  if (e.login) {
+    actions.appendChild(
+      actionBtn("User", "Copy username / email", function (btn) {
+        copyText(e.login, btn, "User");
+      }),
+    );
+  }
+  if (e.kind !== "passkey") {
+    actions.appendChild(
+      actionBtn("Pass", "Copy password (Touch ID)", function (btn) {
+        btn.textContent = "…";
+        send({ type: "popup-reveal", uuid: e.uuid, mintTotp: false }).then(function (res) {
+          if (res && res.ok && res.entry && res.entry.password) {
+            copyText(res.entry.password, btn, "Pass");
+          } else {
+            btn.textContent = "Err";
+            setTimeout(function () {
+              btn.textContent = "Pass";
+            }, 1200);
+          }
+        });
+      }),
+    );
+  }
+  if (e.totp === "*") {
+    actions.appendChild(
+      actionBtn("2FA", "Copy 6-digit 2FA code", function (btn) {
+        btn.textContent = "…";
+        send({ type: "popup-reveal", uuid: e.uuid, mintTotp: true }).then(function (res) {
+          if (res && res.ok && res.entry && res.entry.totp) {
+            copyText(res.entry.totp, btn, "2FA");
+          } else {
+            btn.textContent = "Err";
+            setTimeout(function () {
+              btn.textContent = "2FA";
+            }, 1200);
+          }
+        });
+      }),
+    );
+  }
+  const firstURI = (e.uris && e.uris[0]) || "";
+  if (firstURI && (firstURI.indexOf("http://") === 0 || firstURI.indexOf("https://") === 0)) {
+    actions.appendChild(
+      actionBtn("Open", "Open website", function () {
+        chrome.tabs.create({ url: firstURI });
+        window.close();
+      }),
+    );
+  }
+  b.appendChild(actions);
   return b;
 }
 
@@ -182,27 +266,32 @@ function renderSite() {
 // host, and every URI match case-insensitively.
 function renderSearch(q) {
   clearList();
-  const ql = q.toLowerCase();
+  const terms = q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(function (t) {
+      return !!t;
+    });
   const hits = state.catalog.filter(function (e) {
     if (!e) {
       return false;
     }
-    if (String(e.name || "").toLowerCase().indexOf(ql) !== -1) {
-      return true;
-    }
-    if (String(e.login || "").toLowerCase().indexOf(ql) !== -1) {
-      return true;
-    }
-    if (String(e.savedFor || "").toLowerCase().indexOf(ql) !== -1) {
-      return true;
-    }
-    const uris = e.uris || [];
-    for (let i = 0; i < uris.length; i++) {
-      if (String(uris[i] || "").toLowerCase().indexOf(ql) !== -1) {
-        return true;
+    const hay = [
+      e.name || "",
+      e.login || "",
+      e.savedFor || "",
+      e.kind || "",
+      e.totp === "*" ? "2fa totp" : "",
+      (e.uris || []).join(" "),
+    ]
+      .join(" ")
+      .toLowerCase();
+    for (let i = 0; i < terms.length; i++) {
+      if (hay.indexOf(terms[i]) === -1) {
+        return false;
       }
     }
-    return false;
+    return true;
   });
   if (!hits.length) {
     state.list.appendChild(veilUI.el("div", "v-empty", "No matches in vault."));
@@ -232,12 +321,20 @@ Promise.all([send({ type: "popup-catalog" }), send({ type: "popup-list" })]).the
   mark.className = "v-mark";
   mark.innerHTML = veilUI.glyphs.veil + "<span>Veil</span>";
   head.appendChild(mark);
+  const headRight = veilUI.el("div", "v-head-right");
   if (host) {
     const where = document.createElement("div");
     where.className = "v-where";
     where.textContent = host;
-    head.appendChild(where);
+    headRight.appendChild(where);
   }
+  headRight.appendChild(
+    actionBtn("Vault ↗", "Open Veil Vault", function () {
+      chrome.tabs.create({ url: "https://app.veil.nyc/items" });
+      window.close();
+    }),
+  );
+  head.appendChild(headRight);
   root.appendChild(head);
 
   const wrap = document.createElement("div");

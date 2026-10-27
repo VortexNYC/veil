@@ -40,6 +40,7 @@ export type Item = {
   name: string;
   kind?: string;
   uris?: string[];
+  tags?: string[];
   login?: string;
   has_totp?: boolean;
   archived?: boolean;
@@ -54,18 +55,57 @@ export type FillEntry = {
   login: string;
   password: string;
   totp?: string;
+  notes?: string;
+  card?: {
+    number?: string;
+    exp_month?: string;
+    exp_year?: string;
+    cvv?: string;
+    holder?: string;
+  };
+  identity?: {
+    given_name?: string;
+    family_name?: string;
+    address?: string;
+    city?: string;
+    region?: string;
+    postal?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+  };
 };
 
 export const listItems = () => call<{ items: Item[] }>("/v1/items").then((r) => r.items);
 
-export const fillLogin = (uuid: string, wantTotp: boolean) =>
-  call<{ entries: FillEntry[] }>("/v1/fill/logins", {
-    method: "POST",
-    body: JSON.stringify(wantTotp ? { uuid, mintTotp: true } : { uuid }),
-  }).then((r) => r.entries[0] ?? null);
+export const fillLogin = async (uuid: string, wantTotp: boolean): Promise<FillEntry | null> => {
+  try {
+    return await call<FillEntry>(`/v1/items/${encodeURIComponent(uuid)}/reveal`, {
+      method: "POST",
+      body: JSON.stringify({ mint_totp: wantTotp }),
+    });
+  } catch {
+    const r = await call<{ entries: FillEntry[] }>("/v1/fill/logins", {
+      method: "POST",
+      body: JSON.stringify(wantTotp ? { uuid, mintTotp: true } : { uuid }),
+    });
+    return r.entries[0] ?? null;
+  }
+};
 
-export const addLogin = (input: { name: string; uri?: string; login?: string; secret: string }) =>
-  call<unknown>("/v1/items", { method: "POST", body: JSON.stringify(input) });
+export const mintTotp = (uuid: string) =>
+  call<{ code: string }>("/v1/fill/totp", {
+    method: "POST",
+    body: JSON.stringify({ uuid }),
+  }).then((r) => r.code);
+
+export const addLogin = (input: {
+  name: string;
+  uri?: string;
+  login?: string;
+  secret: string;
+  totp_seed?: string;
+}) => call<unknown>("/v1/items", { method: "POST", body: JSON.stringify(input) });
 
 /** Signup/invite acceptance: plants the humans row the broker keys on. */
 export const provision = () => call<unknown>("/v1/provision", { method: "POST" });
