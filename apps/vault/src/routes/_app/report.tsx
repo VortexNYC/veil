@@ -93,7 +93,13 @@ function Report() {
   }, [hibp])
 
   const findings = rep ? sortedFindings(rep) : [];
-  const clean = rep !== null && rep.weak === 0 && rep.reused === 0 && rep.pwned === 0;
+  // A failed breach lookup is not "all clear" — pwned is unknown, not zero.
+  const clean =
+    rep !== null &&
+    rep.weak === 0 &&
+    rep.reused === 0 &&
+    rep.pwned === 0 &&
+    rep.hibp !== "error";
 
   return (
     <PageChrome title="Report" subtitle="Vault health. Metadata only — never secrets.">
@@ -157,7 +163,9 @@ function Report() {
                   ? rep.hibp === "ok"
                     ? "No weak, reused, or breached secrets found."
                     : "No weak or reused secrets found — breach lookup is off."
-                  : "Nothing matched this report run."
+                  : rep.hibp === "error"
+                    ? "No weak or reused secrets — the breach lookup failed, so pwned is unknown."
+                    : "Nothing matched this report run."
               }
             />
           ) : (
