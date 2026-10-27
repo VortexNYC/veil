@@ -1,3 +1,4 @@
+import { Badge } from "@cloudflare/kumo/components/badge";
 import { Button } from "@cloudflare/kumo/components/button";
 import { Empty } from "@cloudflare/kumo/components/empty";
 import { LayerCard } from "@cloudflare/kumo/components/layer-card";
@@ -5,6 +6,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import { revokeShareLink, shares } from "../../origin";
 import type { Share } from "@vortex-api/veil";
@@ -65,7 +67,9 @@ function ttlLeft(iso: string, now: number): string {
 }
 
 function Shares() {
-  const [rows, setRows] = useState<Share[] | null>(null);
+  const [rows, setRows] = useState<Share[] | null>(() =>
+    readCache<Share[]>(CACHE_KEYS.shares),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -73,10 +77,11 @@ function Shares() {
     const res = await shares();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) setRows([]);
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.shares, res.data.shares);
     setRows(res.data.shares);
   }
 
@@ -126,13 +131,17 @@ function Shares() {
                       <Table.Cell>{fmtWhen(s.created_at)}</Table.Cell>
                       <Table.Cell>
                         {state === "active" ? (
-                          "Active"
+                          <Badge variant="neutral">Active</Badge>
                         ) : state === "redeemed" ? (
-                          `Redeemed ${fmtWhen(s.consumed_at)}`
+                          <span className="text-xs opacity-75">
+                            Redeemed {fmtWhen(s.consumed_at)}
+                          </span>
                         ) : state === "revoked" ? (
-                          `Revoked ${fmtWhen(s.revoked_at)}`
+                          <span className="text-xs opacity-75">
+                            Revoked {fmtWhen(s.revoked_at)}
+                          </span>
                         ) : (
-                          "Expired"
+                          <Badge variant="neutral">Expired</Badge>
                         )}
                       </Table.Cell>
                       <Table.Cell>

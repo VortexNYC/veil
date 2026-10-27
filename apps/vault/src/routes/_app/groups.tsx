@@ -9,6 +9,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import { addGroup, addGroupMemberTo, groupMembers, groups, removeGroupMemberFrom } from "../../origin";
 import type { Group, GroupMember } from "@vortex-api/veil";
@@ -24,7 +25,9 @@ function isMemberKind(value: string): value is MemberKind {
 }
 
 function Groups() {
-  const [rows, setRows] = useState<Group[] | null>(null);
+  const [rows, setRows] = useState<Group[] | null>(() =>
+    readCache<Group[]>(CACHE_KEYS.groups),
+  );
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [manage, setManage] = useState<Group | null>(null);
@@ -33,10 +36,11 @@ function Groups() {
     const res = await groups();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) setRows([]);
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.groups, res.data.groups);
     setRows(res.data.groups);
   }
 

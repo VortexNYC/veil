@@ -9,6 +9,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import {
   addAgent,
@@ -196,7 +197,9 @@ function mcpBlock(name: string, issuer: string): string {
 }
 
 function Agents() {
-  const [rows, setRows] = useState<Agent[] | null>(null);
+  const [rows, setRows] = useState<Agent[] | null>(() =>
+    readCache<Agent[]>(CACHE_KEYS.agents),
+  );
   const [byAgent, setByAgent] = useState<Record<string, WorkloadView[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -211,10 +214,11 @@ function Agents() {
     const res = await agents();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) setRows([]);
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.agents, res.data.agents);
     setRows(res.data.agents);
     const nextMap: Record<string, WorkloadView[]> = {};
     await Promise.all(

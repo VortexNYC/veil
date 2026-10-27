@@ -20,6 +20,12 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  CACHE_KEYS,
+  fmtRelativeTime,
+  readCache,
+  writeCache,
+} from "../../cache";
+import {
   addItem,
   archiveVaultItem,
   createShareLink,
@@ -37,7 +43,12 @@ import {
   type RevealedItem,
 } from "../../origin";
 import { sealShare } from "../../share";
-import type { Item } from "@vortex-api/veil";
+import type {
+  AuditEvent,
+  Grant,
+  Item,
+  VaultReport,
+} from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app/items")({
   component: Items,
@@ -233,7 +244,14 @@ function Items() {
   const [rotateTarget, setRotateTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Item | null>(null);
   const [shareTarget, setShareTarget] = useState<Item | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const pick = sessionStorage.getItem(CACHE_KEYS.selectItemId);
+    if (pick) {
+      sessionStorage.removeItem(CACHE_KEYS.selectItemId);
+      return pick;
+    }
+    return null;
+  });
   const [zeroTouchHosts, setZeroTouchHosts] = useState<string[]>([]);
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
@@ -441,12 +459,8 @@ function Items() {
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.items, res.data.items);
     setRows(res.data.items);
-    try {
-      sessionStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify(res.data.items));
-    } catch {
-      // ignore cache write failure
-    }
     const pres = await rotateProviders();
     if (pres.data) {
       setZeroTouchHosts(pres.data.zero_touch_hosts);
@@ -1571,6 +1585,14 @@ function AccountInspector({
     totp && totp.length === 6 ? `${totp.slice(0, 3)} ${totp.slice(3)}` : totp;
   const uris = item.uris ?? [];
   const visibleURIs = showAllURIs ? uris : uris.slice(0, 5);
+  const cachedReport = readCache<VaultReport>(CACHE_KEYS.report);
+  const finding = cachedReport?.findings.find((f) => f.item_id === item.id);
+  const itemGrants = (readCache<Grant[]>(CACHE_KEYS.grants) ?? []).filter(
+    (g) => g.item_id === item.id || g.item_id === item.name,
+  );
+  const itemAudit = (readCache<AuditEvent[]>(CACHE_KEYS.audit) ?? [])
+    .filter((e) => e.item_id === item.id || e.item_id === item.name)
+    .slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
@@ -1706,6 +1728,31 @@ function AccountInspector({
           )}
         </div>
       </div>
+
+      {finding ? (
+        <div className="bg-kumo-elevated/60 ring-kumo-hairline flex items-center justify-between gap-3 rounded-lg px-4 py-3 ring">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant={finding.pwned > 0 ? "red" : finding.reused ? "orange" : "warning"}>
+              {finding.pwned > 0
+                ? `Breached ×${finding.pwned}`
+                : finding.reused
+                  ? `Reused ×${finding.reused}`
+                  : "Weak password"}
+            </Badge>
+            <span className="text-kumo-subtle">
+              {[
+                ...(finding.weak ?? []),
+                finding.reused ? `reused across ${finding.reused} accounts` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") || "Flagged by Watchtower"}
+            </span>
+          </div>
+          <Button type="button" variant="secondary" onClick={onEdit}>
+            Change Password
+          </Button>
+        </div>
+      ) : null}
 
       <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
@@ -2095,6 +2142,52 @@ function AccountInspector({
                 </div>
               );
             })}
+          </div>
+        </div>
+      ) : null}
+
+      {itemGrants.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <Label>Granted Access ({itemGrants.length})</Label>
+          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+            {itemGrants.map((g) => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <Badge variant="neutral">{g.subject_kind}</Badge>
+                  <span className="font-mono font-medium">{g.agent_id}</span>
+                </div>
+                <Badge variant="neutral">{g.level}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {itemAudit.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <Label>Recent Activity</Label>
+          <div className="bg-kumo-elevated/40 ring-kumo-hairline flex flex-col divide-y divide-neutral-800/60 rounded-lg ring">
+            {itemAudit.map((ev, i) => (
+              <div
+                key={`${ev.time}-${i}`}
+                className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <Badge variant={ev.decision === "allow" ? "neutral" : "red"}>
+                    {ev.action}
+                  </Badge>
+                  <span className="text-kumo-subtle font-mono">
+                    {ev.agent_id}
+                  </span>
+                </div>
+                <span className="text-kumo-subtle" title={ev.time}>
+                  {fmtRelativeTime(ev.time)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}

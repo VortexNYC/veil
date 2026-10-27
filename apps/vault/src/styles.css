@@ -7,9 +7,25 @@
   body,
   #root {
     height: 100%;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   body {
     @apply bg-kumo-canvas text-kumo-default m-0 antialiased;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input,
+  textarea,
+  code,
+  pre {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  * {
+    overscroll-behavior: contain;
   }
 }
 
