@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/openbao/openbao/sdk/v2/helper/shamir"
@@ -268,7 +270,7 @@ func keyCmd() *cobra.Command {
 			// identical across every file. A stray .hex or a share from a
 			// different split interpolates to a wrong key with no error —
 			// the fingerprint in the name is what binds the set.
-			re := regexp.MustCompile(`^share-\d+-([0-9a-f]{8})\.hex$`)
+			re := shareFileRe
 			fps := map[string]bool{}
 			var parts [][]byte
 			for _, e := range ents {
@@ -279,7 +281,7 @@ func keyCmd() *cobra.Command {
 					}
 					continue
 				}
-				fps[m[1]] = true
+				fps[m[2]] = true
 				raw, err := os.ReadFile(filepath.Join(combineDir, e.Name()))
 				if err != nil {
 					return err
@@ -340,8 +342,241 @@ func keyCmd() *cobra.Command {
 	_ = combine.MarkFlagRequired("shares-dir")
 	_ = combine.MarkFlagRequired("out")
 
-	c.AddCommand(rotateOrg, rotateKEK, storeRecovery, recoverOrg, combine)
+	// VEIL-72: a staged share set co-located on one machine is not
+	// custody. escrow-seal wraps ONE share to ONE custodian's X25519
+	// pubkey so the parcel can travel and rest on that custodian's
+	// machine; escrow-open is the custodian side. Shares stay the
+	// threshold artifact — a sealed parcel never holds the whole KEK.
+	var kgDir string
+	escrowKeygen := &cobra.Command{
+		Use:   "escrow-keygen",
+		Short: "Mint a custodian X25519 keypair for KEK-share escrow",
+		Long: "The CUSTODIAN runs this on their own machine — the private " +
+			"key never travels. Writes custodian.pub (hex, safe to hand to " +
+			"the founder) and custodian.key (hex, mode 600) in --out-dir " +
+			"(mode 700), then prints the pubkey. The founder seals one " +
+			"Shamir share to it with 'veil key escrow-seal'. Refuses to " +
+			"overwrite: a replaced key orphans every parcel already sealed " +
+			"to it.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pub, priv, err := device.Generate()
+			if err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			if err := os.MkdirAll(kgDir, 0o700); err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			if err := os.Chmod(kgDir, 0o700); err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			pubFile := filepath.Join(kgDir, "custodian.pub")
+			keyFile := filepath.Join(kgDir, "custodian.key")
+			if err := writeKeyFileExclusive(pubFile, []byte(hex.EncodeToString(pub)+"\n")); err != nil {
+				return err
+			}
+			if err := writeKeyFileExclusive(keyFile, []byte(hex.EncodeToString(priv)+"\n")); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "custodian pubkey: %s\n", hex.EncodeToString(pub))
+			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s (share) and %s (keep private, mode 600)\n", pubFile, keyFile)
+			return nil
+		},
+	}
+	escrowKeygen.Flags().StringVar(&kgDir, "out-dir", "", "directory for custodian.pub/custodian.key (created mode 700)")
+	_ = escrowKeygen.MarkFlagRequired("out-dir")
+
+	var sealIn, sealTo, sealToFile, sealOut string
+	escrowSeal := &cobra.Command{
+		Use:   "escrow-seal",
+		Short: "Seal one Shamir KEK share to a custodian pubkey (founder side)",
+		Long: "Reads share-<i>-<fp>.hex (the canonical stageShares name — " +
+			"ordinal and ceremony fingerprint are taken from it), packs a " +
+			"VEILSHR1 envelope, and seals it to the custodian's X25519 " +
+			"pubkey with nacl/box SealAnonymous. The parcel is opaque " +
+			"without the custodian's private key and holds one share only " +
+			"— it is safe to send over an authenticated channel. Verify " +
+			"the pubkey fingerprint with the custodian out-of-band before " +
+			"sealing. Refuses non-canonical share names and existing " +
+			"--out files.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			m := shareFileRe.FindStringSubmatch(filepath.Base(sealIn))
+			if m == nil {
+				return fmt.Errorf("key: %s is not a canonical share-<i>-<fp>.hex — sealing a misnamed share mislabels custody", filepath.Base(sealIn))
+			}
+			ordinal, err := strconv.Atoi(m[1])
+			if err != nil || ordinal < 1 {
+				return fmt.Errorf("key: share ordinal %q invalid", m[1])
+			}
+			fpHex := m[2]
+			raw, err := os.ReadFile(sealIn)
+			if err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			share, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+			if err != nil {
+				return fmt.Errorf("key: %s is not valid hex: %w", sealIn, err)
+			}
+			if len(share) < 2 {
+				return fmt.Errorf("key: %s share too short", sealIn)
+			}
+			var pub []byte
+			switch {
+			case sealTo != "" && sealToFile != "":
+				return fmt.Errorf("key: --to and --to-file are exclusive")
+			case sealTo != "":
+				pub, err = hex.DecodeString(strings.TrimSpace(sealTo))
+			case sealToFile != "":
+				var b []byte
+				b, err = os.ReadFile(sealToFile)
+				if err == nil {
+					pub, err = hex.DecodeString(strings.TrimSpace(string(b)))
+				}
+			default:
+				return fmt.Errorf("key: --to or --to-file required")
+			}
+			if err != nil {
+				return fmt.Errorf("key: custodian pubkey: %w", err)
+			}
+			if len(pub) != device.PublicSize {
+				return fmt.Errorf("key: custodian pubkey is %d bytes, want %d", len(pub), device.PublicSize)
+			}
+			var fp [4]byte
+			if _, err := hex.Decode(fp[:], []byte(fpHex)); err != nil {
+				return fmt.Errorf("key: share fingerprint %q: %w", fpHex, err)
+			}
+			parcel, err := device.Seal(escrowEnvelope(ordinal, fp, share), pub)
+			if err != nil {
+				return fmt.Errorf("key: seal: %w", err)
+			}
+			if err := writeKeyFileExclusive(sealOut, parcel); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "sealed share %d of ceremony %s → %s\n", ordinal, fpHex, sealOut)
+			fmt.Fprintln(cmd.OutOrStdout(), "tell the custodian out-of-band: ordinal + fingerprint — they confirm both after escrow-open")
+			return nil
+		},
+	}
+	escrowSeal.Flags().StringVar(&sealIn, "in", "", "share-<i>-<fp>.hex to seal (required)")
+	escrowSeal.Flags().StringVar(&sealTo, "to", "", "custodian X25519 pubkey as hex")
+	escrowSeal.Flags().StringVar(&sealToFile, "to-file", "", "file containing the custodian pubkey as hex")
+	escrowSeal.Flags().StringVar(&sealOut, "out", "", "parcel file to write (mode 600, must not exist)")
+	_ = escrowSeal.MarkFlagRequired("in")
+	_ = escrowSeal.MarkFlagRequired("out")
+
+	var openIn, openKey, openDir string
+	escrowOpen := &cobra.Command{
+		Use:   "escrow-open",
+		Short: "Open a sealed KEK-share parcel (custodian side)",
+		Long: "Opens --in with the custodian private key in --key-file, " +
+			"validates the VEILSHR1 envelope, and writes " +
+			"share-<ordinal>-<fp>.hex in --out-dir (mode 700/600, refuses " +
+			"overwrite) — the exact file 'veil key combine' consumes. " +
+			"Confirm the printed ordinal and fingerprint against what the " +
+			"founder announced before counting this as custody.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			priv, err := loadHexKey("key-file", openKey)
+			if err != nil {
+				return err
+			}
+			blob, err := os.ReadFile(openIn)
+			if err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			env, err := device.Open(blob, priv)
+			if err != nil {
+				return fmt.Errorf("key: open parcel: %w", err)
+			}
+			ordinal, fp, share, err := parseEscrowEnvelope(env)
+			if err != nil {
+				return err
+			}
+			fpHex := hex.EncodeToString(fp[:])
+			if err := os.MkdirAll(openDir, 0o700); err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			if err := os.Chmod(openDir, 0o700); err != nil {
+				return fmt.Errorf("key: %w", err)
+			}
+			out := filepath.Join(openDir, fmt.Sprintf("share-%d-%s.hex", ordinal, fpHex))
+			if err := writeKeyFileExclusive(out, []byte(hex.EncodeToString(share)+"\n")); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "opened parcel: share %d of ceremony %s → %s\n", ordinal, fpHex, out)
+			return nil
+		},
+	}
+	escrowOpen.Flags().StringVar(&openIn, "in", "", "parcel file to open (required)")
+	escrowOpen.Flags().StringVar(&openKey, "key-file", "", "custodian private key file, hex (mode 600)")
+	escrowOpen.Flags().StringVar(&openDir, "out-dir", "", "directory for the recovered share-<i>-<fp>.hex (created mode 700)")
+	_ = escrowOpen.MarkFlagRequired("in")
+	_ = escrowOpen.MarkFlagRequired("key-file")
+	_ = escrowOpen.MarkFlagRequired("out-dir")
+
+	c.AddCommand(rotateOrg, rotateKEK, storeRecovery, recoverOrg, combine,
+		escrowKeygen, escrowSeal, escrowOpen)
 	return c
+}
+
+// shareFileRe is the canonical stageShares name: share-<ordinal>-<fp>.hex
+// where fp is the 8-hex sha256 prefix binding the set to one ceremony.
+var shareFileRe = regexp.MustCompile(`^share-(\d+)-([0-9a-f]{8})\.hex$`)
+
+// escrowMagic binds the parcel format+version. Bump the last byte on any
+// incompatible envelope change; escrow-open rejects unknown magic.
+const escrowMagic = "VEILSHR1"
+
+// escrowEnvelope packs ordinal + ceremony fingerprint + share bytes into
+// the payload sealed to a custodian. Metadata lives INSIDE the box
+// ciphertext — a parcel cannot be relabeled into another share slot by
+// renaming the file.
+func escrowEnvelope(ordinal int, fp [4]byte, share []byte) []byte {
+	env := make([]byte, 0, len(escrowMagic)+1+len(fp)+len(share))
+	env = append(env, escrowMagic...)
+	env = append(env, byte(ordinal))
+	env = append(env, fp[:]...)
+	return append(env, share...)
+}
+
+// parseEscrowEnvelope validates and unpacks an opened parcel. It checks
+// shape, not truth — combine's fingerprint check is the last word on
+// whether a share set is real.
+func parseEscrowEnvelope(env []byte) (ordinal int, fp [4]byte, share []byte, err error) {
+	head := len(escrowMagic) + 1 + len(fp)
+	if len(env) < head+2 {
+		return 0, fp, nil, fmt.Errorf("key: parcel too short for a VEILSHR1 envelope")
+	}
+	if string(env[:len(escrowMagic)]) != escrowMagic {
+		return 0, fp, nil, fmt.Errorf("key: parcel is not a VEILSHR1 envelope")
+	}
+	ordinal = int(env[len(escrowMagic)])
+	if ordinal < 1 {
+		return 0, fp, nil, fmt.Errorf("key: parcel share ordinal %d invalid", ordinal)
+	}
+	copy(fp[:], env[len(escrowMagic)+1:head])
+	share = env[head:]
+	return ordinal, fp, share, nil
+}
+
+// writeKeyFileExclusive creates a mode-600 file that must not already
+// exist — custody artifacts are write-once, so a second write can never
+// silently replace a delivered parcel or a recovered share.
+func writeKeyFileExclusive(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("key: %s exists — delete it first (custody artifacts never overwrite)", path)
+		}
+		return fmt.Errorf("key: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("key: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("key: %w", err)
+	}
+	return nil
 }
 
 // stageShares Shamir-splits key into n shares (threshold m) and writes them
