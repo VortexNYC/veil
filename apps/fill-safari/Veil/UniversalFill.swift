@@ -495,8 +495,19 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         panel.isFloatingPanel = true
         panel.isReleasedWhenClosed = false
 
+        // Vibrancy card — palette carries a search bar; anchored is just
+        // the list and the hint line under the field.
+        let searchH: CGFloat = mode == .palette ? 34 : 0
+        let width: CGFloat = mode == .palette ? 420 : 300
+        let listH = min(CGFloat(entries.count) * 46 + 8, mode == .palette ? 368 : 240)
+        let hintH: CGFloat = 24
+        let height = searchH + listH + hintH
+
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
+        col.width = width - 8
+        col.resizingMask = .autoresizingMask
         table.addTableColumn(col)
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.headerView = nil
         table.rowHeight = 44
         table.intercellSpacing = NSSize(width: 0, height: 2)
@@ -509,19 +520,13 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         table.doubleAction = #selector(confirm)
         table.action = #selector(rowClicked(_:))
 
-        let scroll = NSScrollView()
+        let scroll = NSScrollView(frame: NSRect(x: 4, y: hintH, width: width - 8, height: listH))
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         scroll.scrollerStyle = .overlay
+        table.sizeLastColumnToFit()
 
-        // Vibrancy card — palette carries a search bar; anchored is just
-        // the list and the hint line under the field.
-        let searchH: CGFloat = mode == .palette ? 34 : 0
-        let width: CGFloat = mode == .palette ? 380 : 300
-        let listH = min(CGFloat(entries.count) * 46 + 8, mode == .palette ? 276 : 240)
-        let hintH: CGFloat = 24
-        let height = searchH + listH + hintH
         let card = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         card.material = .popover
         card.blendingMode = .behindWindow
@@ -665,14 +670,19 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         }
     }
 
-    /// Filter as the search text changes — name, login, and URI all match.
+    /// Filter as the search text changes — name, login, URI, and 2FA all match.
     func controlTextDidChange(_ obj: Notification) {
-        let q = search.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
-        shown = q.isEmpty ? allEntries : allEntries.filter { e in
+        let terms = search.stringValue
+            .lowercased()
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        shown = terms.isEmpty ? allEntries : allEntries.filter { e in
             let name = (e["name"] as? String ?? "").lowercased()
             let login = (e["login"] as? String ?? "").lowercased()
             let uris = (e["uris"] as? [String] ?? []).joined(separator: " ").lowercased()
-            return name.contains(q) || login.contains(q) || uris.contains(q)
+            let totp = (e["hasTotp"] as? Bool == true) ? "2fa totp mfa" : ""
+            let hay = "\(name) \(login) \(uris) \(totp)"
+            return terms.allSatisfy { hay.contains($0) }
         }
         table.reloadData()
         if !shown.isEmpty {
@@ -912,8 +922,13 @@ final class FillPanel: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSS
         cell.imageView?.image = rowIcon
         cell.imageView?.contentTintColor = e["icon"] != nil ? nil : .secondaryLabelColor
         cell.textField?.stringValue = name
+        let hasTotp = e["hasTotp"] as? Bool == true
         if let sub = cell.subviews.first(where: { $0.identifier?.rawValue == "sub" }) as? NSTextField {
-            sub.stringValue = login
+            if hasTotp {
+                sub.stringValue = login.isEmpty ? "2FA" : "\(login) · 2FA"
+            } else {
+                sub.stringValue = login
+            }
         }
         return cell
     }

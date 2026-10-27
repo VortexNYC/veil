@@ -326,11 +326,13 @@ type FillLoginsRequest struct {
 }
 
 type FillLogin struct {
-	Login    string `json:"login"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
-	UUID     string `json:"uuid"`
-	TOTP     string `json:"totp,omitempty"`
+	Login    string            `json:"login"`
+	Name     string            `json:"name"`
+	Password string            `json:"password"`
+	UUID     string            `json:"uuid"`
+	TOTP     string            `json:"totp,omitempty"`
+	Card     *app.FillCard     `json:"card,omitempty"`
+	Identity *app.FillIdentity `json:"identity,omitempty"`
 }
 
 type FillLoginsResponse struct {
@@ -2314,7 +2316,15 @@ func (s *Server) revealItem(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "reveal failed", http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, FillLogin{Login: got.Login, Name: got.Name, Password: got.Password, UUID: got.UUID, TOTP: got.TOTP})
+	writeJSON(w, FillLogin{
+		Login:    got.Login,
+		Name:     got.Name,
+		Password: got.Password,
+		UUID:     got.UUID,
+		TOTP:     got.TOTP,
+		Card:     got.Card,
+		Identity: got.Identity,
+	})
 }
 
 // fillEvents ingests client-reported disclosures (replica-served fills).
