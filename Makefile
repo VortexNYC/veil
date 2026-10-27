@@ -109,6 +109,8 @@ fill-safari:
 # the local bridge and Veil.app.
 macos-app:
 	go run ./cmd/filldist safari "apps/fill-safari/Veil Extension/Resources"
+	go run ./cmd/filldist chrome "$(HOME)/.veil/extension"
+	go run ./cmd/filldist firefox "$(HOME)/.veil/extension-firefox"
 	# Never `killall veil-bin` while the launchd bridge is up — launchd
 	# counts an outside SIGTERM as a crash and throttles the respawn 10s
 	# ("spawn scheduled"); kickstart -k below restarts it atomically. If
@@ -122,6 +124,13 @@ macos-app:
 	cp -p /Applications/Veil.app/Contents/MacOS/veil-bin $(HOME)/.veil/native-host
 	launchctl kickstart -k gui/$$(id -u)/nyc.veil.fill.bridge 2>/dev/null || true
 	open -g /Applications/Veil.app
+
+# deploy ships the Vault SPA (app.veil.nyc), Origin API (veil.nyc on Railway),
+# and verifies every production surface via scripts/deploy-check.sh.
+deploy:
+	pnpm --filter veil-vault run deploy
+	railway up --service veil --detach
+	./scripts/deploy-check.sh
 
 # Store payloads: zips the two installed extension dirs for CWS / AMO
 # upload. Run `veil fill install` first so ~/.veil/extension* is current.

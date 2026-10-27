@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { syncAutofill } from "../../modules/identity-sync";
 import { listItems, type Item } from "../lib/api";
@@ -15,10 +15,30 @@ function hostOf(uri?: string): string {
   }
 }
 
+const KIND_LABELS: Record<string, string> = {
+  api_key: "Login",
+  card: "Card",
+  identity: "Identity",
+  ssh: "SSH Key",
+  oauth: "OAuth",
+  secure_note: "Secure Note",
+  passkey: "Passkey",
+};
+
+const PILLS = [
+  { id: "all", label: "All" },
+  { id: "2fa", label: "2FA" },
+  { id: "api_key", label: "Logins" },
+  { id: "card", label: "Cards" },
+  { id: "ssh", label: "SSH" },
+  { id: "secure_note", label: "Notes" },
+] as const;
+
 export default function Items() {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<string>("all");
 
   const load = useCallback(async () => {
     const tok = await storedToken();
@@ -30,9 +50,6 @@ export default function Items() {
       const got = await listItems();
       setItems(got.filter((i) => !i.archived));
       setError(null);
-      // Hand item metadata (never secrets) to the AutoFill appex: the
-      // token + identities live in the shared container; the appex calls
-      // origin for the actual secret behind Face ID.
       void syncAutofill(
         tok,
         await storedRefresh(),
@@ -61,15 +78,29 @@ export default function Items() {
   );
 
   const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q || !items) return items;
-    return items.filter(
-      (i) =>
-        i.name.toLowerCase().includes(q) ||
-        (i.login ?? "").toLowerCase().includes(q) ||
-        (i.uris ?? []).some((u) => u.toLowerCase().includes(q)),
-    );
-  }, [items, query]);
+    if (!items) return null;
+    const terms = query
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    return items.filter((i) => {
+      if (filter === "2fa" && !i.has_totp) return false;
+      if (filter !== "all" && filter !== "2fa" && i.kind !== filter) return false;
+      if (terms.length === 0) return true;
+      const hay = [
+        i.name,
+        i.login ?? "",
+        i.kind ?? "",
+        i.has_totp ? "2fa totp" : "",
+        ...(i.uris ?? []),
+        ...(i.tags ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    });
+  }, [items, query, filter]);
 
   if (error) {
     return (
@@ -96,35 +127,65 @@ export default function Items() {
         refreshing={items === null}
         onRefresh={() => void load()}
         ListHeaderComponent={
-          <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 10, gap: 10 }}>
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Search items"
-              placeholderTextColor="#8a8378"
+              placeholder="Search accounts, usernames, domains, or '2fa'…"
+              placeholderTextColor="#a1a1aa"
               autoCapitalize="none"
               autoCorrect={false}
               style={{
-                backgroundColor: "#1e1b18",
+                backgroundColor: "#18181b",
                 borderRadius: 12,
                 borderCurve: "continuous",
                 paddingHorizontal: 12,
                 paddingVertical: 10,
                 borderWidth: 1,
-                borderColor: "#2e2924",
-                color: "#f0ede8",
+                borderColor: "#27272a",
+                color: "#f4f4f5",
                 fontSize: 15,
               }}
             />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6 }}
+            >
+              {PILLS.map((p) => {
+                const active = filter === p.id;
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => setFilter(p.id)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: active ? "#2563eb" : "#18181b",
+                      borderWidth: 1,
+                      borderColor: active ? "#3b82f6" : "#27272a",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: active ? "#ffffff" : "#a1a1aa",
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {p.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         }
         ListEmptyComponent={
           items === null ? null : (
             <View style={{ padding: 32, alignItems: "center", gap: 8 }}>
-              <Text className="text-muted">No passwords yet.</Text>
-              <Text className="text-muted" style={{ fontSize: 13 }}>
-                Add one, or create items from the CLI or vault.
-              </Text>
+              <Text className="text-muted">No accounts matched.</Text>
             </View>
           )
         }
@@ -147,47 +208,67 @@ export default function Items() {
             onPress={() =>
               router.push({
                 pathname: "/item/[id]",
-                params: { id: item.id, name: item.name, totp: item.has_totp ? "1" : "" },
+                params: {
+                  id: item.id,
+                  name: item.name,
+                  login: item.login ?? "",
+                  kind: item.kind ?? "api_key",
+                  uri: item.uris?.[0] ?? "",
+                  totp: item.has_totp ? "1" : "",
+                },
               })
             }
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",
               paddingHorizontal: 16,
-              paddingVertical: 14,
+              paddingVertical: 13,
               gap: 12,
-              backgroundColor: pressed ? "#1e1b18" : "transparent",
+              backgroundColor: pressed ? "#18181b" : "transparent",
+              borderBottomWidth: 0.5,
+              borderBottomColor: "#27272a",
             })}
           >
             <View
               style={{
-                width: 36,
-                height: 36,
+                width: 38,
+                height: 38,
                 borderRadius: 10,
                 borderCurve: "continuous",
-                backgroundColor: "#1e1b18",
+                backgroundColor: "#18181b",
                 borderWidth: 1,
-                borderColor: "#2e2924",
+                borderColor: "#27272a",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Text style={{ color: "#f0ede8", fontWeight: "700" }}>
+              <Text style={{ color: "#f4f4f5", fontWeight: "700" }}>
                 {item.name.slice(0, 1).toUpperCase()}
               </Text>
             </View>
-            <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flex: 1, gap: 2 }}>
               <Text className="text-foreground" style={{ fontSize: 16, fontWeight: "500" }}>
                 {item.name}
               </Text>
               <Text className="text-muted" style={{ fontSize: 13 }} numberOfLines={1}>
-                {item.login || hostOf(item.uris?.[0]) || item.kind || ""}
+                {item.login || hostOf(item.uris?.[0]) || KIND_LABELS[item.kind ?? ""] || ""}
               </Text>
             </View>
             {item.has_totp ? (
-              <Text className="text-muted" style={{ fontSize: 11, fontWeight: "600" }}>
-                TOTP
-              </Text>
+              <View
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 999,
+                  backgroundColor: "#18181b",
+                  borderWidth: 1,
+                  borderColor: "#27272a",
+                }}
+              >
+                <Text style={{ color: "#a1a1aa", fontSize: 11, fontWeight: "600" }}>
+                  2FA
+                </Text>
+              </View>
             ) : null}
           </Pressable>
         )}

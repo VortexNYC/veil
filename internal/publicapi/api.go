@@ -331,6 +331,7 @@ type FillLogin struct {
 	Password string            `json:"password"`
 	UUID     string            `json:"uuid"`
 	TOTP     string            `json:"totp,omitempty"`
+	Notes    string            `json:"notes,omitempty"`
 	Card     *app.FillCard     `json:"card,omitempty"`
 	Identity *app.FillIdentity `json:"identity,omitempty"`
 }
@@ -644,7 +645,13 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var in UpdateItemRequest
+	var in struct {
+		UpdateItemRequest
+		Archived *bool             `json:"archived,omitempty"`
+		Notes    *string           `json:"notes,omitempty"`
+		Card     *app.FillCard     `json:"card,omitempty"`
+		Identity *app.FillIdentity `json:"identity,omitempty"`
+	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -653,7 +660,12 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	if in.URI != "" {
 		add = []string{in.URI}
 	}
-	item, err := s.App.UpdateItemFor(p, r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret), in.TravelSafe)
+	item, err := s.App.UpdateItemPatchFor(p, r.PathValue("name"), in.URIs, add, in.Tags, in.Login, []byte(in.Secret), in.TravelSafe, app.UpdateItemPatch{
+		Archived: in.Archived,
+		Notes:    in.Notes,
+		Card:     in.Card,
+		Identity: in.Identity,
+	})
 	if err != nil {
 		http.Error(w, "update failed", http.StatusBadRequest)
 		return
@@ -2322,6 +2334,7 @@ func (s *Server) revealItem(w http.ResponseWriter, r *http.Request) {
 		Password: got.Password,
 		UUID:     got.UUID,
 		TOTP:     got.TOTP,
+		Notes:    got.Notes,
 		Card:     got.Card,
 		Identity: got.Identity,
 	})

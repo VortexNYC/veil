@@ -40,6 +40,19 @@ if [ -n "${VEIL_SKIP_PUSH_GATE:-}" ]; then
   exit 0
 fi
 
+# Path-aware gate: if no Go files changed relative to origin/main (and
+# VEIL_FULL_GATE is not set), run the fast frontend + docs verification
+# (~8s) instead of the 4-minute Go race + Postgres + govulncheck suite.
+go_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null | grep -cE '\.(go|mod|sum)$|^sqlc\.yaml$' || true)
+if [ "${go_changed:-1}" -eq 0 ] && [ -z "${VEIL_FULL_GATE:-}" ]; then
+  echo "veil: frontend/docs-only diff — running fast gate (set VEIL_FULL_GATE=1 for full Go race suite)"
+  if ! (pnpm exec vp lint && pnpm run typecheck && pnpm --filter veil-vault test && pnpm run docs:build); then
+    echo "veil: push blocked — frontend/docs gate failed."
+    exit 1
+  fi
+  exit 0
+fi
+
 # Postgres-backed tests are PG_TEST_DSN-gated; without a database they
 # silently skip and the push gates on sqlite only — going blind. Prefer
 # pgx (per-push isolated DB with 15m TTL, no Docker needed); fall back to

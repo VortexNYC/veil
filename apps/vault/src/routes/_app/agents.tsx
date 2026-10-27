@@ -9,6 +9,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CACHE_KEYS, readCache, writeCache } from "../../cache";
 import { PageChrome } from "../../page-chrome";
 import {
   addAgent,
@@ -196,7 +197,9 @@ function mcpBlock(name: string, issuer: string): string {
 }
 
 function Agents() {
-  const [rows, setRows] = useState<Agent[] | null>(null);
+  const [rows, setRows] = useState<Agent[] | null>(() =>
+    readCache<Agent[]>(CACHE_KEYS.agents),
+  );
   const [byAgent, setByAgent] = useState<Record<string, WorkloadView[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -211,10 +214,11 @@ function Agents() {
     const res = await agents();
     if (res.error || !res.data) {
       setError("list failed");
-      setRows([]);
+      if (rows === null) setRows([]);
       return;
     }
     setError(null);
+    writeCache(CACHE_KEYS.agents, res.data.agents);
     setRows(res.data.agents);
     const nextMap: Record<string, WorkloadView[]> = {};
     await Promise.all(
@@ -242,7 +246,7 @@ function Agents() {
             Add
           </Button>
           <Dialog.Root open={open} onOpenChange={setOpen}>
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -282,7 +286,7 @@ function Agents() {
               }
             }}
           >
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(e) => {
@@ -311,6 +315,25 @@ function Agents() {
                   value={preset}
                   label="Provider"
                   hideLabel={false}
+                  renderValue={(v) =>
+                    v === "vercel"
+                      ? "Vercel"
+                      : v === "github-actions"
+                        ? "GitHub Actions"
+                        : v === "gitlab"
+                          ? "GitLab CI"
+                          : v === "google"
+                            ? "Google Cloud"
+                            : v === "bitbucket"
+                              ? "Bitbucket Pipelines"
+                              : v === "aws-eks"
+                                ? "AWS EKS"
+                                : v === "azure"
+                                  ? "Azure Entra ID"
+                                  : v === "fly"
+                                    ? "Fly.io"
+                                    : "Custom OIDC"
+                  }
                   onValueChange={(value) => {
                     if (typeof value === "string" && isPreset(value)) {
                       setPreset(value);
@@ -490,7 +513,7 @@ function Agents() {
               }
             }}
           >
-            <Dialog size="sm" className="p-6">
+            <Dialog size="lg" className="w-[32rem] max-w-[92vw] p-6">
               {mint ? (
                 <div className="flex flex-col gap-4">
                   <Dialog.Title>Connect MCP — {mint.agent_id}</Dialog.Title>

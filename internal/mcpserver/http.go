@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -211,8 +212,34 @@ func ready(a *app.App, issuer string, errs *errWindow) http.HandlerFunc {
 		if s, ok := a.Auditor.(interface{ Pending() int }); ok {
 			spool = s.Pending()
 		}
+		if sha := buildCommit(); sha != "" {
+			_, _ = w.Write([]byte(fmt.Sprintf("ok errors_5m=%d audit_spool=%d commit=%s\n", errs.count(), spool, sha)))
+			return
+		}
 		_, _ = w.Write([]byte(fmt.Sprintf("ok errors_5m=%d audit_spool=%d\n", errs.count(), spool)))
 	}
+}
+
+func buildCommit() string {
+	for _, k := range []string{"RAILWAY_GIT_COMMIT_SHA", "VEIL_COMMIT"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			if len(v) > 7 {
+				return v[:7]
+			}
+			return v
+		}
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" && s.Value != "" {
+				if len(s.Value) > 7 {
+					return s.Value[:7]
+				}
+				return s.Value
+			}
+		}
+	}
+	return ""
 }
 
 func publicHost(resourceURL string) bool {

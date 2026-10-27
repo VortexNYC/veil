@@ -7,9 +7,35 @@
   body,
   #root {
     height: 100%;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   body {
     @apply bg-kumo-canvas text-kumo-default m-0 antialiased;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input,
+  textarea,
+  code,
+  pre {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  [role="dialog"] {
+    width: min(32rem, 92vw);
+    max-height: 88dvh;
+    overflow-y: auto;
+  }
+  [role="dialog"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  [role="dialog"] textarea,
+  [role="dialog"] button[role="combobox"] {
+    width: 100%;
+  }
+  * {
+    overscroll-behavior: contain;
   }
 }
 

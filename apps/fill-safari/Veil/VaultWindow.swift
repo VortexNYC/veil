@@ -55,6 +55,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     /// Repeat opens on an unlocked app just show the window. `path` deep-
     /// links into the SPA ("/requests" from a notification tap).
     func open(path: String = "") {
+        VaultScheme.syncInBackground()
         if !path.isEmpty { pendingPath = path }
         // No window means nothing passed the gate — a stale `unlocked`
         // would skip the splash and strand the vault.
@@ -146,7 +147,7 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     private func showSplash() {
         // Splash already up (e.g. open() re-entered while unlockInFlight) —
         // just front it; rebuilding would drop the live button/subtitle.
-        if let window, web == nil {
+        if let window, web == nil, subtitleField != nil {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             return
@@ -250,6 +251,8 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         let view = WKWebView(frame: window.contentView!.bounds, configuration: cfg)
         view.autoresizingMask = [.width, .height]
         view.navigationDelegate = self
+        subtitleField = nil
+        unlockButton = nil
         window.contentView = view
         web = view
         view.load(URLRequest(url: URL(string: vaultOrigin + pendingPath)!))
@@ -287,9 +290,12 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         decisionHandler(.allow)
     }
 
-    /// veil-app://vault/<path> → Contents/Resources/vault/<path>; unknown
-    /// paths fall back to index.html so TanStack routes resolve.
-    private final class VaultScheme: NSObject, WKURLSchemeHandler {
+    /// veil-app://vault/<path> serves synchronously from disk (preferring a
+    /// verified live bundle synced in the background from https://app.veil.nyc,
+    /// falling back to Contents/Resources/vault). Answering WKURLSchemeTask
+    /// synchronously on the caller's thread avoids WebKit dropping ES module
+    /// script loads on custom schemes.
+    final class VaultScheme: NSObject, WKURLSchemeHandler {
         private let mime: [String: String] = [
             "html": "text/html", "js": "text/javascript", "mjs": "text/javascript",
             "css": "text/css", "json": "application/json", "svg": "image/svg+xml",
@@ -299,11 +305,91 @@ final class VaultWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
             "wasm": "application/wasm",
         ]
 
+        static let liveRoot: URL = {
+            let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            return base.appendingPathComponent("nyc.veil.fill/vault-live-v2", isDirectory: true)
+        }()
+
+        private static func activeRoot() -> URL {
+            let bundled = Bundle.main.resourceURL!.appendingPathComponent("vault")
+            let liveIndex = liveRoot.appendingPathComponent("index.html")
+            guard let html = try? String(contentsOf: liveIndex, encoding: .utf8), !html.isEmpty else {
+                return bundled
+            }
+            // Only use liveRoot if every /assets/... file referenced by its
+            // index.html is present on disk — never serve a partial bundle.
+            let pattern = #"/assets/[A-Za-z0-9._-]+"#
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                let ns = html as NSString
+                let matches = regex.matches(in: html, range: NSRange(location: 0, length: ns.length))
+                for m in matches {
+                    let rel = String(ns.substring(with: m.range).dropFirst())
+                    let asset = liveRoot.appendingPathComponent(rel)
+                    if !FileManager.default.fileExists(atPath: asset.path) {
+                        return bundled
+                    }
+                }
+            }
+            return liveRoot
+        }
+
+        /// Pulls index.html + all referenced /assets/* from https://app.veil.nyc
+        /// in the background and swaps index.html last so activeRoot() only
+        /// switches once the complete bundle is on disk.
+        static func syncInBackground() {
+            DispatchQueue.global(qos: .utility).async {
+                guard let idxURL = URL(string: "https://app.veil.nyc/") else { return }
+                let req = URLRequest(url: idxURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+                let sem = DispatchSemaphore(value: 0)
+                var indexData: Data?
+                URLSession.shared.dataTask(with: req) { data, res, err in
+                    if err == nil, (res as? HTTPURLResponse)?.statusCode == 200 {
+                        indexData = data
+                    }
+                    sem.signal()
+                }.resume()
+                _ = sem.wait(timeout: .now() + 7)
+                guard let indexData, let html = String(data: indexData, encoding: .utf8), !html.isEmpty else {
+                    return
+                }
+                let pattern = #"/assets/[A-Za-z0-9._-]+"#
+                guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+                let ns = html as NSString
+                let matches = regex.matches(in: html, range: NSRange(location: 0, length: ns.length))
+                for m in matches {
+                    let assetPath = ns.substring(with: m.range)
+                    let rel = String(assetPath.dropFirst())
+                    let dest = liveRoot.appendingPathComponent(rel)
+                    if FileManager.default.fileExists(atPath: dest.path) {
+                        continue
+                    }
+                    guard let aURL = URL(string: "https://app.veil.nyc" + assetPath) else { return }
+                    let aSem = DispatchSemaphore(value: 0)
+                    var aData: Data?
+                    URLSession.shared.dataTask(with: URLRequest(url: aURL, timeoutInterval: 8)) { d, r, e in
+                        if e == nil, (r as? HTTPURLResponse)?.statusCode == 200 {
+                            aData = d
+                        }
+                        aSem.signal()
+                    }.resume()
+                    _ = aSem.wait(timeout: .now() + 9)
+                    guard let aData, !aData.isEmpty else { return }
+                    try? FileManager.default.createDirectory(
+                        at: dest.deletingLastPathComponent(),
+                        withIntermediateDirectories: true,
+                    )
+                    try? aData.write(to: dest, options: .atomic)
+                }
+                try? FileManager.default.createDirectory(at: liveRoot, withIntermediateDirectories: true)
+                try? indexData.write(to: liveRoot.appendingPathComponent("index.html"), options: .atomic)
+            }
+        }
+
         func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
             guard let url = task.request.url, url.scheme == "veil-app" else {
                 task.didFailWithError(URLError(.unsupportedURL)); return
             }
-            let root = Bundle.main.resourceURL!.appendingPathComponent("vault")
+            let root = Self.activeRoot()
             var path = url.path.isEmpty ? "/index.html" : url.path
             var file = root.appendingPathComponent(String(path.dropFirst()))
             var isDir: ObjCBool = false
