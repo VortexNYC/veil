@@ -77,7 +77,7 @@ func originOwnerToken(ctx context.Context) (string, error) {
 	return originTokenLive(ctx, "")
 }
 
-func humanLogin(cmd *cobra.Command, outFile string, visit func(string) error) error {
+func humanLogin(cmd *cobra.Command, home, outFile string, visit func(string) error) error {
 	if outFile == "" {
 		return fmt.Errorf("human login: --out-file is required")
 	}
@@ -168,6 +168,11 @@ func humanLogin(cmd *cobra.Command, outFile string, visit func(string) error) er
 	}
 	if err := os.WriteFile(outFile, []byte(raw+"\n"), 0o600); err != nil {
 		return err
+	}
+	if originBase() != "" {
+		// VEIL-78 lazy backfill: enroll the recovery share on login when the
+		// member has neither a local key nor an enrolled share. Best-effort.
+		maybeAutoEnrollRecovery(cmd.Context(), home, raw)
 	}
 	return encode(cmd, map[string]string{"out_file": outFile})
 }

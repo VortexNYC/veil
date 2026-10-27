@@ -2106,7 +2106,7 @@ func TestCLIHumanLoginWritesTokenNotStdout(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errb)
 	cmd.SetContext(context.Background())
-	if err := humanLogin(cmd, outFile, func(authURL string) error {
+	if err := humanLogin(cmd, t.TempDir(), outFile, func(authURL string) error {
 		res, err := http.Get(authURL)
 		if err != nil {
 			return err

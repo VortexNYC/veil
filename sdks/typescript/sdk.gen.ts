@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddGroupMemberData, AddGroupMemberErrors, AddGroupMemberResponses, ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, BindWorkloadData, BindWorkloadErrors, BindWorkloadResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateGroupData, CreateGroupErrors, CreateGroupResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, FireRotateHooksData, FireRotateHooksErrors, FireRotateHooksResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAgentWorkloadsData, ListAgentWorkloadsErrors, ListAgentWorkloadsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListGroupMembersData, ListGroupMembersErrors, ListGroupMembersResponses, ListGroupsData, ListGroupsErrors, ListGroupsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListRotateHooksData, ListRotateHooksErrors, ListRotateHooksResponses, ListRotateProvidersData, ListRotateProvidersErrors, ListRotateProvidersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RegisterDeviceData, RegisterDeviceErrors, RegisterDeviceResponses, RemoveGroupMemberData, RemoveGroupMemberErrors, RemoveGroupMemberResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RotateItemData, RotateItemErrors, RotateItemResponses, SetRotateHooksData, SetRotateHooksErrors, SetRotateHooksResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UnbindWorkloadData, UnbindWorkloadErrors, UnbindWorkloadResponses, UnregisterDeviceData, UnregisterDeviceErrors, UnregisterDeviceResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses, VerifyIssuerData, VerifyIssuerErrors, VerifyIssuerResponses, VerifyItemData, VerifyItemErrors, VerifyItemResponses } from './types.gen';
+import type { AddGroupMemberData, AddGroupMemberErrors, AddGroupMemberResponses, ApproveRequestData, ApproveRequestErrors, ApproveRequestResponses, ArchiveItemData, ArchiveItemErrors, ArchiveItemResponses, AuditFeedData, AuditFeedErrors, AuditFeedResponses, BillingWebhookData, BillingWebhookErrors, BillingWebhookResponses, BindWorkloadData, BindWorkloadErrors, BindWorkloadResponses, CompleteRecoveryData, CompleteRecoveryErrors, CompleteRecoveryResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateBillingCheckoutData, CreateBillingCheckoutErrors, CreateBillingCheckoutResponses, CreateGrantData, CreateGrantErrors, CreateGrantResponses, CreateGroupData, CreateGroupErrors, CreateGroupResponses, CreateInviteData, CreateInviteErrors, CreateInviteResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, DeleteOrgData, DeleteOrgErrors, DeleteOrgResponses, DemoteOwnerData, DemoteOwnerErrors, DemoteOwnerResponses, DenyRecoveryData, DenyRecoveryErrors, DenyRecoveryResponses, DenyRequestData, DenyRequestErrors, DenyRequestResponses, EnrollRecoveryData, EnrollRecoveryErrors, EnrollRecoveryResponses, FireRotateHooksData, FireRotateHooksErrors, FireRotateHooksResponses, GetBillingData, GetBillingErrors, GetBillingResponses, GetHealthData, GetHealthResponses, GetOpenApiData, GetOpenApiResponses, GetRecoveryData, GetRecoveryErrors, GetRecoveryResponses, GetRecoveryShareData, GetRecoveryShareErrors, GetRecoveryShareResponses, ImportItemsData, ImportItemsErrors, ImportItemsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAgentWorkloadsData, ListAgentWorkloadsErrors, ListAgentWorkloadsResponses, ListEventsData, ListEventsErrors, ListEventsResponses, ListGrantsData, ListGrantsErrors, ListGrantsResponses, ListGroupMembersData, ListGroupMembersErrors, ListGroupMembersResponses, ListGroupsData, ListGroupsErrors, ListGroupsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListRecoveriesData, ListRecoveriesErrors, ListRecoveriesResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListRotateHooksData, ListRotateHooksErrors, ListRotateHooksResponses, ListRotateProvidersData, ListRotateProvidersErrors, ListRotateProvidersResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, PromoteOwnerData, PromoteOwnerErrors, PromoteOwnerResponses, ProvisionData, ProvisionErrors, ProvisionResponses, RegisterDeviceData, RegisterDeviceErrors, RegisterDeviceResponses, RemoveGroupMemberData, RemoveGroupMemberErrors, RemoveGroupMemberResponses, RemoveMemberData, RemoveMemberErrors, RemoveMemberResponses, RevokeAgentData, RevokeAgentErrors, RevokeAgentResponses, RotateItemData, RotateItemErrors, RotateItemResponses, SetRotateHooksData, SetRotateHooksErrors, SetRotateHooksResponses, StartRecoveryData, StartRecoveryErrors, StartRecoveryResponses, StreamRequestsData, StreamRequestsErrors, StreamRequestsResponse, StreamRequestsResponses, UnbindWorkloadData, UnbindWorkloadErrors, UnbindWorkloadResponses, UnregisterDeviceData, UnregisterDeviceErrors, UnregisterDeviceResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UseItemData, UseItemErrors, UseItemResponses, VaultReportData, VaultReportErrors, VaultReportResponses, VerifyIssuerData, VerifyIssuerErrors, VerifyIssuerResponses, VerifyItemData, VerifyItemErrors, VerifyItemResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -300,7 +300,11 @@ export const vaultReport = <ThrowOnError extends boolean = false>(options?: Opti
 export const provision = <ThrowOnError extends boolean = false>(options?: Options<ProvisionData, ThrowOnError>): RequestResult<ProvisionResponses, ProvisionErrors, ThrowOnError> => (options?.client ?? client).post<ProvisionResponses, ProvisionErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/v1/provision',
-    ...options
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
 });
 
 /**
@@ -525,5 +529,80 @@ export const setRotateHooks = <ThrowOnError extends boolean = false>(options: Op
 export const fireRotateHooks = <ThrowOnError extends boolean = false>(options: Options<FireRotateHooksData, ThrowOnError>): RequestResult<FireRotateHooksResponses, FireRotateHooksErrors, ThrowOnError> => (options.client ?? client).post<FireRotateHooksResponses, FireRotateHooksErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/v1/items/{name}/rotate-hooks/fire',
+    ...options
+});
+
+/**
+ * The caller's own recovery-share state: enrolled flag, pubkey, and wrapped_master (ciphertext only — never the plaintext master).
+ */
+export const getRecoveryShare = <ThrowOnError extends boolean = false>(options?: Options<GetRecoveryShareData, ThrowOnError>): RequestResult<GetRecoveryShareResponses, GetRecoveryShareErrors, ThrowOnError> => (options?.client ?? client).get<GetRecoveryShareResponses, GetRecoveryShareErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery/share',
+    ...options
+});
+
+/**
+ * Initial recovery-share enrollment (aal2). Insert-if-absent: a member's pubkey never rotates outside the ceremony, so an existing share is a 409.
+ */
+export const enrollRecovery = <ThrowOnError extends boolean = false>(options: Options<EnrollRecoveryData, ThrowOnError>): RequestResult<EnrollRecoveryResponses, EnrollRecoveryErrors, ThrowOnError> => (options.client ?? client).post<EnrollRecoveryResponses, EnrollRecoveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery/enroll',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Files (or returns the existing open) recovery request. Self-start needs no aal2 — a locked-out member may hold only aal1. Owner-initiated starts (human_id set) require aal2 + owner. One open request per member: a refile returns the live row with created=false and suppresses duplicate notifications.
+ */
+export const startRecovery = <ThrowOnError extends boolean = false>(options: Options<StartRecoveryData, ThrowOnError>): RequestResult<StartRecoveryResponses, StartRecoveryErrors, ThrowOnError> => (options.client ?? client).post<StartRecoveryResponses, StartRecoveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery/start',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Owner-only (aal2) list of org recovery requests filtered by status.
+ */
+export const listRecoveries = <ThrowOnError extends boolean = false>(options?: Options<ListRecoveriesData, ThrowOnError>): RequestResult<ListRecoveriesResponses, ListRecoveriesErrors, ThrowOnError> => (options?.client ?? client).get<ListRecoveriesResponses, ListRecoveriesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery',
+    ...options
+});
+
+/**
+ * One request. Owners (aal2) get the confirmer view — human_email, current_epoch, confirmer_wrapped_master; the initiator or target member gets the bare row.
+ */
+export const getRecovery = <ThrowOnError extends boolean = false>(options: Options<GetRecoveryData, ThrowOnError>): RequestResult<GetRecoveryResponses, GetRecoveryErrors, ThrowOnError> => (options.client ?? client).get<GetRecoveryResponses, GetRecoveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery/{id}',
+    ...options
+});
+
+/**
+ * The confirmer's commit (owner, aal2): rotates the org master, re-wraps every member share and owner DEK, moves the member's share to the staged pubkey at epoch+1, and fires the Kratos MFA reset when reset_mfa was filed. Multi-owner orgs enforce two-person integrity. proof_hmac bypasses the sole-owner timelock. The MFA reset code never rides the response.
+ */
+export const completeRecovery = <ThrowOnError extends boolean = false>(options: Options<CompleteRecoveryData, ThrowOnError>): RequestResult<CompleteRecoveryResponses, CompleteRecoveryErrors, ThrowOnError> => (options.client ?? client).post<CompleteRecoveryResponses, CompleteRecoveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery/{id}/complete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Resolve an open request: an owner denies (aal2); the initiator or target member cancels at any aal. First write wins.
+ */
+export const denyRecovery = <ThrowOnError extends boolean = false>(options: Options<DenyRecoveryData, ThrowOnError>): RequestResult<DenyRecoveryResponses, DenyRecoveryErrors, ThrowOnError> => (options.client ?? client).post<DenyRecoveryResponses, DenyRecoveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/v1/recovery/{id}/deny',
     ...options
 });

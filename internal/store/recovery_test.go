@@ -5,12 +5,16 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/protocol"
@@ -750,5 +754,108 @@ func TestPostgresDenyRecovery(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("recovery_denied audit row missing")
+	}
+}
+
+// TestRecoveryMonitorFindings: the ops tripwire sees live ceremonies,
+// timelocked sole-owner asks, and refile floods (VEIL-78).
+func TestRecoveryMonitorFindings(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	kek := testMasterKey(t)
+	s := rotateSchema(t, dsn, "rec_mon", kek)
+	defer s.Close()
+
+	master, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureOrgKey(ctx, protocol.LocalOrgID, master); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(dsn)
+	q := u.Query()
+	q.Set("search_path", "rec_mon")
+	u.RawQuery = q.Encode()
+	pool, err := pgxpool.New(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	// Quiet baseline: no findings on a clean table.
+	findings, err := RecoveryMonitorFindings(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("clean table findings: %v", findings)
+	}
+
+	// An open ask on the local org is a finding — including its timelock.
+	pub, _, _ := device.Generate()
+	reqID, _ := id.NewRecovery()
+	now := time.Now().UTC()
+	if _, _, err := s.FileRecoveryRequest(ctx, protocol.RecoveryRequest{
+		ID: reqID, OrgID: protocol.LocalOrgID, HumanID: "h1", InitiatedBy: "h1",
+		NewPubkey: pub, Status: protocol.RecoveryOpen,
+		CreatedAt: now, UnlockAt: now.Add(24 * time.Hour), ExpiresAt: now.Add(48 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	findings, err = RecoveryMonitorFindings(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) < 2 {
+		t.Fatalf("open+timelock findings: %v", findings)
+	}
+
+	// Resolve it denied; >=3 denied in an hour trips the flood finding.
+	if _, err := s.DenyRecovery(ctx, reqID, "h1", protocol.RecoveryCancelled); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		pub2, _, _ := device.Generate()
+		rid, _ := id.NewRecovery()
+		if _, _, err := s.FileRecoveryRequest(ctx, protocol.RecoveryRequest{
+			ID: rid, OrgID: protocol.LocalOrgID, HumanID: "h" + fmt.Sprint(i+2), InitiatedBy: "h" + fmt.Sprint(i+2),
+			NewPubkey: pub2, Status: protocol.RecoveryOpen,
+			CreatedAt: now, UnlockAt: now, ExpiresAt: now.Add(24 * time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DenyRecovery(ctx, rid, "o", protocol.RecoveryDenied); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Third denied: same human re-files after a cancel.
+	pub3, _, _ := device.Generate()
+	rid3, _ := id.NewRecovery()
+	if _, _, err := s.FileRecoveryRequest(ctx, protocol.RecoveryRequest{
+		ID: rid3, OrgID: protocol.LocalOrgID, HumanID: "h1", InitiatedBy: "h1",
+		NewPubkey: pub3, Status: protocol.RecoveryOpen,
+		CreatedAt: now, UnlockAt: now, ExpiresAt: now.Add(24 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DenyRecovery(ctx, rid3, "o", protocol.RecoveryDenied); err != nil {
+		t.Fatal(err)
+	}
+	findings, err = RecoveryMonitorFindings(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flood := false
+	for _, f := range findings {
+		if strings.Contains(f, "denied/expired") {
+			flood = true
+		}
+	}
+	if !flood {
+		t.Fatalf("refile flood finding missing: %v", findings)
 	}
 }

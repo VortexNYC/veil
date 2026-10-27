@@ -58,6 +58,8 @@ type APIClient struct {
 	HumanAPI *HumanAPIService
 
 	OwnerAPI *OwnerAPIService
+
+	RecoveryAPI *RecoveryAPIService
 }
 
 type service struct {
@@ -81,6 +83,7 @@ func NewAPIClient(cfg *Configuration) *APIClient {
 	c.BillingAPI = (*BillingAPIService)(&c.common)
 	c.HumanAPI = (*HumanAPIService)(&c.common)
 	c.OwnerAPI = (*OwnerAPIService)(&c.common)
+	c.RecoveryAPI = (*RecoveryAPIService)(&c.common)
 
 	return c
 }

@@ -276,6 +276,95 @@ func (g *Glue) OwnerEmails(ctx context.Context, orgID string) ([]string, error) 
 	return out, nil
 }
 
+// Email resolves one identity's deliverable address — recovery views show
+// owners the member's email. Email stays in Kratos; this only projects it.
+func (g *Glue) Email(ctx context.Context, identityID string) (string, error) {
+	if g.humans == nil {
+		return "", fmt.Errorf("glue: kratos admin is required")
+	}
+	return g.humans.Email(ctx, identityID)
+}
+
+// ResetMemberMFA is the identity-plane half of a completed org recovery
+// (VEIL-78): wipe the member's second factors in Kratos and mail the
+// re-enrollment link to the member's own Kratos address. The code NEVER
+// returns to the caller — a confirmer must not learn it.
+func (g *Glue) ResetMemberMFA(ctx context.Context, orgID, identityID string) error {
+	if g.humans == nil {
+		return fmt.Errorf("glue: kratos admin is required")
+	}
+	inv, err := g.humans.ResetMFA(ctx, identityID, orgID)
+	if err != nil {
+		return err
+	}
+	email, err := g.humans.Email(ctx, identityID)
+	if err != nil {
+		return err
+	}
+	if email == "" {
+		return fmt.Errorf("glue: member has no deliverable address")
+	}
+	if g.mail == nil {
+		// The factors are already wiped; an undeliverable link is a loud
+		// miss, not a silent one.
+		slog.Warn("mfa reset link undeliverable — mail unconfigured", "identity", identityID)
+		return nil
+	}
+	return g.mail.send(ctx, email, "recovery", map[string]string{
+		"event": "mfa_reset",
+		"url":   inv.RecoveryLink,
+		"code":  inv.Code,
+	})
+}
+
+// NotifyRecovery alerts every org owner plus the target member on recovery
+// lifecycle events (started, completed) — honey-style: loud, immediate, and
+// carrying a deny CTA so an unauthorized ask dies inside its unlock window.
+// Best-effort: the request row and its audit trail are the durable parts.
+func (g *Glue) NotifyRecovery(ctx context.Context, req protocol.RecoveryRequest, event string) error {
+	if g == nil || g.mail == nil {
+		return nil
+	}
+	member := ""
+	if g.humans != nil {
+		if email, err := g.humans.Email(ctx, req.HumanID); err == nil {
+			member = email
+		}
+	}
+	emails, err := g.OwnerEmails(ctx, req.OrgID)
+	if err != nil {
+		slog.Warn("recovery notify owners failed", "org", req.OrgID, "err", err)
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range emails {
+		if e != "" && !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	if member != "" && !seen[member] {
+		out = append(out, member)
+	}
+	data := map[string]string{
+		"event":       event,
+		"id":          req.ID,
+		"human":       req.HumanID,
+		"human_email": member,
+		"initiated":   req.InitiatedBy,
+		"reset_mfa":   fmt.Sprintf("%t", req.ResetMFA),
+		"unlock_at":   req.UnlockAt.Format(time.RFC3339),
+		"expires":     req.ExpiresAt.Format(time.RFC3339),
+		"url":         g.appURL + "/requests",
+	}
+	for _, to := range out {
+		if err := g.mail.send(ctx, to, "recovery", data); err != nil {
+			slog.Warn("recovery notify send failed", "request", req.ID, "err", err)
+		}
+	}
+	return nil
+}
+
 // NotifyRequest mails every org owner that an agent asked — best-effort:
 // the request row is durable; a mail outage loses the ping, never the ask.
 // The payload is metadata only — no secret, no approve-token.

@@ -949,7 +949,11 @@ var vaultReport = (options) => (options?.client ?? client).get({
 var provision = (options) => (options?.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/provision",
-  ...options
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options?.headers
+  }
 });
 var createInvite = (options) => (options.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
@@ -1086,6 +1090,53 @@ var setRotateHooks = (options) => (options.client ?? client).put({
 var fireRotateHooks = (options) => (options.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/items/{name}/rotate-hooks/fire",
+  ...options
+});
+var getRecoveryShare = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/share",
+  ...options
+});
+var enrollRecovery = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/enroll",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var startRecovery = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/start",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var listRecoveries = (options) => (options?.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery",
+  ...options
+});
+var getRecovery = (options) => (options.client ?? client).get({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/{id}",
+  ...options
+});
+var completeRecovery = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/{id}/complete",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
+var denyRecovery = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/{id}/deny",
   ...options
 });
 
@@ -1233,6 +1284,7 @@ export {
   auditFeed,
   billingWebhook,
   bindWorkload,
+  completeRecovery,
   createAgent,
   createAmbientClient,
   createBillingCheckout,
@@ -1246,12 +1298,16 @@ export {
   deleteMe,
   deleteOrg,
   demoteOwner,
+  denyRecovery,
   denyRequest,
+  enrollRecovery,
   fireRotateHooks,
   generateDPoPKeyPair,
   getBilling,
   getHealth,
   getOpenApi,
+  getRecovery,
+  getRecoveryShare,
   importItems,
   listAgentWorkloads,
   listAgents,
@@ -1260,6 +1316,7 @@ export {
   listGroupMembers,
   listGroups,
   listItems,
+  listRecoveries,
   listRequests,
   listRotateHooks,
   listRotateProviders,
@@ -1273,6 +1330,7 @@ export {
   rotateItem,
   setRotateHooks,
   signDPoPProof,
+  startRecovery,
   streamRequests,
   unbindWorkload,
   unregisterDevice,

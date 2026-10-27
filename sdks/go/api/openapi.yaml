@@ -691,6 +691,11 @@ paths:
   /v1/provision:
     post:
       operationId: provision
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionRequest"
       responses:
         "200":
           content:
@@ -1327,6 +1332,219 @@ paths:
         rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
       tags:
       - Owner
+  /v1/recovery/share:
+    get:
+      operationId: getRecoveryShare
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryShare"
+          description: Share state
+        "401":
+          description: missing or invalid human token
+      summary: "The caller's own recovery-share state: enrolled flag, pubkey, and\
+        \ wrapped_master (ciphertext only — never the plaintext master)."
+      tags:
+      - Recovery
+  /v1/recovery/enroll:
+    post:
+      operationId: enrollRecovery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryShare"
+          description: The planted share
+        "400":
+          description: missing or malformed pubkey
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: aal1 token — enrollment requires a second factor
+        "409":
+          description: already enrolled
+      summary: "Initial recovery-share enrollment (aal2). Insert-if-absent: a member's\
+        \ pubkey never rotates outside the ceremony, so an existing share is a 409."
+      tags:
+      - Recovery
+  /v1/recovery/start:
+    post:
+      operationId: startRecovery
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRecoveryRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartRecoveryResponse"
+          description: The request (created=false when deduped)
+        "400":
+          description: malformed new_pubkey or a pubkey already enrolled on a share
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "non-owner naming another human, or aal1 owner-initiated start"
+        "404":
+          description: named human is not an org member
+        "429":
+          description: recovery start rate limit
+        "502":
+          description: identity plane unavailable
+      summary: "Files (or returns the existing open) recovery request. Self-start\
+        \ needs no aal2 — a locked-out member may hold only aal1. Owner-initiated\
+        \ starts (human_id set) require aal2 + owner. One open request per member:\
+        \ a refile returns the live row with created=false and suppresses duplicate\
+        \ notifications."
+      tags:
+      - Recovery
+  /v1/recovery:
+    get:
+      operationId: listRecoveries
+      parameters:
+      - explode: true
+        in: query
+        name: status
+        required: false
+        schema:
+          default: open
+          enum:
+          - open
+          - completed
+          - denied
+          - expired
+          - cancelled
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveriesResponse"
+          description: The org's requests
+        "400":
+          description: bad status
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: not owner or aal1
+      summary: Owner-only (aal2) list of org recovery requests filtered by status.
+      tags:
+      - Recovery
+  /v1/recovery/{id}:
+    get:
+      operationId: getRecovery
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryRequest"
+          description: The request
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "not owner, initiator, or target — or aal1 owner"
+        "404":
+          description: no such request in this org
+      summary: "One request. Owners (aal2) get the confirmer view — human_email, current_epoch,\
+        \ confirmer_wrapped_master; the initiator or target member gets the bare row."
+      tags:
+      - Recovery
+  /v1/recovery/{id}/complete:
+    post:
+      operationId: completeRecovery
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteRecoveryRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryRequest"
+          description: The completed request
+        "400":
+          description: malformed proof_hmac
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "not owner, aal1, or two-person integrity violation"
+        "404":
+          description: "no such request, or target was offboarded"
+        "409":
+          description: already resolved or expired
+        "423":
+          description: still inside the unlock_at timelock
+      summary: "The confirmer's commit (owner, aal2): rotates the org master, re-wraps\
+        \ every member share and owner DEK, moves the member's share to the staged\
+        \ pubkey at epoch+1, and fires the Kratos MFA reset when reset_mfa was filed.\
+        \ Multi-owner orgs enforce two-person integrity. proof_hmac bypasses the sole-owner\
+        \ timelock. The MFA reset code never rides the response."
+      tags:
+      - Recovery
+  /v1/recovery/{id}/deny:
+    post:
+      operationId: denyRecovery
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryRequest"
+          description: The resolved request
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: "not owner, initiator, or target — or aal1 owner"
+        "404":
+          description: no such request in this org
+        "409":
+          description: already resolved
+      summary: "Resolve an open request: an owner denies (aal2); the initiator or\
+        \ target member cancels at any aal. First write wins."
+      tags:
+      - Recovery
 components:
   schemas:
     Item:
@@ -2905,6 +3123,263 @@ components:
           default: null
       required:
       - results
+    RecoveryShare:
+      additionalProperties: false
+      description: The member's own org-key share state (VEIL-78). pubkey and wrapped_master
+        are ciphertext material only — the 32-byte X25519 public key (base64) and
+        the 80-byte box.SealAnonymous blob (base64). The private key and the plaintext
+        org master never leave the client/store.
+      example:
+        enrolled: true
+        pubkey: pubkey
+        wrapped_master: wrapped_master
+        wrap_pubkey_epoch: 0
+        org_key_version: 6
+        created_at: 2000-01-23T04:56:07.000+00:00
+        updated_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        enrolled:
+          description: Whether the member has an org_key_shares row.
+          type: boolean
+        pubkey:
+          description: "Member's 32-byte X25519 public key, base64."
+          format: byte
+          type: string
+        wrapped_master:
+          description: "80-byte box.SealAnonymous ciphertext of the org master, base64."
+          format: byte
+          type: string
+        wrap_pubkey_epoch:
+          description: Share wrap epoch; bumps on every completed recovery.
+          type: integer
+        org_key_version:
+          description: Org master version the share wraps.
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+      - enrolled
+      - org_key_version
+      - wrap_pubkey_epoch
+    RecoveryRequest:
+      additionalProperties: false
+      description: "One initiator -> confirmer recovery ceremony row (VEIL-78). Owner\
+        \ callers also see human_email, current_epoch, and confirmer_wrapped_master\
+        \ (the caller's own share blob for the proof_hmac fast path); the initiator/target\
+        \ member sees the bare row."
+      example:
+        id: id
+        org_id: org_id
+        human_id: human_id
+        initiated_by: initiated_by
+        new_pubkey: new_pubkey
+        reset_mfa: true
+        status: open
+        created_at: 2000-01-23T04:56:07.000+00:00
+        unlock_at: 2000-01-23T04:56:07.000+00:00
+        expires_at: 2000-01-23T04:56:07.000+00:00
+        resolved_at: 2000-01-23T04:56:07.000+00:00
+        confirmed_by: confirmed_by
+        result_epoch: 0
+        human_email: human_email
+        current_epoch: 6
+        confirmer_wrapped_master: confirmer_wrapped_master
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        human_id:
+          description: The member being recovered.
+          type: string
+        initiated_by:
+          description: Who filed the request — the member (self) or an owner.
+          type: string
+        new_pubkey:
+          description: "Staged 32-byte X25519 public key, base64."
+          format: byte
+          type: string
+        reset_mfa:
+          description: "On completion, wipe the member's Kratos totp/webauthn and\
+            \ mail a re-enrollment link to their address."
+          type: boolean
+        status:
+          enum:
+          - open
+          - completed
+          - denied
+          - expired
+          - cancelled
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        unlock_at:
+          description: Immediate for owner-confirmed paths; created_at+24h for sole-owner
+            self-recovery.
+          format: date-time
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        resolved_at:
+          format: date-time
+          type: string
+        confirmed_by:
+          type: string
+        result_epoch:
+          description: The member's new wrap_pubkey_epoch after completion.
+          type: integer
+        human_email:
+          description: Owner view only — the member's resolved Kratos address.
+          type: string
+        current_epoch:
+          description: Owner view only — the member's current wrap_pubkey_epoch.
+          type: integer
+        confirmer_wrapped_master:
+          description: Owner view only — the caller's own wrapped share (80B base64)
+            for computing proof_hmac locally.
+          format: byte
+          type: string
+      required:
+      - created_at
+      - current_epoch
+      - expires_at
+      - human_id
+      - id
+      - initiated_by
+      - new_pubkey
+      - org_id
+      - reset_mfa
+      - status
+      - unlock_at
+    RecoveriesResponse:
+      additionalProperties: false
+      example:
+        requests:
+        - id: id
+          org_id: org_id
+          human_id: human_id
+          initiated_by: initiated_by
+          new_pubkey: new_pubkey
+          reset_mfa: true
+          status: open
+          created_at: 2000-01-23T04:56:07.000+00:00
+          unlock_at: 2000-01-23T04:56:07.000+00:00
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          resolved_at: 2000-01-23T04:56:07.000+00:00
+          confirmed_by: confirmed_by
+          result_epoch: 0
+          human_email: human_email
+          current_epoch: 6
+          confirmer_wrapped_master: confirmer_wrapped_master
+        - id: id
+          org_id: org_id
+          human_id: human_id
+          initiated_by: initiated_by
+          new_pubkey: new_pubkey
+          reset_mfa: true
+          status: open
+          created_at: 2000-01-23T04:56:07.000+00:00
+          unlock_at: 2000-01-23T04:56:07.000+00:00
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          resolved_at: 2000-01-23T04:56:07.000+00:00
+          confirmed_by: confirmed_by
+          result_epoch: 0
+          human_email: human_email
+          current_epoch: 6
+          confirmer_wrapped_master: confirmer_wrapped_master
+      properties:
+        requests:
+          items:
+            $ref: "#/components/schemas/RecoveryRequest"
+          type: array
+          default: null
+      required:
+      - requests
+    EnrollRequest:
+      additionalProperties: false
+      example:
+        pubkey: pubkey
+      properties:
+        pubkey:
+          description: "Member's 32-byte X25519 public key, base64 or hex."
+          type: string
+      required:
+      - pubkey
+    StartRecoveryRequest:
+      additionalProperties: false
+      example:
+        human_id: human_id
+        new_pubkey: new_pubkey
+        reset_mfa: true
+      properties:
+        human_id:
+          description: Omit for self-recovery; set for owner-initiated recovery of
+            a member.
+          type: string
+        new_pubkey:
+          description: "Staged 32-byte X25519 public key, base64 or hex. Must not\
+            \ match any enrolled share pubkey."
+          type: string
+        reset_mfa:
+          description: Also wipe the member's Kratos second factors on completion.
+          type: boolean
+      required:
+      - new_pubkey
+    CompleteRecoveryRequest:
+      additionalProperties: false
+      example:
+        proof_hmac: proof_hmac
+      properties:
+        proof_hmac:
+          description: "hex(HMAC-SHA256(org master, request id)) — the sole-owner\
+            \ fast path that bypasses the 24h timelock."
+          type: string
+    StartRecoveryResponse:
+      additionalProperties: false
+      example:
+        request:
+          id: id
+          org_id: org_id
+          human_id: human_id
+          initiated_by: initiated_by
+          new_pubkey: new_pubkey
+          reset_mfa: true
+          status: open
+          created_at: 2000-01-23T04:56:07.000+00:00
+          unlock_at: 2000-01-23T04:56:07.000+00:00
+          expires_at: 2000-01-23T04:56:07.000+00:00
+          resolved_at: 2000-01-23T04:56:07.000+00:00
+          confirmed_by: confirmed_by
+          result_epoch: 0
+          human_email: human_email
+          current_epoch: 6
+          confirmer_wrapped_master: confirmer_wrapped_master
+        created: true
+      properties:
+        request:
+          $ref: "#/components/schemas/RecoveryRequest"
+        created:
+          description: false means an open request already existed — the live row
+            is returned and notifications were suppressed.
+          type: boolean
+      required:
+      - created
+      - request
+    ProvisionRequest:
+      additionalProperties: false
+      example:
+        recovery_pubkey: recovery_pubkey
+      properties:
+        recovery_pubkey:
+          description: Optional 32-byte X25519 public key (base64 or hex) to enroll
+            the member's recovery share at signup.
+          type: string
     removeMember_200_response:
       example:
         removed: true
