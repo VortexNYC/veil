@@ -8,6 +8,16 @@ import { LayerCard } from "@cloudflare/kumo/components/layer-card";
 import { Select } from "@cloudflare/kumo/components/select";
 import { Table } from "@cloudflare/kumo/components/table";
 import { Text } from "@cloudflare/kumo/components/text";
+import {
+  CreditCard,
+  File,
+  FileText,
+  Fingerprint,
+  IdentificationCard,
+  Key,
+  LockKey,
+  Terminal,
+} from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { PageChrome } from "../../page-chrome";
@@ -83,6 +93,57 @@ function generateSecret(): string {
   return out;
 }
 
+// Row icons the way 1Password's rich icons make items recognizable. Like
+// the fill host's icon cache, the favicon is fetched from the site itself —
+// no aggregator learns which domains this vault holds. Remote icons stay
+// opt-in: rendering them pings every saved domain with the member's IP, so
+// rows draw kind glyphs until the human flips the toggle.
+const KIND_ICON = {
+  api_key: Key,
+  passkey: Fingerprint,
+  card: CreditCard,
+  identity: IdentificationCard,
+  ssh: Terminal,
+  oauth: LockKey,
+  file: File,
+  secure_note: FileText,
+  honey: Key,
+} as const;
+
+function firstURIDomain(item: Item): string {
+  for (const raw of item.uris ?? []) {
+    try {
+      const host = new URL(raw).hostname;
+      if (host) {
+        return host;
+      }
+    } catch {
+      // ssh://, app://, or a bare hostname — not a fetchable web origin.
+    }
+  }
+  return "";
+}
+
+function ItemIcon({ item, enabled }: { item: Item; enabled: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const host = firstURIDomain(item);
+  const Glyph = KIND_ICON[item.kind] ?? Key;
+  if (host && enabled && !failed) {
+    return (
+      <img
+        src={`https://${host}/favicon.ico`}
+        alt=""
+        width={20}
+        height={20}
+        loading="lazy"
+        className="size-5 shrink-0 rounded-sm"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <Glyph size={20} className="shrink-0 opacity-70" aria-hidden />;
+}
+
 function parseList(value: string): string[] {
   return value
     .split(",")
@@ -116,6 +177,7 @@ function Items() {
   const [kind, setKind] = useState<Kind>("api_key");
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [iconsOn, setIconsOn] = useState(false);
   const [addSecret, setAddSecret] = useState("");
   const [addSecretVisible, setAddSecretVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -573,6 +635,14 @@ function Items() {
             </Select.Option>
           ))}
         </Select>
+        <Button
+          type="button"
+          variant={iconsOn ? "primary" : "outline"}
+          title="Load each site's favicon — sites see this device fetching them"
+          onClick={() => setIconsOn((v) => !v)}
+        >
+          Icons
+        </Button>
       </div>
       {rows !== null ? (
         <Text as="p" variant="secondary" size="sm">
@@ -608,7 +678,8 @@ function Items() {
                 {filtered.map((item) => (
                   <Table.Row key={item.id}>
                     <Table.Cell>
-                      <div className="flex flex-wrap items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <ItemIcon item={item} enabled={iconsOn} />
                         <Text as="span">{item.name}</Text>
                         {(item.tags ?? []).map((tag) => (
                           <Badge key={tag} variant="neutral">
