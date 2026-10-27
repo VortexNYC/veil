@@ -1238,6 +1238,95 @@ paths:
         \ or provider rotator verify) without revealing the secret. Owner-only."
       tags:
       - Owner
+  /v1/items/{name}/rotate-hooks:
+    get:
+      operationId: listRotateHooks
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateHooksResponse"
+          description: Configured hooks
+        "400":
+          description: no such item
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: List an item's post-rotation fan-outs. Owner only — hook URLs may embed
+        capability tokens.
+      tags:
+      - Owner
+    put:
+      operationId: setRotateHooks
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateHooksRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateHooksResponse"
+          description: Hooks stored
+        "400":
+          description: invalid hook config
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: "Replace an item's post-rotation fan-out list. Each webhook gets rotation\
+        \ metadata (item, rotated_at, key version) — never the secret."
+      tags:
+      - Owner
+  /v1/items/{name}/rotate-hooks/fire:
+    post:
+      operationId: fireRotateHooks
+      parameters:
+      - explode: false
+        in: path
+        name: name
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateHooksFireResponse"
+          description: Per-hook outcomes
+        "400":
+          description: no such item
+        "401":
+          description: missing or invalid bearer
+        "403":
+          description: not the owner
+      summary: Re-send the rotation notification to each configured consumer without
+        rotating — the retry after a consumer outage. Each firing is audited rotation_hook_fired.
+      tags:
+      - Owner
 components:
   schemas:
     Item:
@@ -2724,6 +2813,96 @@ components:
       - item
       - mode
       - verified
+    RotateHook:
+      example:
+        name: name
+        type: webhook
+        url: url
+      properties:
+        name:
+          description: "consumer label for audit, e.g. ci-resecrets"
+          type: string
+        type:
+          description: hook type; only webhook exists
+          enum:
+          - webhook
+          type: string
+        url:
+          description: "consumer endpoint; a capability token may ride in path/query\
+            \ — sealed, never in audit"
+          type: string
+      required:
+      - name
+      - type
+      - url
+    RotateHooksRequest:
+      example:
+        hooks:
+        - name: name
+          type: webhook
+          url: url
+        - name: name
+          type: webhook
+          url: url
+      properties:
+        hooks:
+          items:
+            $ref: "#/components/schemas/RotateHook"
+          type: array
+          default: null
+      required:
+      - hooks
+    RotateHooksResponse:
+      example:
+        hooks:
+        - name: name
+          type: webhook
+          url: url
+        - name: name
+          type: webhook
+          url: url
+      properties:
+        hooks:
+          items:
+            $ref: "#/components/schemas/RotateHook"
+          type: array
+          default: null
+      required:
+      - hooks
+    RotateHookResult:
+      example:
+        hook: hook
+        ok: true
+        status: 0
+        error: error
+      properties:
+        hook:
+          type: string
+        ok:
+          type: boolean
+        status:
+          type: integer
+        error:
+          type: string
+    RotateHooksFireResponse:
+      example:
+        results:
+        - hook: hook
+          ok: true
+          status: 0
+          error: error
+        - hook: hook
+          ok: true
+          status: 0
+          error: error
+      properties:
+        results:
+          items:
+            $ref: "#/components/schemas/RotateHookResult"
+          type: array
+          default: null
+      required:
+      - results
     removeMember_200_response:
       example:
         removed: true

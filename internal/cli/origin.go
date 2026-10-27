@@ -862,6 +862,73 @@ func originRotateItem(cmd *cobra.Command, name, mgmtItem string, interval time.D
 	return encode(cmd, out)
 }
 
+// originItemHookMutate GETs the hook list, applies fn, and PUTs the result —
+// add/remove converge on the same read-modify-write against the sealed list.
+func originItemHookMutate(cmd *cobra.Command, name string, fn func([]protocol.RotateHook) ([]protocol.RotateHook, error)) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	base := "/v1/items/" + url.PathEscape(name) + "/rotate-hooks"
+	raw, err := originDo(cmd.Context(), http.MethodGet, base, tok, nil)
+	if err != nil {
+		return err
+	}
+	var got publicapi.RotateHooksResponse
+	if err := json.Unmarshal(raw, &got); err != nil {
+		return err
+	}
+	next, err := fn(got.Hooks)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(publicapi.RotateHooksRequest{Hooks: next})
+	if err != nil {
+		return err
+	}
+	raw, err = originDo(cmd.Context(), http.MethodPut, base, tok, payload)
+	if err != nil {
+		return err
+	}
+	var out publicapi.RotateHooksResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
+func originItemListHooks(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodGet, "/v1/items/"+url.PathEscape(name)+"/rotate-hooks", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.RotateHooksResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out.Hooks)
+}
+
+func originItemFireHooks(cmd *cobra.Command, name string) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+url.PathEscape(name)+"/rotate-hooks/fire", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.RotateHooksFireResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	return encode(cmd, out)
+}
+
 func originRotateProviders(cmd *cobra.Command) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {

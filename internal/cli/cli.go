@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -1098,7 +1099,154 @@ func itemCmd(home *string) *cobra.Command {
 			})
 		},
 	}
-	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, verify)
+	var hookName, hookURL, hookType string
+	addHook := &cobra.Command{
+		Use:   "add-hook NAME",
+		Short: "Register a post-rotation fan-out. Webhook gets rotation metadata — never the secret.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(hookURL) == "" {
+				return fmt.Errorf("item add-hook: --url is required")
+			}
+			name := strings.TrimSpace(hookName)
+			if name == "" {
+				u, err := url.Parse(strings.TrimSpace(hookURL))
+				if err == nil {
+					name = u.Host
+				}
+			}
+			hook := protocol.RotateHook{
+				Name: name,
+				Type: strings.TrimSpace(hookType),
+				URL:  strings.TrimSpace(hookURL),
+			}
+			if originBase() != "" {
+				return originItemHookMutate(cmd, args[0], func(hooks []protocol.RotateHook) ([]protocol.RotateHook, error) {
+					for _, h := range hooks {
+						if h.Name == hook.Name {
+							return nil, fmt.Errorf("item add-hook: hook %q exists", hook.Name)
+						}
+					}
+					return append(hooks, hook), nil
+				})
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			hooks, err := a.RotateHooks(actor, args[0])
+			if err != nil {
+				return err
+			}
+			for _, h := range hooks {
+				if h.Name == hook.Name {
+					return fmt.Errorf("item add-hook: hook %q exists", hook.Name)
+				}
+			}
+			item, err := a.SetRotateHooks(actor, args[0], append(hooks, hook))
+			if err != nil {
+				return err
+			}
+			return encode(cmd, map[string]any{"item": item.Name, "hooks": len(hooks) + 1})
+		},
+	}
+	addHook.Flags().StringVar(&hookURL, "url", "", "consumer endpoint. capability token may ride in path/query — sealed, never in audit.")
+	addHook.Flags().StringVar(&hookName, "name", "", "consumer label for audit. default: URL host")
+	addHook.Flags().StringVar(&hookType, "type", protocol.RotateHookTypeWebhook, "hook type")
+	removeHook := &cobra.Command{
+		Use:   "remove-hook NAME",
+		Short: "Unregister a post-rotation fan-out by consumer name.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := strings.TrimSpace(hookName)
+			if target == "" {
+				return fmt.Errorf("item remove-hook: --name is required")
+			}
+			drop := func(hooks []protocol.RotateHook) ([]protocol.RotateHook, error) {
+				out := hooks[:0]
+				found := false
+				for _, h := range hooks {
+					if h.Name == target {
+						found = true
+						continue
+					}
+					out = append(out, h)
+				}
+				if !found {
+					return nil, fmt.Errorf("item remove-hook: no hook %q", target)
+				}
+				return out, nil
+			}
+			if originBase() != "" {
+				return originItemHookMutate(cmd, args[0], drop)
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			hooks, err := a.RotateHooks(actor, args[0])
+			if err != nil {
+				return err
+			}
+			next, err := drop(hooks)
+			if err != nil {
+				return err
+			}
+			item, err := a.SetRotateHooks(actor, args[0], next)
+			if err != nil {
+				return err
+			}
+			return encode(cmd, map[string]any{"item": item.Name, "hooks": len(next)})
+		},
+	}
+	removeHook.Flags().StringVar(&hookName, "name", "", "consumer name to remove")
+	listHooks := &cobra.Command{
+		Use:   "list-hooks NAME",
+		Short: "Configured post-rotation fan-outs. Owner only — URLs may embed capability tokens.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originItemListHooks(cmd, args[0])
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			hooks, err := a.RotateHooks(actor, args[0])
+			if err != nil {
+				return err
+			}
+			return encode(cmd, hooks)
+		},
+	}
+	fireHooks := &cobra.Command{
+		Use:   "fire-hooks NAME",
+		Short: "Re-send the rotation notification without rotating — the retry after a consumer outage.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() != "" {
+				return originItemFireHooks(cmd, args[0])
+			}
+			a, err := openApp(*home)
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			actor := protocol.Principal{Kind: protocol.PrincipalHuman, ID: a.HumanID, OrgID: a.OrgID}
+			results, err := a.FireRotateHooks(cmd.Context(), actor, args[0])
+			if err != nil {
+				return err
+			}
+			return encode(cmd, map[string]any{"results": results})
+		},
+	}
+	c.AddCommand(add, imp, list, update, archive, del, versions, restore, write, verify, addHook, removeHook, listHooks, fireHooks)
 	return c
 }
 

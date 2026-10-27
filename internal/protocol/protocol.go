@@ -172,6 +172,10 @@ const (
 	ActionGroupCreated       ActionKind = "group_created"
 	ActionGroupMemberAdded   ActionKind = "group_member_added"
 	ActionGroupMemberRemoved ActionKind = "group_member_removed"
+	// rotation_hook_fired (VEIL-92): a post-rotation fan-out to a configured
+	// consumer ran. Reason carries hook name, URL host, and outcome — never
+	// the secret and never the full URL (capability tokens ride in paths).
+	ActionRotationHookFired ActionKind = "rotation_hook_fired"
 	// billing_provision_failed — Vortex customer upsert failed during
 	// provision; signup succeeded anyway. Reconcile target.
 	ActionBillingProvisionFailed ActionKind = "billing_provision_failed"
@@ -333,6 +337,19 @@ type Workload struct {
 	Audience string              `json:"audience"`
 	Claims   map[string][]string `json:"claims,omitempty"`
 }
+
+// RotateHook is a post-rotation fan-out target configured by the owner
+// (VEIL-92). After a successful rotate the broker POSTs rotation metadata
+// to the hook — item name, rotated_at, key version. NEVER the secret.
+// Only "webhook" exists; new consumer types (deploy APIs, file rewrites)
+// get their own Type value and stay metadata-only the same way.
+type RotateHook struct {
+	Name string `json:"name"` // consumer label for audit, e.g. "ci-resecrets"
+	Type string `json:"type"` // "webhook"
+	URL  string `json:"url"`  // endpoint; capability tokens may ride in path/query
+}
+
+const RotateHookTypeWebhook = "webhook"
 
 type Fetch struct {
 	Method string
