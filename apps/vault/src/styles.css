@@ -49,40 +49,53 @@
   padding: 2rem;
   gap: 2rem;
   background:
-    radial-gradient(60rem 40rem at 50% -10%, rgb(99 102 241 / 0.10), transparent 60%),
-    #f8fafc;
+    radial-gradient(60rem 40rem at 50% -10%, rgb(59 130 246 / 0.08), transparent 60%),
+    #0e0e10;
 }
 .veil-login .ory-elements {
   width: 100%;
   max-width: 28rem;
+  color: #f4f4f5;
 }
-.veil-login .ory-elements > div {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.06),
-    0 12px 32px -8px rgb(0 0 0 / 0.14);
-}
-
-/* Elements card polish — tighten the stock spacing, deepen the surface,
-   match the vault's weight. */
+/* Kumo dark — one radius scale, readable contrast, zinc surfaces. */
 .veil-login .ory-elements [data-testid="ory/card"] {
-  gap: 1.75rem;
-  padding: 2.75rem;
+  gap: 1.5rem;
+  padding: 2.25rem;
   border-radius: 1rem;
-  border-color: rgb(15 23 42 / 0.08);
-  box-shadow:
-    0 0 0 1px rgb(15 23 42 / 0.04),
-    0 2px 4px rgb(15 23 42 / 0.05),
-    0 20px 48px -12px rgb(15 23 42 / 0.18);
+  background: #18181b;
+  border: 1px solid #27272a;
+  box-shadow: 0 20px 48px -12px rgb(0 0 0 / 0.6);
 }
 .veil-login .ory-elements {
-  --radius-forms: 0.5rem;
-  --radius-buttons: 0.5rem;
+  --radius-forms: 0.75rem;
+  --radius-buttons: 0.75rem;
   --radius-cards: 1rem;
 }
-.veil-login .ory-elements input {
-  background: rgb(248 250 252);
+.veil-login .ory-elements h1,
+.veil-login .ory-elements h2,
+.veil-login .ory-elements h3,
+.veil-login .ory-elements label,
+.veil-login .ory-elements p,
+.veil-login .ory-elements span {
+  color: #f4f4f5;
 }
+.veil-login .ory-elements input {
+  background: #0e0e10 !important;
+  border: 1px solid #27272a !important;
+  border-radius: 0.75rem !important;
+  color: #f4f4f5 !important;
+}
+.veil-login .ory-elements input::placeholder { color: #71717a !important; }
 .veil-login .ory-elements input:focus-within,
 .veil-login .ory-elements input:focus {
-  background: #fff;
+  background: #0e0e10 !important;
+  border-color: #3b82f6 !important;
 }
+.veil-login .ory-elements button[type="submit"],
+.veil-login .ory-elements [data-testid="ui/message-button-primary"] {
+  background: #3b82f6 !important;
+  border-radius: 0.75rem !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+.veil-login .ory-elements a { color: #60a5fa !important; }
