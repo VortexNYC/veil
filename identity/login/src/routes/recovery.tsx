@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { Recovery } from "@ory/elements-react/theme"
-import { frontend, kratosURL, oryConfig } from "../ory"
+import KratosFlow from "../components/KratosFlow"
+import { frontend, kratosURL } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
 export const Route = createFileRoute("/recovery")({
@@ -27,5 +27,5 @@ export const Route = createFileRoute("/recovery")({
       }
     })
   },
-  component: () => <Recovery flow={Route.useLoaderData()} config={oryConfig} />,
+  component: () => <KratosFlow flow={Route.useLoaderData()} title="Recover account" subtitle="Send a recovery code to your email" />,
 })

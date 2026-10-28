@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { Registration } from "@ory/elements-react/theme"
-import { frontend, kratosURL, oryConfig } from "../ory"
+import KratosFlow from "../components/KratosFlow"
+import { frontend, kratosURL } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
 export const Route = createFileRoute("/registration")({
@@ -32,5 +32,5 @@ export const Route = createFileRoute("/registration")({
       },
     )
   },
-  component: () => <Registration flow={Route.useLoaderData()} config={oryConfig} />,
+  component: () => <KratosFlow flow={Route.useLoaderData()} title="Sign up" subtitle="Create your Veil account" />,
 })

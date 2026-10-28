@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
-import { Settings } from "@ory/elements-react/theme"
-import { frontend, kratosURL, oryConfig } from "../ory"
+import KratosFlow from "../components/KratosFlow"
+import { frontend, kratosURL } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
 export const Route = createFileRoute("/settings")({
@@ -102,7 +102,7 @@ function SettingsPage() {
           ? "Second factor paired — your Veil Vault is unlocked. Below: save your Recovery codes somewhere offline — they are the only way back in if you lose this device. You can also add a Passkey as a second authenticator."
           : "Step 2 of 2: Pair an Authenticator App (TOTP) or Passkey below to unlock your Veil Vault. Once saved, click Continue to Veil Vault."}
       </p>
-      <Settings flow={flow} config={oryConfig} />
+      <KratosFlow flow={flow} title="Settings" subtitle="Manage your credentials" />
       <p className="veil-settings-continue">
         <a className="veil-continue" href="https://app.veil.nyc">
           Continue to Veil Vault →
