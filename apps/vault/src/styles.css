@@ -90,12 +90,17 @@
 .veil-login .ory-elements input:focus {
   background: #0e0e10 !important;
   border-color: #3b82f6 !important;
+  outline: 2px solid rgba(59, 130, 246, 0.35) !important;
+  outline-offset: 0px !important;
+}
+.veil-login .ory-elements button {
+  border-radius: 0.75rem !important;
 }
 .veil-login .ory-elements button[type="submit"],
-.veil-login .ory-elements [data-testid="ui/message-button-primary"] {
+.veil-login .ory-elements [data-testid*="submit"] {
   background: #3b82f6 !important;
-  border-radius: 0.75rem !important;
   color: #fff !important;
   font-weight: 600 !important;
 }
+.veil-login .ory-elements button:hover { opacity: 0.88 !important; }
 .veil-login .ory-elements a { color: #60a5fa !important; }

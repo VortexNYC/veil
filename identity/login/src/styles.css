@@ -1,4 +1,6 @@
-/* Veil sign-in surface — matches the vault's embedded card. */
+/* Veil sign-in surface — Kumo dark, shared tokens with the vault's
+   embedded Elements card (apps/vault/src/styles.css). One radius scale:
+   0.75rem controls, 1rem cards. */
 .veil-login {
   min-height: 100dvh;
   display: flex;
@@ -8,129 +10,91 @@
   padding: 2rem;
   gap: 2rem;
   background:
-    radial-gradient(60rem 40rem at 50% -10%, rgb(99 102 241 / 0.10), transparent 60%),
-    #f8fafc;
+    radial-gradient(60rem 40rem at 50% -10%, rgb(59 130 246 / 0.08), transparent 60%),
+    #0e0e10;
+  color: #f4f4f5;
 }
 .veil-login .ory-elements {
   width: 100%;
   max-width: 28rem;
+  color: #f4f4f5;
+}
+.veil-login a { color: #60a5fa; }
+.veil-login .ory-elements a { color: #60a5fa !important; }
+.veil-login .ory-elements > div {
+  box-shadow: 0 20px 48px -12px rgb(0 0 0 / 0.6);
 }
 .veil-login .ory-elements [data-testid="ory/card"] {
-  gap: 1.75rem;
-  padding: 2.75rem;
+  gap: 1.5rem;
+  padding: 2.25rem;
   border-radius: 1rem;
-  border-color: rgb(15 23 42 / 0.08);
-  box-shadow:
-    0 0 0 1px rgb(15 23 42 / 0.04),
-    0 2px 4px rgb(15 23 42 / 0.05),
-    0 20px 48px -12px rgb(15 23 42 / 0.18);
+  background: #18181b;
+  border: 1px solid #27272a;
+  box-shadow: 0 20px 48px -12px rgb(0 0 0 / 0.6);
 }
-.veil-login .ory-elements {
-  --radius-forms: 0.5rem;
-  --radius-buttons: 0.5rem;
-  --radius-cards: 1rem;
-}
-.veil-login .ory-elements input {
-  background: rgb(248 250 252);
-}
-.veil-login .ory-elements input:focus-within,
-.veil-login .ory-elements input:focus {
-  background: #fff;
+.veil-login .ory-elements h1,
+.veil-login .ory-elements h2,
+.veil-login .ory-elements h3,
+.veil-login .ory-elements label,
+.veil-login .ory-elements p,
+.veil-login .ory-elements span {
+  color: #f4f4f5;
 }
 
-/* Settings onboarding — the "pair your second factor" step after signup. */
-.veil-settings {
-  width: 100%;
-  max-width: 28rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-.veil-settings .ory-elements {
-  max-width: none;
-}
 .veil-banner {
-  margin: 0;
-  padding: 0.875rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.625rem 0.875rem;
   border-radius: 0.75rem;
-  border: 1px solid rgb(99 102 241 / 0.25);
-  background: rgb(99 102 241 / 0.08);
-  color: #3730a3;
-  font-size: 0.875rem;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  font-size: 0.8125rem;
   line-height: 1.45;
 }
 .veil-banner-done {
-  border-color: rgb(16 185 129 / 0.35);
-  background: rgb(16 185 129 / 0.1);
-  color: #065f46;
-}
-.veil-settings-continue {
-  margin: 0;
-  text-align: center;
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.10);
+  color: #4ade80;
 }
 .veil-continue {
   display: inline-block;
-  padding: 0.625rem 1.25rem;
-  border-radius: 0.5rem;
-  background: #4f46e5;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background: #3b82f6;
   color: #fff;
+  font-size: 0.8125rem;
   font-weight: 600;
-  font-size: 0.9rem;
-  text-decoration: none;
+  border: none;
+  cursor: pointer;
 }
+.veil-continue:hover { background: #2563eb; }
 
-/* Elements is a light theme — pin the document so the OS never auto-darkens it. */
-:root {
-  color-scheme: light;
-}
+:root { color-scheme: dark }
 
-/* Kumo dark onto Ory Elements — consistent radii + readable contrast.
-   Overrides the default light/white surfaces so auth screens match the
-   vault's zinc/blue design system. */
-.ory-elements {
-  --ory-color-background: #0e0e10;
-  --ory-color-foreground: #f4f4f5;
-  --ory-color-muted: #a1a1aa;
-  --ory-color-card: #18181b;
-  --ory-color-input-background: #18181b;
-  --ory-color-input-border: #27272a;
-  --ory-color-input-foreground: #f4f4f5;
-  --ory-color-button-primary-background: #3b82f6;
-  --ory-color-button-primary-foreground: #ffffff;
-  --ory-color-button-secondary-border: #27272a;
-  --ory-color-link: #60a5fa;
-  --ory-color-danger: #f87171;
-  --ory-color-success: #4ade80;
-  --ory-radius-card: 12px;
-  --ory-radius-input: 12px;
-  --ory-radius-button: 12px;
-}
-.ory-elements input,
-.ory-elements select,
-.ory-elements textarea {
-  border-radius: 12px !important;
+/* Dark tokens onto Elements — every control, one radius + palette. */
+.veil-login .ory-elements input,
+.veil-login .ory-elements select,
+.veil-login .ory-elements textarea {
+  border-radius: 0.75rem !important;
   border: 1px solid #27272a !important;
-  background: #18181b !important;
+  background: #0e0e10 !important;
   color: #f4f4f5 !important;
 }
-.ory-elements input::placeholder { color: #71717a !important; }
-.ory-elements input:focus-within,
-.ory-elements input:focus {
+.veil-login .ory-elements input::placeholder { color: #71717a !important; }
+.veil-login .ory-elements input:focus-within,
+.veil-login .ory-elements input:focus {
   border-color: #3b82f6 !important;
   outline: 2px solid rgba(59, 130, 246, 0.35) !important;
   outline-offset: 0px !important;
 }
-.ory-elements button[type="submit"],
-.ory-elements [data-testid*="submit"] {
-  border-radius: 12px !important;
+.veil-login .ory-elements button {
+  border-radius: 0.75rem !important;
+}
+.veil-login .ory-elements button[type="submit"],
+.veil-login .ory-elements [data-testid*="submit"] {
   background: #3b82f6 !important;
   color: #ffffff !important;
   font-weight: 600 !important;
 }
-.ory-elements button:hover { opacity: 0.88 !important; }
-.ory-elements a { color: #60a5fa !important; }
-.ory-elements [data-testid="ory/card"] {
-  border-radius: 16px !important;
-  background: #18181b !important;
-  border: 1px solid #27272a !important;
-}
+.veil-login .ory-elements button:hover { opacity: 0.88 !important; }

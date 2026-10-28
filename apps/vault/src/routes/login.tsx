@@ -108,12 +108,12 @@ export const Route = createFileRoute("/login")({
     return new Promise<never>(() => {})
   },
   component: () => {
-    // The Elements card is light-theme only — pin the document scheme while
+    // The card is dark-themed — pin the document scheme while
     // this route is mounted so the OS can't auto-darken the form controls.
     useEffect(() => {
       const root = document.documentElement
       const prev = root.style.colorScheme
-      root.style.colorScheme = "light"
+      root.style.colorScheme = "dark"
       return () => {
         root.style.colorScheme = prev
       }
