@@ -46,11 +46,6 @@ export default function Layout() {
             headerLargeTitle: true,
             headerRight: () => (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
-                <Pressable onPress={() => router.push("/escrow")} hitSlop={12}>
-                  <Text style={{ color: "#f4f4f5", fontSize: 16, fontWeight: "600" }}>
-                    Escrow
-                  </Text>
-                </Pressable>
                 <Pressable onPress={() => router.push("/requests")} hitSlop={12}>
                   <Text style={{ color: "#f4f4f5", fontSize: 16, fontWeight: "600" }}>
                     Requests
@@ -65,7 +60,17 @@ export default function Layout() {
         />
         <Stack.Screen name="sign-in" options={{ title: "Sign in", headerShown: false }} />
         <Stack.Screen name="item/[id]" options={{ title: "" }} />
-        <Stack.Screen name="requests" options={{ title: "Requests" }} />
+        <Stack.Screen
+          name="requests"
+          options={{
+            title: "Requests",
+            headerRight: () => (
+              <Pressable onPress={() => router.push("/escrow")} hitSlop={12}>
+                <Text style={{ color: "#f4f4f5", fontSize: 16, fontWeight: "600" }}>Escrow</Text>
+              </Pressable>
+            ),
+          }}
+        />
         <Stack.Screen name="escrow" options={{ title: "KEK Escrow" }} />
         <Stack.Screen name="add" options={{ title: "Add password", presentation: "modal" }} />
       </Stack>
