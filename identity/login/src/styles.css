@@ -1,6 +1,5 @@
-/* Veil sign-in surface — Kumo dark, shared tokens with the vault's
-   embedded Elements card (apps/vault/src/styles.css). One radius scale:
-   0.75rem controls, 1rem cards. */
+/* Veil sign-in surface — Kumo dark. The Elements palette comes from the
+   shared override at the bottom; layout + Veil chrome live here. */
 .veil-login {
   min-height: 100dvh;
   display: flex;
@@ -17,31 +16,12 @@
 .veil-login .ory-elements {
   width: 100%;
   max-width: 28rem;
-  color: #f4f4f5;
 }
-.veil-login a { color: #60a5fa; }
-.veil-login .ory-elements a { color: #60a5fa !important; }
-.veil-login .ory-elements > div {
-  box-shadow: 0 20px 48px -12px rgb(0 0 0 / 0.6);
-}
-.veil-login .ory-elements [data-testid="ory/card"] {
-  gap: 1.5rem;
-  padding: 2.25rem;
-  border-radius: 1rem;
-  background: #18181b;
-  border: 1px solid #27272a;
-  box-shadow: 0 20px 48px -12px rgb(0 0 0 / 0.6);
-}
-.veil-login .ory-elements h1,
-.veil-login .ory-elements h2,
-.veil-login .ory-elements h3,
-.veil-login .ory-elements label,
-.veil-login .ory-elements p,
-.veil-login .ory-elements span {
-  color: #f4f4f5;
-}
+.veil-login a:not(.veil-continue) { color: #60a5fa; }
 
 .veil-banner {
+  width: 100%;
+  max-width: 28rem;
   margin: 0 0 1rem;
   padding: 0.625rem 0.875rem;
   border-radius: 0.75rem;
@@ -62,39 +42,63 @@
   padding: 0.5rem 1rem;
   border-radius: 0.75rem;
   background: #3b82f6;
-  color: #fff;
+  color: #ffffff;
   font-size: 0.8125rem;
   font-weight: 600;
-  border: none;
+  text-decoration: none;
   cursor: pointer;
 }
 .veil-continue:hover { background: #2563eb; }
 
-:root { color-scheme: dark }
+.veil-settings {
+  width: 100%;
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.veil-settings-continue {
+  display: inline-block;
+  margin-top: 1rem;
+  color: #60a5fa;
+  font-size: 0.875rem;
+}
 
-/* Dark tokens onto Elements — every control, one radius + palette. */
-.veil-login .ory-elements input,
-.veil-login .ory-elements select,
-.veil-login .ory-elements textarea {
-  border-radius: 0.75rem !important;
-  border: 1px solid #27272a !important;
-  background: #0e0e10 !important;
-  color: #f4f4f5 !important;
+:root { color-scheme: dark }
+/* Shared Ory Elements dark theme — Kumo tokens onto the palette vars the
+   Elements utilities actually consume (dist/theme/default/index.css).
+   ui-* scale inverted: ui-900 = primary text, ui-white = primary surface.
+   Radius: 0.75rem controls, 1rem cards — one scale everywhere. */
+.ory-elements {
+  --ui-white: #18181b;
+  --ui-50: #1f1f23;
+  --ui-100: #232327;
+  --ui-200: #27272a;
+  --ui-300: #3f3f46;
+  --ui-400: #52525b;
+  --ui-500: #71717a;
+  --ui-600: #a1a1aa;
+  --ui-700: #d4d4d8;
+  --ui-800: #e4e4e7;
+  --ui-900: #f4f4f5;
+  --ui-danger: #f87171;
+  --ui-success: #4ade80;
+  --ui-warning: #facc15;
+  --brand-50: rgba(59, 130, 246, 0.12);
+  --brand-100: rgba(59, 130, 246, 0.20);
+  --brand-200: #93c5fd;
+  --brand-300: #93c5fd;
+  --brand-400: #60a5fa;
+  --brand-500: #3b82f6;
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --brand-800: #1e40af;
+  --brand-900: #1e3a8a;
+  --brand-950: #bfdbfe;
+  --interface-foreground-brand-on-primary: #ffffff;
+  --input-background-default: #0e0e10;
+  --radius-forms: 0.75rem;
+  --radius-buttons: 0.75rem;
+  --radius-cards: 1rem;
+  --radius-general: 0.75rem;
 }
-.veil-login .ory-elements input::placeholder { color: #71717a !important; }
-.veil-login .ory-elements input:focus-within,
-.veil-login .ory-elements input:focus {
-  border-color: #3b82f6 !important;
-  outline: 2px solid rgba(59, 130, 246, 0.35) !important;
-  outline-offset: 0px !important;
-}
-.veil-login .ory-elements button {
-  border-radius: 0.75rem !important;
-}
-.veil-login .ory-elements button[type="submit"],
-.veil-login .ory-elements [data-testid*="submit"] {
-  background: #3b82f6 !important;
-  color: #ffffff !important;
-  font-weight: 600 !important;
-}
-.veil-login .ory-elements button:hover { opacity: 0.88 !important; }
