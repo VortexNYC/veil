@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@ory/client-fetch": "1.22.22",
-    "@ory/elements-react": "1.2.1",
     "@tanstack/react-router": "1.132.47",
     "react": "19.2.7",
     "react-dom": "19.2.7"
