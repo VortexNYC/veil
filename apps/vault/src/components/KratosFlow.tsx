@@ -15,12 +15,31 @@ interface FlowLike {
   }
 }
 
+const inputStyle = {
+  background: "var(--veil-field)",
+  borderColor: "var(--veil-field-border)",
+  borderRadius: "var(--veil-radius-field)",
+} as const;
+const primaryStyle = { background: "var(--veil-primary)", borderRadius: "var(--veil-radius-field)" } as const;
+const secondaryStyle = {
+  background: "var(--veil-card)",
+  borderColor: "var(--veil-border)",
+  borderRadius: "var(--veil-radius-field)",
+} as const;
+const dangerStyle = {
+  background: "var(--veil-danger-bg)",
+  borderColor: "var(--veil-danger-border)",
+  color: "var(--veil-danger-text)",
+  borderRadius: "var(--veil-radius-field)",
+} as const;
+const linkStyle = { color: "var(--veil-link)" } as const;
+
 const inputCls =
-  "w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-[15px] text-zinc-100 placeholder-zinc-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+  "w-full rounded-xl border border-zinc-600 px-4 py-2.5 text-[0.9375rem] text-zinc-100 placeholder-zinc-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
 const btnCls =
-  "w-full rounded-xl bg-blue-600 px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
+  "w-full px-4 py-2.5 text-[0.9375rem] font-semibold text-white transition disabled:opacity-50"
 const btnSecondary =
-  "w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-[15px] font-semibold text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-50"
+  "w-full border px-4 py-2.5 text-[0.9375rem] font-semibold text-[var(--veil-text)] transition hover:bg-zinc-700 disabled:opacity-50"
 const labelCls = "text-sm font-medium text-zinc-300"
 const linkCls = "text-sm text-blue-400 hover:text-blue-300"
 
@@ -108,7 +127,7 @@ function Field({ n }: { n: UiNodeInput }) {
       <div className="flex items-center justify-between">
         <label className={labelCls} htmlFor={`veil-${nm}`}>{LABELS[nm] ?? nm}</label>
         {type === "password" ? (
-          <button type="button" className={linkCls} onClick={() => setShow((s) => !s)}>
+          <button type="button" className={linkCls} style={linkStyle} onClick={() => setShow((s) => !s)}>
             {show ? "Hide" : "Show"}
           </button>
         ) : null}
@@ -116,6 +135,7 @@ function Field({ n }: { n: UiNodeInput }) {
       <input
         id={`veil-${nm}`}
         className={inputCls}
+        style={inputStyle}
         name={nm}
         type={realType}
         autoComplete={AUTOCOMPLETE[nm]}
@@ -138,7 +158,7 @@ function Control({ n }: { n: UiNodeInput }) {
       type="submit"
       name={name(n) || "method"}
       value={value(n)}
-      className={primary ? btnCls : btnSecondary}
+      className={primary ? btnCls : btnSecondary} style={primary ? primaryStyle : secondaryStyle}
     >
       {label}
     </button>
@@ -194,19 +214,19 @@ export default function KratosFlow({
   // One <form> per group section so each method's submit posts its own
   // context — Elements does the same per-section.
   return (
-    <div className="min-h-[100dvh] bg-[#0e0e10] px-4 py-10 flex items-start justify-center">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-[#18181b] p-6 shadow-xl">
+    <div className="veil-flow min-h-[100dvh] px-4 py-10 flex items-start justify-center" style={{ background: "var(--veil-bg)" }}>
+      <div className="w-full border shadow-xl" style={{ maxWidth: "var(--veil-w-card)", borderRadius: "var(--veil-radius-card)", borderColor: "var(--veil-border)", background: "var(--veil-card)", padding: "var(--veil-pad-card)" }}>
         <h1 className="text-xl font-semibold text-zinc-100">Veil</h1>
         <h2 className="mt-4 text-lg font-semibold text-zinc-100">{title}</h2>
         {subtitle ? <p className="mt-1 text-sm text-zinc-400">{subtitle}</p> : null}
 
         {bannerMsgs.length ? (
-          <div className="mt-4 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          <div className="mt-4 border px-4 py-3 text-sm" style={dangerStyle}>
             {bannerMsgs.join(" ")}
           </div>
         ) : null}
         {err ? (
-          <div className="mt-4 rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          <div className="mt-4 border px-4 py-3 text-sm" style={dangerStyle}>
             {err}
           </div>
         ) : null}
