@@ -91,8 +91,10 @@ sessions are server-issued. Filed as its own ticket; not ops custody.
 | 2026-09-30 | env snapshot | founder | `~/.config/vortex/veil-env-escrow.json` + 1P `Veil prod env (escrow)` | VEIL-73 drill — SECRETS_SYSTEM truncated entry found & fixed |
 | 2026-10-01 | emergency kit | founder | `~/.config/vortex/veil-kek-emergency-kit.txt` → 2 physical copies | pending print |
 | 2026-10-27 | share 1-of-3 (`7721eda1`) | founder | local sealed parcel | plaintext shares deleted; drill PASS |
-| 2026-10-27 | share 2-of-3 (`7721eda1`) | 1Password Agents vault | `Veil KEK Escrow Parcel 2` item | independent vendor domain |
-| 2026-10-27 | share 3-of-3 (`7721eda1`) | iCloud Drive | `kek-escrow-7721eda1/` bundle (parcel+key) | independent device-sync domain; Mac Mini pending (Tailscale offline) |
+| pending | share 2-of-3 (`7721eda1`) | Mac Mini (`mini` / Tailscale) | sealed parcel to custodian key on device | blocked — device offline (Tailscale unreachable 2026-10-27) |
+| 2026-10-27 | share 3-of-3 (`7721eda1`) | iCloud Drive (iPhone/synced devices) | `kek-escrow-7721eda1/` bundle (parcel+key) | independent device-sync domain |
+
+1Password is not a KEK custodian — parcel items there were removed 2026-10-27.
 
 Note the escrow now covers more than the KEK: `veil-env-escrow.json` is a
 full per-service var snapshot (235 vars, 11 services) including kratos
