@@ -46,6 +46,7 @@ origin)
 	probe kratos "https://accounts.veil.nyc/health/ready" 200
 	probe consent "https://consent.veil.nyc/" 400
 	probe mail "https://mail.veil.nyc/" 405
+	probe keys "https://keys.veil.nyc/health" 200 "veil-key-service"
 	;;
 esac
 

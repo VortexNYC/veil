@@ -1,4 +1,5 @@
-/* Veil sign-in surface — matches the vault's embedded card. */
+/* Veil sign-in surface — Kumo dark. The Elements palette comes from the
+   shared override at the bottom; layout + Veil chrome live here. */
 .veil-login {
   min-height: 100dvh;
   display: flex;
@@ -8,129 +9,96 @@
   padding: 2rem;
   gap: 2rem;
   background:
-    radial-gradient(60rem 40rem at 50% -10%, rgb(99 102 241 / 0.10), transparent 60%),
-    #f8fafc;
+    radial-gradient(60rem 40rem at 50% -10%, rgb(59 130 246 / 0.08), transparent 60%),
+    #0e0e10;
+  color: #f4f4f5;
 }
 .veil-login .ory-elements {
   width: 100%;
   max-width: 28rem;
 }
-.veil-login .ory-elements [data-testid="ory/card"] {
-  gap: 1.75rem;
-  padding: 2.75rem;
-  border-radius: 1rem;
-  border-color: rgb(15 23 42 / 0.08);
-  box-shadow:
-    0 0 0 1px rgb(15 23 42 / 0.04),
-    0 2px 4px rgb(15 23 42 / 0.05),
-    0 20px 48px -12px rgb(15 23 42 / 0.18);
-}
-.veil-login .ory-elements {
-  --radius-forms: 0.5rem;
-  --radius-buttons: 0.5rem;
-  --radius-cards: 1rem;
-}
-.veil-login .ory-elements input {
-  background: rgb(248 250 252);
-}
-.veil-login .ory-elements input:focus-within,
-.veil-login .ory-elements input:focus {
-  background: #fff;
-}
+.veil-login a:not(.veil-continue) { color: #60a5fa; }
 
-/* Settings onboarding — the "pair your second factor" step after signup. */
+.veil-banner {
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 0 1rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+.veil-banner-done {
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.10);
+  color: #4ade80;
+}
+.veil-continue {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.veil-continue:hover { background: #2563eb; }
+
 .veil-settings {
   width: 100%;
   max-width: 28rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-}
-.veil-settings .ory-elements {
-  max-width: none;
-}
-.veil-banner {
-  margin: 0;
-  padding: 0.875rem 1rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgb(99 102 241 / 0.25);
-  background: rgb(99 102 241 / 0.08);
-  color: #3730a3;
-  font-size: 0.875rem;
-  line-height: 1.45;
-}
-.veil-banner-done {
-  border-color: rgb(16 185 129 / 0.35);
-  background: rgb(16 185 129 / 0.1);
-  color: #065f46;
+  gap: 1rem;
 }
 .veil-settings-continue {
-  margin: 0;
-  text-align: center;
-}
-.veil-continue {
   display: inline-block;
-  padding: 0.625rem 1.25rem;
-  border-radius: 0.5rem;
-  background: #4f46e5;
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.9rem;
-  text-decoration: none;
+  margin-top: 1rem;
+  color: #60a5fa;
+  font-size: 0.875rem;
 }
 
-/* Elements is a light theme — pin the document so the OS never auto-darkens it. */
-:root {
-  color-scheme: light;
-}
-
-/* Kumo dark onto Ory Elements — consistent radii + readable contrast.
-   Overrides the default light/white surfaces so auth screens match the
-   vault's zinc/blue design system. */
+:root { color-scheme: dark }
+/* Shared Ory Elements dark theme — Kumo tokens onto the palette vars the
+   Elements utilities actually consume (dist/theme/default/index.css).
+   ui-* scale inverted: ui-900 = primary text, ui-white = primary surface.
+   Radius: 0.75rem controls, 1rem cards — one scale everywhere. */
 .ory-elements {
-  --ory-color-background: #0e0e10;
-  --ory-color-foreground: #f4f4f5;
-  --ory-color-muted: #a1a1aa;
-  --ory-color-card: #18181b;
-  --ory-color-input-background: #18181b;
-  --ory-color-input-border: #27272a;
-  --ory-color-input-foreground: #f4f4f5;
-  --ory-color-button-primary-background: #3b82f6;
-  --ory-color-button-primary-foreground: #ffffff;
-  --ory-color-button-secondary-border: #27272a;
-  --ory-color-link: #60a5fa;
-  --ory-color-danger: #f87171;
-  --ory-color-success: #4ade80;
-  --ory-radius-card: 12px;
-  --ory-radius-input: 12px;
-  --ory-radius-button: 12px;
-}
-.ory-elements input,
-.ory-elements select,
-.ory-elements textarea {
-  border-radius: 12px !important;
-  border: 1px solid #27272a !important;
-  background: #18181b !important;
-  color: #f4f4f5 !important;
-}
-.ory-elements input::placeholder { color: #71717a !important; }
-.ory-elements input:focus-within,
-.ory-elements input:focus {
-  border-color: #3b82f6 !important;
-  outline: 2px solid rgba(59, 130, 246, 0.35) !important;
-  outline-offset: 0px !important;
-}
-.ory-elements button[type="submit"],
-.ory-elements [data-testid*="submit"] {
-  border-radius: 12px !important;
-  background: #3b82f6 !important;
-  color: #ffffff !important;
-  font-weight: 600 !important;
-}
-.ory-elements button:hover { opacity: 0.88 !important; }
-.ory-elements a { color: #60a5fa !important; }
-.ory-elements [data-testid="ory/card"] {
-  border-radius: 16px !important;
-  background: #18181b !important;
-  border: 1px solid #27272a !important;
+  --ui-white: #18181b;
+  --ui-50: #1f1f23;
+  --ui-100: #232327;
+  --ui-200: #27272a;
+  --ui-300: #3f3f46;
+  --ui-400: #52525b;
+  --ui-500: #71717a;
+  --ui-600: #a1a1aa;
+  --ui-700: #d4d4d8;
+  --ui-800: #e4e4e7;
+  --ui-900: #f4f4f5;
+  --ui-danger: #f87171;
+  --ui-success: #4ade80;
+  --ui-warning: #facc15;
+  --brand-50: rgba(59, 130, 246, 0.12);
+  --brand-100: rgba(59, 130, 246, 0.20);
+  --brand-200: #93c5fd;
+  --brand-300: #93c5fd;
+  --brand-400: #60a5fa;
+  --brand-500: #3b82f6;
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --brand-800: #1e40af;
+  --brand-900: #1e3a8a;
+  --brand-950: #bfdbfe;
+  --interface-foreground-brand-on-primary: #ffffff;
+  --input-background-default: #0e0e10;
+  --radius-forms: 0.75rem;
+  --radius-buttons: 0.75rem;
+  --radius-cards: 1rem;
+  --radius-general: 0.75rem;
 }

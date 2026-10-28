@@ -33,6 +33,7 @@ type Postgres struct {
 	auditPool *pgxpool.Pool
 	kekMu     sync.RWMutex
 	kek       []byte
+	kekp      kekProvider
 	km        *keyManager
 	sqlc      *sqlc.Queries
 
@@ -109,6 +110,7 @@ func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
 		pool:        pool,
 		auditPool:   auditPool,
 		kek:         append([]byte(nil), kek...),
+		kekp:        kekFromEnv(kek),
 		sqlc:        sqlc.New(pool),
 		auditStop:   make(chan struct{}),
 		reqBus:      newRequestBus(),
@@ -185,7 +187,7 @@ func (p *Postgres) resolveOrgKey(ctx context.Context, orgID string) ([]byte, err
 	}
 	// AAD binds the wrap to this org: a row copied to another org's row does
 	// not open even under the same KEK.
-	return crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	return p.openKey(ctx, row.Wrapped, []byte(orgID))
 }
 
 // EnsureOrgKey seals master under the KEK and inserts the org_keys row if the
@@ -205,7 +207,7 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	// held while acquiring it.
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
-	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	wrapped, err := p.sealKey(ctx, master, []byte(orgID))
 	if err != nil {
 		return err
 	}
@@ -232,7 +234,7 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
-	existing, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
+	existing, err := p.openKey(ctx, row.Wrapped, []byte(orgID))
 	if err != nil {
 		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
@@ -266,6 +268,42 @@ var ErrRotationConflict = errors.New("store: concurrent key rotation")
 // guard makes concurrent rotations fail one side instead of interleaving
 // rewraps under different masters.
 func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
+	// Remote-KEK discipline: unwrap + re-seal happen OUTSIDE the row-locked
+	// transaction — a keys.veil.nyc round trip inside the lock would hold a
+	// DB lock for a network call (statement_timeout is 5s). The tx re-reads
+	// the row FOR UPDATE and proves it is the same blob we unwrapped before
+	// writing; a moved row is a rotation conflict, retried bounded.
+	for attempt := 0; attempt < 3; attempt++ {
+		err := p.rotateOrgKey(ctx, orgID)
+		if errors.Is(err, ErrRotationConflict) {
+			continue
+		}
+		return err
+	}
+	return ErrRotationConflict
+}
+
+func (p *Postgres) rotateOrgKey(ctx context.Context, orgID string) error {
+	// Phase 1 (no locks): read + unwrap + mint + re-seal.
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	oldMaster, err := p.openKey(ctx, preRow.Wrapped, []byte(orgID))
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	newMaster, err := crypto.NewKey()
+	if err != nil {
+		return err
+	}
+	wrapped, err := p.sealKey(ctx, newMaster, []byte(orgID))
+	if err != nil {
+		return err
+	}
 	// kekMu.RLock outermost — see RotateKEK for the lock-ordering rule.
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
@@ -296,13 +334,11 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 	if err != nil {
 		return err
 	}
-	oldMaster, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	if err != nil {
-		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
-	}
-	newMaster, err := crypto.NewKey()
-	if err != nil {
-		return err
+	// Phase 1 sealed against the pre-read blob; if the committed row moved
+	// (concurrent rotation/reseed), bail and retry — never unwrap a row
+	// that is not the one the new wrap was planned against.
+	if !hmac.Equal(row.Wrapped, preRow.Wrapped) || row.KeyVersion != preRow.KeyVersion {
+		return ErrRotationConflict
 	}
 	owners, err := q.ListOwnerKeysForOrg(ctx, orgID)
 	if err != nil {
@@ -327,10 +363,6 @@ func (p *Postgres) RotateOrgKey(ctx context.Context, orgID string) error {
 		if n != 1 {
 			return fmt.Errorf("store: owner_keys row %s/%s vanished mid-rotation", ow.OwnerKind, ow.OwnerID)
 		}
-	}
-	wrapped, err := crypto.SealAAD(p.kek, newMaster, []byte(orgID))
-	if err != nil {
-		return err
 	}
 	n, err := q.BumpOrgKey(ctx, sqlc.BumpOrgKeyParams{
 		OrgID: orgID, Wrapped: wrapped, RotatedAt: time.Now().UTC(), KeyVersion: row.KeyVersion,
@@ -386,8 +418,27 @@ func (p *Postgres) ReseedOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
-	// RLock spans seal + update — a KEK rotation cannot interleave between
-	// them and strand the re-seeded row under a retired KEK.
+	// Remote-KEK discipline: the liveness probe and re-seal happen before
+	// the row-locked transaction — no network inside a DB lock.
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	alive := false
+	if existing, openErr := p.openKey(ctx, preRow.Wrapped, []byte(orgID)); openErr == nil {
+		if hmac.Equal(existing, master) {
+			return nil
+		}
+		return ErrOrgKeyMismatch
+	}
+	wrapped, err := p.sealKey(ctx, master, []byte(orgID))
+	if err != nil {
+		return err
+	}
+	_ = alive
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
 	tx, err := p.pool.Begin(ctx)
@@ -411,19 +462,10 @@ func (p *Postgres) ReseedOrgKey(ctx context.Context, orgID string, master []byte
 	if err != nil {
 		return err
 	}
-	// Refuse to overwrite a master that is alive under this KEK: reseed
-	// exists for rows sealed under a LOST KEK. An identical re-seed is a
-	// no-op; a different live master means someone rotated — regressing
-	// would strand every rewrapped DEK.
-	if existing, openErr := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID)); openErr == nil {
-		if hmac.Equal(existing, master) {
-			return tx.Commit(ctx)
-		}
-		return ErrOrgKeyMismatch
-	}
-	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
-	if err != nil {
-		return err
+	// The row must still be the one we probed — a concurrent write between
+	// phase-1 unwrap and this row lock would invalidate the probe.
+	if !hmac.Equal(row.Wrapped, preRow.Wrapped) {
+		return fmt.Errorf("store: org_keys row for %s moved during reseed — retry", orgID)
 	}
 	n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
 	if err != nil {
@@ -458,6 +500,18 @@ func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protoc
 	if o.Kind == "" || o.ID == "" {
 		return fmt.Errorf("store: missing owner")
 	}
+	// Remote-KEK discipline: read + unwrap before the row-locked tx.
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	preMaster, err := p.openKey(ctx, preRow.Wrapped, []byte(orgID))
+	if err != nil {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
 	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
@@ -474,10 +528,10 @@ func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protoc
 	if err != nil {
 		return err
 	}
-	master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	if err != nil {
-		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	if !hmac.Equal(row.Wrapped, preRow.Wrapped) {
+		return fmt.Errorf("store: org_keys row for %s moved during wrap store — retry", orgID)
 	}
+	master := preMaster
 	wrapped, err := crypto.SealAAD(recoveryKey, master, recoveryAAD(orgID, o))
 	if err != nil {
 		return err
@@ -549,6 +603,18 @@ func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.O
 	if len(recoveryKey) != crypto.KeySize {
 		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
 	}
+	// Remote-KEK discipline: liveness probe on the org row happens before
+	// the row-locked transaction — no network inside a DB lock.
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return ErrOrgKeyMissing
+	}
+	if err != nil {
+		return err
+	}
+	// Liveness probe on the pre-read blob — the tx verifies the row is
+	// still this exact blob before acting on the result.
+	liveMaster, liveErr := p.openKey(ctx, preRow.Wrapped, []byte(orgID))
 	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
@@ -573,6 +639,9 @@ func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.O
 	}
 	if err != nil {
 		return err
+	}
+	if !hmac.Equal(orgRow.Wrapped, preRow.Wrapped) {
+		return fmt.Errorf("store: org_keys row for %s moved during recovery — retry", orgID)
 	}
 	row, err := q.RecoveryWrap(ctx, sqlc.RecoveryWrapParams{
 		OrgID: orgID, OwnerKind: string(o.Kind), OwnerID: o.ID,
@@ -614,13 +683,13 @@ func (p *Postgres) RecoverOrgKey(ctx context.Context, orgID string, o protocol.O
 	// this KEK to the same master the org is healthy — no-op, wrap unspent.
 	// A different live master means a rotation committed after the wrap was
 	// minted; regressing would strand the rewrapped DEKs.
-	if existing, openErr := crypto.OpenAAD(p.kek, orgRow.Wrapped, []byte(orgID)); openErr == nil {
-		if hmac.Equal(existing, master) {
+	if liveErr == nil {
+		if hmac.Equal(liveMaster, master) {
 			return tx.Commit(ctx)
 		}
 		return ErrOrgKeyMismatch
 	}
-	wrapped, err := crypto.SealAAD(p.kek, master, []byte(orgID))
+	wrapped, err := p.sealKey(ctx, master, []byte(orgID))
 	if err != nil {
 		return err
 	}
@@ -698,6 +767,18 @@ func (p *Postgres) EnrollOrgKeyShare(ctx context.Context, orgID, humanID string,
 	if len(pubkey) != device.PublicSize {
 		return protocol.OrgKeyShare{}, false, fmt.Errorf("store: recovery pubkey must be %d bytes", device.PublicSize)
 	}
+	// Remote-KEK discipline: read + unwrap before the row-locked tx.
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return protocol.OrgKeyShare{}, false, ErrOrgKeyMissing
+	}
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, err
+	}
+	master, err := p.openKey(ctx, preRow.Wrapped, []byte(orgID))
+	if err != nil {
+		return protocol.OrgKeyShare{}, false, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
 	// kekMu.RLock outermost — before any DB lock (see RotateKEK).
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
@@ -714,9 +795,8 @@ func (p *Postgres) EnrollOrgKeyShare(ctx context.Context, orgID, humanID string,
 	if err != nil {
 		return protocol.OrgKeyShare{}, false, err
 	}
-	master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(orgID))
-	if err != nil {
-		return protocol.OrgKeyShare{}, false, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	if !hmac.Equal(row.Wrapped, preRow.Wrapped) {
+		return protocol.OrgKeyShare{}, false, fmt.Errorf("store: org_keys row for %s moved during share enroll — retry", orgID)
 	}
 	wrapped, err := device.Offer(master, pubkey)
 	if err != nil {
@@ -840,6 +920,28 @@ func (p *Postgres) ListRecoveryRequests(ctx context.Context, orgID string, statu
 // pubkey, and the request resolves completed — one transaction, one
 // recovery_completed audit row.
 func (p *Postgres) CompleteRecovery(ctx context.Context, orgID, id, confirmerID string, proofHMAC []byte) (protocol.RecoveryRequest, error) {
+	// Remote-KEK discipline: read + unwrap + mint + re-seal before the
+	// row-locked transaction — no network inside a DB lock.
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return protocol.RecoveryRequest{}, ErrOrgKeyMissing
+	}
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	oldMaster, err := p.openKey(ctx, preRow.Wrapped, []byte(orgID))
+	if err != nil {
+		return protocol.RecoveryRequest{}, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	newMaster, err := crypto.NewKey()
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+	wrapped, err := p.sealKey(ctx, newMaster, []byte(orgID))
+	if err != nil {
+		return protocol.RecoveryRequest{}, err
+	}
+
 	// kekMu.RLock outermost — the docs/key-rotation.md lock order.
 	p.kekMu.RLock()
 	defer p.kekMu.RUnlock()
@@ -859,6 +961,9 @@ func (p *Postgres) CompleteRecovery(ctx context.Context, orgID, id, confirmerID 
 	if err != nil {
 		return protocol.RecoveryRequest{}, err
 	}
+	if !hmac.Equal(orgRow.Wrapped, preRow.Wrapped) {
+		return protocol.RecoveryRequest{}, fmt.Errorf("store: org_keys row for %s moved during recovery — retry", orgID)
+	}
 	req, err := q.RecoveryRequestForUpdate(ctx, id)
 	if err == pgx.ErrNoRows {
 		return protocol.RecoveryRequest{}, ErrNotFound
@@ -872,10 +977,6 @@ func (p *Postgres) CompleteRecovery(ctx context.Context, orgID, id, confirmerID 
 	if req.Status != string(protocol.RecoveryOpen) {
 		return protocol.RecoveryRequest{}, ErrRequestResolved
 	}
-	oldMaster, err := crypto.OpenAAD(p.kek, orgRow.Wrapped, []byte(orgID))
-	if err != nil {
-		return protocol.RecoveryRequest{}, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
-	}
 	now := time.Now().UTC()
 	if !now.Before(req.ExpiresAt) {
 		return protocol.RecoveryRequest{}, ErrRecoveryExpired
@@ -888,10 +989,6 @@ func (p *Postgres) CompleteRecovery(ctx context.Context, orgID, id, confirmerID 
 		if len(proofHMAC) == 0 || !hmac.Equal(mac.Sum(nil), proofHMAC) {
 			return protocol.RecoveryRequest{}, ErrRecoveryLocked
 		}
-	}
-	newMaster, err := crypto.NewKey()
-	if err != nil {
-		return protocol.RecoveryRequest{}, err
 	}
 	owners, err := q.ListOwnerKeysForOrg(ctx, orgID)
 	if err != nil {
@@ -917,10 +1014,7 @@ func (p *Postgres) CompleteRecovery(ctx context.Context, orgID, id, confirmerID 
 			return protocol.RecoveryRequest{}, fmt.Errorf("store: owner_keys row %s/%s vanished mid-recovery", ow.OwnerKind, ow.OwnerID)
 		}
 	}
-	wrapped, err := crypto.SealAAD(p.kek, newMaster, []byte(orgID))
-	if err != nil {
-		return protocol.RecoveryRequest{}, err
-	}
+
 	n, err := q.BumpOrgKey(ctx, sqlc.BumpOrgKeyParams{
 		OrgID: orgID, Wrapped: wrapped, RotatedAt: now, KeyVersion: orgRow.KeyVersion,
 	})
@@ -1046,6 +1140,12 @@ func (p *Postgres) DenyRecovery(ctx context.Context, id, actorID string, status 
 // On commit this store adopts newKEK; every cached master is invalidated so
 // the next resolve re-unwraps under it.
 func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
+	if p.kekp.remote() {
+		// Remote mode never holds the next key locally — the service holds
+		// both keys for the window. Bind VEIL_KEK_NEXT on the Worker, call
+		// RotateKEKRemote, unbind after commit.
+		return fmt.Errorf("store: remote KEK — rotate via RotateKEKRemote (service-side dual-key window)")
+	}
 	if len(newKEK) != crypto.KeySize {
 		return fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
 	}
@@ -1077,7 +1177,7 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 		if row.CmkID.Valid {
 			continue
 		}
-		master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(row.OrgID))
+		master, err := p.openKey(ctx, row.Wrapped, []byte(row.OrgID))
 		if err != nil {
 			return fmt.Errorf("store: org_keys row for %s does not unwrap under the current KEK: %w", row.OrgID, err)
 		}
@@ -1766,3 +1866,94 @@ var (
 	_ Store       = (*Postgres)(nil)
 	_ ownerSource = (*Postgres)(nil)
 )
+
+// RotateKEKRemote is the remote-KEK rotation: the service holds BOTH keys
+// for the window (VEIL_KEK + VEIL_KEK_NEXT bound on the Worker), rewraps
+// ciphertext-only, and origin never holds the new key. Bind NEXT on the
+// service BEFORE calling; unbind it after commit.
+func (p *Postgres) RotateKEKRemote(ctx context.Context) error {
+	rk, ok := p.kekp.(*remoteKEK)
+	if !ok {
+		return fmt.Errorf("store: remote rotation requires VEIL_KEYSVC_* configured")
+	}
+	p.kekMu.Lock()
+	defer p.kekMu.Unlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	q := p.sqlc.WithTx(tx)
+	rows, err := q.ListOrgKeys(ctx)
+	if err != nil {
+		return err
+	}
+	var items [][2][]byte
+	var orgIDs []string
+	for _, row := range rows {
+		if row.CmkID.Valid {
+			continue
+		}
+		items = append(items, [2][]byte{[]byte(row.OrgID), row.Wrapped})
+		orgIDs = append(orgIDs, row.OrgID)
+	}
+	resealed, err := rk.rewrap(ctx, items)
+	if err != nil {
+		return err
+	}
+	for i, blob := range resealed {
+		if blob == nil {
+			return fmt.Errorf("store: key-service could not rewrap %s", orgIDs[i])
+		}
+		if n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgIDs[i], Wrapped: blob}); err != nil {
+			return err
+		} else if n != 1 {
+			return fmt.Errorf("store: org_keys row for %s vanished mid-rotation", orgIDs[i])
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	for _, id := range orgIDs {
+		p.km.InvalidateOrg(id)
+	}
+	return nil
+}
+
+// MigrateToKeyService re-seals every legacy local-AEAD org_keys row to a
+// remote 0x02 envelope. One-shot cutover: run once with VEIL_KEYSVC_* set
+// and the local VEIL_KEK still present, then drop the env key.
+func (p *Postgres) MigrateToKeyService(ctx context.Context) error {
+	if !p.kekp.remote() {
+		return fmt.Errorf("store: VEIL_KEYSVC_URL/VEIL_KEYSVC_TOKEN required for migration")
+	}
+	rows, err := p.sqlc.ListOrgKeys(ctx)
+	if err != nil {
+		return err
+	}
+	migrated := 0
+	for _, row := range rows {
+		if row.CmkID.Valid || (len(row.Wrapped) > 0 && row.Wrapped[0] == remoteBlobVersion) {
+			continue
+		}
+		master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(row.OrgID))
+		if err != nil {
+			return fmt.Errorf("store: %s does not unwrap under local KEK: %w", row.OrgID, err)
+		}
+		wrapped, err := p.kekp.seal(ctx, master, []byte(row.OrgID))
+		if err != nil {
+			return err
+		}
+		if n, err := p.sqlc.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: row.OrgID, Wrapped: wrapped}); err != nil {
+			return err
+		} else if n != 1 {
+			return fmt.Errorf("store: org_keys row for %s vanished mid-migration", row.OrgID)
+		}
+		p.km.InvalidateOrg(row.OrgID)
+		migrated++
+	}
+	return nil
+}
