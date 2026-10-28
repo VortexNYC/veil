@@ -143,3 +143,15 @@
 .veil-login .ory-elements input {
   border-radius: 0.75rem !important;
 }
+
+/* Input must read as a control: visible border + inset bg at all widths.
+   The tertiary helper links (Recover/Forgot) resolve too dark through the
+   token chain — paint them to link blue directly. */
+.veil-login .ory-elements input {
+  background: #1f1f23 !important;
+  border: 1px solid #52525b !important;
+}
+.veil-login .ory-elements a,
+.veil-login .ory-elements [class*="text-button-link"] {
+  color: #60a5fa !important;
+}
