@@ -68,8 +68,12 @@ export function createDevinExecutor(opts: { cwd?: string; maxTurns?: number } = 
       let lastAction = "none";
       for (let turn = 0; turn < maxTurns; turn++) {
         const secretNames = ctx.step.secrets?.map((s) => s.name).join(", ") || "none";
+        const turnNote =
+          turn === 0
+            ? `Step instruction: ${ctx.step.instruction}\nLast action: ${lastAction}`
+            : `Step instruction: ${ctx.step.instruction}\nLast action: ${lastAction}\n\nYour last action CHANGED the screen. If the step's goal is now met — even if the element you acted on is gone — reply {"do":"assert","verdict":"pass","reason":"goal met"}. Only pick another action if the step genuinely needs more doing.`;
         const raw = await askDevin(
-          `${PROTOCOL}\nDeclared secrets you may typeSecret (use these EXACT names): ${secretNames}\n\nStep instruction: ${ctx.step.instruction}\nLast action: ${lastAction}\n\nScreen:\n${obs}`,
+          `${PROTOCOL}\nDeclared secrets you may typeSecret (use these EXACT names): ${secretNames}\n\n${turnNote}\n\nScreen:\n${obs}`,
           cwd,
         );
         const json = raw.match(JSON_BLOCK);

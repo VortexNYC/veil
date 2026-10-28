@@ -164,8 +164,6 @@ export default function KratosFlow({
   const groups = groupsOf(nodes)
   const bannerMsgs = ((flow as FlowLike).ui?.messages ?? []).map((m) => m.text)
 
-  // Native POST — the browser carries cookies and follows the redirect
-  // chain to consent. Fetch would die on the cross-origin CORS check.
   const submit = () => {}
 
   return (
@@ -179,62 +177,58 @@ export default function KratosFlow({
           <Banner variant="error" className="mt-4">{bannerMsgs.join(" ")}</Banner>
         ) : null}
 
-        {groups.map((g, gi) => {
-          const gnodes = nodes.filter((n) => groupOf(n) === g)
-          const fields = gnodes.filter(
-            (n) => isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method",
-          )
-          const controls = gnodes.filter((n) => isSubmit(n) || isButton(n))
-          const nonInput = gnodes.filter((n) => !isInput(n))
-          return (
-            <form key={g} onSubmit={submit} method="post" action={action} className="mt-5 flex flex-col gap-4">
-              {nodes
-                .filter((n) => isInput(n) && inputType(n) === "hidden" && groupOf(n) !== g)
-                .map((n) => (
-                  <input key={`x-${name(n)}`} type="hidden" name={name(n)} value={value(n)} />
+        {/* One form — Kratos splits nodes into method groups but a single
+            submit carries identifier+method anyway, so shared fields render
+            once and each group's controls carry method=<value>. */}
+        <form method="post" action={action} onSubmit={submit} className="mt-5 flex flex-col gap-4">
+          {/* default-group fields (identifier, csrf) render once — the single
+              form posts them regardless of which method submits. */}
+          {nodes
+            .filter((n) => groupOf(n) === "default" && isInput(n))
+            .map((n) => (
+              <Field key={`d-${name(n)}`} n={n} />
+            ))}
+          {groups.filter((g) => g !== "default").map((g, gi) => {
+            const isField = (n: UiNodeInput) =>
+              isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method"
+            const fields = nodes.filter((n) => groupOf(n) === g && isField(n))
+            const controls = nodes.filter(
+              (n) => groupOf(n) === g && (isSubmit(n) || isButton(n)),
+            )
+            const nonInput = nodes.filter((n) => groupOf(n) === g && !isInput(n))
+            return (
+              <div key={g} className="flex flex-col gap-4">
+                {gi > 0 ? (
+                  <div className="flex items-center gap-3 text-xs text-kumo-subtle">
+                    <div className="h-px flex-1 bg-kumo-line" />or<div className="h-px flex-1 bg-kumo-line" />
+                  </div>
+                ) : null}
+                {fields.map((n) => (
+                  <Field key={`${g}-${name(n)}-${inputType(n)}`} n={n} />
                 ))}
-              {nodes
-                .filter(
-                  (n) =>
-                    isInput(n) &&
-                    inputType(n) !== "hidden" &&
-                    groupOf(n) !== g &&
-                    name(n) === "identifier" &&
-                    value(n) !== "",
-                )
-                .map((n) => (
-                  <input key={`x-${name(n)}`} type="hidden" name={name(n)} value={value(n)} />
-                ))}
-              {gi > 0 ? (
-                <div className="flex items-center gap-3 text-xs text-kumo-subtle">
-                  <div className="h-px flex-1 bg-kumo-line" />or<div className="h-px flex-1 bg-kumo-line" />
+                {nonInput.map((n, i) => {
+                  const t = (n.attributes as { text?: { text?: string } } | undefined)?.text?.text
+                  return t ? (
+                    <p key={`${g}-t-${i}`} className="whitespace-pre-wrap rounded-xl border border-kumo-line bg-kumo-base px-4 py-3 font-mono text-sm text-kumo-subtle">
+                      {t}
+                    </p>
+                  ) : null
+                })}
+                <div className="flex flex-col gap-2.5">
+                  {controls.map((n, i) => (
+                    <Control
+                      key={`${g}-c-${i}`}
+                      n={n}
+                      onPick={(nm, v) => {
+                        pickRef.current = { name: nm, value: v }
+                      }}
+                    />
+                  ))}
                 </div>
-              ) : null}
-              {fields.map((n) => (
-                <Field key={`${g}-${name(n)}-${inputType(n)}`} n={n} />
-              ))}
-              {nonInput.map((n, i) => {
-                const t = (n.attributes as { text?: { text?: string } } | undefined)?.text?.text
-                return t ? (
-                  <p key={`${g}-t-${i}`} className="whitespace-pre-wrap rounded-xl border border-kumo-line bg-kumo-base px-4 py-3 font-mono text-sm text-kumo-subtle">
-                    {t}
-                  </p>
-                ) : null
-              })}
-              <div className="flex flex-col gap-2.5">
-                {controls.map((n, i) => (
-                  <Control
-                    key={`${g}-c-${i}`}
-                    n={n}
-                    onPick={(nm, v) => {
-                      pickRef.current = { name: nm, value: v }
-                    }}
-                  />
-                ))}
               </div>
-            </form>
-          )
-        })}
+            )
+          })}
+        </form>
       </div>
     </div>
   )
