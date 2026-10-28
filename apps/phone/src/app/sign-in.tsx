@@ -33,24 +33,25 @@ export default function SignIn() {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ flexGrow: 1, padding: 24, gap: 24, justifyContent: "center" }}
+      className="bg-zinc-950"
+      contentContainerStyle={{ flexGrow: 1, padding: 24, gap: 28, justifyContent: "center" }}
     >
-      <View style={{ alignItems: "center", gap: 16 }}>
+      <View style={{ alignItems: "center", gap: 18 }}>
         <Image
           source={require("../../assets/icon.png")}
-          style={{ width: 96, height: 96, borderRadius: 22 }}
+          style={{ width: 88, height: 88, borderRadius: 20 }}
         />
-        <Text className="text-foreground" style={{ fontSize: 28, fontWeight: "700" }}>
+        <Text className="text-zinc-100" style={{ fontSize: 30, fontWeight: "700" }}>
           Veil
         </Text>
-        <Text className="text-muted" style={{ fontSize: 15, textAlign: "center" }}>
+        <Text className="text-zinc-400" style={{ fontSize: 15, lineHeight: 22, textAlign: "center" }}>
           Your passwords, filled. Sign in at login.veil.nyc — this app never sees your password or
           TOTP.
         </Text>
       </View>
 
       {error ? (
-        <Text selectable className="text-danger" style={{ textAlign: "center" }}>
+        <Text selectable className="text-red-400" style={{ textAlign: "center", fontSize: 14 }}>
           {error}
         </Text>
       ) : null}
@@ -58,19 +59,18 @@ export default function SignIn() {
       <Pressable
         onPress={go}
         disabled={busy}
+        className="bg-blue-600"
         style={({ pressed }) => ({
-          backgroundColor: pressed ? "#d8d4cc" : "#f0ede8",
-          borderRadius: 14,
-          borderCurve: "continuous",
-          paddingVertical: 14,
+          borderRadius: 12,
+          paddingVertical: 15,
           alignItems: "center",
-          opacity: busy ? 0.6 : 1,
+          opacity: busy ? 0.6 : pressed ? 0.85 : 1,
         })}
       >
         {busy ? (
-          <ActivityIndicator color="#141210" />
+          <ActivityIndicator color="#ffffff" />
         ) : (
-          <Text style={{ color: "#141210", fontSize: 16, fontWeight: "600" }}>Sign in</Text>
+          <Text className="text-white" style={{ fontSize: 16, fontWeight: "600" }}>Sign in</Text>
         )}
       </Pressable>
     </ScrollView>
