@@ -333,7 +333,23 @@ function Settings() {
         ) : null}
         <TravelModeCard />
         <RecoveryKitCard />
-        <Text as="p">Password, TOTP, WebAuthn, and lookup codes live at login.veil.nyc.</Text>
+        <LayerCard>
+          <LayerCard.Secondary>Sign-in &amp; recovery</LayerCard.Secondary>
+          <LayerCard.Primary>
+            <Text as="p" variant="heading">Recovery codes, passkeys, and second authenticators</Text>
+            <Text as="p" variant="secondary">
+              Identity settings carry the codes that get you back in without an owner
+              confirmation: download lookup codes, enroll a passkey, or add a second
+              authenticator. Do it once — losing the only enrolled authenticator is an org
+              recovery, not a self-serve path.
+            </Text>
+            <div className="flex flex-wrap items-center gap-2">
+              <LinkButton href="https://login.veil.nyc/settings" variant="primary">
+                Download recovery codes &amp; manage factors
+              </LinkButton>
+            </div>
+          </LayerCard.Primary>
+        </LayerCard>
         <div className="flex flex-wrap items-center gap-2">
           <LinkButton href="https://login.veil.nyc/settings" variant="outline">
             Open identity settings
