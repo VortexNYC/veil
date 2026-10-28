@@ -42,9 +42,21 @@ Use node ids exactly as shown in the screen text. Pick "assert" only when the st
 
 const JSON_BLOCK = /\{[\s\S]*\}/;
 
-function verdict(status: "passed" | "failed" | "blocked", summary: string): StepVerdict {
-  return { status, summary };
+function verdict(
+  status: "passed" | "failed" | "blocked",
+  summary: string,
+  errorCode?: StepVerdict["errorCode"],
+): StepVerdict {
+  return errorCode ? { status, summary, errorCode } : { status, summary };
 }
+// blocked verdicts must carry a framework errorCode.
+// Only executor-allowed codes — runtime-assigned codes like
+// STEP_BUDGET_EXHAUSTED/STEP_TIMEOUT are reserved and rejected.
+const B = {
+  model: "MODEL_UNAVAILABLE",
+  refused: "MODEL_REFUSED",
+  action: "TEST_SETUP_FAILED",
+} as const;
 
 export function createDevinExecutor(opts: { cwd?: string; maxTurns?: number } = {}): StepExecutor {
   const cwd = opts.cwd ?? process.cwd();
@@ -55,21 +67,22 @@ export function createDevinExecutor(opts: { cwd?: string; maxTurns?: number } = 
       let obs = (await ctx.observe()).text;
       let lastAction = "none";
       for (let turn = 0; turn < maxTurns; turn++) {
+        const secretNames = ctx.step.secrets?.map((s) => s.name).join(", ") || "none";
         const raw = await askDevin(
-          `${PROTOCOL}\n\nStep instruction: ${ctx.step.instruction}\nLast action: ${lastAction}\n\nScreen:\n${obs}`,
+          `${PROTOCOL}\nDeclared secrets you may typeSecret (use these EXACT names): ${secretNames}\n\nStep instruction: ${ctx.step.instruction}\nLast action: ${lastAction}\n\nScreen:\n${obs}`,
           cwd,
         );
         const json = raw.match(JSON_BLOCK);
-        if (!json) return verdict("blocked", `devin replied without JSON: ${raw.slice(0, 300)}`);
+        if (!json) return verdict("blocked", `devin replied without JSON: ${raw.slice(0, 300)}`, B.model);
         let act: DevinAction;
         try {
           act = JSON.parse(json[0]);
         } catch {
-          return verdict("blocked", `bad JSON from devin: ${raw.slice(0, 300)}`);
+          return verdict("blocked", `bad JSON from devin: ${raw.slice(0, 300)}`, B.model);
         }
         if (act.do === "assert") {
           if (act.verdict === "pass") return verdict("passed", act.reason ?? "");
-          if (act.verdict === "blocked") return verdict("blocked", act.reason ?? "");
+          if (act.verdict === "blocked") return verdict("blocked", act.reason ?? "", B.action);
           return verdict("failed", act.reason ?? "assert failed");
         }
         const id = act.id?.replace(/^#/, "") ?? "";
@@ -95,10 +108,10 @@ export function createDevinExecutor(opts: { cwd?: string; maxTurns?: number } = 
               await new Promise((r) => setTimeout(r, act.ms ?? 1000));
               break;
             default:
-              return verdict("blocked", `unknown devin action: ${JSON.stringify(act)}`);
+              return verdict("blocked", `unknown devin action: ${JSON.stringify(act)}`, B.model);
           }
         } catch (err) {
-          return verdict("blocked", `action ${lastAction} failed: ${String(err).slice(0, 200)}`);
+          return verdict("blocked", `action ${lastAction} failed: ${String(err).slice(0, 200)}`, B.action);
         }
         const newObs = (await ctx.observe()).text;
         if (newObs === obs && act.do !== "wait") {
@@ -118,7 +131,7 @@ export function createDevinExecutor(opts: { cwd?: string; maxTurns?: number } = 
         }
         obs = newObs;
       }
-      return verdict("blocked", `devin executor exhausted ${maxTurns} turns without a verdict`);
+      return verdict("blocked", `devin executor exhausted ${maxTurns} turns without a verdict`, B.action);
     },
   };
 }

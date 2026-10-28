@@ -1,23 +1,36 @@
-import { test, expect, secrets } from "e2e";
+import { test, secrets } from "e2e";
 
 // Common workflows on the real deployed vault. Secrets come from
-// E2E_SECRET_VAULT_PASSWORD / E2E_TOTP_SEED env — never committed.
+// E2E_SECRET_* env or the local ~/.config/veil files — never committed.
+
+async function signIn(agent: {
+  act: (instruction: string, opts?: { params?: Record<string, unknown> }) => Promise<unknown>;
+}) {
+  await agent.act("type 'shlomo@vortex.nyc' into the ID field, then press Enter or tap the submit/continue control to advance to the password step");
+  await agent.act("fill the password field from secret 'vault-password' and submit", {
+    params: { "vault-password": secrets.get("vault-password") },
+  });
+  await agent.act("enter the 6-digit authenticator code from secret 'totp-code' and continue", {
+    params: { "totp-code": secrets.get("totp-code") },
+  });
+}
 
 test("sign in and land on the items list", async ({ app, agent }) => {
   await app.open("/login");
-  await agent.act("sign in with email 'shlomo@vortex.nyc' and password from secret vault-password");
-  await agent.act("enter the 6-digit code from secret totp-code and continue");
+  await signIn(agent);
   await agent.assert("the vault Items list is visible with a search field and account rows");
 });
 
 test("item detail shows masked secret with reveal control", async ({ app, agent }) => {
-  await app.open("/");
+  await app.open("/login");
+  await signIn(agent);
   await agent.act("open the first item in the list");
   await agent.assert("the password shows masked dots and a Reveal control is present");
 });
 
 test("search filters the item list", async ({ app, agent }) => {
-  await app.open("/");
+  await app.open("/login");
+  await signIn(agent);
   await agent.act("search for 'github'");
   await agent.assert("the list shows only items related to github");
 });
