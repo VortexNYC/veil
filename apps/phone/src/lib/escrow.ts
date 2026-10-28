@@ -48,6 +48,7 @@ export async function openParcel(parcelB64: string): Promise<OpenedShare> {
   if (!privHex) throw new Error("no custodian key on this device — generate one first");
   const blob = b64decode(parcelB64);
   if (blob.length < 56 + 13) throw new Error("parcel too short");
+  // Plain NaCl box: eph(32) || nonce(24) || ct — see escrow-seal --format phone.
   const eph = blob.slice(0, 32), nonce = blob.slice(32, 56), ct = blob.slice(56);
   const env = nacl.box.open(ct, nonce, eph, unhex(privHex));
   if (!env) throw new Error("parcel does not open with this device's custodian key");
