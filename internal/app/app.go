@@ -1719,12 +1719,26 @@ func (a *App) BillingCheckoutURL(ctx context.Context, orgID string) (string, err
 	if seats < 1 {
 		seats = 1
 	}
-	return c.CheckoutSession(bctx, billing.CheckoutIntent{
+	url, err := c.CheckoutSession(bctx, billing.CheckoutIntent{
 		OrgID:            orgID,
 		CustomerID:       ob.CustomerID,
 		BillingAccountID: ob.BillingAccountID,
 		Quantity:         seats,
 	})
+	if err != nil {
+		// Self-heal stale billing links (e.g. after a sandbox -> production
+		// environment flip where billing_account_id belonged to the prior env).
+		_ = a.Store.SetBillingLink(orgID, "", "")
+		if ob2, err2 := a.ensureBillingLink(bctx, orgID); err2 == nil {
+			return c.CheckoutSession(bctx, billing.CheckoutIntent{
+				OrgID:            orgID,
+				CustomerID:       ob2.CustomerID,
+				BillingAccountID: ob2.BillingAccountID,
+				Quantity:         seats,
+			})
+		}
+	}
+	return url, err
 }
 
 // ErrBillingDisabled — checkout/reporting needs the Vortex wiring
