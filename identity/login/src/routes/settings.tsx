@@ -99,7 +99,7 @@ function SettingsPage() {
     <main className="veil-settings">
       <p className={aal2 ? "veil-banner veil-banner-done" : "veil-banner"}>
         {aal2
-          ? "Second factor paired — your Veil Vault is unlocked."
+          ? "Second factor paired — your Veil Vault is unlocked. Below: save your Recovery codes somewhere offline — they are the only way back in if you lose this device. You can also add a Passkey as a second authenticator."
           : "Step 2 of 2: Pair an Authenticator App (TOTP) or Passkey below to unlock your Veil Vault. Once saved, click Continue to Veil Vault."}
       </p>
       <Settings flow={flow} config={oryConfig} />
