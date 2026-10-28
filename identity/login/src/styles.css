@@ -1,4 +1,4 @@
-@import "./styles/auth-tokens.css";
+@import "ory-ui/styles";
 
 .veil-login {
   min-height: 100dvh;

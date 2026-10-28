@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect } from "react"
 import { frontend, kratosURL } from "../ory"
-import KratosLogin from "../components/KratosLogin"
+import KratosFlow from "ory-ui"
 import { beginLogin } from "../auth"
 import { loginSearch } from "../flow"
 
@@ -118,6 +118,6 @@ export const Route = createFileRoute("/login")({
         root.style.colorScheme = prev
       }
     }, [])
-    return <KratosLogin flow={Route.useLoaderData()} />
+    return <KratosFlow flow={Route.useLoaderData()} title="Sign in" subtitle="Sign in with your email and password or a security key" />
   },
 })

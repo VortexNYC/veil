@@ -1,4 +1,4 @@
-@import "./styles/auth-tokens.css";
+@import "ory-ui/styles";
 @import "tailwindcss";
 @import "@cloudflare/kumo/styles/tailwind";
 @source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";

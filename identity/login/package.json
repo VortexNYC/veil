@@ -11,6 +11,7 @@
   "dependencies": {
     "@ory/client-fetch": "1.22.22",
     "@tanstack/react-router": "1.132.47",
+    "ory-ui": "workspace:*",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

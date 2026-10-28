@@ -61,7 +61,7 @@ importers:
     dependencies:
       blume:
         specifier: 1.3.1
-        version: 1.3.1(@astrojs/cloudflare@14.1.7(@types/node@20.19.43)(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(wrangler@4.137.0(@types/node@20.19.43))(yaml@2.9.0))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@shikijs/themes@4.4.3)(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@vercel/functions@3.9.7(ws@8.21.3))(csstype@3.2.3)(esbuild@0.28.2)(preact@10.29.8)(prettier@3.9.6)(rollup@4.63.1)(terser@5.51.2)(tsx@4.23.13)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(ws@8.21.3)(yaml@2.9.0)
+        version: 1.3.1(@astrojs/cloudflare@14.1.7(@types/node@20.19.43)(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(wrangler@4.137.0(@types/node@20.19.43))(yaml@2.9.0))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@shikijs/themes@4.4.3)(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.3.0))(@types/react@19.3.0)(@vercel/functions@3.9.7(ws@8.21.3))(csstype@3.2.3)(esbuild@0.28.2)(preact@10.29.8)(prettier@3.9.6)(rollup@4.63.1)(terser@5.51.2)(tsx@4.23.13)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(ws@8.21.3)(yaml@2.9.0)
     devDependencies:
       '@astrojs/cloudflare':
         specifier: 14.1.7
@@ -224,6 +224,9 @@ importers:
       '@vortex-api/veil':
         specifier: workspace:*
         version: link:../../sdks/typescript
+      ory-ui:
+        specifier: workspace:*
+        version: link:../../packages/ory-ui
       posthog-js:
         specifier: ^1.438.8
         version: 1.438.8(@types/react@19.2.17)(react@19.2.7)
@@ -279,6 +282,9 @@ importers:
       '@tanstack/react-router':
         specifier: 1.132.47
         version: 1.132.47(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      ory-ui:
+        specifier: workspace:*
+        version: link:../../packages/ory-ui
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -307,6 +313,18 @@ importers:
       wrangler:
         specifier: 4.137.0
         version: 4.137.0(@cloudflare/workers-types@4.20260702.1)(@types/node@20.19.43)
+
+  packages/ory-ui:
+    dependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      react:
+        specifier: '>=18'
+        version: 19.3.1
+      react-dom:
+        specifier: 19.2.7
+        version: 19.2.7(react@19.3.1)
 
   sdks/typescript: {}
 
@@ -4601,6 +4619,9 @@ packages:
 
   '@types/react@19.2.17':
     resolution: {integrity: sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==}
+
+  '@types/react@19.3.0':
+    resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
   '@types/stack-utils@2.0.3':
     resolution: {integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==}
@@ -8959,6 +8980,10 @@ packages:
     resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
     engines: {node: '>=0.10.0'}
 
+  react@19.3.1:
+    resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
+    engines: {node: '>=0.10.0'}
+
   read-pkg@10.1.0:
     resolution: {integrity: sha512-I8g2lArQiP78ll51UeMZojewtYgIRCKCWqZEgOO8c/uefTI+XDXvCSXu3+YNUaTNvZzobrL5+SqHjBrByRRTdg==}
     engines: {node: '>=20'}
@@ -10875,11 +10900,11 @@ snapshots:
     dependencies:
       prismjs: 1.30.0
 
-  '@astrojs/react@6.0.5(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(esbuild@0.28.2)(jiti@2.7.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)':
+  '@astrojs/react@6.0.5(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.3.0))(@types/react@19.3.0)(esbuild@0.28.2)(jiti@2.7.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)':
     dependencies:
       '@astrojs/internal-helpers': 0.11.0
-      '@types/react': 19.2.17
-      '@types/react-dom': 19.2.3(@types/react@19.2.17)
+      '@types/react': 19.3.0
+      '@types/react-dom': 19.2.3(@types/react@19.3.0)
       '@vitejs/plugin-react': 5.2.0(vite@8.2.2(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
       devalue: 5.9.2
       react: 19.2.7
@@ -14959,11 +14984,19 @@ snapshots:
     dependencies:
       '@types/react': 19.2.17
 
+  '@types/react-dom@19.2.3(@types/react@19.3.0)':
+    dependencies:
+      '@types/react': 19.3.0
+
   '@types/react@19.1.17':
     dependencies:
       csstype: 3.2.3
 
   '@types/react@19.2.17':
+    dependencies:
+      csstype: 3.2.3
+
+  '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
 
@@ -15771,13 +15804,13 @@ snapshots:
 
   blake3-wasm@2.1.5: {}
 
-  blume@1.3.1(@astrojs/cloudflare@14.1.7(@types/node@20.19.43)(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(wrangler@4.137.0(@types/node@20.19.43))(yaml@2.9.0))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@shikijs/themes@4.4.3)(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@vercel/functions@3.9.7(ws@8.21.3))(csstype@3.2.3)(esbuild@0.28.2)(preact@10.29.8)(prettier@3.9.6)(rollup@4.63.1)(terser@5.51.2)(tsx@4.23.13)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(ws@8.21.3)(yaml@2.9.0):
+  blume@1.3.1(@astrojs/cloudflare@14.1.7(@types/node@20.19.43)(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(wrangler@4.137.0(@types/node@20.19.43))(yaml@2.9.0))(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@shikijs/themes@4.4.3)(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.3.0))(@types/react@19.3.0)(@vercel/functions@3.9.7(ws@8.21.3))(csstype@3.2.3)(esbuild@0.28.2)(preact@10.29.8)(prettier@3.9.6)(rollup@4.63.1)(terser@5.51.2)(tsx@4.23.13)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(ws@8.21.3)(yaml@2.9.0):
     dependencies:
       '@astrojs/check': 0.9.10(prettier@3.9.6)(typescript@6.0.3)
       '@astrojs/markdown-satteri': 0.3.8
       '@astrojs/mdx': 7.0.8(@astrojs/markdown-satteri@0.3.8)(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
       '@astrojs/node': 11.1.5(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
-      '@astrojs/react': 6.0.5(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(esbuild@0.28.2)(jiti@2.7.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
+      '@astrojs/react': 6.0.5(@types/node@20.19.43)(@types/react-dom@19.2.3(@types/react@19.3.0))(@types/react@19.3.0)(esbuild@0.28.2)(jiti@2.7.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
       '@astrojs/vercel': 11.0.10(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@20.19.43)(@vercel/functions@3.9.7(ws@8.21.3))(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))(react@19.2.7)(rollup@4.63.1)(ws@8.21.3)
       '@clack/prompts': 1.8.0
       '@iconify-json/lucide': 1.2.130
@@ -20183,6 +20216,11 @@ snapshots:
       react: 19.2.7
       scheduler: 0.27.0
 
+  react-dom@19.2.7(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+      scheduler: 0.27.0
+
   react-fast-compare@3.2.2: {}
 
   react-freeze@1.0.4(react@19.1.0):
@@ -20340,6 +20378,8 @@ snapshots:
   react@19.1.0: {}
 
   react@19.2.7: {}
+
+  react@19.3.1: {}
 
   read-pkg@10.1.0:
     dependencies:

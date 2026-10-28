@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
-import KratosFlow from "../components/KratosFlow"
+import KratosFlow from "ory-ui"
 import { frontend, kratosURL } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
