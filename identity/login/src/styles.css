@@ -155,3 +155,32 @@
 .veil-login .ory-elements [class*="text-button-link"] {
   color: #60a5fa !important;
 }
+
+/* Inner rows must never exceed the card — the link row and the input
+   wrapper were leaking past the right edge. */
+.veil-login .ory-elements [data-testid="ory/card"] * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.veil-login .ory-elements [data-testid="ory/card"] .flex,
+.veil-login .ory-elements [data-testid="ory/card"] [class*="flex"],
+.veil-login .ory-elements [data-testid="ory/card"] form,
+.veil-login .ory-elements [data-testid="ory/card"] fieldset {
+  max-width: 100%;
+}
+.veil-login .ory-elements input[type="password"],
+.veil-login .ory-elements [class*="password"] {
+  max-width: 100%;
+}
+
+/* The password-eye toggle is positioned outside the input's box by
+   Elements — pin it inside and give the wrapper room; keep every
+   placeholder at readable contrast. */
+.veil-login .ory-elements [data-testid="ory/card"] [class*="relative"]:has(input[type="password"]) {
+  overflow: hidden;
+  border-radius: 0.75rem;
+}
+.veil-login .ory-elements input::placeholder {
+  color: #a1a1aa !important;
+  opacity: 1 !important;
+}
