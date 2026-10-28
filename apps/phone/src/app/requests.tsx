@@ -154,7 +154,7 @@ export default function Requests() {
               </View>
             </View>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 onPress={() => void resolve(r.id, "deny")}
                 disabled={busy !== null}
                 style={({ pressed }) => ({
@@ -173,7 +173,7 @@ export default function Requests() {
                   Deny
                 </Text>
               </Pressable>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 onPress={() => void resolve(r.id, "approve")}
                 disabled={busy !== null}
                 style={({ pressed }) => ({

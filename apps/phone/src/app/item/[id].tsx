@@ -74,7 +74,7 @@ function FieldRow({
         </Text>
       </View>
       {onAction && actionLabel ? (
-        <Pressable
+        <Pressable accessibilityRole="button"
           onPress={onAction}
           style={({ pressed }) => ({
             paddingHorizontal: 12,
@@ -328,7 +328,7 @@ export default function ItemDetail() {
       ) : null}
 
       {!entry ? (
-        <Pressable
+        <Pressable accessibilityRole="button"
           onPress={() => void reveal()}
           disabled={busy}
           style={({ pressed }) => ({

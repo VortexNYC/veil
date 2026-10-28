@@ -101,7 +101,7 @@ export default function Add() {
           secureTextEntry={!showSecret}
           style={[field, { flex: 1 }]}
         />
-        <Pressable
+        <Pressable accessibilityRole="button"
           onPress={() => {
             setSecret(generateMobilePassword());
             setShowSecret(true);
@@ -134,7 +134,7 @@ export default function Add() {
           {error}
         </Text>
       ) : null}
-      <Pressable
+      <Pressable accessibilityRole="button"
         onPress={() => void save()}
         disabled={busy || !name.trim() || !secret}
         style={({ pressed }) => ({

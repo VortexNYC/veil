@@ -42,15 +42,15 @@ export default function Escrow() {
     <ScrollView className="flex-1 bg-zinc-950" contentContainerClassName="p-5 gap-4">
       <View className="flex-row items-center justify-between">
         <Text className="text-zinc-100 text-xl font-semibold">KEK Escrow</Text>
-        <Pressable onPress={() => router.back()}><Text className="text-blue-400">Back</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.back()}><Text className="text-blue-400">Back</Text></Pressable>
       </View>
       <Text className="text-zinc-400 text-sm">This device can hold a KEK recovery share. The custodian key never leaves this iPhone.</Text>
 
-      <Pressable onPress={genKey} className="bg-blue-600 rounded-xl p-3 items-center">
+      <Pressable accessibilityRole="button" onPress={genKey} className="bg-blue-600 rounded-xl p-3 items-center">
         <Text className="text-white font-medium">Custodian Key (Face ID)</Text>
       </Pressable>
       {!!pub && (
-        <Pressable onPress={() => copy(pub)} className="bg-zinc-900 rounded-xl p-3">
+        <Pressable accessibilityRole="button" onPress={() => copy(pub)} className="bg-zinc-900 rounded-xl p-3">
           <Text className="text-zinc-500 text-xs mb-1">CUSTODIAN PUBKEY — tap to copy</Text>
           <Text className="text-zinc-200 font-mono text-xs" selectable>{pub}</Text>
         </Pressable>
@@ -60,13 +60,13 @@ export default function Escrow() {
       <TextInput value={parcel} onChangeText={setParcel} placeholder="Paste base64 VEILSHR1 parcel"
         placeholderTextColor="#52525b" multiline autoCapitalize="none" autoCorrect={false}
         className="bg-zinc-900 rounded-xl p-3 text-zinc-100 font-mono text-xs min-h-20" />
-      <Pressable onPress={open} className="bg-blue-600 rounded-xl p-3 items-center">
+      <Pressable accessibilityRole="button" onPress={open} className="bg-blue-600 rounded-xl p-3 items-center">
         <Text className="text-white font-medium">Open Parcel</Text>
       </Pressable>
       {!!opened && (
         <View className="bg-zinc-900 rounded-xl p-3 gap-1">
           <Text className="text-zinc-100">Share {opened.ordinal} of ceremony {opened.fp}</Text>
-          <Pressable onPress={() => copy(opened.shareHex)}>
+          <Pressable accessibilityRole="button" onPress={() => copy(opened.shareHex)}>
             <Text className="text-zinc-400 text-xs">Tap to copy share hex (only to feed `veil key combine`)</Text>
           </Pressable>
         </View>
