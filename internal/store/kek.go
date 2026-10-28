@@ -155,3 +155,39 @@ func (p *Postgres) openKey(ctx context.Context, blob, aad []byte) ([]byte, error
 	}
 	return crypto.OpenAAD(p.kek, blob, aad)
 }
+
+// rewrapItems sends ciphertexts through the service's /rewrap — opened
+// under the currently bound key(s), re-sealed under VEIL_KEK_NEXT.
+// Rotation only: errors clearly when no NEXT key is bound.
+func (r *remoteKEK) rewrap(ctx context.Context, items [][2][]byte) ([][]byte, error) {
+	in := make([]map[string]string, len(items))
+	for i, it := range items {
+		in[i] = map[string]string{
+			"aad_b64":        base64.StdEncoding.EncodeToString(it[0]),
+			"ciphertext_b64": base64.StdEncoding.EncodeToString(it[1]),
+		}
+	}
+	var out struct {
+		CiphertextsB64 []string `json:"ciphertexts_b64"`
+		Error          string   `json:"error"`
+	}
+	if err := r.call(ctx, "/rewrap", map[string]any{"items": in}, &out); err != nil {
+		return nil, err
+	}
+	if out.Error != "" {
+		return nil, fmt.Errorf("key-service rewrap: %s", out.Error)
+	}
+	res := make([][]byte, len(out.CiphertextsB64))
+	for i, c := range out.CiphertextsB64 {
+		if c == "" {
+			res[i] = nil
+			continue
+		}
+		b, err := base64.StdEncoding.DecodeString(c)
+		if err != nil {
+			return nil, err
+		}
+		res[i] = b
+	}
+	return res, nil
+}

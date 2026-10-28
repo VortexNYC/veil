@@ -161,6 +161,60 @@ func keyCmd() *cobra.Command {
 			return nil
 		},
 	}
+	migrateKeysvc := &cobra.Command{
+		Use:   "migrate-keysvc",
+		Short: "Re-seal legacy local-AEAD org_keys rows to the remote key service",
+		Long: "One-shot cutover for the Cloudflare key-service migration: unwraps " +
+			"each org_keys row under the local VEIL_KEK, re-seals it through " +
+			"keys.veil.nyc (version-0x02 envelope), and writes it back. Requires " +
+			"VEIL_KEYSVC_URL + VEIL_KEYSVC_TOKEN set and the local VEIL_KEK still " +
+			"present. Rows already service-wrapped are skipped (idempotent). " +
+			"After verification, remove VEIL_KEK from every replica.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d, kek, err := resolve()
+			if err != nil {
+				return err
+			}
+			s, err := store.OpenPostgres(d, kek)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = s.Close() }()
+			if err := s.MigrateToKeyService(cmd.Context()); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "migrated org_keys rows to key-service envelopes — verify then remove VEIL_KEK")
+			return nil
+		},
+	}
+	persistent(migrateKeysvc)
+
+	remoteRotate := &cobra.Command{
+		Use:   "rotate-kek-remote",
+		Short: "Rotate the KEK via the key-service dual-key window",
+		Long: "Service-side KEK rotation for VEIL_KEYSVC_* mode: bind VEIL_KEK_NEXT " +
+			"on the Worker BEFORE running this (wrangler secrets-store), then this " +
+			"sends ciphertext-only through /rewrap and commits — origin never holds " +
+			"the new key. Unbind VEIL_KEK_NEXT after success.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d, kek, err := resolve()
+			if err != nil {
+				return err
+			}
+			s, err := store.OpenPostgres(d, kek)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = s.Close() }()
+			if err := s.RotateKEKRemote(cmd.Context()); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "remote KEK rotation committed — unbind VEIL_KEK_NEXT on the Worker")
+			return nil
+		},
+	}
+	persistent(remoteRotate)
+
 	persistent(rotateKEK)
 	rotateKEK.Flags().StringVar(&newKekFile, "new-kek-file", "", "file containing the new KEK as hex (default env VEIL_KEK_NEW)")
 	rotateKEK.Flags().BoolVar(&generateNew, "generate", false, "mint the new KEK (requires --shares; exclusive with --new-kek-file/VEIL_KEK_NEW)")
