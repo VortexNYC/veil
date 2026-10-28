@@ -97,8 +97,61 @@
   --brand-950: #bfdbfe;
   --interface-foreground-brand-on-primary: #ffffff;
   --input-background-default: #0e0e10;
+  --input-border-default: #3f3f46;
+  --input-border-hover: #52525b;
+  --button-link-brand-brand: #60a5fa;
+  --button-link-brand-brand-hover: #93c5fd;
+  --button-secondary-background-default: #232327;
+  --button-secondary-background-hover: #2a2a2e;
+  --button-secondary-border-default: #3f3f46;
+  --button-secondary-border-hover: #52525b;
   --radius-forms: 0.75rem;
   --radius-buttons: 0.75rem;
   --radius-cards: 1rem;
   --radius-general: 0.75rem;
+}
+
+/* Mobile: card never overflows the viewport. */
+.veil-login { overflow-x: hidden; }
+.veil-login .ory-elements > div { min-width: 0; max-width: 100%; }
+.veil-login .ory-elements [data-testid="ory/card"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+@media (max-width: 480px) {
+  .veil-login { padding: 1rem; }
+  .veil-login .ory-elements [data-testid="ory/card"] { padding: 1.25rem; }
+  /* Elements hard-pins 300px min-width on the form — too wide for
+     phone viewports; drop it inside our layout. */
+  .veil-login .ory-elements .\!min-w-\[300px\] { min-width: 0 !important; }
+}
+/* Flow CTAs are the primary action — Elements styles every flow button
+   secondary, so paint type=submit blue and give the rest visible chrome. */
+.veil-login .ory-elements button[type="submit"] {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+.veil-login .ory-elements button:not([type="submit"]) {
+  border: 1px solid #3f3f46 !important;
+  background: #232327 !important;
+}
+/* Inputs keep one radius regardless of wrapper shape. */
+.veil-login .ory-elements input {
+  border-radius: 0.75rem !important;
+}
+
+/* Input must read as a control: visible border + inset bg at all widths.
+   The tertiary helper links (Recover/Forgot) resolve too dark through the
+   token chain — paint them to link blue directly. */
+.veil-login .ory-elements input {
+  background: #1f1f23 !important;
+  border: 1px solid #52525b !important;
+}
+.veil-login .ory-elements a,
+.veil-login .ory-elements [class*="text-button-link"] {
+  color: #60a5fa !important;
 }
