@@ -6,11 +6,12 @@ import { test, secrets } from "e2e";
 async function signIn(agent: {
   act: (instruction: string, opts?: { params?: Record<string, unknown> }) => Promise<unknown>;
 }) {
-  await agent.act("type 'shlomo@vortex.nyc' into the ID field, then press Enter or tap the submit/continue control to advance to the password step");
-  await agent.act("fill the password field from secret 'vault-password' and submit", {
+  await agent.act("type 'shlomo@vortex.nyc' into the ID field");
+  await agent.act("fill the Password field from secret 'vault-password'", {
     params: { "vault-password": secrets.get("vault-password") },
   });
-  await agent.act("enter the 6-digit authenticator code from secret 'totp-code' and continue", {
+  await agent.act("tap the 'Sign in with password' button");
+  await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and tap Continue", {
     params: { "totp-code": secrets.get("totp-code") },
   });
 }

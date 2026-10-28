@@ -2,8 +2,7 @@
 // (login, registration, recovery, settings, verification). Built on real
 // @cloudflare/kumo primitives — one style system for auth + vault.
 
-import { useMemo, useState, type FormEvent } from "react"
-import { Button } from "@cloudflare/kumo/components/button"
+import { useMemo, useRef, useState } from "react"
 import { Input } from "@cloudflare/kumo/components/input"
 import { Label } from "@cloudflare/kumo/components/label"
 import { Banner } from "@cloudflare/kumo/components/banner"
@@ -83,6 +82,7 @@ function groupsOf(nodes: UiNodeInput[]): string[] {
 }
 
 function Field({ n }: { n: UiNodeInput }) {
+  const [show, setShow] = useState(false)
   const nm = name(n)
   const type = inputType(n)
   const errors = (n.messages ?? []).filter((m) => m.type === "error")
@@ -95,7 +95,6 @@ function Field({ n }: { n: UiNodeInput }) {
       </label>
     )
   }
-  const [show, setShow] = useState(false)
   const isPw = type === "password"
   const realType = isPw ? (show ? "text" : "password") : type
   return (
@@ -109,6 +108,7 @@ function Field({ n }: { n: UiNodeInput }) {
         ) : null}
       </div>
       <Input
+        aria-label={LABELS[nm] ?? nm}
         id={`veil-${nm}`}
         name={nm}
         type={realType}
@@ -122,19 +122,30 @@ function Field({ n }: { n: UiNodeInput }) {
   )
 }
 
-function Control({ n }: { n: UiNodeInput }) {
+function Control({
+  n,
+  onPick,
+}: {
+  n: UiNodeInput
+  onPick: (name: string, value: string) => void
+}) {
   const primary = inputType(n) === "submit"
-  const label = (n.attributes as { label?: string } | undefined)?.label ?? String(name(n) || "Continue")
+  const meta = (n as { meta?: { label?: { text?: string } } }).meta
+  const label =
+    meta?.label?.text ??
+    (n.attributes as { label?: { text?: string } } | undefined)?.label?.text ??
+    String(name(n) || "Continue")
   return (
-    <Button
+    <button
       type="submit"
       name={name(n) || "method"}
       value={value(n)}
-      variant={primary ? "primary" : "secondary"}
-      className="w-full"
+      data-variant={primary ? "primary" : "secondary"}
+      className="w-full rounded-md border border-kumo-line bg-kumo-accent px-3 py-2 text-sm font-medium text-kumo-accent-fg hover:opacity-90 disabled:opacity-50"
+      onClick={() => onPick(name(n) || "method", value(n))}
     >
       {label}
-    </Button>
+    </button>
   )
 }
 
@@ -148,40 +159,14 @@ export default function KratosFlow({
   subtitle?: string
 }) {
   const nodes = useMemo(() => ((flow as FlowLike).ui?.nodes ?? []) as UiNodeInput[], [flow])
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+  const pickRef = useRef<{ name: string; value: string } | null>(null)
   const action = (flow as FlowLike).ui?.action ?? ""
   const groups = groupsOf(nodes)
   const bannerMsgs = ((flow as FlowLike).ui?.messages ?? []).map((m) => m.text)
 
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setErr(null)
-    try {
-      const form = new FormData(e.currentTarget)
-      const res = await fetch(action, { method: "POST", body: form, credentials: "include" })
-      if (res.redirected) {
-        window.location.assign(res.url)
-        return
-      }
-      const ct = res.headers.get("content-type") ?? ""
-      if (ct.includes("json")) {
-        const body = (await res.json().catch(() => null)) as
-          | { redirect_browser_to?: string; error?: { message?: string } }
-          | null
-        if (body?.redirect_browser_to) window.location.assign(body.redirect_browser_to)
-        else setErr(body?.error?.message ?? "something went wrong — try again")
-      } else {
-        window.location.reload()
-      }
-    } catch {
-      setErr("network error — try again")
-    } finally {
-      setBusy(false)
-    }
-  }
+  // Native POST — the browser carries cookies and follows the redirect
+  // chain to consent. Fetch would die on the cross-origin CORS check.
+  const submit = () => {}
 
   return (
     <div className="min-h-[100dvh] bg-kumo-base px-4 py-10 flex items-start justify-center">
@@ -193,15 +178,33 @@ export default function KratosFlow({
         {bannerMsgs.length ? (
           <Banner variant="error" className="mt-4">{bannerMsgs.join(" ")}</Banner>
         ) : null}
-        {err ? <Banner variant="error" className="mt-4">{err}</Banner> : null}
 
         {groups.map((g, gi) => {
           const gnodes = nodes.filter((n) => groupOf(n) === g)
-          const fields = gnodes.filter((n) => isInput(n) && !isSubmit(n) && !isButton(n))
+          const fields = gnodes.filter(
+            (n) => isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method",
+          )
           const controls = gnodes.filter((n) => isSubmit(n) || isButton(n))
           const nonInput = gnodes.filter((n) => !isInput(n))
           return (
-            <form key={g} onSubmit={submit} method="post" className="mt-5 flex flex-col gap-4">
+            <form key={g} onSubmit={submit} method="post" action={action} className="mt-5 flex flex-col gap-4">
+              {nodes
+                .filter((n) => isInput(n) && inputType(n) === "hidden" && groupOf(n) !== g)
+                .map((n) => (
+                  <input key={`x-${name(n)}`} type="hidden" name={name(n)} value={value(n)} />
+                ))}
+              {nodes
+                .filter(
+                  (n) =>
+                    isInput(n) &&
+                    inputType(n) !== "hidden" &&
+                    groupOf(n) !== g &&
+                    name(n) === "identifier" &&
+                    value(n) !== "",
+                )
+                .map((n) => (
+                  <input key={`x-${name(n)}`} type="hidden" name={name(n)} value={value(n)} />
+                ))}
               {gi > 0 ? (
                 <div className="flex items-center gap-3 text-xs text-kumo-subtle">
                   <div className="h-px flex-1 bg-kumo-line" />or<div className="h-px flex-1 bg-kumo-line" />
@@ -220,7 +223,13 @@ export default function KratosFlow({
               })}
               <div className="flex flex-col gap-2.5">
                 {controls.map((n, i) => (
-                  <Control key={`${g}-c-${i}`} n={n} />
+                  <Control
+                    key={`${g}-c-${i}`}
+                    n={n}
+                    onPick={(nm, v) => {
+                      pickRef.current = { name: nm, value: v }
+                    }}
+                  />
                 ))}
               </div>
             </form>
