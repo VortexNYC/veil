@@ -18,10 +18,13 @@
     "prepare": "vp config"
   },
   "devDependencies": {
+    "@e2e-dev/mobile": "^0.12.4",
+    "@e2e-dev/web": "^0.15.3",
     "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.98.2",
     "@openapitools/openapi-generator-cli": "^2.35.0",
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.6",
+    "e2e": "^0.21.3",
     "esbuild": "^0.28.2",
     "railway": "^3.11.0",
     "secretlint": "^13.0.6",
