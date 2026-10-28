@@ -1140,6 +1140,12 @@ func (p *Postgres) DenyRecovery(ctx context.Context, id, actorID string, status 
 // On commit this store adopts newKEK; every cached master is invalidated so
 // the next resolve re-unwraps under it.
 func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
+	if p.kekp.remote() {
+		// Remote mode never holds the next key locally — the service holds
+		// both keys for the window. Bind VEIL_KEK_NEXT on the Worker, call
+		// RotateKEKRemote, unbind after commit.
+		return fmt.Errorf("store: remote KEK — rotate via RotateKEKRemote (service-side dual-key window)")
+	}
 	if len(newKEK) != crypto.KeySize {
 		return fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
 	}
@@ -1860,3 +1866,94 @@ var (
 	_ Store       = (*Postgres)(nil)
 	_ ownerSource = (*Postgres)(nil)
 )
+
+// RotateKEKRemote is the remote-KEK rotation: the service holds BOTH keys
+// for the window (VEIL_KEK + VEIL_KEK_NEXT bound on the Worker), rewraps
+// ciphertext-only, and origin never holds the new key. Bind NEXT on the
+// service BEFORE calling; unbind it after commit.
+func (p *Postgres) RotateKEKRemote(ctx context.Context) error {
+	rk, ok := p.kekp.(*remoteKEK)
+	if !ok {
+		return fmt.Errorf("store: remote rotation requires VEIL_KEYSVC_* configured")
+	}
+	p.kekMu.Lock()
+	defer p.kekMu.Unlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `LOCK TABLE org_keys IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return err
+	}
+	q := p.sqlc.WithTx(tx)
+	rows, err := q.ListOrgKeys(ctx)
+	if err != nil {
+		return err
+	}
+	var items [][2][]byte
+	var orgIDs []string
+	for _, row := range rows {
+		if row.CmkID.Valid {
+			continue
+		}
+		items = append(items, [2][]byte{[]byte(row.OrgID), row.Wrapped})
+		orgIDs = append(orgIDs, row.OrgID)
+	}
+	resealed, err := rk.rewrap(ctx, items)
+	if err != nil {
+		return err
+	}
+	for i, blob := range resealed {
+		if blob == nil {
+			return fmt.Errorf("store: key-service could not rewrap %s", orgIDs[i])
+		}
+		if n, err := q.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgIDs[i], Wrapped: blob}); err != nil {
+			return err
+		} else if n != 1 {
+			return fmt.Errorf("store: org_keys row for %s vanished mid-rotation", orgIDs[i])
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	for _, id := range orgIDs {
+		p.km.InvalidateOrg(id)
+	}
+	return nil
+}
+
+// MigrateToKeyService re-seals every legacy local-AEAD org_keys row to a
+// remote 0x02 envelope. One-shot cutover: run once with VEIL_KEYSVC_* set
+// and the local VEIL_KEK still present, then drop the env key.
+func (p *Postgres) MigrateToKeyService(ctx context.Context) error {
+	if !p.kekp.remote() {
+		return fmt.Errorf("store: VEIL_KEYSVC_URL/VEIL_KEYSVC_TOKEN required for migration")
+	}
+	rows, err := p.sqlc.ListOrgKeys(ctx)
+	if err != nil {
+		return err
+	}
+	migrated := 0
+	for _, row := range rows {
+		if row.CmkID.Valid || (len(row.Wrapped) > 0 && row.Wrapped[0] == remoteBlobVersion) {
+			continue
+		}
+		master, err := crypto.OpenAAD(p.kek, row.Wrapped, []byte(row.OrgID))
+		if err != nil {
+			return fmt.Errorf("store: %s does not unwrap under local KEK: %w", row.OrgID, err)
+		}
+		wrapped, err := p.kekp.seal(ctx, master, []byte(row.OrgID))
+		if err != nil {
+			return err
+		}
+		if n, err := p.sqlc.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: row.OrgID, Wrapped: wrapped}); err != nil {
+			return err
+		} else if n != 1 {
+			return fmt.Errorf("store: org_keys row for %s vanished mid-migration", row.OrgID)
+		}
+		p.km.InvalidateOrg(row.OrgID)
+		migrated++
+	}
+	return nil
+}
