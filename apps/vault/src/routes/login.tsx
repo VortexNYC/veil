@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect } from "react"
-import { Login } from "@ory/elements-react/theme"
-import { frontend, kratosURL, oryConfig } from "../ory"
+import { frontend, kratosURL } from "../ory"
+import KratosLogin from "../components/KratosLogin"
 import { beginLogin } from "../auth"
 import { loginSearch } from "../flow"
 
@@ -118,10 +118,6 @@ export const Route = createFileRoute("/login")({
         root.style.colorScheme = prev
       }
     }, [])
-    return (
-      <div className="veil-login">
-        <Login flow={Route.useLoaderData()} config={oryConfig} />
-      </div>
-    )
+    return <KratosLogin flow={Route.useLoaderData()} />
   },
 })
