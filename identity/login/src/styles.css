@@ -83,3 +83,54 @@
 :root {
   color-scheme: light;
 }
+
+/* Kumo dark onto Ory Elements — consistent radii + readable contrast.
+   Overrides the default light/white surfaces so auth screens match the
+   vault's zinc/blue design system. */
+.ory-elements {
+  --ory-color-background: #0e0e10;
+  --ory-color-foreground: #f4f4f5;
+  --ory-color-muted: #a1a1aa;
+  --ory-color-card: #18181b;
+  --ory-color-input-background: #18181b;
+  --ory-color-input-border: #27272a;
+  --ory-color-input-foreground: #f4f4f5;
+  --ory-color-button-primary-background: #3b82f6;
+  --ory-color-button-primary-foreground: #ffffff;
+  --ory-color-button-secondary-border: #27272a;
+  --ory-color-link: #60a5fa;
+  --ory-color-danger: #f87171;
+  --ory-color-success: #4ade80;
+  --ory-radius-card: 12px;
+  --ory-radius-input: 12px;
+  --ory-radius-button: 12px;
+}
+.ory-elements input,
+.ory-elements select,
+.ory-elements textarea {
+  border-radius: 12px !important;
+  border: 1px solid #27272a !important;
+  background: #18181b !important;
+  color: #f4f4f5 !important;
+}
+.ory-elements input::placeholder { color: #71717a !important; }
+.ory-elements input:focus-within,
+.ory-elements input:focus {
+  border-color: #3b82f6 !important;
+  outline: 2px solid rgba(59, 130, 246, 0.35) !important;
+  outline-offset: 0px !important;
+}
+.ory-elements button[type="submit"],
+.ory-elements [data-testid*="submit"] {
+  border-radius: 12px !important;
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+.ory-elements button:hover { opacity: 0.88 !important; }
+.ory-elements a { color: #60a5fa !important; }
+.ory-elements [data-testid="ory/card"] {
+  border-radius: 16px !important;
+  background: #18181b !important;
+  border: 1px solid #27272a !important;
+}
