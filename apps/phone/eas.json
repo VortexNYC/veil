@@ -1,7 +1,28 @@
 {
-  "cli": { "version": ">= 13.0.0" },
-  "build": {
-    "production": { "autoIncrement": true, "android": { "buildType": "apk" } }
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
   },
-  "submit": { "production": {} }
+  "build": {
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "image": "latest"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "/Users/shlomokabareti/.config/vortex/asc/AuthKey_XJBL8X4C8K.p8",
+        "ascApiKeyId": "XJBL8X4C8K",
+        "ascApiKeyIssuerId": "3808e100-9e6b-4dc3-bf18-270dba39ed94",
+        "appleTeamId": "VFWGNKKT4G",
+        "ascAppId": "6827967686"
+      }
+    }
+  }
 }
