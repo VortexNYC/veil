@@ -1,9 +1,12 @@
 // Kumo-native Kratos renderer — drives flow.ui.nodes for every flow
-// (login, registration, recovery, settings, verification). Replaces Ory
-// Elements: inputs, buttons, checkboxes, messages, method groups all map to
-// our components; secrets POST back to flow.ui.action untouched.
+// (login, registration, recovery, settings, verification). Built on real
+// @cloudflare/kumo primitives — one style system for auth + vault.
 
 import { useMemo, useState, type FormEvent } from "react"
+import { Button } from "@cloudflare/kumo/components/button"
+import { Input } from "@cloudflare/kumo/components/input"
+import { Label } from "@cloudflare/kumo/components/label"
+import { Banner } from "@cloudflare/kumo/components/banner"
 
 type UiNodeInput = { attributes?: Record<string, unknown>; messages?: { type: string; text: string }[]; group?: string }
 interface FlowLike {
@@ -14,34 +17,6 @@ interface FlowLike {
     messages?: { type: string; text: string }[]
   }
 }
-
-const inputStyle = {
-  background: "var(--veil-field)",
-  borderColor: "var(--veil-field-border)",
-  borderRadius: "var(--veil-radius-field)",
-} as const;
-const primaryStyle = { background: "var(--veil-primary)", borderRadius: "var(--veil-radius-field)" } as const;
-const secondaryStyle = {
-  background: "var(--veil-card)",
-  borderColor: "var(--veil-border)",
-  borderRadius: "var(--veil-radius-field)",
-} as const;
-const dangerStyle = {
-  background: "var(--veil-danger-bg)",
-  borderColor: "var(--veil-danger-border)",
-  color: "var(--veil-danger-text)",
-  borderRadius: "var(--veil-radius-field)",
-} as const;
-const linkStyle = { color: "var(--veil-link)" } as const;
-
-const inputCls =
-  "w-full rounded-xl border border-zinc-600 px-4 py-2.5 text-[0.9375rem] text-zinc-100 placeholder-zinc-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-const btnCls =
-  "w-full px-4 py-2.5 text-[0.9375rem] font-semibold text-white transition disabled:opacity-50"
-const btnSecondary =
-  "w-full border px-4 py-2.5 text-[0.9375rem] font-semibold text-[var(--veil-text)] transition hover:bg-zinc-700 disabled:opacity-50"
-const labelCls = "text-sm font-medium text-zinc-300"
-const linkCls = "text-sm text-blue-400 hover:text-blue-300"
 
 function attrs(n: UiNodeInput): Record<string, unknown> {
   return n.attributes ?? {}
@@ -68,35 +43,36 @@ function groupOf(n: UiNodeInput): string {
   return String(n.group ?? "default")
 }
 
-// Inputs that render as labeled fields (skip hidden, submit/button — those
-// are controls; skip code/lookup/totp handled specially by method screens).
 const LABELS: Record<string, string> = {
   identifier: "ID",
   "traits.email": "Email",
   password: "Password",
-  "password_confirmation": "Confirm password",
+  password_confirmation: "Confirm password",
   totp_code: "Authentication code",
   lookup_secret: "Recovery code",
   method: "",
+  email: "Email",
+  code: "Code",
 }
 const PLACEHOLDERS: Record<string, string> = {
   identifier: "Enter your ID",
   "traits.email": "Enter your email",
+  email: "Enter your email",
   password: "Enter your password",
   password_confirmation: "Confirm your password",
   totp_code: "123456",
   lookup_secret: "e.g. abcd-efgh",
+  code: "Enter the code",
 }
 const AUTOCOMPLETE: Record<string, string> = {
   identifier: "username",
   "traits.email": "email",
+  email: "email",
   password: "current-password",
   password_confirmation: "new-password",
   totp_code: "one-time-code",
 }
 
-// Nodes grouped by their group tag so we can render method sections in the
-// order Kratos sent them — password, totp, lookup, webauthn, passkey, code.
 function groupsOf(nodes: UiNodeInput[]): string[] {
   const seen: string[] = []
   for (const n of nodes) {
@@ -106,7 +82,6 @@ function groupsOf(nodes: UiNodeInput[]): string[] {
   return seen
 }
 
-// A field inside one group section — everything that's a labeled input.
 function Field({ n }: { n: UiNodeInput }) {
   const nm = name(n)
   const type = inputType(n)
@@ -114,28 +89,27 @@ function Field({ n }: { n: UiNodeInput }) {
   if (type === "hidden") return <input type="hidden" name={nm} value={value(n)} />
   if (type === "checkbox") {
     return (
-      <label className="flex items-center gap-2 text-sm text-zinc-300">
+      <label className="flex items-center gap-2">
         <input type="checkbox" name={nm} value={value(n) || "true"} className="h-4 w-4 rounded" />
-        <span>{LABELS[nm] ?? nm}</span>
+        <span className="text-sm text-kumo-text">{LABELS[nm] ?? nm}</span>
       </label>
     )
   }
   const [show, setShow] = useState(false)
-  const realType = type === "password" ? (show ? "text" : "password") : type
+  const isPw = type === "password"
+  const realType = isPw ? (show ? "text" : "password") : type
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <label className={labelCls} htmlFor={`veil-${nm}`}>{LABELS[nm] ?? nm}</label>
-        {type === "password" ? (
-          <button type="button" className={linkCls} style={linkStyle} onClick={() => setShow((s) => !s)}>
+        <Label htmlFor={`veil-${nm}`}>{LABELS[nm] ?? nm}</Label>
+        {isPw ? (
+          <button type="button" className="text-sm text-kumo-link" onClick={() => setShow((s) => !s)}>
             {show ? "Hide" : "Show"}
           </button>
         ) : null}
       </div>
-      <input
+      <Input
         id={`veil-${nm}`}
-        className={inputCls}
-        style={inputStyle}
         name={nm}
         type={realType}
         autoComplete={AUTOCOMPLETE[nm]}
@@ -143,25 +117,24 @@ function Field({ n }: { n: UiNodeInput }) {
         defaultValue={value(n)}
         required={(attrs(n).required as boolean) ?? type !== "checkbox"}
       />
-      {errors.length ? <p className="text-sm text-red-400">{errors[0].text}</p> : null}
+      {errors.length ? <p className="text-sm text-kumo-error">{errors[0].text}</p> : null}
     </div>
   )
 }
 
-// A submit/button control inside a group — posts name+value like Kratos
-// expects (method=<value> or provider=<value>).
 function Control({ n }: { n: UiNodeInput }) {
   const primary = inputType(n) === "submit"
   const label = (n.attributes as { label?: string } | undefined)?.label ?? String(name(n) || "Continue")
   return (
-    <button
+    <Button
       type="submit"
       name={name(n) || "method"}
       value={value(n)}
-      className={primary ? btnCls : btnSecondary} style={primary ? primaryStyle : secondaryStyle}
+      variant={primary ? "primary" : "secondary"}
+      className="w-full"
     >
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -178,7 +151,6 @@ export default function KratosFlow({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const action = (flow as FlowLike).ui?.action ?? ""
-
   const groups = groupsOf(nodes)
   const bannerMsgs = ((flow as FlowLike).ui?.messages ?? []).map((m) => m.text)
 
@@ -211,25 +183,17 @@ export default function KratosFlow({
     }
   }
 
-  // One <form> per group section so each method's submit posts its own
-  // context — Elements does the same per-section.
   return (
-    <div className="veil-flow min-h-[100dvh] px-4 py-10 flex items-start justify-center" style={{ background: "var(--veil-bg)" }}>
-      <div className="w-full border shadow-xl" style={{ maxWidth: "var(--veil-w-card)", borderRadius: "var(--veil-radius-card)", borderColor: "var(--veil-border)", background: "var(--veil-card)", padding: "var(--veil-pad-card)" }}>
-        <h1 className="text-xl font-semibold text-zinc-100">Veil</h1>
-        <h2 className="mt-4 text-lg font-semibold text-zinc-100">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm text-zinc-400">{subtitle}</p> : null}
+    <div className="min-h-[100dvh] bg-kumo-base px-4 py-10 flex items-start justify-center">
+      <div className="w-full max-w-sm rounded-xl border border-kumo-line bg-kumo-base p-6 shadow-xl">
+        <h1 className="text-xl font-semibold text-kumo-text">Veil</h1>
+        <h2 className="mt-4 text-lg font-semibold text-kumo-text">{title}</h2>
+        {subtitle ? <p className="mt-1 text-sm text-kumo-subtle">{subtitle}</p> : null}
 
         {bannerMsgs.length ? (
-          <div className="mt-4 border px-4 py-3 text-sm" style={dangerStyle}>
-            {bannerMsgs.join(" ")}
-          </div>
+          <Banner variant="error" className="mt-4">{bannerMsgs.join(" ")}</Banner>
         ) : null}
-        {err ? (
-          <div className="mt-4 border px-4 py-3 text-sm" style={dangerStyle}>
-            {err}
-          </div>
-        ) : null}
+        {err ? <Banner variant="error" className="mt-4">{err}</Banner> : null}
 
         {groups.map((g, gi) => {
           const gnodes = nodes.filter((n) => groupOf(n) === g)
@@ -239,8 +203,8 @@ export default function KratosFlow({
           return (
             <form key={g} onSubmit={submit} method="post" className="mt-5 flex flex-col gap-4">
               {gi > 0 ? (
-                <div className="flex items-center gap-3 text-xs text-zinc-600">
-                  <div className="h-px flex-1 bg-zinc-800" />or<div className="h-px flex-1 bg-zinc-800" />
+                <div className="flex items-center gap-3 text-xs text-kumo-subtle">
+                  <div className="h-px flex-1 bg-kumo-line" />or<div className="h-px flex-1 bg-kumo-line" />
                 </div>
               ) : null}
               {fields.map((n) => (
@@ -249,7 +213,7 @@ export default function KratosFlow({
               {nonInput.map((n, i) => {
                 const t = (n.attributes as { text?: { text?: string } } | undefined)?.text?.text
                 return t ? (
-                  <p key={`${g}-t-${i}`} className="whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-mono text-sm text-zinc-300">
+                  <p key={`${g}-t-${i}`} className="whitespace-pre-wrap rounded-xl border border-kumo-line bg-kumo-base px-4 py-3 font-mono text-sm text-kumo-subtle">
                     {t}
                   </p>
                 ) : null
