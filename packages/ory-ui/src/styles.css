@@ -1,0 +1,24 @@
+/* ory-ui styles — auth surfaces are always dark Kumo */
+@import "@cloudflare/kumo/styles/tailwind";
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-kumo-canvas, #0a0a0b);
+  color: var(--color-kumo-default, #f4f4f5);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark, :root {
+  color-scheme: dark;
+}
+
+@layer base {
+  ::placeholder {
+    color: var(--color-kumo-subtle, #a1a1aa);
+    opacity: 0.5;
+  }
+}

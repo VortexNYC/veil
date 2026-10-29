@@ -142,7 +142,19 @@ function Control({
       value={value(n)}
       data-variant={primary ? "primary" : "secondary"}
       className="w-full rounded-md border border-kumo-line bg-kumo-accent px-3 py-2 text-sm font-medium text-kumo-accent-fg hover:opacity-90 disabled:opacity-50"
-      onClick={() => onPick(name(n) || "method", value(n))}
+      onClick={(e) => {
+        const form = (e.currentTarget as HTMLButtonElement).form
+        const g = (e.currentTarget as HTMLElement).closest("[data-veil-group]")?.getAttribute("data-veil-group")
+        if (form && g) {
+          form
+            .querySelectorAll("[data-veil-group] input, [data-veil-group] textarea, [data-veil-group] select")
+            .forEach((el) => {
+              const own = (el as HTMLElement).closest("[data-veil-group]")?.getAttribute("data-veil-group")
+              if (own !== g) (el as HTMLInputElement).disabled = true
+            })
+        }
+        onPick(name(n) || "method", value(n))
+      }}
     >
       {label}
     </button>
@@ -174,12 +186,7 @@ export default function KratosFlow({
   const groups = groupsOf(nodes)
   const bannerMsgs = ((flow as FlowLike).ui?.messages ?? []).map((m) => m.text)
 
-  const submit = () => {
-    // Persist identifier for the aal2 step — Kratos expects it re-sent
-    // on the TOTP/lookup POST even though the aal2 flow has no field for it.
-    const id = (document.getElementById("veil-identifier") as HTMLInputElement | null)?.value
-    if (id) sessionStorage.setItem("veil.identifier", id)
-  }
+  const submit = () => {}
 
   return (
     <div className="min-h-[100dvh] bg-kumo-base px-4 py-10 flex items-start justify-center">
@@ -203,17 +210,7 @@ export default function KratosFlow({
             .map((n) => (
               <Field key={`d-${name(n)}`} n={n} />
             ))}
-          {/* aal2 forms carry the aal1 identifier — Kratos needs it even
-              though the flow doesn't expose a field for it. */}
-          {(() => {
-            const stashed =
-              typeof sessionStorage !== "undefined"
-                ? sessionStorage.getItem("veil.identifier")
-                : null
-            return stashed ? (
-              <input type="hidden" name="identifier" value={stashed} />
-            ) : null
-          })()}
+
           {groups.filter((g) => g !== "default").map((g, gi) => {
             const isField = (n: UiNodeInput) =>
               isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method"
@@ -223,7 +220,7 @@ export default function KratosFlow({
             )
             const nonInput = nodes.filter((n) => groupOf(n) === g && !isInput(n))
             return (
-              <div key={g} className="flex flex-col gap-4">
+              <div key={g} data-veil-group={g} className="flex flex-col gap-4">
                 {gi > 0 ? (
                   <div className="flex items-center gap-3 text-xs text-kumo-subtle">
                     <div className="h-px flex-1 bg-kumo-line" />or<div className="h-px flex-1 bg-kumo-line" />
