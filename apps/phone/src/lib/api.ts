@@ -157,3 +157,5 @@ export const approveDeviceLink = (token: string, sealed: number[]) =>
   call<unknown>(`/v1/device-links/${token}/approve`, { method: "POST", body: JSON.stringify({ sealed }) });
 export const claimDeviceLink = (token: string) =>
   call<DeviceLink>(`/v1/device-links/${token}/claim`, { method: "POST" });
+export const getDeviceLink = (token: string) =>
+  call<DeviceLink & { pubkey: number[]; label: string }>(`/v1/device-links/${token}`);

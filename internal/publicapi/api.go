@@ -524,6 +524,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/linked-devices", s.listLinkedDevices)
 	mux.HandleFunc("DELETE /v1/linked-devices/{id}", s.revokeLinkedDevice)
 	mux.HandleFunc("POST /v1/device-links", s.createDeviceLink)
+	mux.HandleFunc("GET /v1/device-links/{token}", s.getDeviceLink)
 	mux.HandleFunc("POST /v1/device-links/{token}/approve", s.approveDeviceLink)
 	mux.HandleFunc("POST /v1/device-links/{token}/claim", s.claimDeviceLink)
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
@@ -2839,6 +2840,22 @@ func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "link failed", http.StatusInternalServerError)
 		return
 	}
+	writeJSON(w, l)
+}
+
+// GET /v1/device-links/{token} — the approver reads the link's pubkey +
+// label before sealing. Sealed blob never leaves until claim.
+func (s *Server) getDeviceLink(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
+	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+		http.Error(w, "link invalid", http.StatusBadRequest)
+		return
+	}
+	l.Sealed = nil
 	writeJSON(w, l)
 }
 
