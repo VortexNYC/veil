@@ -194,6 +194,18 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			at TEXT NOT NULL,
 			secret BLOB NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS device_links (
+			token TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			pubkey BLOB,
+			sealed BLOB,
+			approved_by TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			consumed_at TEXT
+		)`,
 		`CREATE TABLE IF NOT EXISTS push_devices (
 			org_id TEXT NOT NULL,
 			token TEXT NOT NULL,
@@ -2971,4 +2983,53 @@ func (s *SQLite) PushDevices(orgID string) ([]protocol.PushDevice, error) {
 func (s *SQLite) DeletePushDevice(orgID, token string) error {
 	_, err := s.db.Exec(`DELETE FROM push_devices WHERE org_id = ? AND token = ?`, orgID, token)
 	return err
+}
+
+func (s *SQLite) PutDeviceLink(ctx context.Context, l protocol.DeviceLink) error {
+	var consumed any
+	if l.ConsumedAt != nil {
+		consumed = l.ConsumedAt.Format(time.RFC3339)
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO device_links
+		(token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT (token) DO UPDATE SET
+		  sealed=excluded.sealed, approved_by=excluded.approved_by, consumed_at=excluded.consumed_at`,
+		l.Token, l.OrgID, l.HumanID, l.Label, l.Pubkey, l.Sealed, l.ApprovedBy,
+		l.CreatedAt.Format(time.RFC3339), l.ExpiresAt.Format(time.RFC3339), consumed)
+	return err
+}
+
+func (s *SQLite) DeviceLink(ctx context.Context, token string) (protocol.DeviceLink, error) {
+	var l protocol.DeviceLink
+	var ca, ea, consumed string
+	err := s.db.QueryRowContext(ctx, `SELECT token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at
+		FROM device_links WHERE token=?`, token).
+		Scan(&l.Token, &l.OrgID, &l.HumanID, &l.Label, &l.Pubkey, &l.Sealed, &l.ApprovedBy, &ca, &ea, &consumed)
+	if err == sql.ErrNoRows {
+		return l, ErrNotFound
+	}
+	if err != nil {
+		return l, err
+	}
+	l.CreatedAt, _ = time.Parse(time.RFC3339, ca)
+	l.ExpiresAt, _ = time.Parse(time.RFC3339, ea)
+	if consumed != "" {
+		if t, e := time.Parse(time.RFC3339, consumed); e == nil {
+			l.ConsumedAt = &t
+		}
+	}
+	return l, nil
+}
+
+func (s *SQLite) ConsumeDeviceLink(ctx context.Context, token string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE device_links SET consumed_at=? WHERE token=? AND consumed_at IS NULL`,
+		time.Now().UTC().Format(time.RFC3339), token)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrNotFound
+	}
+	return nil
 }

@@ -1293,6 +1293,20 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			last_seen_at TIMESTAMPTZ NOT NULL,
 			revoked_at TIMESTAMPTZ
 		)`,
+		// Device-link handoff: new device posts pubkey, old device seals the
+		// org master to it (ciphertext only), new device claims once.
+		`CREATE TABLE IF NOT EXISTS device_links (
+			token TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			pubkey BYTEA,
+			sealed BYTEA,
+			approved_by TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ
+		)`,
 		`CREATE TABLE IF NOT EXISTS shares (
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,
@@ -1972,6 +1986,40 @@ func (p *Postgres) MigrateToKeyService(ctx context.Context) error {
 		}
 		p.km.InvalidateOrg(row.OrgID)
 		migrated++
+	}
+	return nil
+}
+
+// PutDeviceLink inserts a pending link; upserts on token so re-post is idempotent.
+func (p *Postgres) PutDeviceLink(ctx context.Context, l protocol.DeviceLink) error {
+	_, err := p.pool.Exec(ctx, `INSERT INTO device_links
+		(token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		ON CONFLICT (token) DO UPDATE SET
+		  sealed=EXCLUDED.sealed, approved_by=EXCLUDED.approved_by, consumed_at=EXCLUDED.consumed_at`,
+		l.Token, l.OrgID, l.HumanID, l.Label, l.Pubkey, l.Sealed, l.ApprovedBy, l.CreatedAt, l.ExpiresAt, l.ConsumedAt)
+	return err
+}
+
+func (p *Postgres) DeviceLink(ctx context.Context, token string) (protocol.DeviceLink, error) {
+	var l protocol.DeviceLink
+	err := p.pool.QueryRow(ctx, `SELECT token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at
+		FROM device_links WHERE token=$1`, token).
+		Scan(&l.Token, &l.OrgID, &l.HumanID, &l.Label, &l.Pubkey, &l.Sealed, &l.ApprovedBy, &l.CreatedAt, &l.ExpiresAt, &l.ConsumedAt)
+	if err == pgx.ErrNoRows {
+		return l, ErrNotFound
+	}
+	return l, err
+}
+
+func (p *Postgres) ConsumeDeviceLink(ctx context.Context, token string) error {
+	n, err := p.pool.Exec(ctx, `UPDATE device_links SET consumed_at=$2 WHERE token=$1 AND consumed_at IS NULL`,
+		token, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if n.RowsAffected() != 1 {
+		return ErrNotFound
 	}
 	return nil
 }

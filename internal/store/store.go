@@ -370,6 +370,10 @@ type Store interface {
 	PutPushDevice(d protocol.PushDevice) error
 	PushDevices(orgID string) ([]protocol.PushDevice, error)
 	PutDevice(d protocol.Device) error
+	// Device links — old-device-approve handoff (sealed master only).
+	PutDeviceLink(ctx context.Context, l protocol.DeviceLink) error
+	DeviceLink(ctx context.Context, token string) (protocol.DeviceLink, error)
+	ConsumeDeviceLink(ctx context.Context, token string) error
 	Devices(orgID, humanID string) ([]protocol.Device, error)
 	RevokeDevice(orgID, humanID, id string) error
 	DeletePushDevice(orgID, token string) error

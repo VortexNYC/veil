@@ -35,6 +35,7 @@ type Memory struct {
 	usage       map[string]usageCounter // key: org_id+"\x00"+window unix
 	beats       map[string]time.Time    // key: job name — ops liveness
 	devices     map[string]protocol.Device
+	deviceLinks map[string]protocol.DeviceLink
 	pushDevices map[string][]protocol.PushDevice // key: org_id
 	travel      map[string]bool                  // key: org_id — VTX-788 travel mode
 	shares      map[string]protocol.Share        // VTX-783 share links
@@ -1437,5 +1438,38 @@ func (m *Memory) DeletePushDevice(orgID, token string) error {
 			return nil
 		}
 	}
+	return nil
+}
+
+func (m *Memory) PutDeviceLink(_ context.Context, l protocol.DeviceLink) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.deviceLinks == nil {
+		m.deviceLinks = map[string]protocol.DeviceLink{}
+	}
+	m.deviceLinks[l.Token] = l
+	return nil
+}
+
+func (m *Memory) DeviceLink(_ context.Context, token string) (protocol.DeviceLink, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, ok := m.deviceLinks[token]
+	if !ok {
+		return l, ErrNotFound
+	}
+	return l, nil
+}
+
+func (m *Memory) ConsumeDeviceLink(_ context.Context, token string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, ok := m.deviceLinks[token]
+	if !ok || l.ConsumedAt != nil {
+		return ErrNotFound
+	}
+	now := time.Now().UTC()
+	l.ConsumedAt = &now
+	m.deviceLinks[token] = l
 	return nil
 }

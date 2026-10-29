@@ -539,6 +539,23 @@ type Device struct {
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 }
 
+// DeviceLink is an old-device-approval handoff: a new device posts its
+// custodian pubkey, an approved device seals the org master to it
+// (NaCl box — ciphertext only on the server), and the new device claims
+// the wrap. Token is a 128-bit one-shot; rows expire unclaimed.
+type DeviceLink struct {
+	Token      string     `json:"token"`
+	OrgID      string     `json:"org_id"`
+	HumanID    string     `json:"human_id"`
+	Label      string     `json:"label"`
+	Pubkey     []byte     `json:"pubkey"`
+	Sealed     []byte     `json:"sealed,omitempty"`
+	ApprovedBy string     `json:"approved_by,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	ConsumedAt *time.Time `json:"consumed_at,omitempty"`
+}
+
 type PushDevice struct {
 	OrgID     string    `json:"org_id"`
 	Platform  string    `json:"platform"` // "apns" | "fcm"
