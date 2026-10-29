@@ -73,6 +73,15 @@ export default function SignIn() {
           <Text className="text-white" style={{ fontSize: 16, fontWeight: "600" }}>Sign in</Text>
         )}
       </Pressable>
+
+      <Pressable accessibilityRole="button"
+        onPress={() => router.push("/link")}
+        style={{ alignItems: "center", paddingVertical: 10 }}
+      >
+        <Text className="text-blue-400" style={{ fontSize: 15 }}>
+          Sign in without password — link from an approved device
+        </Text>
+      </Pressable>
     </ScrollView>
   );
 }
