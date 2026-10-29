@@ -602,3 +602,47 @@ export async function redeemShareLink(
   }
   return { status: res.status, data: (await res.json()) as RedeemShareResponse };
 }
+
+// Linked devices — device trust inventory + revocation.
+export interface LinkedDevice {
+  id: string;
+  label: string;
+  platform: string;
+  pubkey?: number[];
+  created_at: string;
+  last_seen_at: string;
+  revoked_at?: string;
+}
+
+export async function listDevices(): Promise<{ data?: { devices: LinkedDevice[] }; error?: { message: string } }> {
+  const t = token();
+  if (!t) throw new Error("signed out");
+  const res = await fetch(`${originAPI}/v1/linked-devices`, {
+    headers: { Authorization: `Bearer ${t}` },
+  });
+  if (!res.ok) return { error: { message: `list failed (${res.status})` } };
+  return { data: await res.json() };
+}
+
+export async function registerDevice(id: string, label: string, platform: string, pubkey?: number[]): Promise<{ error?: { message: string } }> {
+  const t = token();
+  if (!t) throw new Error("signed out");
+  const res = await fetch(`${originAPI}/v1/linked-devices`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ id, label, platform, pubkey }),
+  });
+  if (!res.ok) return { error: { message: `register failed (${res.status})` } };
+  return {};
+}
+
+export async function revokeDevice(id: string): Promise<{ error?: { message: string } }> {
+  const t = token();
+  if (!t) throw new Error("signed out");
+  const res = await fetch(`${originAPI}/v1/linked-devices/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${t}` },
+  });
+  if (!res.ok) return { error: { message: `revoke failed (${res.status})` } };
+  return {};
+}

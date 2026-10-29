@@ -24,6 +24,11 @@ export function unhex(s: string): Uint8Array {
   for (let i = 0; i < out.length; i++) out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
+function b64encode(b: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+  return globalThis.btoa(bin);
+}
 function b64decode(s: string): Uint8Array {
   const bin = globalThis.atob(s.trim());
   const out = new Uint8Array(bin.length);
@@ -59,4 +64,41 @@ export async function openParcel(parcelB64: string): Promise<OpenedShare> {
   const share = env.slice(13);
   if (share.length !== 33) throw new Error(`share is ${share.length}B, want 33`);
   return { ordinal, fp, shareHex: hex(share) };
+}
+
+// openBox — plain NaCl box (eph||nonce||ct) to this device's custodian key.
+// The org_key_shares wrapped_master envelope — no VEILSHR1 wrapper.
+export async function openBox(blobB64: string): Promise<string> {
+  const privHex = await SecureStore.getItemAsync(KEY_PRIV);
+  if (!privHex) throw new Error("no custodian key on this device");
+  const blob = b64decode(blobB64);
+  if (blob.length < 56) throw new Error("box too short");
+  const eph = blob.slice(0, 32), nonce = blob.slice(32, 56), ct = blob.slice(56);
+  const pt = nacl.box.open(ct, nonce, eph, unhex(privHex));
+  if (!pt) throw new Error("box does not open with this device's custodian key");
+  return hex(pt);
+}
+
+// sealForRecipient — NaCl-box a master to a recipient custodian pubkey.
+// Same eph||nonce||ct envelope openParcel reads on the receiving side.
+export async function sealForRecipient(masterHex: string, recipientPubHex: string): Promise<string> {
+  const eph = nacl.box.keyPair();
+  const nonce = Crypto.getRandomBytes(24);
+  const ct = nacl.box.seal(unhex(masterHex), nonce, unhex(recipientPubHex), eph.secretKey);
+  const env = new Uint8Array(32 + 24 + ct.length);
+  env.set(eph.publicKey, 0); env.set(nonce, 32); env.set(ct, 56);
+  return b64encode(env);
+}
+
+// registerThisDevice — one-shot post-sign-in: stable device id + the
+// custodian pubkey go to the linked-devices inventory.
+export async function registerThisDevice(label: string): Promise<void> {
+  const { registerLinkedDevice } = await import("./api");
+  let id = await SecureStore.getItemAsync("veil.device.id");
+  if (!id) {
+    id = `ios-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    await SecureStore.setItemAsync("veil.device.id", id);
+  }
+  const pubHex = await custodianPubHex();
+  await registerLinkedDevice(id, label, pubHex);
 }

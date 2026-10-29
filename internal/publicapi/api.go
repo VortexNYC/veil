@@ -9,6 +9,7 @@ package publicapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -519,6 +520,13 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	// approval asks and ops pages reach the lock screen.
 	mux.HandleFunc("POST /v1/devices", s.registerDevice)
 	mux.HandleFunc("DELETE /v1/devices", s.unregisterDevice)
+	mux.HandleFunc("POST /v1/linked-devices", s.registerLinkedDevice)
+	mux.HandleFunc("GET /v1/linked-devices", s.listLinkedDevices)
+	mux.HandleFunc("DELETE /v1/linked-devices/{id}", s.revokeLinkedDevice)
+	mux.HandleFunc("POST /v1/device-links", s.createDeviceLink)
+	mux.HandleFunc("GET /v1/device-links/{token}", s.getDeviceLink)
+	mux.HandleFunc("POST /v1/device-links/{token}/approve", s.approveDeviceLink)
+	mux.HandleFunc("POST /v1/device-links/{token}/claim", s.claimDeviceLink)
 	// Inbound billing plane — Vortex-Signature is the auth, no principal.
 	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
 	mux.HandleFunc("POST /v1/fill/logins", s.fillLogins)
@@ -2734,4 +2742,168 @@ func (s *Server) unregisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /v1/devices — the human's linked devices (active and revoked for audit).
+func (s *Server) listLinkedDevices(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	ds, err := s.App.Store.Devices(h.OrgID, h.ID)
+	if err != nil {
+		http.Error(w, "list failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, DevicesResponse{Devices: ds})
+}
+
+type DevicesResponse struct {
+	Devices []protocol.Device `json:"devices"`
+}
+
+type linkedDeviceRequest struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Platform string `json:"platform"`
+	Pubkey   []byte `json:"pubkey"`
+}
+
+// POST /v1/devices — a device registers its X25519 custodian key. Called
+// post-sign-in; idempotent on id so re-registering just bumps last_seen.
+func (s *Server) registerLinkedDevice(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var req linkedDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+	now := time.Now()
+	d := protocol.Device{
+		ID: req.ID, OrgID: h.OrgID, HumanID: h.ID,
+		Label: req.Label, Platform: req.Platform, Pubkey: req.Pubkey,
+		CreatedAt: now, LastSeenAt: now,
+	}
+	if err := s.App.Store.PutDevice(d); err != nil {
+		http.Error(w, "register failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, d)
+}
+
+// DELETE /v1/devices/{id} — revoke a linked device (custody + trust).
+func (s *Server) revokeLinkedDevice(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	if err := s.App.Store.RevokeDevice(h.OrgID, h.ID, r.PathValue("id")); err != nil {
+		http.Error(w, "revoke failed", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type deviceLinkRequest struct {
+	Label  string `json:"label"`
+	Pubkey []byte `json:"pubkey"`
+}
+
+// POST /v1/device-links — a new device posts its custodian pubkey and gets
+// a one-shot link token (for the QR). Human-scoped: the session binds the
+// link to this human's org so the approver's seal lands in the right vault.
+func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var req deviceLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Pubkey) != 32 {
+		http.Error(w, "pubkey (32B) required", http.StatusBadRequest)
+		return
+	}
+	var tok [16]byte
+	if _, err := rand.Read(tok[:]); err != nil {
+		http.Error(w, "mint failed", http.StatusInternalServerError)
+		return
+	}
+	now := time.Now()
+	l := protocol.DeviceLink{
+		Token: hex.EncodeToString(tok[:]), OrgID: h.OrgID, HumanID: h.ID,
+		Label: req.Label, Pubkey: req.Pubkey,
+		CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute),
+	}
+	if err := s.App.Store.PutDeviceLink(r.Context(), l); err != nil {
+		http.Error(w, "link failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, l)
+}
+
+// GET /v1/device-links/{token} — the approver reads the link's pubkey +
+// label before sealing. Sealed blob never leaves until claim.
+func (s *Server) getDeviceLink(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
+	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+		http.Error(w, "link invalid", http.StatusBadRequest)
+		return
+	}
+	l.Sealed = nil
+	writeJSON(w, l)
+}
+
+type approveLinkRequest struct {
+	Sealed []byte `json:"sealed"`
+}
+
+// POST /v1/device-links/{token}/approve — an approved device seals the org
+// master to the link's pubkey (NaCl box — ciphertext only on the server).
+// Idempotent: re-sealing an unconsumed link updates the blob.
+func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
+	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+		http.Error(w, "link invalid", http.StatusBadRequest)
+		return
+	}
+	var req approveLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Sealed) == 0 {
+		http.Error(w, "sealed required", http.StatusBadRequest)
+		return
+	}
+	l.Sealed, l.ApprovedBy = req.Sealed, h.ID
+	if err := s.App.Store.PutDeviceLink(r.Context(), l); err != nil {
+		http.Error(w, "approve failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /v1/device-links/{token}/claim — the new device consumes the sealed
+// wrap once; the token dies on read.
+func (s *Server) claimDeviceLink(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
+	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || len(l.Sealed) == 0 || time.Now().After(l.ExpiresAt) {
+		http.Error(w, "link invalid", http.StatusBadRequest)
+		return
+	}
+	if err := s.App.Store.ConsumeDeviceLink(r.Context(), l.Token); err != nil {
+		http.Error(w, "claim failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, l)
 }

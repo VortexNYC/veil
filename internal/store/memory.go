@@ -31,9 +31,11 @@ type Memory struct {
 	versions    []protocol.ItemVersion
 	verSecret   map[int64]Secret
 	nextVer     int64
-	billing     map[string]OrgBilling            // key: org_id
-	usage       map[string]usageCounter          // key: org_id+"\x00"+window unix
-	beats       map[string]time.Time             // key: job name — ops liveness
+	billing     map[string]OrgBilling   // key: org_id
+	usage       map[string]usageCounter // key: org_id+"\x00"+window unix
+	beats       map[string]time.Time    // key: job name — ops liveness
+	devices     map[string]protocol.Device
+	deviceLinks map[string]protocol.DeviceLink
 	pushDevices map[string][]protocol.PushDevice // key: org_id
 	travel      map[string]bool                  // key: org_id — VTX-788 travel mode
 	shares      map[string]protocol.Share        // VTX-783 share links
@@ -1365,6 +1367,39 @@ func (m *Memory) Sweep(olderThan time.Time) (SweepReport, error) {
 }
 
 // Push devices — in-memory rows for tests and the embedded store.
+func (m *Memory) PutDevice(d protocol.Device) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.devices == nil {
+		m.devices = map[string]protocol.Device{}
+	}
+	m.devices[d.ID] = d
+	return nil
+}
+
+func (m *Memory) Devices(orgID, humanID string) ([]protocol.Device, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []protocol.Device
+	for _, d := range m.devices {
+		if d.OrgID == orgID && d.HumanID == humanID && d.RevokedAt == nil {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (m *Memory) RevokeDevice(orgID, humanID, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if d, ok := m.devices[id]; ok && d.OrgID == orgID && d.HumanID == humanID {
+		now := time.Now()
+		d.RevokedAt = &now
+		m.devices[id] = d
+	}
+	return nil
+}
+
 func (m *Memory) PutPushDevice(d protocol.PushDevice) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1403,5 +1438,38 @@ func (m *Memory) DeletePushDevice(orgID, token string) error {
 			return nil
 		}
 	}
+	return nil
+}
+
+func (m *Memory) PutDeviceLink(_ context.Context, l protocol.DeviceLink) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.deviceLinks == nil {
+		m.deviceLinks = map[string]protocol.DeviceLink{}
+	}
+	m.deviceLinks[l.Token] = l
+	return nil
+}
+
+func (m *Memory) DeviceLink(_ context.Context, token string) (protocol.DeviceLink, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, ok := m.deviceLinks[token]
+	if !ok {
+		return l, ErrNotFound
+	}
+	return l, nil
+}
+
+func (m *Memory) ConsumeDeviceLink(_ context.Context, token string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, ok := m.deviceLinks[token]
+	if !ok || l.ConsumedAt != nil {
+		return ErrNotFound
+	}
+	now := time.Now().UTC()
+	l.ConsumedAt = &now
+	m.deviceLinks[token] = l
 	return nil
 }

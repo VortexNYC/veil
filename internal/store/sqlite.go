@@ -194,6 +194,18 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			at TEXT NOT NULL,
 			secret BLOB NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS device_links (
+			token TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			pubkey BLOB,
+			sealed BLOB,
+			approved_by TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			consumed_at TEXT
+		)`,
 		`CREATE TABLE IF NOT EXISTS push_devices (
 			org_id TEXT NOT NULL,
 			token TEXT NOT NULL,
@@ -266,6 +278,17 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			PRIMARY KEY (org_id, window_start)
 		)`,
 		// VTX-788: org-level flags — an absent row reads as travel_mode off.
+		`CREATE TABLE IF NOT EXISTS devices (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			platform TEXT NOT NULL DEFAULT '',
+			pubkey BLOB,
+			created_at INTEGER NOT NULL,
+			last_seen_at INTEGER NOT NULL,
+			revoked_at INTEGER
+		)`,
 		`CREATE TABLE IF NOT EXISTS org_settings (
 			org_id TEXT PRIMARY KEY,
 			travel_mode INTEGER NOT NULL DEFAULT 0,
@@ -2875,6 +2898,55 @@ func (s *SQLite) MarkHeartbeat(string) error { return nil }
 
 // PutPushDevice upserts a registered push endpoint — tokens rotate, so
 // re-registration overwrites platform/label/stamp in place.
+func (s *SQLite) PutDevice(d protocol.Device) error {
+	_, err := s.db.Exec(
+		`INSERT INTO devices(id, org_id, human_id, label, platform, pubkey, created_at, last_seen_at)
+		 VALUES(?,?,?,?,?,?,?,?)
+		 ON CONFLICT(id) DO UPDATE SET
+		   last_seen_at = excluded.last_seen_at,
+		   label = excluded.label,
+		   platform = excluded.platform,
+		   pubkey = excluded.pubkey,
+		   revoked_at = NULL`,
+		d.ID, d.OrgID, d.HumanID, d.Label, d.Platform, d.Pubkey,
+		d.CreatedAt.Unix(), d.LastSeenAt.Unix())
+	return err
+}
+
+func (s *SQLite) Devices(orgID, humanID string) ([]protocol.Device, error) {
+	rows, err := s.db.Query(
+		`SELECT id, org_id, human_id, label, platform, pubkey, created_at, last_seen_at, revoked_at
+		 FROM devices WHERE org_id = ? AND human_id = ? ORDER BY created_at`, orgID, humanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.Device
+	for rows.Next() {
+		var d protocol.Device
+		var created, seen int64
+		var revoked *int64
+		if err := rows.Scan(&d.ID, &d.OrgID, &d.HumanID, &d.Label, &d.Platform, &d.Pubkey, &created, &seen, &revoked); err != nil {
+			return nil, err
+		}
+		d.CreatedAt = time.Unix(created, 0)
+		d.LastSeenAt = time.Unix(seen, 0)
+		if revoked != nil {
+			t := time.Unix(*revoked, 0)
+			d.RevokedAt = &t
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) RevokeDevice(orgID, humanID, id string) error {
+	_, err := s.db.Exec(
+		`UPDATE devices SET revoked_at = ? WHERE org_id = ? AND human_id = ? AND id = ?`,
+		time.Now().Unix(), orgID, humanID, id)
+	return err
+}
+
 func (s *SQLite) PutPushDevice(d protocol.PushDevice) error {
 	_, err := s.db.Exec(
 		`INSERT INTO push_devices(org_id, token, platform, label, updated_at)
@@ -2911,4 +2983,53 @@ func (s *SQLite) PushDevices(orgID string) ([]protocol.PushDevice, error) {
 func (s *SQLite) DeletePushDevice(orgID, token string) error {
 	_, err := s.db.Exec(`DELETE FROM push_devices WHERE org_id = ? AND token = ?`, orgID, token)
 	return err
+}
+
+func (s *SQLite) PutDeviceLink(ctx context.Context, l protocol.DeviceLink) error {
+	var consumed any
+	if l.ConsumedAt != nil {
+		consumed = l.ConsumedAt.Format(time.RFC3339)
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO device_links
+		(token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT (token) DO UPDATE SET
+		  sealed=excluded.sealed, approved_by=excluded.approved_by, consumed_at=excluded.consumed_at`,
+		l.Token, l.OrgID, l.HumanID, l.Label, l.Pubkey, l.Sealed, l.ApprovedBy,
+		l.CreatedAt.Format(time.RFC3339), l.ExpiresAt.Format(time.RFC3339), consumed)
+	return err
+}
+
+func (s *SQLite) DeviceLink(ctx context.Context, token string) (protocol.DeviceLink, error) {
+	var l protocol.DeviceLink
+	var ca, ea, consumed string
+	err := s.db.QueryRowContext(ctx, `SELECT token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at
+		FROM device_links WHERE token=?`, token).
+		Scan(&l.Token, &l.OrgID, &l.HumanID, &l.Label, &l.Pubkey, &l.Sealed, &l.ApprovedBy, &ca, &ea, &consumed)
+	if err == sql.ErrNoRows {
+		return l, ErrNotFound
+	}
+	if err != nil {
+		return l, err
+	}
+	l.CreatedAt, _ = time.Parse(time.RFC3339, ca)
+	l.ExpiresAt, _ = time.Parse(time.RFC3339, ea)
+	if consumed != "" {
+		if t, e := time.Parse(time.RFC3339, consumed); e == nil {
+			l.ConsumedAt = &t
+		}
+	}
+	return l, nil
+}
+
+func (s *SQLite) ConsumeDeviceLink(ctx context.Context, token string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE device_links SET consumed_at=? WHERE token=? AND consumed_at IS NULL`,
+		time.Now().UTC().Format(time.RFC3339), token)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrNotFound
+	}
+	return nil
 }

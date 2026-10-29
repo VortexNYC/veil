@@ -15,7 +15,10 @@ import {
   recoveryShare,
   setTravelMode,
   travelMode,
+  listDevices,
+  revokeDevice,
 } from "../../origin";
+import type { LinkedDevice } from "../../origin";
 import {
   b64,
   downloadEmergencyKit,
@@ -33,6 +36,67 @@ export const Route = createFileRoute("/_app/settings")({
 // Inside Veil.app the SPA is served over the veil-app: scheme — the Mac
 // Fill settings window replaces the .dmg download there.
 const isMacApp = typeof window !== "undefined" && window.location.protocol === "veil-app:";
+
+
+// LinkedDevicesCard lists the human's registered devices — each POSTs its
+// X25519 custodian key on sign-in. Revoke kills that device's custody.
+function LinkedDevicesCard() {
+  const [devices, setDevices] = useState<LinkedDevice[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = () => {
+    listDevices().then((res) => {
+      if (!res.error && res.data) setDevices(res.data.devices);
+      else setError(res.error?.message ?? "failed to load devices");
+    });
+  };
+  useEffect(load, []);
+
+  const revoke = async (id: string) => {
+    setBusyId(id);
+    const res = await revokeDevice(id);
+    setBusyId(null);
+    if (res.error) setError(res.error.message);
+    else load();
+  };
+
+  return (
+    <LayerCard className="p-6">
+      <div className="mb-4">
+        <h3 className="text-base font-semibold text-kumo-strong">Linked devices</h3>
+        <p className="mt-1 text-sm text-kumo-subtle">
+          Devices holding a custody key for this account. Revoke any you don't recognize.
+        </p>
+      </div>
+      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {devices === null ? (
+        <p className="text-sm text-kumo-subtle">Loading…</p>
+      ) : devices.length === 0 ? (
+        <p className="text-sm text-kumo-subtle">No linked devices yet — sign in on a device to register it.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {devices.map((d) => (
+            <div key={d.id} className="flex items-center justify-between rounded-lg border border-kumo-line px-4 py-3">
+              <div>
+                <div className="text-sm font-medium text-kumo-strong">{d.label || d.platform || "device"}</div>
+                <div className="text-xs text-kumo-subtle">
+                  {d.platform} · last seen {new Date(d.last_seen_at).toLocaleDateString()}
+                  {d.revoked_at ? " · revoked" : ""}
+                </div>
+              </div>
+              {!d.revoked_at ? (
+                <Button variant="secondary" size="sm" disabled={busyId === d.id} onClick={() => void revoke(d.id)}>
+                  {busyId === d.id ? "Revoking…" : "Revoke"}
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </LayerCard>
+  );
+}
 
 // RecoveryKitCard is the VEIL-78 enrollment surface: the browser mints the
 // X25519 pair, downloads the private half as the kit file, then posts only
@@ -333,6 +397,7 @@ function Settings() {
         ) : null}
         <TravelModeCard />
         <RecoveryKitCard />
+        <LinkedDevicesCard />
         <LayerCard>
           <LayerCard.Secondary>Sign-in &amp; recovery</LayerCard.Secondary>
           <LayerCard.Primary>

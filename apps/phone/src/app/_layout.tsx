@@ -6,9 +6,11 @@ import { StatusBar } from "expo-status-bar";
 import { AppState, Pressable, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 import { armErrorReporting } from "../lib/report";
 import { registerForPush, wireNotificationTap } from "../lib/push";
 import { checkAndApplyOTAUpdate } from "../lib/updates";
+import { registerThisDevice } from "../lib/escrow";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -20,6 +22,7 @@ export default function Layout() {
   useEffect(() => {
     wireNotificationTap();
     void registerForPush();
+    void registerThisDevice(Platform.OS === "ios" ? "iPhone" : Platform.OS).catch(() => {});
     void checkAndApplyOTAUpdate();
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {

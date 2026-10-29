@@ -570,7 +570,7 @@ func keyCmd() *cobra.Command {
 	_ = escrowOpen.MarkFlagRequired("out-dir")
 
 	c.AddCommand(rotateOrg, rotateKEK, storeRecovery, recoverOrg, combine,
-		escrowKeygen, escrowSeal, escrowOpen)
+		escrowKeygen, escrowSeal, escrowOpen, migrateKeysvc, remoteRotate)
 	return c
 }
 

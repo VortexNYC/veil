@@ -1930,6 +1930,40 @@ func (p *Postgres) MarkHeartbeat(name string) error {
 
 // PutPushDevice upserts a registered push endpoint — tokens rotate, so
 // re-registration overwrites platform/label/stamp in place.
+func (p *Postgres) PutDevice(d protocol.Device) error {
+	_, err := p.pool.Exec(context.Background(),
+		`INSERT INTO devices(id, org_id, human_id, label, platform, pubkey, created_at, last_seen_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		 ON CONFLICT (id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, label = EXCLUDED.label, platform = EXCLUDED.platform, pubkey = EXCLUDED.pubkey, revoked_at = NULL`,
+		d.ID, d.OrgID, d.HumanID, d.Label, d.Platform, d.Pubkey, d.CreatedAt, d.LastSeenAt)
+	return err
+}
+
+func (p *Postgres) Devices(orgID, humanID string) ([]protocol.Device, error) {
+	rows, err := p.pool.Query(context.Background(),
+		`SELECT id, org_id, human_id, label, platform, pubkey, created_at, last_seen_at, revoked_at
+		 FROM devices WHERE org_id = $1 AND human_id = $2 ORDER BY created_at`, orgID, humanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.Device
+	for rows.Next() {
+		var d protocol.Device
+		if err := rows.Scan(&d.ID, &d.OrgID, &d.HumanID, &d.Label, &d.Platform, &d.Pubkey, &d.CreatedAt, &d.LastSeenAt, &d.RevokedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) RevokeDevice(orgID, humanID, id string) error {
+	_, err := p.pool.Exec(context.Background(),
+		`UPDATE devices SET revoked_at = now() WHERE org_id = $1 AND human_id = $2 AND id = $3`, orgID, humanID, id)
+	return err
+}
+
 func (p *Postgres) PutPushDevice(d protocol.PushDevice) error {
 	_, err := p.pool.Exec(context.Background(),
 		`INSERT INTO push_devices(org_id, token, platform, label, updated_at)

@@ -525,6 +525,37 @@ type Session struct {
 // the app registers it here, and the origin pushes approval wake-ups
 // and ops pages over APNs/FCM. The token is a routing handle, not a
 // credential — it authorizes nothing.
+// Device is a human's linked device — X25519 custodian pubkey, trust
+// inventory, and revocation. Not PushDevice (that one is a push token).
+type Device struct {
+	ID         string     `json:"id"`
+	OrgID      string     `json:"org_id"`
+	HumanID    string     `json:"human_id"`
+	Label      string     `json:"label"`
+	Platform   string     `json:"platform"` // "ios" | "web" | "android" | "cli"
+	Pubkey     []byte     `json:"pubkey"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastSeenAt time.Time  `json:"last_seen_at"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+}
+
+// DeviceLink is an old-device-approval handoff: a new device posts its
+// custodian pubkey, an approved device seals the org master to it
+// (NaCl box — ciphertext only on the server), and the new device claims
+// the wrap. Token is a 128-bit one-shot; rows expire unclaimed.
+type DeviceLink struct {
+	Token      string     `json:"token"`
+	OrgID      string     `json:"org_id"`
+	HumanID    string     `json:"human_id"`
+	Label      string     `json:"label"`
+	Pubkey     []byte     `json:"pubkey"`
+	Sealed     []byte     `json:"sealed,omitempty"`
+	ApprovedBy string     `json:"approved_by,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	ConsumedAt *time.Time `json:"consumed_at,omitempty"`
+}
+
 type PushDevice struct {
 	OrgID     string    `json:"org_id"`
 	Platform  string    `json:"platform"` // "apns" | "fcm"
