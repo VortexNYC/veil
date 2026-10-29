@@ -70,6 +70,14 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/health") return json({ ok: true, service: "veil-key-service" });
+    // Slot visibility, never values: which KEK bindings are populated.
+    // Rotation hygiene — a client verifies bound slots before write ops.
+    if (url.pathname === "/whoami") {
+      const bound = { kek: false, kek_next: false };
+      try { bound.kek = unhex((await env.VEIL_KEK.get()).trim()).length === 32; } catch { /* unbound */ }
+      try { bound.kek_next = unhex((await env.VEIL_KEK_NEXT.get()).trim()).length === 32; } catch { /* unbound */ }
+      return json({ ok: true, service: "veil-key-service", keys: bound });
+    }
     if ((req.headers.get("authorization") ?? "") !== `Bearer ${(await env.SERVICE_TOKEN.get()).trim()}`)
       return json({ error: "unauthorized" }, 401);
     try {
