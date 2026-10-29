@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { Verification } from "@ory/elements-react/theme"
-import { frontend, kratosURL, oryConfig } from "../ory"
+import KratosFlow from "ory-ui"
+import { frontend, kratosURL } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
 
 export const Route = createFileRoute("/verification")({
@@ -32,5 +32,5 @@ export const Route = createFileRoute("/verification")({
       },
     )
   },
-  component: () => <Verification flow={Route.useLoaderData()} config={oryConfig} />,
+  component: () => <KratosFlow flow={Route.useLoaderData()} title="Verify your email" subtitle="Enter the code we sent you" />,
 })

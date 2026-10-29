@@ -56,7 +56,7 @@ export default function SignIn() {
         </Text>
       ) : null}
 
-      <Pressable
+      <Pressable accessibilityRole="button"
         onPress={go}
         disabled={busy}
         className="bg-blue-600"

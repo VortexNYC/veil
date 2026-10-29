@@ -54,7 +54,12 @@ type Postgres struct {
 // deployment KEK that seals org_keys rows — it never seals item secrets
 // directly. Org masters live wrapped in the org_keys table.
 func OpenPostgres(connString string, kek []byte) (*Postgres, error) {
-	if len(kek) != crypto.KeySize {
+	// Remote mode may pass a nil legacy key: org_keys unwrap only reaches
+	// p.kek for non-0x02 blobs, which fail closed if it is absent.
+	if os.Getenv(EnvKeysvcURL) == "" && len(kek) != crypto.KeySize {
+		return nil, fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
+	}
+	if kek != nil && len(kek) != crypto.KeySize {
 		return nil, fmt.Errorf("store: KEK must be %d bytes", crypto.KeySize)
 	}
 	config, err := pgxpool.ParseConfig(connString)

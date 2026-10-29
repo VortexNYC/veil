@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { Login } from "@ory/elements-react/theme"
-import { frontend, kratosURL, oryConfig } from "../ory"
+import KratosFlow from "ory-ui"
+import { frontend, kratosURL } from "../ory"
 import { loadOrCreateFlow, loginSearch } from "../flow"
 
 export const Route = createFileRoute("/login")({
@@ -52,7 +52,7 @@ export const Route = createFileRoute("/login")({
       },
     )
   },
-  component: () => <Login flow={Route.useLoaderData()} config={oryConfig} />,
+  component: () => <KratosFlow flow={Route.useLoaderData()} title="Sign in" subtitle="Sign in with your email and password or a security key" />,
 })
 
 // A flow is renderable only when its ui.nodes carry a credential group —

@@ -257,7 +257,10 @@ func OpenOrInit(dir string) (*App, error) {
 // legacy: when set, it is seeded once as this org's wrapped master and can be
 // removed afterward.
 func OpenPostgres(dsn string) (*App, error) {
-	kek, err := loadKeyEnv("VEIL_KEK", true)
+	// Remote key-service mode: VEIL_KEK becomes the legacy decoder only —
+	// required when VEIL_KEYSVC_* is absent, optional (and droppable) once
+	// org_keys rows are all service-wrapped.
+	kek, err := loadKeyEnv("VEIL_KEK", os.Getenv(store.EnvKeysvcURL) == "")
 	if err != nil {
 		return nil, err
 	}

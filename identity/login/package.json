@@ -9,9 +9,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cloudflare/kumo": "2.13.2",
     "@ory/client-fetch": "1.22.22",
-    "@ory/elements-react": "1.2.1",
     "@tanstack/react-router": "1.132.47",
+    "ory-ui": "workspace:*",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

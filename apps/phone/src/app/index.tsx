@@ -108,7 +108,7 @@ export default function Items() {
         <Text selectable className="text-danger" style={{ textAlign: "center" }}>
           {error}
         </Text>
-        <Pressable onPress={() => void load()} style={{ alignItems: "center" }}>
+        <Pressable accessibilityRole="button" onPress={() => void load()} style={{ alignItems: "center" }}>
           <Text className="text-foreground" style={{ fontWeight: "600" }}>
             Retry
           </Text>
@@ -155,7 +155,7 @@ export default function Items() {
               {PILLS.map((p) => {
                 const active = filter === p.id;
                 return (
-                  <Pressable
+                  <Pressable accessibilityRole="button"
                     key={p.id}
                     onPress={() => setFilter(p.id)}
                     style={{
@@ -191,7 +191,7 @@ export default function Items() {
         }
         ListFooterComponent={
           items && items.length > 0 ? (
-            <Pressable
+            <Pressable accessibilityRole="button"
               onPress={() => {
                 void signOut().then(() => router.replace("/sign-in"));
               }}
@@ -204,7 +204,7 @@ export default function Items() {
           ) : null
         }
         renderItem={({ item }) => (
-          <Pressable
+          <Pressable accessibilityRole="button"
             onPress={() =>
               router.push({
                 pathname: "/item/[id]",

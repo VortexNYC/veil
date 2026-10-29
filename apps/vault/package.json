@@ -14,10 +14,10 @@
   "dependencies": {
     "@cloudflare/kumo": "2.13.2",
     "@ory/client-fetch": "1.22.22",
-    "@ory/elements-react": "1.2.1",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-router": "1.132.47",
     "@vortex-api/veil": "workspace:*",
+    "ory-ui": "workspace:*",
     "posthog-js": "^1.438.8",
     "react": "19.2.7",
     "react-dom": "19.2.7",
