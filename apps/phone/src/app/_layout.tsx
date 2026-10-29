@@ -10,6 +10,7 @@ import { Platform } from "react-native";
 import { armErrorReporting } from "../lib/report";
 import { registerForPush, wireNotificationTap } from "../lib/push";
 import { checkAndApplyOTAUpdate } from "../lib/updates";
+import { registerThisDevice } from "../lib/escrow";
 
 export { ErrorBoundary } from "expo-router";
 

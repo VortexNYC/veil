@@ -65,7 +65,6 @@ export async function openParcel(parcelB64: string): Promise<OpenedShare> {
 // custodian pubkey go to the linked-devices inventory.
 export async function registerThisDevice(label: string): Promise<void> {
   const { registerLinkedDevice } = await import("./api");
-  const { randomUUID } = await import("expo-crypto").catch(() => ({ randomUUID: null }));
   let id = await SecureStore.getItemAsync("veil.device.id");
   if (!id) {
     id = `ios-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
