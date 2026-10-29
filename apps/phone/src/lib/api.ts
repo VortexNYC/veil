@@ -148,3 +148,12 @@ export const registerDevice = (platform: "apns" | "fcm", token: string, label: s
     method: "POST",
     body: JSON.stringify({ platform, token, label }),
   });
+
+// Device-links — old-device-approve custody handoff (sealed ciphertext only).
+export interface DeviceLink { token: string; expires_at: string; sealed?: string }
+export const createDeviceLink = (label: string, pubkey: number[]) =>
+  call<DeviceLink>("/v1/device-links", { method: "POST", body: JSON.stringify({ label, pubkey }) });
+export const approveDeviceLink = (token: string, sealed: number[]) =>
+  call<unknown>(`/v1/device-links/${token}/approve`, { method: "POST", body: JSON.stringify({ sealed }) });
+export const claimDeviceLink = (token: string) =>
+  call<DeviceLink>(`/v1/device-links/${token}/claim`, { method: "POST" });
