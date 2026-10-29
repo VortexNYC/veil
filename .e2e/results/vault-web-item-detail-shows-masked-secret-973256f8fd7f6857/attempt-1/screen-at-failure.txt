@@ -1,0 +1,12 @@
+#root document "Veil"
+ #n63001 heading "Veil"
+ #n63002 heading "Sign in"
+ #n63003 text="Sign in with your email and password or a security key"
+ #n63004 text="Please confirm this action by verifying that it is you. Please complete the second authentication challenge."
+ #n63005 text="Authentication code"
+ #n63006 textbox "Authentication code" value="<secret:totp-code>" purpose=one-time-code
+ #n63007 button "Use Authenticator"
+ #n63008 text="or"
+ #n63009 text="Recovery code"
+ #n63010 textbox "Recovery code" [focused]
+ #n63011 button "Use backup recovery code"

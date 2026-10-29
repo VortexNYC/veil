@@ -1,0 +1,2607 @@
+{
+  "schemaVersion": "report-1",
+  "run": {
+    "id": "01a184d8-ea1d-7d4a-8f40-7382754ec4e8",
+    "specVersion": "0.1",
+    "runner": {
+      "name": "e2e",
+      "version": "0.21.3"
+    },
+    "status": "blocked",
+    "exitCode": 2,
+    "startedAt": "2026-10-28T23:29:30.865Z",
+    "finishedAt": "2026-10-28T23:33:09.686Z",
+    "project": {
+      "id": "veil",
+      "configDigest": "55e7b3cd8c41d1b3aad9162f764e032ee609b593a897fc68a7fe8f1a4122a3b8"
+    },
+    "environment": {
+      "ci": false,
+      "trustNoticeShown": false,
+      "os": "darwin 25.5.0",
+      "arch": "arm64",
+      "runtime": "node v26.8.2"
+    },
+    "vcs": {
+      "commit": "077e99dcb6e6af954bdc439cc478b228ad9c5136",
+      "branch": "ory-ui-package",
+      "dirty": true
+    },
+    "targets": [
+      {
+        "id": "web",
+        "index": 0,
+        "platform": "web",
+        "baseOrigin": "https://app.veil.nyc",
+        "environment": "production",
+        "engine": {
+          "name": "web",
+          "version": "0.15.3",
+          "spiVersion": 1
+        },
+        "capabilities": [
+          "actions",
+          "artifacts",
+          "browser",
+          "keyboard",
+          "location",
+          "observation",
+          "pointer",
+          "state"
+        ],
+        "artifactCapabilities": [
+          "screenshot",
+          "video"
+        ],
+        "stateCapability": true
+      },
+      {
+        "id": "ios",
+        "index": 1,
+        "platform": "ios",
+        "environment": "test",
+        "engine": {
+          "name": "mobile",
+          "version": "0.12.4",
+          "spiVersion": 1
+        },
+        "capabilities": [
+          "actions",
+          "artifacts",
+          "device",
+          "keyboard",
+          "location",
+          "observation",
+          "pointer"
+        ],
+        "artifactCapabilities": [
+          "screenshot",
+          "video"
+        ],
+        "stateCapability": false
+      }
+    ],
+    "serialGroups": [],
+    "results": [
+      {
+        "id": "0a126e4be780a0d063dc5c5ef2a1f1ca25eed88f20f15aa0acb58e222d057ef8",
+        "testId": "e2e/tests/phone.e2e.ts::phone%20sign-in%20%E2%86%92%20items%20%E2%86%92%20item%20detail",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "phone sign-in → items → item detail"
+        ],
+        "file": "e2e/tests/phone.e2e.ts",
+        "source": {
+          "file": "e2e/tests/phone.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "38786003b8356669e445728fe6e2574b46fb832e286b8809969ef234dd664583",
+        "testId": "e2e/tests/vault-web.e2e.ts::sign%20in%20and%20land%20on%20the%20items%20list",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "sign in and land on the items list"
+        ],
+        "file": "e2e/tests/vault-web.e2e.ts",
+        "source": {
+          "file": "e2e/tests/vault-web.e2e.ts",
+          "line": 20,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": true,
+        "status": "failed",
+        "attempts": [
+          {
+            "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a",
+            "index": 0,
+            "status": "failed",
+            "startedAt": "2026-10-28T23:29:31.087Z",
+            "durationMs": 74404,
+            "artifacts": [
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:artifact:0",
+                "kind": "log",
+                "mediaType": "text/plain",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "vault-web-sign-in-and-land-on-the-items-38786003b8356669/attempt-1/screen-at-failure.txt",
+                "size": 564,
+                "sha256": "d1ad273f5a147237598cd08b9fe3fae1b0da6eaf82e2bc8a8c6be8754f8e7ea6"
+              },
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:artifact:1",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "vault-web-sign-in-and-land-on-the-items-38786003b8356669/attempt-1/screenshots/001-failure.png",
+                "size": 32583,
+                "sha256": "e7ede4aca44d193eba66dbefcd02a9a23c31371be489ea7413d5e884baf088dc"
+              }
+            ],
+            "error": {
+              "category": "configuration",
+              "code": "TEST_SETUP_FAILED",
+              "message": "agent.act blocked: devin executor exhausted 8 turns without a verdict",
+              "retryable": false,
+              "phase": "body",
+              "source": {
+                "file": "e2e/tests/vault-web.e2e.ts",
+                "line": 14,
+                "column": 3
+              }
+            },
+            "secondaryErrors": [],
+            "cleanup": "complete",
+            "environment": {
+              "browser": "chromium 156.0.8078.4",
+              "user agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36"
+            },
+            "failure": {
+              "url": "https://app.veil.nyc/login?flow=c7cd1b32-ec0b-4cda-b30c-e3437c73bc9e",
+              "viewport": {
+                "width": 1280,
+                "height": 720
+              },
+              "nodes": 12,
+              "screen": "01a184d8-ebcf-7af1-b8be-33e2b563265a:artifact:0",
+              "screenshot": "01a184d8-ebcf-7af1-b8be-33e2b563265a:artifact:1"
+            },
+            "steps": [
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:0",
+                "index": 0,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/login",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:29:31.331Z",
+                "durationMs": 501,
+                "events": [],
+                "artifacts": [],
+                "screen": {
+                  "location": "https://app.veil.nyc/login",
+                  "nodes": 1,
+                  "changes": []
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 21,
+                  "column": 13
+                }
+              },
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:1",
+                "index": 1,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "type 'shlomo@vortex.nyc' into the ID field",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:29:31.832Z",
+                "durationMs": 10484,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:31.833Z",
+                    "durationMs": 101,
+                    "status": "passed",
+                    "bytes": 21,
+                    "count": 1
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:29:32.324Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=46bfb4d6-22cf-4422-bd15-c5897b0ccc35"
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:29:32.385Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=46bfb4d6-22cf-4422-bd15-c5897b0ccc35"
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:37.548Z",
+                    "durationMs": 115,
+                    "status": "passed",
+                    "bytes": 410,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:29:40.114Z",
+                    "durationMs": 45,
+                    "status": "passed",
+                    "name": "type",
+                    "detail": "type \"shlomo@vortex.nyc\" into textbox \"ID\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:40.160Z",
+                    "durationMs": 93,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:42.218Z",
+                    "durationMs": 94,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 446,
+                  "contextBytes": 0,
+                  "ledgerBytes": 28
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "646336afb4001947e33d7e06b07492125de6c7bf4ba2807deda5e229887317cd",
+                  "write": "unconfirmed"
+                },
+                "observationRevision": "b8",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=46bfb4d6-22cf-4422-bd15-c5897b0ccc35",
+                  "nodes": 12,
+                  "since": 0,
+                  "changes": [
+                    "added heading \"Veil\"",
+                    "added heading \"Sign in\"",
+                    "added text=\"Sign in with your email and password or a security key\"",
+                    "added text=\"ID\"",
+                    "added textbox \"ID\" value=\"shlomo@vortex.nyc\" purpose=username",
+                    "added button \"Sign in with hardware key\"",
+                    "added text=\"or\"",
+                    "added text=\"Password\"",
+                    "added button \"Show\"",
+                    "added textbox \"Password\" value=<secure> purpose=password [secure]",
+                    "added button \"Sign in with password\""
+                  ]
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 9,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:2",
+                "index": 2,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "fill the Password field from secret 'vault-password'",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:29:42.316Z",
+                "durationMs": 6083,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:42.317Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:29:44.691Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:29:44.691Z",
+                    "durationMs": 38,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"vault-password\" into textbox \"Password\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:44.729Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:48.304Z",
+                    "durationMs": 94,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 446,
+                  "contextBytes": 0,
+                  "ledgerBytes": 116
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "b96aac3ca5c455f842b533931d9dbcdfa2a6ee8ac5f59eb3c8f123e788c4c063",
+                  "write": "no-change"
+                },
+                "observationRevision": "b14",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=46bfb4d6-22cf-4422-bd15-c5897b0ccc35",
+                  "nodes": 12,
+                  "since": 1,
+                  "changes": []
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 10,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:3",
+                "index": 3,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "tap the 'Sign in with password' button",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:29:48.399Z",
+                "durationMs": 16578,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:29:48.399Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:30:02.218Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=c7cd1b32-ec0b-4cda-b30c-e3437c73bc9e"
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:30:02.303Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=c7cd1b32-ec0b-4cda-b30c-e3437c73bc9e"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:01.483Z",
+                    "durationMs": 830,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Sign in with password\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:02.314Z",
+                    "durationMs": 270,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:04.887Z",
+                    "durationMs": 90,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 526,
+                  "contextBytes": 0,
+                  "ledgerBytes": 214
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "a4a297a6e2f3b8997db1f26492cdaac7ad622d3364a7407bc286fe5ddfdfd53e",
+                  "write": "unconfirmed"
+                },
+                "observationRevision": "b22",
+                "explanation": "Sign in with password was tapped; flow advanced to the second-factor (authentication code) screen",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=c7cd1b32-ec0b-4cda-b30c-e3437c73bc9e",
+                  "nodes": 12,
+                  "since": 2,
+                  "changes": [
+                    "added text=\"Please confirm this action by verifying that it is you. Please complete the second authentication challenge.\"",
+                    "added text=\"Authentication code\"",
+                    "added textbox \"Authentication code\" purpose=one-time-code",
+                    "added button \"Use Authenticator\"",
+                    "added text=\"Recovery code\"",
+                    "added textbox \"Recovery code\"",
+                    "added button \"Use backup recovery code\"",
+                    "removed text=\"ID\"",
+                    "removed textbox \"ID\" value=\"shlomo@vortex.nyc\" purpose=username",
+                    "removed button \"Sign in with hardware key\"",
+                    "removed text=\"Password\"",
+                    "removed button \"Show\""
+                  ],
+                  "more": 2
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 13,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184d8-ebcf-7af1-b8be-33e2b563265a:4",
+                "index": 4,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and tap Continue",
+                "status": "blocked",
+                "startedAt": "2026-10-28T23:30:04.977Z",
+                "durationMs": 40481,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:04.978Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:30:07.459Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:07.459Z",
+                    "durationMs": 32,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"totp-code\" into textbox \"Authentication code\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:07.491Z",
+                    "durationMs": 93,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:09.668Z",
+                    "durationMs": 27,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:09.695Z",
+                    "durationMs": 2090,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:14.032Z",
+                    "durationMs": 39,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:14.071Z",
+                    "durationMs": 2168,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:30:21.165Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:21.165Z",
+                    "durationMs": 13,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"totp-code\" into textbox \"Authentication code\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:21.179Z",
+                    "durationMs": 93,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:24.044Z",
+                    "durationMs": 26,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:24.070Z",
+                    "durationMs": 2094,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:28.058Z",
+                    "durationMs": 46,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:28.105Z",
+                    "durationMs": 2152,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:34.703Z",
+                    "durationMs": 35,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:34.738Z",
+                    "durationMs": 2152,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:40.757Z",
+                    "durationMs": 44,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:40.801Z",
+                    "durationMs": 2094,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 8,
+                  "observationBytes": 563,
+                  "contextBytes": 0,
+                  "ledgerBytes": 387
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "87c3e10fb131575790548f751093756857dbb1ad1b05ffd91cd1698aaf66badb"
+                },
+                "observationRevision": "b182",
+                "explanation": "devin executor exhausted 8 turns without a verdict",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=c7cd1b32-ec0b-4cda-b30c-e3437c73bc9e",
+                  "nodes": 12,
+                  "since": 3,
+                  "changes": [
+                    "changed textbox \"Authentication code\" value=\"<secret:totp-code>\" purpose=one-time-code (was: textbox \"Authentication code\" purpose=one-time-code)"
+                  ]
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 14,
+                  "column": 15
+                },
+                "error": {
+                  "category": "configuration",
+                  "code": "TEST_SETUP_FAILED",
+                  "message": "agent.act blocked: devin executor exhausted 8 turns without a verdict",
+                  "retryable": false,
+                  "source": {
+                    "file": "e2e/tests/vault-web.e2e.ts",
+                    "line": 14,
+                    "column": 3
+                  }
+                }
+              }
+            ],
+            "appLog": [
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:29:31.611Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:29:31.612Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:29:31.778Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:29:31.781Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:29:31.781Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:29:31.784Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:29:31.790Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:29:31.790Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:29:31.793Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:29:31.793Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "warning",
+                "text": "GET https://accounts.veil.nyc/sessions/whoami 401",
+                "at": "2026-10-28T23:29:31.974Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:29:32.326Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:29:32.326Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:29:32.383Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:29:32.383Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:29:32.383Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:29:32.385Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:29:32.392Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:29:32.392Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:29:32.392Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:29:32.392Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:30:02.225Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:30:02.226Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:30:02.301Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:30:02.302Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:30:02.302Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:30:02.303Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:30:02.304Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:30:02.304Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:30:02.304Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:30:02.304Z",
+                "step": 3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "973256f8fd7f6857a1a662e36d0f713cdc9365dc5f276d566ae1abcb3df0bb25",
+        "testId": "e2e/tests/vault-web.e2e.ts::item%20detail%20shows%20masked%20secret%20with%20reveal%20control",
+        "kind": "test",
+        "declarationIndex": 1,
+        "titlePath": [
+          "item detail shows masked secret with reveal control"
+        ],
+        "file": "e2e/tests/vault-web.e2e.ts",
+        "source": {
+          "file": "e2e/tests/vault-web.e2e.ts",
+          "line": 26,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": true,
+        "status": "failed",
+        "attempts": [
+          {
+            "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7",
+            "index": 0,
+            "status": "failed",
+            "startedAt": "2026-10-28T23:30:45.494Z",
+            "durationMs": 67882,
+            "artifacts": [
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:artifact:0",
+                "kind": "log",
+                "mediaType": "text/plain",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "vault-web-item-detail-shows-masked-secret-973256f8fd7f6857/attempt-1/screen-at-failure.txt",
+                "size": 564,
+                "sha256": "3346a90d3a37042eb221d6a3db9e7f9012b4c7a96bf1be0d62fe9be4f2af0e6e"
+              },
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:artifact:1",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "vault-web-item-detail-shows-masked-secret-973256f8fd7f6857/attempt-1/screenshots/001-failure.png",
+                "size": 32485,
+                "sha256": "3386700c444f2facdbac3ef68eeb88bf5ecb53c53d9aa980c20ba952a3e15717"
+              }
+            ],
+            "error": {
+              "category": "configuration",
+              "code": "TEST_SETUP_FAILED",
+              "message": "agent.act blocked: devin executor exhausted 8 turns without a verdict",
+              "retryable": false,
+              "phase": "body",
+              "source": {
+                "file": "e2e/tests/vault-web.e2e.ts",
+                "line": 14,
+                "column": 3
+              }
+            },
+            "secondaryErrors": [],
+            "cleanup": "complete",
+            "environment": {
+              "browser": "chromium 156.0.8078.4",
+              "user agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36"
+            },
+            "failure": {
+              "url": "https://app.veil.nyc/login?flow=2d59636d-04e0-450b-8ce3-839516e0fdce",
+              "viewport": {
+                "width": 1280,
+                "height": 720
+              },
+              "nodes": 12,
+              "screen": "01a184da-0e76-7387-9c1a-7af1ee76abc7:artifact:0",
+              "screenshot": "01a184da-0e76-7387-9c1a-7af1ee76abc7:artifact:1"
+            },
+            "steps": [
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:0",
+                "index": 0,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/login",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:30:45.496Z",
+                "durationMs": 446,
+                "events": [],
+                "artifacts": [],
+                "screen": {
+                  "location": "https://app.veil.nyc/login",
+                  "nodes": 1,
+                  "changes": []
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 27,
+                  "column": 13
+                }
+              },
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:1",
+                "index": 1,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "type 'shlomo@vortex.nyc' into the ID field",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:30:45.942Z",
+                "durationMs": 8326,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:45.943Z",
+                    "durationMs": 98,
+                    "status": "passed",
+                    "bytes": 21,
+                    "count": 1
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:30:46.797Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=c5c31e37-c26a-4461-af63-876d7bd05d5b"
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:30:46.862Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=c5c31e37-c26a-4461-af63-876d7bd05d5b"
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:50.442Z",
+                    "durationMs": 103,
+                    "status": "passed",
+                    "bytes": 410,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:52.740Z",
+                    "durationMs": 29,
+                    "status": "passed",
+                    "name": "type",
+                    "detail": "type \"shlomo@vortex.nyc\" into textbox \"ID\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:52.769Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:54.176Z",
+                    "durationMs": 91,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 446,
+                  "contextBytes": 0,
+                  "ledgerBytes": 28
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "a778c4929b0d2976796fb9195dfe4af284ac499e00070ef98bdb954e61b678c0",
+                  "write": "unconfirmed"
+                },
+                "observationRevision": "b8",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=c5c31e37-c26a-4461-af63-876d7bd05d5b",
+                  "nodes": 12,
+                  "since": 0,
+                  "changes": [
+                    "added heading \"Veil\"",
+                    "added heading \"Sign in\"",
+                    "added text=\"Sign in with your email and password or a security key\"",
+                    "added text=\"ID\"",
+                    "added textbox \"ID\" value=\"shlomo@vortex.nyc\" purpose=username",
+                    "added button \"Sign in with hardware key\"",
+                    "added text=\"or\"",
+                    "added text=\"Password\"",
+                    "added button \"Show\"",
+                    "added textbox \"Password\" value=<secure> purpose=password [secure]",
+                    "added button \"Sign in with password\""
+                  ]
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 9,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:2",
+                "index": 2,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "fill the Password field from secret 'vault-password'",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:30:54.268Z",
+                "durationMs": 4007,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:54.268Z",
+                    "durationMs": 96,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:30:56.302Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:30:56.302Z",
+                    "durationMs": 50,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"vault-password\" into textbox \"Password\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:56.352Z",
+                    "durationMs": 90,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:58.180Z",
+                    "durationMs": 94,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 446,
+                  "contextBytes": 0,
+                  "ledgerBytes": 116
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "0464c8c5c8f8edaace038bb228f0acc99d2209d19292bdd9a110242b0ae8e915",
+                  "write": "no-change"
+                },
+                "observationRevision": "b14",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=c5c31e37-c26a-4461-af63-876d7bd05d5b",
+                  "nodes": 12,
+                  "since": 1,
+                  "changes": []
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 10,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:3",
+                "index": 3,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "tap the 'Sign in with password' button",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:30:58.275Z",
+                "durationMs": 5017,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:30:58.275Z",
+                    "durationMs": 95,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:31:00.911Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=2d59636d-04e0-450b-8ce3-839516e0fdce"
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:31:00.996Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=2d59636d-04e0-450b-8ce3-839516e0fdce"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:00.309Z",
+                    "durationMs": 698,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Sign in with password\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:01.007Z",
+                    "durationMs": 189,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:03.197Z",
+                    "durationMs": 94,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 526,
+                  "contextBytes": 0,
+                  "ledgerBytes": 214
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "27dc185dafaf0df28a7fb6d963f6fad505f12602b0281b70d17836e46723a73c",
+                  "write": "unconfirmed"
+                },
+                "observationRevision": "b21",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=2d59636d-04e0-450b-8ce3-839516e0fdce",
+                  "nodes": 12,
+                  "since": 2,
+                  "changes": [
+                    "added text=\"Please confirm this action by verifying that it is you. Please complete the second authentication challenge.\"",
+                    "added text=\"Authentication code\"",
+                    "added textbox \"Authentication code\" purpose=one-time-code",
+                    "added button \"Use Authenticator\"",
+                    "added text=\"Recovery code\"",
+                    "added textbox \"Recovery code\"",
+                    "added button \"Use backup recovery code\"",
+                    "removed text=\"ID\"",
+                    "removed textbox \"ID\" value=\"shlomo@vortex.nyc\" purpose=username",
+                    "removed button \"Sign in with hardware key\"",
+                    "removed text=\"Password\"",
+                    "removed button \"Show\""
+                  ],
+                  "more": 2
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 13,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184da-0e76-7387-9c1a-7af1ee76abc7:4",
+                "index": 4,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and tap Continue",
+                "status": "blocked",
+                "startedAt": "2026-10-28T23:31:03.292Z",
+                "durationMs": 50055,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:03.292Z",
+                    "durationMs": 94,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:31:04.787Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:04.787Z",
+                    "durationMs": 29,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"totp-code\" into textbox \"Authentication code\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:04.816Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:07.242Z",
+                    "durationMs": 17,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:07.259Z",
+                    "durationMs": 2159,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:11.763Z",
+                    "durationMs": 46,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:11.809Z",
+                    "durationMs": 2168,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:20.357Z",
+                    "durationMs": 36,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:20.393Z",
+                    "durationMs": 2087,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:26.091Z",
+                    "durationMs": 33,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:26.124Z",
+                    "durationMs": 2169,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:34.590Z",
+                    "durationMs": 34,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:34.625Z",
+                    "durationMs": 2173,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:40.874Z",
+                    "durationMs": 34,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:40.908Z",
+                    "durationMs": 2173,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:31:48.235Z",
+                    "durationMs": 39,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:48.274Z",
+                    "durationMs": 2164,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 8,
+                  "observationBytes": 563,
+                  "contextBytes": 0,
+                  "ledgerBytes": 298
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "89d7e0ff91a247de68eee6ba1ea0ba83816d19b0f71f78fb9aee4eac4e26f267"
+                },
+                "observationRevision": "b206",
+                "explanation": "devin executor exhausted 8 turns without a verdict",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=2d59636d-04e0-450b-8ce3-839516e0fdce",
+                  "nodes": 12,
+                  "since": 3,
+                  "changes": [
+                    "changed textbox \"Authentication code\" value=\"<secret:totp-code>\" purpose=one-time-code (was: textbox \"Authentication code\" purpose=one-time-code)"
+                  ]
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 14,
+                  "column": 15
+                },
+                "error": {
+                  "category": "configuration",
+                  "code": "TEST_SETUP_FAILED",
+                  "message": "agent.act blocked: devin executor exhausted 8 turns without a verdict",
+                  "retryable": false,
+                  "source": {
+                    "file": "e2e/tests/vault-web.e2e.ts",
+                    "line": 14,
+                    "column": 3
+                  }
+                }
+              }
+            ],
+            "appLog": [
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:30:45.756Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:30:45.757Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:30:45.916Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:30:45.917Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:30:45.917Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:30:45.919Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:30:45.924Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:30:45.924Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:30:45.925Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:30:45.925Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "warning",
+                "text": "GET https://accounts.veil.nyc/sessions/whoami 401",
+                "at": "2026-10-28T23:30:46.210Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:30:46.798Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:30:46.798Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:30:46.860Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:30:46.860Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:30:46.860Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:30:46.862Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:30:46.869Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:30:46.869Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:30:46.869Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:30:46.869Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:31:00.914Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:31:00.914Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:31:00.994Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:31:00.994Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:31:00.994Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:31:00.996Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:31:00.998Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:31:00.998Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:31:00.998Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:31:00.998Z",
+                "step": 3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "017bf178a3b1544f9234a9b1a8865593c6c0a911c15191d76f90d6188c7fb74c",
+        "testId": "e2e/tests/vault-web.e2e.ts::search%20filters%20the%20item%20list",
+        "kind": "test",
+        "declarationIndex": 2,
+        "titlePath": [
+          "search filters the item list"
+        ],
+        "file": "e2e/tests/vault-web.e2e.ts",
+        "source": {
+          "file": "e2e/tests/vault-web.e2e.ts",
+          "line": 33,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": true,
+        "status": "failed",
+        "attempts": [
+          {
+            "id": "01a184db-17a1-7bdd-be69-5a503274f923",
+            "index": 0,
+            "status": "failed",
+            "startedAt": "2026-10-28T23:31:53.377Z",
+            "durationMs": 76287,
+            "artifacts": [
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:artifact:0",
+                "kind": "log",
+                "mediaType": "text/plain",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "vault-web-search-filters-the-item-list-017bf178a3b1544f/attempt-1/screen-at-failure.txt",
+                "size": 564,
+                "sha256": "d1ad273f5a147237598cd08b9fe3fae1b0da6eaf82e2bc8a8c6be8754f8e7ea6"
+              },
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:artifact:1",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "vault-web-search-filters-the-item-list-017bf178a3b1544f/attempt-1/screenshots/001-failure.png",
+                "size": 32867,
+                "sha256": "dfdfa005086b18c71b176e0529af7f71b2bf8fade68abf164ad5f5a612a841ba"
+              }
+            ],
+            "error": {
+              "category": "configuration",
+              "code": "TEST_SETUP_FAILED",
+              "message": "agent.act blocked: devin executor exhausted 8 turns without a verdict",
+              "retryable": false,
+              "phase": "body",
+              "source": {
+                "file": "e2e/tests/vault-web.e2e.ts",
+                "line": 14,
+                "column": 3
+              }
+            },
+            "secondaryErrors": [],
+            "cleanup": "complete",
+            "environment": {
+              "browser": "chromium 156.0.8078.4",
+              "user agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36"
+            },
+            "failure": {
+              "url": "https://app.veil.nyc/login?flow=b2625d18-709e-41c4-88c2-80ce516ea9b2",
+              "viewport": {
+                "width": 1280,
+                "height": 720
+              },
+              "nodes": 12,
+              "screen": "01a184db-17a1-7bdd-be69-5a503274f923:artifact:0",
+              "screenshot": "01a184db-17a1-7bdd-be69-5a503274f923:artifact:1"
+            },
+            "steps": [
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:0",
+                "index": 0,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/login",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:31:53.379Z",
+                "durationMs": 332,
+                "events": [],
+                "artifacts": [],
+                "screen": {
+                  "location": "https://app.veil.nyc/login",
+                  "nodes": 1,
+                  "changes": []
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 34,
+                  "column": 13
+                }
+              },
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:1",
+                "index": 1,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "type 'shlomo@vortex.nyc' into the ID field",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:31:53.711Z",
+                "durationMs": 11359,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:53.712Z",
+                    "durationMs": 98,
+                    "status": "passed",
+                    "bytes": 21,
+                    "count": 1
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:31:54.107Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=54a1dc6e-a58e-48fc-9605-003ac106020a"
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:31:54.170Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=54a1dc6e-a58e-48fc-9605-003ac106020a"
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:31:58.899Z",
+                    "durationMs": 104,
+                    "status": "passed",
+                    "bytes": 410,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:01.389Z",
+                    "durationMs": 27,
+                    "status": "passed",
+                    "name": "type",
+                    "detail": "type \"shlomo@vortex.nyc\" into textbox \"ID\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:01.416Z",
+                    "durationMs": 89,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:04.970Z",
+                    "durationMs": 99,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 446,
+                  "contextBytes": 0,
+                  "ledgerBytes": 28
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "047fa4b3b93896023fe36e822ecb3fe4a29de8ff50f875f5d25771798bf49a62",
+                  "write": "unconfirmed"
+                },
+                "observationRevision": "b8",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=54a1dc6e-a58e-48fc-9605-003ac106020a",
+                  "nodes": 12,
+                  "since": 0,
+                  "changes": [
+                    "added heading \"Veil\"",
+                    "added heading \"Sign in\"",
+                    "added text=\"Sign in with your email and password or a security key\"",
+                    "added text=\"ID\"",
+                    "added textbox \"ID\" value=\"shlomo@vortex.nyc\" purpose=username",
+                    "added button \"Sign in with hardware key\"",
+                    "added text=\"or\"",
+                    "added text=\"Password\"",
+                    "added button \"Show\"",
+                    "added textbox \"Password\" value=<secure> purpose=password [secure]",
+                    "added button \"Sign in with password\""
+                  ]
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 9,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:2",
+                "index": 2,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "fill the Password field from secret 'vault-password'",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:32:05.070Z",
+                "durationMs": 4781,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:05.070Z",
+                    "durationMs": 94,
+                    "status": "passed",
+                    "bytes": 446,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:32:07.209Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:07.209Z",
+                    "durationMs": 49,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"vault-password\" into textbox \"Password\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:07.258Z",
+                    "durationMs": 90,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:09.758Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 446,
+                  "contextBytes": 0,
+                  "ledgerBytes": 116
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "b79dce311b67a8de848a0b924bd2a451ece60312cde3f0c2713a021573c82f37",
+                  "write": "no-change"
+                },
+                "observationRevision": "b14",
+                "explanation": "goal met",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=54a1dc6e-a58e-48fc-9605-003ac106020a",
+                  "nodes": 12,
+                  "since": 1,
+                  "changes": []
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 10,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:3",
+                "index": 3,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "tap the 'Sign in with password' button",
+                "status": "passed",
+                "startedAt": "2026-10-28T23:32:09.851Z",
+                "durationMs": 6779,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:09.851Z",
+                    "durationMs": 93,
+                    "status": "passed",
+                    "bytes": 444,
+                    "count": 12
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:32:12.482Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=b2625d18-709e-41c4-88c2-80ce516ea9b2"
+                  },
+                  {
+                    "kind": "navigation",
+                    "startedAt": "2026-10-28T23:32:12.603Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "detail": "navigated to https://app.veil.nyc/login?flow=b2625d18-709e-41c4-88c2-80ce516ea9b2"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:11.860Z",
+                    "durationMs": 756,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Sign in with password\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:12.616Z",
+                    "durationMs": 277,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:16.538Z",
+                    "durationMs": 92,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 1,
+                  "observationBytes": 526,
+                  "contextBytes": 0,
+                  "ledgerBytes": 214
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "e8b8872e78a6f89184fe056754476fd2620f377eddc4f4f2f2def3c069037db6",
+                  "write": "unconfirmed"
+                },
+                "observationRevision": "b22",
+                "explanation": "Sign in with password was tapped; flow advanced to the second authentication challenge screen.",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=b2625d18-709e-41c4-88c2-80ce516ea9b2",
+                  "nodes": 12,
+                  "since": 2,
+                  "changes": [
+                    "added text=\"Please confirm this action by verifying that it is you. Please complete the second authentication challenge.\"",
+                    "added text=\"Authentication code\"",
+                    "added textbox \"Authentication code\" purpose=one-time-code",
+                    "added button \"Use Authenticator\"",
+                    "added text=\"Recovery code\"",
+                    "added textbox \"Recovery code\"",
+                    "added button \"Use backup recovery code\"",
+                    "removed text=\"ID\"",
+                    "removed textbox \"ID\" value=\"shlomo@vortex.nyc\" purpose=username",
+                    "removed button \"Sign in with hardware key\"",
+                    "removed text=\"Password\"",
+                    "removed button \"Show\""
+                  ],
+                  "more": 2
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 13,
+                  "column": 15
+                }
+              },
+              {
+                "id": "01a184db-17a1-7bdd-be69-5a503274f923:4",
+                "index": 4,
+                "kind": "agent",
+                "api": "agent.act",
+                "label": "enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and tap Continue",
+                "status": "blocked",
+                "startedAt": "2026-10-28T23:32:16.631Z",
+                "durationMs": 52994,
+                "events": [
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:16.631Z",
+                    "durationMs": 93,
+                    "status": "passed",
+                    "bytes": 526,
+                    "count": 12
+                  },
+                  {
+                    "kind": "policy",
+                    "startedAt": "2026-10-28T23:32:19.064Z",
+                    "durationMs": 0,
+                    "status": "passed",
+                    "name": "secret.fill",
+                    "decision": "allowed"
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:19.064Z",
+                    "durationMs": 36,
+                    "status": "passed",
+                    "name": "typeSecret",
+                    "detail": "fill secret \"totp-code\" into textbox \"Authentication code\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:19.100Z",
+                    "durationMs": 91,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:21.254Z",
+                    "durationMs": 28,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:21.283Z",
+                    "durationMs": 2161,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:25.591Z",
+                    "durationMs": 39,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:25.630Z",
+                    "durationMs": 2088,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:32.359Z",
+                    "durationMs": 38,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:32.398Z",
+                    "durationMs": 2128,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:42.190Z",
+                    "durationMs": 39,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:42.229Z",
+                    "durationMs": 2151,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:49.157Z",
+                    "durationMs": 38,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:49.195Z",
+                    "durationMs": 2162,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:32:57.894Z",
+                    "durationMs": 34,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:32:57.928Z",
+                    "durationMs": 2140,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  },
+                  {
+                    "kind": "engine",
+                    "startedAt": "2026-10-28T23:33:04.346Z",
+                    "durationMs": 33,
+                    "status": "passed",
+                    "name": "tap",
+                    "detail": "tap button \"Use Authenticator\""
+                  },
+                  {
+                    "kind": "observation",
+                    "startedAt": "2026-10-28T23:33:04.379Z",
+                    "durationMs": 2155,
+                    "status": "passed",
+                    "bytes": 563,
+                    "count": 12
+                  }
+                ],
+                "agent": "default",
+                "artifacts": [],
+                "metrics": {
+                  "modelCalls": 0,
+                  "actionSteps": 8,
+                  "observationBytes": 563,
+                  "contextBytes": 0,
+                  "ledgerBytes": 384
+                },
+                "cache": {
+                  "mode": "missed",
+                  "reason": "no-entry",
+                  "replayedActions": 0,
+                  "totalActions": 0,
+                  "entry": "59e89779553cf10a2d334277b0089400fa3d3d04c5a2087c2d7fc0f10249af0a"
+                },
+                "observationRevision": "b207",
+                "explanation": "devin executor exhausted 8 turns without a verdict",
+                "screen": {
+                  "location": "https://app.veil.nyc/login?flow=b2625d18-709e-41c4-88c2-80ce516ea9b2",
+                  "nodes": 12,
+                  "since": 3,
+                  "changes": [
+                    "changed textbox \"Authentication code\" value=\"<secret:totp-code>\" purpose=one-time-code (was: textbox \"Authentication code\" purpose=one-time-code)"
+                  ]
+                },
+                "source": {
+                  "file": "e2e/tests/vault-web.e2e.ts",
+                  "line": 14,
+                  "column": 15
+                },
+                "error": {
+                  "category": "configuration",
+                  "code": "TEST_SETUP_FAILED",
+                  "message": "agent.act blocked: devin executor exhausted 8 turns without a verdict",
+                  "retryable": false,
+                  "source": {
+                    "file": "e2e/tests/vault-web.e2e.ts",
+                    "line": 14,
+                    "column": 3
+                  }
+                }
+              }
+            ],
+            "appLog": [
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:31:53.505Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:31:53.506Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:31:53.684Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:31:53.686Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:31:53.686Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:31:53.688Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:31:53.693Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:31:53.693Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:31:53.694Z",
+                "step": 0
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:31:53.694Z",
+                "step": 0
+              },
+              {
+                "source": "network",
+                "level": "warning",
+                "text": "GET https://accounts.veil.nyc/sessions/whoami 401",
+                "at": "2026-10-28T23:31:53.838Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:31:54.108Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:31:54.108Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:31:54.167Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:31:54.168Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:31:54.168Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:31:54.170Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:31:54.176Z",
+                "step": 1
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:31:54.176Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:31:54.176Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:31:54.176Z",
+                "step": 1
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The actio…",
+                "at": "2026-10-28T23:32:12.486Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092 csp",
+                "at": "2026-10-28T23:32:12.486Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at htt…",
+                "at": "2026-10-28T23:32:12.599Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/1.438.8/exception-autocapture.js csp",
+                "at": "2026-10-28T23:32:12.600Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action …",
+                "at": "2026-10-28T23:32:12.600Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config.js csp",
+                "at": "2026-10-28T23:32:12.603Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Loading the script 'https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8' violates the following Content Security Policy directive: \"script-src 'self'\". Note that 'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked. (at h…",
+                "at": "2026-10-28T23:32:12.606Z",
+                "step": 3
+              },
+              {
+                "source": "network",
+                "level": "error",
+                "text": "GET https://us-assets.i.posthog.com/static/exception-autocapture.js?v=1.438.8 csp",
+                "at": "2026-10-28T23:32:12.606Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Connecting to 'https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config' violates the following Content Security Policy directive: \"connect-src 'self' https://veil.nyc https://id.veil.nyc https://accounts.veil.nyc https://login.veil.nyc https://us.i.posthog.com\"…",
+                "at": "2026-10-28T23:32:12.606Z",
+                "step": 3
+              },
+              {
+                "source": "console",
+                "level": "error",
+                "text": "Fetch API cannot load https://us-assets.i.posthog.com/array/phc_AjkhQ4ziUxEs9jM6JXJQjya2WkRKuLDWa4QR5XS9zYT8/config. Refused to connect because it violates the document's Content Security Policy. (at https://app.veil.nyc/assets/index-Bp02gZL1.js:67)",
+                "at": "2026-10-28T23:32:12.606Z",
+                "step": 3
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "errors": [],
+    "summary": {
+      "discovered": 4,
+      "selected": 3,
+      "executed": 3,
+      "passed": 0,
+      "failed": 3,
+      "interrupted": 0,
+      "flaky": 0,
+      "skipped": 0
+    },
+    "limits": {
+      "maxAgentContextBytes": 16384,
+      "maxLedgerBytes": 8192,
+      "maxObservationBytes": 262144,
+      "maxEventsPerStep": 1000,
+      "maxModelTokensPerCall": 64000
+    },
+    "usage": {
+      "discoveredResults": 4,
+      "maxAgentContextBytes": 0,
+      "maxLedgerBytes": 387,
+      "maxObservationBytes": 563,
+      "artifactBytes": 99627,
+      "downloads": 0,
+      "events": 109,
+      "modelTokens": 0,
+      "maxModelCallsInStep": 0,
+      "maxActionStepsInStep": 8
+    }
+  }
+}

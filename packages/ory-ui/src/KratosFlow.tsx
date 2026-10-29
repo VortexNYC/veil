@@ -160,11 +160,26 @@ export default function KratosFlow({
 }) {
   const nodes = useMemo(() => ((flow as FlowLike).ui?.nodes ?? []) as UiNodeInput[], [flow])
   const pickRef = useRef<{ name: string; value: string } | null>(null)
-  const action = (flow as FlowLike).ui?.action ?? ""
+  // Some aal2 flows ship no ui.action — the form must post to Kratos's
+  // self-service endpoint for the flow's id, not back to the SPA.
+  const fl = flow as FlowLike & { id?: string; ui?: FlowLike["ui"] }
+  const kratosURL =
+    (import.meta.env?.VITE_KRATOS_URL as string | undefined) ??
+    (import.meta.env?.PROD ? "https://accounts.veil.nyc" : "http://127.0.0.1:4433")
+  // ui.action may be relative (aal2 flows) or absent — resolve to the
+  // Kratos host so the form posts to Kratos, not back to the SPA.
+  const action = fl.ui?.action?.startsWith("http")
+    ? fl.ui.action
+    : `${kratosURL}${fl.ui?.action || `/self-service/login?flow=${fl.id ?? ""}`}`
   const groups = groupsOf(nodes)
   const bannerMsgs = ((flow as FlowLike).ui?.messages ?? []).map((m) => m.text)
 
-  const submit = () => {}
+  const submit = () => {
+    // Persist identifier for the aal2 step — Kratos expects it re-sent
+    // on the TOTP/lookup POST even though the aal2 flow has no field for it.
+    const id = (document.getElementById("veil-identifier") as HTMLInputElement | null)?.value
+    if (id) sessionStorage.setItem("veil.identifier", id)
+  }
 
   return (
     <div className="min-h-[100dvh] bg-kumo-base px-4 py-10 flex items-start justify-center">
@@ -188,6 +203,17 @@ export default function KratosFlow({
             .map((n) => (
               <Field key={`d-${name(n)}`} n={n} />
             ))}
+          {/* aal2 forms carry the aal1 identifier — Kratos needs it even
+              though the flow doesn't expose a field for it. */}
+          {(() => {
+            const stashed =
+              typeof sessionStorage !== "undefined"
+                ? sessionStorage.getItem("veil.identifier")
+                : null
+            return stashed ? (
+              <input type="hidden" name="identifier" value={stashed} />
+            ) : null
+          })()}
           {groups.filter((g) => g !== "default").map((g, gi) => {
             const isField = (n: UiNodeInput) =>
               isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method"

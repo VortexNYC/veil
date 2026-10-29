@@ -14,6 +14,7 @@ async function signIn(agent: {
   await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and tap Continue", {
     params: { "totp-code": secrets.get("totp-code") },
   });
+  await agent.waitFor("the vault Items list is visible", { timeout: 15000 })
 }
 
 test("sign in and land on the items list", async ({ app, agent }) => {
