@@ -266,6 +266,17 @@ func EnsureSQLiteSchema(db *sql.DB) error {
 			PRIMARY KEY (org_id, window_start)
 		)`,
 		// VTX-788: org-level flags — an absent row reads as travel_mode off.
+		`CREATE TABLE IF NOT EXISTS devices (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			platform TEXT NOT NULL DEFAULT '',
+			pubkey BLOB,
+			created_at INTEGER NOT NULL,
+			last_seen_at INTEGER NOT NULL,
+			revoked_at INTEGER
+		)`,
 		`CREATE TABLE IF NOT EXISTS org_settings (
 			org_id TEXT PRIMARY KEY,
 			travel_mode INTEGER NOT NULL DEFAULT 0,
@@ -2875,6 +2886,55 @@ func (s *SQLite) MarkHeartbeat(string) error { return nil }
 
 // PutPushDevice upserts a registered push endpoint — tokens rotate, so
 // re-registration overwrites platform/label/stamp in place.
+func (s *SQLite) PutDevice(d protocol.Device) error {
+	_, err := s.db.Exec(
+		`INSERT INTO devices(id, org_id, human_id, label, platform, pubkey, created_at, last_seen_at)
+		 VALUES(?,?,?,?,?,?,?,?)
+		 ON CONFLICT(id) DO UPDATE SET
+		   last_seen_at = excluded.last_seen_at,
+		   label = excluded.label,
+		   platform = excluded.platform,
+		   pubkey = excluded.pubkey,
+		   revoked_at = NULL`,
+		d.ID, d.OrgID, d.HumanID, d.Label, d.Platform, d.Pubkey,
+		d.CreatedAt.Unix(), d.LastSeenAt.Unix())
+	return err
+}
+
+func (s *SQLite) Devices(orgID, humanID string) ([]protocol.Device, error) {
+	rows, err := s.db.Query(
+		`SELECT id, org_id, human_id, label, platform, pubkey, created_at, last_seen_at, revoked_at
+		 FROM devices WHERE org_id = ? AND human_id = ? ORDER BY created_at`, orgID, humanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []protocol.Device
+	for rows.Next() {
+		var d protocol.Device
+		var created, seen int64
+		var revoked *int64
+		if err := rows.Scan(&d.ID, &d.OrgID, &d.HumanID, &d.Label, &d.Platform, &d.Pubkey, &created, &seen, &revoked); err != nil {
+			return nil, err
+		}
+		d.CreatedAt = time.Unix(created, 0)
+		d.LastSeenAt = time.Unix(seen, 0)
+		if revoked != nil {
+			t := time.Unix(*revoked, 0)
+			d.RevokedAt = &t
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) RevokeDevice(orgID, humanID, id string) error {
+	_, err := s.db.Exec(
+		`UPDATE devices SET revoked_at = ? WHERE org_id = ? AND human_id = ? AND id = ?`,
+		time.Now().Unix(), orgID, humanID, id)
+	return err
+}
+
 func (s *SQLite) PutPushDevice(d protocol.PushDevice) error {
 	_, err := s.db.Exec(
 		`INSERT INTO push_devices(org_id, token, platform, label, updated_at)

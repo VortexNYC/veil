@@ -2735,3 +2735,66 @@ func (s *Server) unregisterDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// GET /v1/devices — the human's linked devices (active and revoked for audit).
+func (s *Server) listLinkedDevices(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	ds, err := s.App.Store.Devices(h.OrgID, h.ID)
+	if err != nil {
+		http.Error(w, "list failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, DevicesResponse{Devices: ds})
+}
+
+type DevicesResponse struct {
+	Devices []protocol.Device `json:"devices"`
+}
+
+type linkedDeviceRequest struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Platform string `json:"platform"`
+	Pubkey   []byte `json:"pubkey"`
+}
+
+// POST /v1/devices — a device registers its X25519 custodian key. Called
+// post-sign-in; idempotent on id so re-registering just bumps last_seen.
+func (s *Server) registerLinkedDevice(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	var req linkedDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+	now := time.Now()
+	d := protocol.Device{
+		ID: req.ID, OrgID: h.OrgID, HumanID: h.ID,
+		Label: req.Label, Platform: req.Platform, Pubkey: req.Pubkey,
+		CreatedAt: now, LastSeenAt: now,
+	}
+	if err := s.App.Store.PutDevice(d); err != nil {
+		http.Error(w, "register failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, d)
+}
+
+// DELETE /v1/devices/{id} — revoke a linked device (custody + trust).
+func (s *Server) revokeLinkedDevice(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	if err := s.App.Store.RevokeDevice(h.OrgID, h.ID, r.PathValue("id")); err != nil {
+		http.Error(w, "revoke failed", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

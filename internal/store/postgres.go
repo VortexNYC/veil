@@ -1280,6 +1280,19 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			travel_mode BOOLEAN NOT NULL DEFAULT FALSE,
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
+		// Linked devices: X25519 custodian pubkey per device, trust/inventory,
+		// and revocation. Not push_devices (notification tokens).
+		`CREATE TABLE IF NOT EXISTS devices (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			human_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			platform TEXT NOT NULL DEFAULT '',
+			pubkey BYTEA,
+			created_at TIMESTAMPTZ NOT NULL,
+			last_seen_at TIMESTAMPTZ NOT NULL,
+			revoked_at TIMESTAMPTZ
+		)`,
 		`CREATE TABLE IF NOT EXISTS shares (
 			id TEXT PRIMARY KEY,
 			org_id TEXT NOT NULL,

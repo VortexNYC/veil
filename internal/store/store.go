@@ -369,6 +369,9 @@ type Store interface {
 	// rotate); a send that returns "token dead" prunes via Delete.
 	PutPushDevice(d protocol.PushDevice) error
 	PushDevices(orgID string) ([]protocol.PushDevice, error)
+	PutDevice(d protocol.Device) error
+	Devices(orgID, humanID string) ([]protocol.Device, error)
+	RevokeDevice(orgID, humanID, id string) error
 	DeletePushDevice(orgID, token string) error
 
 	// Sweep deletes terminally-expired rows (sessions past expiry or revoked,
