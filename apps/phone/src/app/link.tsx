@@ -9,8 +9,8 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
-import { approveDeviceLink, claimDeviceLink, createDeviceLink, getDeviceLink } from "../lib/api";
-import { custodianPubHex, hex, openParcel, sealForRecipient, unhex } from "../lib/escrow";
+import { approveDeviceLink, claimDeviceLink, createDeviceLink, getDeviceLink, getRecoveryShare } from "../lib/api";
+import { custodianPubHex, hex, openBox, openParcel, sealForRecipient, unhex } from "../lib/escrow";
 
 const MODE_NEW = "new", MODE_APPROVE = "approve";
 
@@ -51,11 +51,14 @@ export default function Link() {
       // Fetch the pending link — the new device's custodian pubkey lives
       // here, so a QR photo alone can't redirect the handoff.
       const linkRow = await getDeviceLink(token.trim());
-      // This device's custody share is the org master — seal it to the
-      // link's pubkey. Server only ever moves ciphertext.
-      const opened = await openParcel(scanned.trim());
+      // This device's custody wrap (org_key_shares, sealed to its
+      // custodian pubkey) — open it, re-seal to the link's pubkey.
+      // Server only ever moves ciphertext.
+      const share = await getRecoveryShare();
+      if (!share.enrolled || !share.wrapped_master) throw new Error("no custody share on this device");
+      const masterHex = await openBox(String(globalThis.btoa(String.fromCharCode(...share.wrapped_master))));
       const sealB64 = await sealForRecipient(
-        opened.shareHex,
+        masterHex,
         hex(new Uint8Array(linkRow.pubkey)),
       );
       await approveDeviceLink(token.trim(), Array.from(unhex(sealB64)));

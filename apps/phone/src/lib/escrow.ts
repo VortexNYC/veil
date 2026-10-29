@@ -66,6 +66,19 @@ export async function openParcel(parcelB64: string): Promise<OpenedShare> {
   return { ordinal, fp, shareHex: hex(share) };
 }
 
+// openBox — plain NaCl box (eph||nonce||ct) to this device's custodian key.
+// The org_key_shares wrapped_master envelope — no VEILSHR1 wrapper.
+export async function openBox(blobB64: string): Promise<string> {
+  const privHex = await SecureStore.getItemAsync(KEY_PRIV);
+  if (!privHex) throw new Error("no custodian key on this device");
+  const blob = b64decode(blobB64);
+  if (blob.length < 56) throw new Error("box too short");
+  const eph = blob.slice(0, 32), nonce = blob.slice(32, 56), ct = blob.slice(56);
+  const pt = nacl.box.open(ct, nonce, eph, unhex(privHex));
+  if (!pt) throw new Error("box does not open with this device's custodian key");
+  return hex(pt);
+}
+
 // sealForRecipient — NaCl-box a master to a recipient custodian pubkey.
 // Same eph||nonce||ct envelope openParcel reads on the receiving side.
 export async function sealForRecipient(masterHex: string, recipientPubHex: string): Promise<string> {

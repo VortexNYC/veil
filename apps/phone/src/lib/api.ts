@@ -159,3 +159,5 @@ export const claimDeviceLink = (token: string) =>
   call<DeviceLink>(`/v1/device-links/${token}/claim`, { method: "POST" });
 export const getDeviceLink = (token: string) =>
   call<DeviceLink & { pubkey: number[]; label: string }>(`/v1/device-links/${token}`);
+export const getRecoveryShare = () =>
+  call<{ enrolled: boolean; wrapped_master?: number[] }>(`/v1/recovery/share`);
