@@ -2813,13 +2813,10 @@ type deviceLinkRequest struct {
 }
 
 // POST /v1/device-links — a new device posts its custodian pubkey and gets
-// a one-shot link token (for the QR). Human-scoped: the session binds the
-// link to this human's org so the approver's seal lands in the right vault.
+// a one-shot link token (for the QR). Unauthenticated by design: the device
+// has no session yet — that's the point of the link. Org binding lands at
+// approve time via the approver's session.
 func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
-	h, ok := s.requireHuman(w, r)
-	if !ok {
-		return
-	}
 	var req deviceLinkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Pubkey) != 32 {
 		http.Error(w, "pubkey (32B) required", http.StatusBadRequest)
@@ -2832,7 +2829,7 @@ func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	l := protocol.DeviceLink{
-		Token: hex.EncodeToString(tok[:]), OrgID: h.OrgID, HumanID: h.ID,
+		Token: hex.EncodeToString(tok[:]),
 		Label: req.Label, Pubkey: req.Pubkey,
 		CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute),
 	}
@@ -2846,12 +2843,11 @@ func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
 // GET /v1/device-links/{token} — the approver reads the link's pubkey +
 // label before sealing. Sealed blob never leaves until claim.
 func (s *Server) getDeviceLink(w http.ResponseWriter, r *http.Request) {
-	h, ok := s.requireHuman(w, r)
-	if !ok {
+	if _, ok := s.requireHuman(w, r); !ok {
 		return
 	}
 	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
-	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+	if err != nil || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
 		http.Error(w, "link invalid", http.StatusBadRequest)
 		return
 	}
@@ -2872,7 +2868,7 @@ func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
-	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+	if err != nil || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
 		http.Error(w, "link invalid", http.StatusBadRequest)
 		return
 	}
@@ -2881,6 +2877,7 @@ func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sealed required", http.StatusBadRequest)
 		return
 	}
+	l.OrgID, l.HumanID = h.OrgID, h.ID
 	l.Sealed, l.ApprovedBy = req.Sealed, h.ID
 	if err := s.App.Store.PutDeviceLink(r.Context(), l); err != nil {
 		http.Error(w, "approve failed", http.StatusInternalServerError)
@@ -2890,14 +2887,11 @@ func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /v1/device-links/{token}/claim — the new device consumes the sealed
-// wrap once; the token dies on read.
+// wrap once; the token dies on read. Unauthenticated: the 128-bit token IS
+// the proof, and the sealed blob only opens under the link's custodian key.
 func (s *Server) claimDeviceLink(w http.ResponseWriter, r *http.Request) {
-	h, ok := s.requireHuman(w, r)
-	if !ok {
-		return
-	}
 	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
-	if err != nil || l.OrgID != h.OrgID || l.ConsumedAt != nil || len(l.Sealed) == 0 || time.Now().After(l.ExpiresAt) {
+	if err != nil || l.ConsumedAt != nil || len(l.Sealed) == 0 || time.Now().After(l.ExpiresAt) {
 		http.Error(w, "link invalid", http.StatusBadRequest)
 		return
 	}
