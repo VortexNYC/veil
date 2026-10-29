@@ -135,6 +135,13 @@ export const resolveRequest = (id: string, verb: "approve" | "deny") =>
     body: verb === "approve" ? JSON.stringify({ ttl: "10m" }) : undefined,
   });
 
+/** Register this device in the linked-devices inventory (trust surface). */
+export const registerLinkedDevice = (id: string, label: string, pubkeyB64?: string) =>
+  call<unknown>("/v1/linked-devices", {
+    method: "POST",
+    body: JSON.stringify({ id, label, platform: "ios", pubkey: pubkeyB64 }),
+  });
+
 /** Register the OS push token so asks and ops pages reach the lock screen. */
 export const registerDevice = (platform: "apns" | "fcm", token: string, label: string) =>
   call<unknown>("/v1/devices", {

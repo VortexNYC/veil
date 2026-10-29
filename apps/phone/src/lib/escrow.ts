@@ -60,3 +60,17 @@ export async function openParcel(parcelB64: string): Promise<OpenedShare> {
   if (share.length !== 33) throw new Error(`share is ${share.length}B, want 33`);
   return { ordinal, fp, shareHex: hex(share) };
 }
+
+// registerThisDevice — one-shot post-sign-in: stable device id + the
+// custodian pubkey go to the linked-devices inventory.
+export async function registerThisDevice(label: string): Promise<void> {
+  const { registerLinkedDevice } = await import("./api");
+  const { randomUUID } = await import("expo-crypto").catch(() => ({ randomUUID: null }));
+  let id = await SecureStore.getItemAsync("veil.device.id");
+  if (!id) {
+    id = `ios-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    await SecureStore.setItemAsync("veil.device.id", id);
+  }
+  const pubHex = await custodianPubHex();
+  await registerLinkedDevice(id, label, pubHex);
+}

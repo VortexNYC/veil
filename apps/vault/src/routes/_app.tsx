@@ -31,7 +31,7 @@ import { useEffect, useState } from "react";
 import { signedIn, signOut, token, amrOf } from "../auth";
 import { CACHE_KEYS, preloadVaultCache, readCache, writeCache } from "../cache";
 import { FilterPill } from "../ui";
-import { billing, billingCheckout, recoveryShare } from "../origin";
+import { billing, billingCheckout, recoveryShare, registerDevice } from "../origin";
 import type { BillingView, RecoveryShare } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app")({
@@ -77,6 +77,20 @@ const nav: ReadonlyArray<{
 // BillingBanner is the cap surface: at/over the free allowance the org's
 // agents and API calls are already being denied — this is where the owner
 // finds out why. Members (403) and paid plans render nothing.
+
+// registerWebDevice — one-shot per browser: a stable id + label go to the
+// linked-devices inventory so this session shows in Settings.
+function useRegisterWebDevice() {
+  useEffect(() => {
+    let id = localStorage.getItem("veil.web.device.id");
+    if (!id) {
+      id = `web-${crypto.randomUUID().slice(0, 12)}`;
+      localStorage.setItem("veil.web.device.id", id);
+    }
+    const label = `${navigator.platform === "MacIntel" ? "Mac" : navigator.platform} browser`;
+    void registerDevice(id, label, "web").catch(() => {});
+  }, []);
+}
 function BillingBanner() {
   const [view, setView] = useState<BillingView | null>(() =>
     readCache<BillingView>(CACHE_KEYS.billing),
@@ -413,6 +427,7 @@ function lockVaultNow() {
 }
 
 function Shell() {
+  useRegisterWebDevice();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [genOpen, setGenOpen] = useState(false);
