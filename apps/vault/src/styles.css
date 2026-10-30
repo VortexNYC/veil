@@ -3,6 +3,7 @@
 @import "@cloudflare/kumo/styles/tailwind";
 @source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
 @source "../../../packages/ory-ui/src/**/*.{tsx,ts}";
+@source "../../../node_modules/@vortex-api/better-auth-ui/dist/**/*.js";
 
 @layer base {
   html,
@@ -41,22 +42,4 @@
   }
 }
 
-/* Embedded sign-in — vault-canvas backdrop, elevated card, brand accent. */
-.veil-login {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  gap: 2rem;
-  background:
-    radial-gradient(60rem 40rem at 50% -10%, rgb(59 130 246 / 0.08), transparent 60%),
-    #0e0e10;
-}
-
-/* Mobile: card never overflows the viewport. */
-.veil-login { overflow-x: hidden; }
-@media (max-width: 480px) {
-  .veil-login { padding: 1rem; }
-}
+/* Embedded sign-in uses ory-ui AuthShell (Kumo canvas + shared auth card). */

@@ -8,16 +8,18 @@
     "./styles": "./src/styles.css"
   },
   "dependencies": {
-    "@cloudflare/kumo": "^2.13.2"
+    "@cloudflare/kumo": "^2.13.2",
+    "@phosphor-icons/react": "^2.1.10",
+    "@vortex-api/better-auth-ui": "^0.2.24"
   },
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
     "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0"
+    "@types/react-dom": "^19.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   }
 }

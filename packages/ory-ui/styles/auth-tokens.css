@@ -1,35 +1,7 @@
-/* Veil auth design tokens — shared across login.veil.nyc + app.veil.nyc.
-   rem-based so they scale with user text-size; prefers-contrast/
-   reduced-motion honored; color-scheme dark pinned on these surfaces. */
-:root {
-  --veil-bg: #0e0e10;
-  --veil-card: #18181b;
-  --veil-border: #27272a;
-  --veil-field: #1f1f23;
-  --veil-field-border: #52525b;
-  --veil-text: #f4f4f5;
-  --veil-text-muted: #a1a1aa;
-  --veil-text-faint: #71717a;
-  --veil-primary: #3b82f6;
-  --veil-primary-hover: #2563eb;
-  --veil-link: #60a5fa;
-  --veil-link-hover: #93c5fd;
-  --veil-danger-bg: rgba(127, 29, 29, 0.4);
-  --veil-danger-border: rgba(153, 27, 27, 0.5);
-  --veil-danger-text: #fca5a5;
-  --veil-radius-field: 0.75rem;
-  --veil-radius-card: 1rem;
-  --veil-pad-card: 1.5rem;
-  --veil-w-card: 22rem;
-  --veil-focus-ring: 0 0 0 0.1875rem rgba(59, 130, 246, 0.35);
-}
-@media (prefers-contrast: more) {
-  :root {
-    --veil-field-border: #a1a1aa;
-    --veil-text-muted: #d4d4d8;
-    --veil-text-faint: #a1a1aa;
-  }
-}
+/* Veil Kratos surfaces — motion only. Color + card width come from Kumo and
+   @vortex-api/better-auth-ui (AuthShell max-w-md, AuthCard). */
 @media (prefers-reduced-motion: reduce) {
-  .veil-flow * { transition: none !important; }
+  .veil-flow * {
+    transition: none !important;
+  }
 }

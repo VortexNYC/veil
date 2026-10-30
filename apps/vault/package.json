@@ -16,6 +16,7 @@
     "@ory/client-fetch": "1.22.22",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-router": "1.132.47",
+    "@vortex-api/better-auth-ui": "^0.2.24",
     "@vortex-api/veil": "workspace:*",
     "ory-ui": "workspace:*",
     "posthog-js": "^1.438.8",
