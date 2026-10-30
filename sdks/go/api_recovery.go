@@ -19,14 +19,13 @@ import (
 	"strings"
 )
 
-
 // RecoveryAPIService RecoveryAPI service
 type RecoveryAPIService service
 
 type RecoveryAPICompleteRecoveryRequest struct {
-	ctx context.Context
-	ApiService *RecoveryAPIService
-	id string
+	ctx                     context.Context
+	ApiService              *RecoveryAPIService
+	id                      string
 	completeRecoveryRequest *CompleteRecoveryRequest
 }
 
@@ -42,26 +41,27 @@ func (r RecoveryAPICompleteRecoveryRequest) Execute() (*RecoveryRequest, *http.R
 /*
 CompleteRecovery The confirmer's commit (owner, aal2): rotates the org master, re-wraps every member share and owner DEK, moves the member's share to the staged pubkey at epoch+1, and fires the Kratos MFA reset when reset_mfa was filed. Multi-owner orgs enforce two-person integrity. proof_hmac bypasses the sole-owner timelock. The MFA reset code never rides the response.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param id
- @return RecoveryAPICompleteRecoveryRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param id
+	@return RecoveryAPICompleteRecoveryRequest
 */
 func (a *RecoveryAPIService) CompleteRecovery(ctx context.Context, id string) RecoveryAPICompleteRecoveryRequest {
 	return RecoveryAPICompleteRecoveryRequest{
 		ApiService: a,
-		ctx: ctx,
-		id: id,
+		ctx:        ctx,
+		id:         id,
 	}
 }
 
 // Execute executes the request
-//  @return RecoveryRequest
+//
+//	@return RecoveryRequest
 func (a *RecoveryAPIService) CompleteRecoveryExecute(r RecoveryAPICompleteRecoveryRequest) (*RecoveryRequest, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RecoveryRequest
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveryRequest
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.CompleteRecovery")
@@ -133,9 +133,9 @@ func (a *RecoveryAPIService) CompleteRecoveryExecute(r RecoveryAPICompleteRecove
 }
 
 type RecoveryAPIDenyRecoveryRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *RecoveryAPIService
-	id string
+	id         string
 }
 
 func (r RecoveryAPIDenyRecoveryRequest) Execute() (*RecoveryRequest, *http.Response, error) {
@@ -145,26 +145,27 @@ func (r RecoveryAPIDenyRecoveryRequest) Execute() (*RecoveryRequest, *http.Respo
 /*
 DenyRecovery Resolve an open request: an owner denies (aal2); the initiator or target member cancels at any aal. First write wins.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param id
- @return RecoveryAPIDenyRecoveryRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param id
+	@return RecoveryAPIDenyRecoveryRequest
 */
 func (a *RecoveryAPIService) DenyRecovery(ctx context.Context, id string) RecoveryAPIDenyRecoveryRequest {
 	return RecoveryAPIDenyRecoveryRequest{
 		ApiService: a,
-		ctx: ctx,
-		id: id,
+		ctx:        ctx,
+		id:         id,
 	}
 }
 
 // Execute executes the request
-//  @return RecoveryRequest
+//
+//	@return RecoveryRequest
 func (a *RecoveryAPIService) DenyRecoveryExecute(r RecoveryAPIDenyRecoveryRequest) (*RecoveryRequest, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RecoveryRequest
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveryRequest
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.DenyRecovery")
@@ -234,8 +235,8 @@ func (a *RecoveryAPIService) DenyRecoveryExecute(r RecoveryAPIDenyRecoveryReques
 }
 
 type RecoveryAPIEnrollRecoveryRequest struct {
-	ctx context.Context
-	ApiService *RecoveryAPIService
+	ctx           context.Context
+	ApiService    *RecoveryAPIService
 	enrollRequest *EnrollRequest
 }
 
@@ -251,24 +252,25 @@ func (r RecoveryAPIEnrollRecoveryRequest) Execute() (*RecoveryShare, *http.Respo
 /*
 EnrollRecovery Initial recovery-share enrollment (aal2). Insert-if-absent: a member's pubkey never rotates outside the ceremony, so an existing share is a 409.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return RecoveryAPIEnrollRecoveryRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return RecoveryAPIEnrollRecoveryRequest
 */
 func (a *RecoveryAPIService) EnrollRecovery(ctx context.Context) RecoveryAPIEnrollRecoveryRequest {
 	return RecoveryAPIEnrollRecoveryRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return RecoveryShare
+//
+//	@return RecoveryShare
 func (a *RecoveryAPIService) EnrollRecoveryExecute(r RecoveryAPIEnrollRecoveryRequest) (*RecoveryShare, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RecoveryShare
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveryShare
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.EnrollRecovery")
@@ -342,9 +344,9 @@ func (a *RecoveryAPIService) EnrollRecoveryExecute(r RecoveryAPIEnrollRecoveryRe
 }
 
 type RecoveryAPIGetRecoveryRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *RecoveryAPIService
-	id string
+	id         string
 }
 
 func (r RecoveryAPIGetRecoveryRequest) Execute() (*RecoveryRequest, *http.Response, error) {
@@ -354,26 +356,27 @@ func (r RecoveryAPIGetRecoveryRequest) Execute() (*RecoveryRequest, *http.Respon
 /*
 GetRecovery One request. Owners (aal2) get the confirmer view — human_email, current_epoch, confirmer_wrapped_master; the initiator or target member gets the bare row.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @param id
- @return RecoveryAPIGetRecoveryRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@param id
+	@return RecoveryAPIGetRecoveryRequest
 */
 func (a *RecoveryAPIService) GetRecovery(ctx context.Context, id string) RecoveryAPIGetRecoveryRequest {
 	return RecoveryAPIGetRecoveryRequest{
 		ApiService: a,
-		ctx: ctx,
-		id: id,
+		ctx:        ctx,
+		id:         id,
 	}
 }
 
 // Execute executes the request
-//  @return RecoveryRequest
+//
+//	@return RecoveryRequest
 func (a *RecoveryAPIService) GetRecoveryExecute(r RecoveryAPIGetRecoveryRequest) (*RecoveryRequest, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RecoveryRequest
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveryRequest
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.GetRecovery")
@@ -443,7 +446,7 @@ func (a *RecoveryAPIService) GetRecoveryExecute(r RecoveryAPIGetRecoveryRequest)
 }
 
 type RecoveryAPIGetRecoveryShareRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *RecoveryAPIService
 }
 
@@ -454,24 +457,25 @@ func (r RecoveryAPIGetRecoveryShareRequest) Execute() (*RecoveryShare, *http.Res
 /*
 GetRecoveryShare The caller's own recovery-share state: enrolled flag, pubkey, and wrapped_master (ciphertext only — never the plaintext master).
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return RecoveryAPIGetRecoveryShareRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return RecoveryAPIGetRecoveryShareRequest
 */
 func (a *RecoveryAPIService) GetRecoveryShare(ctx context.Context) RecoveryAPIGetRecoveryShareRequest {
 	return RecoveryAPIGetRecoveryShareRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return RecoveryShare
+//
+//	@return RecoveryShare
 func (a *RecoveryAPIService) GetRecoveryShareExecute(r RecoveryAPIGetRecoveryShareRequest) (*RecoveryShare, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RecoveryShare
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveryShare
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.GetRecoveryShare")
@@ -540,9 +544,9 @@ func (a *RecoveryAPIService) GetRecoveryShareExecute(r RecoveryAPIGetRecoverySha
 }
 
 type RecoveryAPIListRecoveriesRequest struct {
-	ctx context.Context
+	ctx        context.Context
 	ApiService *RecoveryAPIService
-	status *string
+	status     *string
 }
 
 func (r RecoveryAPIListRecoveriesRequest) Status(status string) RecoveryAPIListRecoveriesRequest {
@@ -557,24 +561,25 @@ func (r RecoveryAPIListRecoveriesRequest) Execute() (*RecoveriesResponse, *http.
 /*
 ListRecoveries Owner-only (aal2) list of org recovery requests filtered by status.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return RecoveryAPIListRecoveriesRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return RecoveryAPIListRecoveriesRequest
 */
 func (a *RecoveryAPIService) ListRecoveries(ctx context.Context) RecoveryAPIListRecoveriesRequest {
 	return RecoveryAPIListRecoveriesRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return RecoveriesResponse
+//
+//	@return RecoveriesResponse
 func (a *RecoveryAPIService) ListRecoveriesExecute(r RecoveryAPIListRecoveriesRequest) (*RecoveriesResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodGet
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *RecoveriesResponse
+		localVarHTTPMethod  = http.MethodGet
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveriesResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.ListRecoveries")
@@ -649,9 +654,118 @@ func (a *RecoveryAPIService) ListRecoveriesExecute(r RecoveryAPIListRecoveriesRe
 	return localVarReturnValue, localVarHTTPResponse, nil
 }
 
+type RecoveryAPIRealignRecoveryCustodianRequest struct {
+	ctx           context.Context
+	ApiService    *RecoveryAPIService
+	enrollRequest *EnrollRequest
+}
+
+func (r RecoveryAPIRealignRecoveryCustodianRequest) EnrollRequest(enrollRequest EnrollRequest) RecoveryAPIRealignRecoveryCustodianRequest {
+	r.enrollRequest = &enrollRequest
+	return r
+}
+
+func (r RecoveryAPIRealignRecoveryCustodianRequest) Execute() (*RecoveryShare, *http.Response, error) {
+	return r.ApiService.RealignRecoveryCustodianExecute(r)
+}
+
+/*
+RealignRecoveryCustodian Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return RecoveryAPIRealignRecoveryCustodianRequest
+*/
+func (a *RecoveryAPIService) RealignRecoveryCustodian(ctx context.Context) RecoveryAPIRealignRecoveryCustodianRequest {
+	return RecoveryAPIRealignRecoveryCustodianRequest{
+		ApiService: a,
+		ctx:        ctx,
+	}
+}
+
+// Execute executes the request
+//
+//	@return RecoveryShare
+func (a *RecoveryAPIService) RealignRecoveryCustodianExecute(r RecoveryAPIRealignRecoveryCustodianRequest) (*RecoveryShare, *http.Response, error) {
+	var (
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *RecoveryShare
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.RealignRecoveryCustodian")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v1/recovery/realign-custodian"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.enrollRequest == nil {
+		return localVarReturnValue, nil, reportError("enrollRequest is required and must be specified")
+	}
+
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	// body params
+	localVarPostBody = r.enrollRequest
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
 type RecoveryAPIStartRecoveryRequest struct {
-	ctx context.Context
-	ApiService *RecoveryAPIService
+	ctx                  context.Context
+	ApiService           *RecoveryAPIService
 	startRecoveryRequest *StartRecoveryRequest
 }
 
@@ -667,24 +781,25 @@ func (r RecoveryAPIStartRecoveryRequest) Execute() (*StartRecoveryResponse, *htt
 /*
 StartRecovery Files (or returns the existing open) recovery request. Self-start needs no aal2 — a locked-out member may hold only aal1. Owner-initiated starts (human_id set) require aal2 + owner. One open request per member: a refile returns the live row with created=false and suppresses duplicate notifications.
 
- @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- @return RecoveryAPIStartRecoveryRequest
+	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+	@return RecoveryAPIStartRecoveryRequest
 */
 func (a *RecoveryAPIService) StartRecovery(ctx context.Context) RecoveryAPIStartRecoveryRequest {
 	return RecoveryAPIStartRecoveryRequest{
 		ApiService: a,
-		ctx: ctx,
+		ctx:        ctx,
 	}
 }
 
 // Execute executes the request
-//  @return StartRecoveryResponse
+//
+//	@return StartRecoveryResponse
 func (a *RecoveryAPIService) StartRecoveryExecute(r RecoveryAPIStartRecoveryRequest) (*StartRecoveryResponse, *http.Response, error) {
 	var (
-		localVarHTTPMethod   = http.MethodPost
-		localVarPostBody     interface{}
-		formFiles            []formFile
-		localVarReturnValue  *StartRecoveryResponse
+		localVarHTTPMethod  = http.MethodPost
+		localVarPostBody    interface{}
+		formFiles           []formFile
+		localVarReturnValue *StartRecoveryResponse
 	)
 
 	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "RecoveryAPIService.StartRecovery")

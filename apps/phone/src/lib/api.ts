@@ -183,4 +183,13 @@ export const claimDeviceLink = (token: string) =>
 export const getDeviceLink = (token: string) =>
   call<DeviceLink & { pubkey: string | number[]; label: string }>(`/v1/device-links/${token}`);
 export const getRecoveryShare = () =>
-  call<{ enrolled: boolean; wrapped_master?: string }>(`/v1/recovery/share`);
+  call<{ enrolled: boolean; wrapped_master?: string; pubkey?: string }>(`/v1/recovery/share`);
+
+export const enrollRecoveryShare = (pubkeyB64: string) =>
+  call<unknown>(`/v1/recovery/enroll`, { method: "POST", body: JSON.stringify({ pubkey: pubkeyB64 }) });
+
+export const realignRecoveryCustodian = (pubkeyB64: string) =>
+  call<unknown>(`/v1/recovery/realign-custodian`, {
+    method: "POST",
+    body: JSON.stringify({ pubkey: pubkeyB64 }),
+  });

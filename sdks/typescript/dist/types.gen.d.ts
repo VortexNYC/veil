@@ -2243,6 +2243,37 @@ export type EnrollRecoveryResponses = {
     200: RecoveryShare;
 };
 export type EnrollRecoveryResponse = EnrollRecoveryResponses[keyof EnrollRecoveryResponses];
+export type RealignRecoveryCustodianData = {
+    body: EnrollRequest;
+    path?: never;
+    query?: never;
+    url: '/v1/recovery/realign-custodian';
+};
+export type RealignRecoveryCustodianErrors = {
+    /**
+     * missing or malformed pubkey, or pubkey already enrolled on another share
+     */
+    400: unknown;
+    /**
+     * missing or invalid human token
+     */
+    401: unknown;
+    /**
+     * aal1 token — realign requires a second factor
+     */
+    403: unknown;
+    /**
+     * member never enrolled a recovery share
+     */
+    404: unknown;
+};
+export type RealignRecoveryCustodianResponses = {
+    /**
+     * The updated share
+     */
+    200: RecoveryShare;
+};
+export type RealignRecoveryCustodianResponse = RealignRecoveryCustodianResponses[keyof RealignRecoveryCustodianResponses];
 export type StartRecoveryData = {
     body: StartRecoveryRequest;
     path?: never;

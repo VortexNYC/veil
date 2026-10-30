@@ -1472,6 +1472,35 @@ paths:
         \ pubkey never rotates outside the ceremony, so an existing share is a 409."
       tags:
       - Recovery
+  /v1/recovery/realign-custodian:
+    post:
+      operationId: realignRecoveryCustodian
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryShare"
+          description: The updated share
+        "400":
+          description: "missing or malformed pubkey, or pubkey already enrolled on\
+            \ another share"
+        "401":
+          description: missing or invalid human token
+        "403":
+          description: aal1 token — realign requires a second factor
+        "404":
+          description: member never enrolled a recovery share
+      summary: Re-wrap the member's org-key share under a new phone custodian pubkey
+        without rotating the org master (reinstall drift). aal2 required.
+      tags:
+      - Recovery
   /v1/recovery/start:
     post:
       operationId: startRecovery

@@ -2171,6 +2171,49 @@
     }
    }
   },
+  "/v1/recovery/realign-custodian": {
+   "post": {
+    "operationId": "realignRecoveryCustodian",
+    "tags": [
+     "Recovery"
+    ],
+    "summary": "Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EnrollRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The updated share",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecoveryShare"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "missing or malformed pubkey, or pubkey already enrolled on another share"
+     },
+     "401": {
+      "description": "missing or invalid human token"
+     },
+     "403": {
+      "description": "aal1 token — realign requires a second factor"
+     },
+     "404": {
+      "description": "member never enrolled a recovery share"
+     }
+    }
+   }
+  },
   "/v1/recovery/start": {
    "post": {
     "operationId": "startRecovery",

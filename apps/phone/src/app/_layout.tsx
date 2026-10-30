@@ -10,7 +10,9 @@ import { Platform } from "react-native";
 import { armErrorReporting } from "../lib/report";
 import { registerForPush, wireNotificationTap } from "../lib/push";
 import { checkAndApplyOTAUpdate } from "../lib/updates";
-import { registerThisDevice } from "../lib/escrow";
+import { registerThisDevice, ensureRecoveryShareMatchesCustodian } from "../lib/escrow";
+import { enrollRecoveryShare, getRecoveryShare, realignRecoveryCustodian } from "../lib/api";
+import { storedToken } from "../lib/auth";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -23,6 +25,14 @@ export default function Layout() {
     wireNotificationTap();
     void registerForPush();
     void registerThisDevice(Platform.OS === "ios" ? "iPhone" : Platform.OS).catch(() => {});
+    void (async () => {
+      if (!(await storedToken())) return;
+      try {
+        await ensureRecoveryShareMatchesCustodian(getRecoveryShare, enrollRecoveryShare, realignRecoveryCustodian);
+      } catch {
+        /* best-effort — link approve surfaces custody errors */
+      }
+    })();
     void checkAndApplyOTAUpdate();
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {

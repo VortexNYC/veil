@@ -502,6 +502,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/use", s.useItem)
 	mux.HandleFunc("GET /v1/recovery/share", s.getRecoveryShare)
 	mux.HandleFunc("POST /v1/recovery/enroll", s.enrollRecovery)
+	mux.HandleFunc("POST /v1/recovery/realign-custodian", s.realignRecoveryCustodian)
 	mux.HandleFunc("POST /v1/recovery/start", s.startRecovery)
 	mux.HandleFunc("GET /v1/recovery", s.listRecoveries)
 	mux.HandleFunc("GET /v1/recovery/{id}", s.getRecovery)
@@ -1446,6 +1447,32 @@ func (s *Server) enrollRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	if !created {
 		http.Error(w, "already enrolled", http.StatusConflict)
+		return
+	}
+	writeJSON(w, share)
+}
+
+// POST /v1/recovery/realign-custodian — re-wrap the member's share under a
+// new phone custodian pubkey without rotating the org master (reinstall drift).
+func (s *Server) realignRecoveryCustodian(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var in EnrollRecoveryRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	pubkey, err := decodePubkey(in.Pubkey)
+	if err != nil {
+		http.Error(w, "bad pubkey", http.StatusBadRequest)
+		return
+	}
+	share, err := s.App.RealignRecoveryCustodian(r.Context(), raw, pubkey)
+	if err != nil {
+		http.Error(w, "realign failed", recoveryStatus(err))
 		return
 	}
 	writeJSON(w, share)

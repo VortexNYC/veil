@@ -903,6 +903,87 @@ func (p *Postgres) EnrollOrgKeyShare(ctx context.Context, orgID, humanID string,
 	return orgKeyShareFromSqlc(ins), created, nil
 }
 
+// RealignOrgKeyShareCustodian moves the member's share to a new phone
+// custodian pubkey without minting a fresh org master — the recovery
+// ceremony stays for lost-key cases; this is reinstall drift only.
+func (p *Postgres) RealignOrgKeyShareCustodian(ctx context.Context, orgID, humanID string, newPubkey []byte, audit ...protocol.AuditEvent) (protocol.OrgKeyShare, error) {
+	if len(newPubkey) != device.PublicSize {
+		return protocol.OrgKeyShare{}, fmt.Errorf("store: recovery pubkey must be %d bytes", device.PublicSize)
+	}
+	preRow, err := p.sqlc.OrgKey(ctx, orgID)
+	if err == pgx.ErrNoRows {
+		return protocol.OrgKeyShare{}, ErrOrgKeyMissing
+	}
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	master, err := p.openKey(ctx, preRow.Wrapped, []byte(orgID))
+	if err != nil {
+		return protocol.OrgKeyShare{}, fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := p.sqlc.WithTx(tx)
+	existing, err := q.OrgKeyShare(ctx, sqlc.OrgKeyShareParams{OrgID: orgID, HumanID: humanID})
+	if err == pgx.ErrNoRows {
+		return protocol.OrgKeyShare{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	if hmac.Equal(existing.Pubkey, newPubkey) {
+		if err := tx.Commit(ctx); err != nil {
+			return protocol.OrgKeyShare{}, err
+		}
+		return orgKeyShareFromSqlc(existing), nil
+	}
+	byPub, err := q.OrgKeyShareByPubkey(ctx, newPubkey)
+	if err == nil && (byPub.OrgID != orgID || byPub.HumanID != humanID) {
+		return protocol.OrgKeyShare{}, ErrRecoveryPubkey
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return protocol.OrgKeyShare{}, err
+	}
+	row, err := q.OrgKeyForShare(ctx, orgID)
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	if !hmac.Equal(row.Wrapped, preRow.Wrapped) {
+		return protocol.OrgKeyShare{}, fmt.Errorf("store: org_keys row for %s moved during share realign — retry", orgID)
+	}
+	wrapped, err := device.Offer(master, newPubkey)
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	now := time.Now().UTC()
+	newEpoch := existing.WrapPubkeyEpoch + 1
+	if err := q.UpsertOrgKeyShare(ctx, sqlc.UpsertOrgKeyShareParams{
+		OrgID: orgID, HumanID: humanID, Pubkey: newPubkey, WrappedMaster: wrapped,
+		WrapPubkeyEpoch: newEpoch, OrgKeyVersion: existing.OrgKeyVersion,
+		CreatedAt: existing.CreatedAt, UpdatedAt: now,
+	}); err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	updated, err := q.OrgKeyShare(ctx, sqlc.OrgKeyShareParams{OrgID: orgID, HumanID: humanID})
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	for _, e := range audit {
+		if err := auditInTx(ctx, tx, auditParams(e)); err != nil {
+			return protocol.OrgKeyShare{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	return orgKeyShareFromSqlc(updated), nil
+}
+
 // OrgKeyShare returns the member's enrolled share — metadata and the
 // sealed blob only; the master never leaves the store.
 func (p *Postgres) OrgKeyShare(ctx context.Context, orgID, humanID string) (protocol.OrgKeyShare, error) {

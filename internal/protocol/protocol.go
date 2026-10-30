@@ -190,11 +190,12 @@ const (
 	// enrollment and the initiator → confirmer ceremony lifecycle. Every
 	// transition commits atomically with its audit row. AgentID is the
 	// actor; ItemID carries the recovery request id.
-	ActionRecoveryShareEnrolled ActionKind = "recovery_share_enrolled"
-	ActionRecoveryStarted       ActionKind = "recovery_started"
-	ActionRecoveryCompleted     ActionKind = "recovery_completed"
-	ActionRecoveryDenied        ActionKind = "recovery_denied"
-	ActionRecoveryExpired       ActionKind = "recovery_expired"
+	ActionRecoveryShareEnrolled      ActionKind = "recovery_share_enrolled"
+	ActionRecoveryCustodianRealigned ActionKind = "recovery_custodian_realigned"
+	ActionRecoveryStarted            ActionKind = "recovery_started"
+	ActionRecoveryCompleted          ActionKind = "recovery_completed"
+	ActionRecoveryDenied             ActionKind = "recovery_denied"
+	ActionRecoveryExpired            ActionKind = "recovery_expired"
 	// travel_mode_toggled (VTX-788): an org owner flipped Travel Mode. The
 	// Reason carries enabled=true|false. While on, items without
 	// travel_safe are hidden from every list/fill/Use surface.

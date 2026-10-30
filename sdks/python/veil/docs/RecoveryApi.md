@@ -10,6 +10,7 @@ Method | HTTP request | Description
 [**get_recovery**](RecoveryApi.md#get_recovery) | **GET** /v1/recovery/{id} | One request. Owners (aal2) get the confirmer view — human_email, current_epoch, confirmer_wrapped_master; the initiator or target member gets the bare row.
 [**get_recovery_share**](RecoveryApi.md#get_recovery_share) | **GET** /v1/recovery/share | The caller&#39;s own recovery-share state: enrolled flag, pubkey, and wrapped_master (ciphertext only — never the plaintext master).
 [**list_recoveries**](RecoveryApi.md#list_recoveries) | **GET** /v1/recovery | Owner-only (aal2) list of org recovery requests filtered by status.
+[**realign_recovery_custodian**](RecoveryApi.md#realign_recovery_custodian) | **POST** /v1/recovery/realign-custodian | Re-wrap the member&#39;s org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
 [**start_recovery**](RecoveryApi.md#start_recovery) | **POST** /v1/recovery/start | Files (or returns the existing open) recovery request. Self-start needs no aal2 — a locked-out member may hold only aal1. Owner-initiated starts (human_id set) require aal2 + owner. One open request per member: a refile returns the live row with created&#x3D;false and suppresses duplicate notifications.
 
 
@@ -487,6 +488,87 @@ Name | Type | Description  | Notes
 **400** | bad status |  -  |
 **401** | missing or invalid human token |  -  |
 **403** | not owner or aal1 |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **realign_recovery_custodian**
+> RecoveryShare realign_recovery_custodian(enroll_request)
+
+Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+
+### Example
+
+* Bearer (JWT) Authentication (bearerAuth):
+
+```python
+import veil
+from veil.models.enroll_request import EnrollRequest
+from veil.models.recovery_share import RecoveryShare
+from veil.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to https://veil.nyc
+# See configuration.py for a list of all supported configuration parameters.
+configuration = veil.Configuration(
+    host = "https://veil.nyc"
+)
+
+# The client must configure the authentication and authorization parameters
+# in accordance with the API server security policy.
+# Examples for each auth method are provided below, use the example that
+# satisfies your auth use case.
+
+# Configure Bearer authorization (JWT): bearerAuth
+configuration = veil.Configuration(
+    access_token = os.environ["BEARER_TOKEN"]
+)
+
+# Enter a context with an instance of the API client
+with veil.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = veil.RecoveryApi(api_client)
+    enroll_request = veil.EnrollRequest() # EnrollRequest | 
+
+    try:
+        # Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+        api_response = api_instance.realign_recovery_custodian(enroll_request)
+        print("The response of RecoveryApi->realign_recovery_custodian:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling RecoveryApi->realign_recovery_custodian: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **enroll_request** | [**EnrollRequest**](EnrollRequest.md)|  | 
+
+### Return type
+
+[**RecoveryShare**](RecoveryShare.md)
+
+### Authorization
+
+[bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | The updated share |  -  |
+**400** | missing or malformed pubkey, or pubkey already enrolled on another share |  -  |
+**401** | missing or invalid human token |  -  |
+**403** | aal1 token — realign requires a second factor |  -  |
+**404** | member never enrolled a recovery share |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

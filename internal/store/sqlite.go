@@ -602,6 +602,9 @@ func (s *SQLite) RecoverOrgKey(context.Context, string, protocol.Owner, []byte) 
 func (s *SQLite) EnrollOrgKeyShare(context.Context, string, string, []byte, ...protocol.AuditEvent) (protocol.OrgKeyShare, bool, error) {
 	return protocol.OrgKeyShare{}, false, ErrUnsupported
 }
+func (s *SQLite) RealignOrgKeyShareCustodian(context.Context, string, string, []byte, ...protocol.AuditEvent) (protocol.OrgKeyShare, error) {
+	return protocol.OrgKeyShare{}, ErrUnsupported
+}
 func (s *SQLite) OrgKeyShare(context.Context, string, string) (protocol.OrgKeyShare, error) {
 	return protocol.OrgKeyShare{}, ErrUnsupported
 }

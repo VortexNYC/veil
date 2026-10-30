@@ -336,6 +336,47 @@ func TestPostgresOrgKeyShareEnroll(t *testing.T) {
 	}
 }
 
+func TestPostgresRealignOrgKeyShareCustodian(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	s := rotateSchema(t, dsn, "rec_realign", testMasterKey(t))
+	defer s.Close()
+
+	master, _ := crypto.NewKey()
+	if err := s.EnsureOrgKey(ctx, "org", master); err != nil {
+		t.Fatal(err)
+	}
+	pub1, priv1, _ := device.Generate()
+	pub2, priv2, _ := device.Generate()
+	if _, _, err := s.EnrollOrgKeyShare(ctx, "org", "human-1", pub1); err != nil {
+		t.Fatal(err)
+	}
+	share, err := s.RealignOrgKeyShareCustodian(ctx, "org", "human-1", pub2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.WrapPubkeyEpoch != 2 {
+		t.Fatalf("epoch %d", share.WrapPubkeyEpoch)
+	}
+	got, err := device.Accept(share.WrappedMaster, priv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(master) {
+		t.Fatal("realign opened wrong master")
+	}
+	if _, err := device.Accept(share.WrappedMaster, priv1); err == nil {
+		t.Fatal("old custodian still opens")
+	}
+	again, err := s.RealignOrgKeyShareCustodian(ctx, "org", "human-1", pub2)
+	if err != nil || again.WrapPubkeyEpoch != 2 {
+		t.Fatalf("idempotent realign: %v epoch=%d", err, again.WrapPubkeyEpoch)
+	}
+}
+
 // TestPostgresRecoveryRequestPubkeyUnique: a new_pubkey already enrolled on
 // any share is rejected — the global-unique pubkey invariant (VEIL-78).
 func TestPostgresRecoveryRequestPubkeyUnique(t *testing.T) {
