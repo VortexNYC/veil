@@ -140,10 +140,14 @@ func kekFromEnv(local []byte) kekProvider {
 }
 
 // sealKey wraps under the active provider — remote rows are stamped 0x02.
-// Callers already hold kekMu where rotation matters; the remote call must
-// never be made while holding a DB lock (statement_timeout is 5s).
+// Local wraps always use p.kek (updated by RotateKEK); kekp holds the
+// provider dispatch only. Callers hold kekMu where rotation matters; the
+// remote call must never be made while holding a DB lock (statement_timeout is 5s).
 func (p *Postgres) sealKey(ctx context.Context, pt, aad []byte) ([]byte, error) {
-	return p.kekp.seal(ctx, pt, aad)
+	if p.kekp.remote() {
+		return p.kekp.seal(ctx, pt, aad)
+	}
+	return crypto.SealAAD(p.kek, pt, aad)
 }
 
 // openKey dispatches on the blob version byte: 0x02 rows go to the service,
