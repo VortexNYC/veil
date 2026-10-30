@@ -3002,7 +3002,8 @@ func (s *SQLite) PutDeviceLink(ctx context.Context, l protocol.DeviceLink) error
 
 func (s *SQLite) DeviceLink(ctx context.Context, token string) (protocol.DeviceLink, error) {
 	var l protocol.DeviceLink
-	var ca, ea, consumed string
+	var ca, ea string
+	var consumed sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at
 		FROM device_links WHERE token=?`, token).
 		Scan(&l.Token, &l.OrgID, &l.HumanID, &l.Label, &l.Pubkey, &l.Sealed, &l.ApprovedBy, &ca, &ea, &consumed)
@@ -3014,8 +3015,8 @@ func (s *SQLite) DeviceLink(ctx context.Context, token string) (protocol.DeviceL
 	}
 	l.CreatedAt, _ = time.Parse(time.RFC3339, ca)
 	l.ExpiresAt, _ = time.Parse(time.RFC3339, ea)
-	if consumed != "" {
-		if t, e := time.Parse(time.RFC3339, consumed); e == nil {
+	if consumed.Valid && consumed.String != "" {
+		if t, e := time.Parse(time.RFC3339, consumed.String); e == nil {
 			l.ConsumedAt = &t
 		}
 	}

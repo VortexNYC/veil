@@ -35,6 +35,24 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return raw as T;
 }
 
+// callPublic — device-link endpoints are unauthenticated by design: the
+// new device has no session yet, the link token is the possession proof.
+async function callPublic<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(originAPI + path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  const raw: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      typeof raw === "object" && raw !== null && "error" in raw && typeof raw.error === "string"
+        ? raw.error
+        : `request failed (${res.status})`;
+    throw new ApiError(res.status, msg);
+  }
+  return raw as T;
+}
+
 export type Item = {
   id: string;
   name: string;
@@ -152,11 +170,11 @@ export const registerDevice = (platform: "apns" | "fcm", token: string, label: s
 // Device-links — old-device-approve custody handoff (sealed ciphertext only).
 export interface DeviceLink { token: string; expires_at: string; sealed?: string }
 export const createDeviceLink = (label: string, pubkey: number[]) =>
-  call<DeviceLink>("/v1/device-links", { method: "POST", body: JSON.stringify({ label, pubkey }) });
+  callPublic<DeviceLink>("/v1/device-links", { method: "POST", body: JSON.stringify({ label, pubkey }) });
 export const approveDeviceLink = (token: string, sealed: number[]) =>
   call<unknown>(`/v1/device-links/${token}/approve`, { method: "POST", body: JSON.stringify({ sealed }) });
 export const claimDeviceLink = (token: string) =>
-  call<DeviceLink>(`/v1/device-links/${token}/claim`, { method: "POST" });
+  callPublic<DeviceLink>(`/v1/device-links/${token}/claim`, { method: "POST" });
 export const getDeviceLink = (token: string) =>
   call<DeviceLink & { pubkey: number[]; label: string }>(`/v1/device-links/${token}`);
 export const getRecoveryShare = () =>
