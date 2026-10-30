@@ -74,7 +74,9 @@ export default function SignIn() {
         )}
       </Pressable>
 
-      <Pressable accessibilityRole="button"
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Sign in without password — link from an approved device"
         onPress={() => router.push("/link")}
         style={{ alignItems: "center", paddingVertical: 10 }}
       >

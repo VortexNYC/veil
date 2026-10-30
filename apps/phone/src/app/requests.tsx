@@ -193,14 +193,19 @@ export default function Requests() {
             </View>
           </View>
         )}
+        ListFooterComponent={
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push({ pathname: "/link", params: { mode: "approve" } })}
+            className="bg-blue-600"
+            style={{ borderRadius: 12, padding: 14, alignItems: "center", marginHorizontal: 16, marginVertical: 16 }}
+          >
+            <Text className="text-white" style={{ fontWeight: "600" }}>
+              Link new device
+            </Text>
+          </Pressable>
+        }
       />
     </View>
   );
-}      <Pressable accessibilityRole="button"
-        onPress={() => router.push({ pathname: "/link", params: { mode: "approve" } })}
-        className="bg-blue-600"
-        style={{ borderRadius: 12, padding: 14, alignItems: "center", marginHorizontal: 16, marginBottom: 16 }}
-      >
-        <Text className="text-white" style={{ fontWeight: "600" }}>Link new device</Text>
-      </Pressable>
-
+}
