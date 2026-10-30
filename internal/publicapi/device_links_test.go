@@ -1,10 +1,13 @@
 package publicapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/protocol"
 )
 
@@ -75,5 +78,62 @@ func TestDeviceLinkCreateClaimUnauthenticated(t *testing.T) {
 	code, _ = doJSON(t, srv, "POST", "/v1/device-links/"+created.Token+"/claim", "", nil)
 	if code != 400 {
 		t.Fatalf("second claim: want 400, got %d", code)
+	}
+}
+
+func TestDeviceLinkOfferAcceptHandoff(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	master, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newPub, newPriv, err := device.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := device.Offer(master, newPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sealed) != 80 {
+		t.Fatalf("offer blob len=%d want 80", len(sealed))
+	}
+
+	code, raw := doJSON(t, srv, "POST", "/v1/device-links", "", map[string]any{
+		"label": "new-phone", "pubkey": newPub,
+	})
+	if code != 200 {
+		t.Fatalf("create: %d %s", code, raw)
+	}
+	var created protocol.DeviceLink
+	if err := json.Unmarshal(raw, &created); err != nil {
+		t.Fatal(err)
+	}
+
+	code, raw = doJSON(t, srv, "POST", "/v1/device-links/"+created.Token+"/approve", "human", map[string]any{
+		"sealed": sealed,
+	})
+	if code != 204 {
+		t.Fatalf("approve: want 204, got %d %s", code, raw)
+	}
+
+	code, raw = doJSON(t, srv, "POST", "/v1/device-links/"+created.Token+"/claim", "", nil)
+	if code != 200 {
+		t.Fatalf("claim: %d %s", code, raw)
+	}
+	var claimed protocol.DeviceLink
+	if err := json.Unmarshal(raw, &claimed); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(claimed.Sealed, sealed) {
+		t.Fatal("claim lost sealed blob")
+	}
+	got, err := device.Accept(claimed.Sealed, newPriv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, master) {
+		t.Fatal("claimed blob does not open to org master")
 	}
 }

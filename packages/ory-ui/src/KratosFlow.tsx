@@ -1,11 +1,16 @@
-// Kumo-native Kratos renderer — drives flow.ui.nodes for every flow
-// (login, registration, recovery, settings, verification). Built on real
-// @cloudflare/kumo primitives — one style system for auth + vault.
+// Kratos renderer on shared Vortex auth chrome (@vortex-api/better-auth-ui) +
+// Kumo inputs. Ory posts the flow; we do not restyle Kratos semantics.
 
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  AuthCard,
+  AuthDivider,
+  AuthError,
+  AuthShell,
+} from "@vortex-api/better-auth-ui"
+import { Button } from "@cloudflare/kumo/components/button"
 import { Input } from "@cloudflare/kumo/components/input"
 import { Label } from "@cloudflare/kumo/components/label"
-import { Banner } from "@cloudflare/kumo/components/banner"
 
 type UiNodeInput = { attributes?: Record<string, unknown>; messages?: { type: string; text: string }[]; group?: string }
 interface FlowLike {
@@ -81,6 +86,13 @@ function groupsOf(nodes: UiNodeInput[]): string[] {
   return seen
 }
 
+const defaultAtmosphere = (
+  <div
+    className="pointer-events-none absolute inset-0 bg-[radial-gradient(60rem_40rem_at_50%_-10%,color-mix(in_oklch,var(--color-kumo-brand)_8%,transparent),transparent_60%)]"
+    aria-hidden
+  />
+)
+
 function Field({ n }: { n: UiNodeInput }) {
   const [show, setShow] = useState(false)
   const nm = name(n)
@@ -91,7 +103,7 @@ function Field({ n }: { n: UiNodeInput }) {
     return (
       <label className="flex items-center gap-2">
         <input type="checkbox" name={nm} value={value(n) || "true"} className="h-4 w-4 rounded" />
-        <span className="text-sm text-kumo-text">{LABELS[nm] ?? nm}</span>
+        <span className="text-sm text-kumo-default">{LABELS[nm] ?? nm}</span>
       </label>
     )
   }
@@ -117,7 +129,7 @@ function Field({ n }: { n: UiNodeInput }) {
         defaultValue={value(n)}
         required={(attrs(n).required as boolean) ?? type !== "checkbox"}
       />
-      {errors.length ? <p className="text-sm text-kumo-error">{errors[0].text}</p> : null}
+      {errors.length ? <p className="text-sm text-kumo-danger">{errors[0].text}</p> : null}
     </div>
   )
 }
@@ -136,12 +148,12 @@ function Control({
     (n.attributes as { label?: { text?: string } } | undefined)?.label?.text ??
     String(name(n) || "Continue")
   return (
-    <button
+    <Button
       type="submit"
+      variant={primary ? "primary" : "secondary"}
+      className="w-full"
       name={name(n) || "method"}
       value={value(n)}
-      data-variant={primary ? "primary" : "secondary"}
-      className="w-full rounded-md border border-kumo-line bg-kumo-accent px-3 py-2 text-sm font-medium text-kumo-accent-fg hover:opacity-90 disabled:opacity-50"
       onClick={(e) => {
         const form = (e.currentTarget as HTMLButtonElement).form
         const g = (e.currentTarget as HTMLElement).closest("[data-veil-group]")?.getAttribute("data-veil-group")
@@ -157,7 +169,7 @@ function Control({
       }}
     >
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -165,94 +177,89 @@ export default function KratosFlow({
   flow,
   title,
   subtitle,
+  layout = "page",
+  logo,
+  atmosphere = defaultAtmosphere,
 }: {
   flow: unknown
   title: string
   subtitle?: string
+  /** `page` — full AuthShell; `embedded` — card only (e.g. settings with host chrome). */
+  layout?: "page" | "embedded"
+  logo?: ReactNode
+  atmosphere?: ReactNode
 }) {
   const nodes = useMemo(() => ((flow as FlowLike).ui?.nodes ?? []) as UiNodeInput[], [flow])
   const pickRef = useRef<{ name: string; value: string } | null>(null)
-  // Some aal2 flows ship no ui.action — the form must post to Kratos's
-  // self-service endpoint for the flow's id, not back to the SPA.
   const fl = flow as FlowLike & { id?: string; ui?: FlowLike["ui"] }
   const kratosURL =
     (import.meta.env?.VITE_KRATOS_URL as string | undefined) ??
     (import.meta.env?.PROD ? "https://accounts.veil.nyc" : "http://127.0.0.1:4433")
-  // ui.action may be relative (aal2 flows) or absent — resolve to the
-  // Kratos host so the form posts to Kratos, not back to the SPA.
   const action = fl.ui?.action?.startsWith("http")
     ? fl.ui.action
     : `${kratosURL}${fl.ui?.action || `/self-service/login?flow=${fl.id ?? ""}`}`
   const groups = groupsOf(nodes)
   const bannerMsgs = ((flow as FlowLike).ui?.messages ?? []).map((m) => m.text)
 
-  const submit = () => {}
+  const card = (
+    <AuthCard title={title} description={subtitle} className="veil-flow">
+      {bannerMsgs.length ? <AuthError message={bannerMsgs.join(" ")} /> : null}
+
+      <form method="post" action={action} className="flex flex-col gap-4">
+        {nodes
+          .filter((n) => groupOf(n) === "default" && isInput(n))
+          .map((n) => (
+            <Field key={`d-${name(n)}`} n={n} />
+          ))}
+
+        {groups.filter((g) => g !== "default").map((g, gi) => {
+          const isField = (n: UiNodeInput) =>
+            isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method"
+          const fields = nodes.filter((n) => groupOf(n) === g && isField(n))
+          const controls = nodes.filter((n) => groupOf(n) === g && (isSubmit(n) || isButton(n)))
+          const nonInput = nodes.filter((n) => groupOf(n) === g && !isInput(n))
+          return (
+            <div key={g} data-veil-group={g} className="flex flex-col gap-4">
+              {gi > 0 ? <AuthDivider /> : null}
+              {fields.map((n) => (
+                <Field key={`${g}-${name(n)}-${inputType(n)}`} n={n} />
+              ))}
+              {nonInput.map((n, i) => {
+                const t = (n.attributes as { text?: { text?: string } } | undefined)?.text?.text
+                return t ? (
+                  <p
+                    key={`${g}-t-${i}`}
+                    className="whitespace-pre-wrap rounded-xl border border-kumo-line bg-kumo-base px-4 py-3 font-mono text-sm text-kumo-subtle"
+                  >
+                    {t}
+                  </p>
+                ) : null
+              })}
+              <div className="flex flex-col gap-2.5">
+                {controls.map((n, i) => (
+                  <Control
+                    key={`${g}-c-${i}`}
+                    n={n}
+                    onPick={(nm, v) => {
+                      pickRef.current = { name: nm, value: v }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </form>
+    </AuthCard>
+  )
+
+  if (layout === "embedded") {
+    return card
+  }
 
   return (
-    <div className="min-h-[100dvh] bg-kumo-base px-4 py-10 flex items-start justify-center">
-      <div className="w-full max-w-sm rounded-xl border border-kumo-line bg-kumo-base p-6 shadow-xl">
-        <h1 className="text-xl font-semibold text-kumo-text">Veil</h1>
-        <h2 className="mt-4 text-lg font-semibold text-kumo-text">{title}</h2>
-        {subtitle ? <p className="mt-1 text-sm text-kumo-subtle">{subtitle}</p> : null}
-
-        {bannerMsgs.length ? (
-          <Banner variant="error" className="mt-4">{bannerMsgs.join(" ")}</Banner>
-        ) : null}
-
-        {/* One form — Kratos splits nodes into method groups but a single
-            submit carries identifier+method anyway, so shared fields render
-            once and each group's controls carry method=<value>. */}
-        <form method="post" action={action} onSubmit={submit} className="mt-5 flex flex-col gap-4">
-          {/* default-group fields (identifier, csrf) render once — the single
-              form posts them regardless of which method submits. */}
-          {nodes
-            .filter((n) => groupOf(n) === "default" && isInput(n))
-            .map((n) => (
-              <Field key={`d-${name(n)}`} n={n} />
-            ))}
-
-          {groups.filter((g) => g !== "default").map((g, gi) => {
-            const isField = (n: UiNodeInput) =>
-              isInput(n) && !isSubmit(n) && !isButton(n) && name(n) !== "method"
-            const fields = nodes.filter((n) => groupOf(n) === g && isField(n))
-            const controls = nodes.filter(
-              (n) => groupOf(n) === g && (isSubmit(n) || isButton(n)),
-            )
-            const nonInput = nodes.filter((n) => groupOf(n) === g && !isInput(n))
-            return (
-              <div key={g} data-veil-group={g} className="flex flex-col gap-4">
-                {gi > 0 ? (
-                  <div className="flex items-center gap-3 text-xs text-kumo-subtle">
-                    <div className="h-px flex-1 bg-kumo-line" />or<div className="h-px flex-1 bg-kumo-line" />
-                  </div>
-                ) : null}
-                {fields.map((n) => (
-                  <Field key={`${g}-${name(n)}-${inputType(n)}`} n={n} />
-                ))}
-                {nonInput.map((n, i) => {
-                  const t = (n.attributes as { text?: { text?: string } } | undefined)?.text?.text
-                  return t ? (
-                    <p key={`${g}-t-${i}`} className="whitespace-pre-wrap rounded-xl border border-kumo-line bg-kumo-base px-4 py-3 font-mono text-sm text-kumo-subtle">
-                      {t}
-                    </p>
-                  ) : null
-                })}
-                <div className="flex flex-col gap-2.5">
-                  {controls.map((n, i) => (
-                    <Control
-                      key={`${g}-c-${i}`}
-                      n={n}
-                      onPick={(nm, v) => {
-                        pickRef.current = { name: nm, value: v }
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </form>
-      </div>
-    </div>
+    <AuthShell logo={logo} atmosphere={atmosphere}>
+      {card}
+    </AuthShell>
   )
 }

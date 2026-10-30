@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
+import { Banner } from "@cloudflare/kumo/components/banner"
+import { Link } from "@cloudflare/kumo/components/link"
 import KratosFlow from "ory-ui"
 import { frontend, kratosURL } from "../ory"
 import { flowSearch, loadOrCreateFlow } from "../flow"
@@ -96,17 +98,26 @@ function SettingsPage() {
     }
   }, [aal2])
   return (
-    <main className="veil-settings">
-      <p className={aal2 ? "veil-banner veil-banner-done" : "veil-banner"}>
-        {aal2
-          ? "Second factor paired — your Veil Vault is unlocked. Below: save your Recovery codes somewhere offline — they are the only way back in if you lose this device. You can also add a Passkey as a second authenticator."
-          : "Step 2 of 2: Pair an Authenticator App (TOTP) or Passkey below to unlock your Veil Vault. Once saved, click Continue to Veil Vault."}
-      </p>
-      <KratosFlow flow={flow} title="Settings" subtitle="Manage your credentials" />
+    <main className="bg-kumo-canvas mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 py-10">
+      <Banner
+        variant={aal2 ? "secondary" : "alert"}
+        title={aal2 ? "Vault unlocked" : "Pair a second factor"}
+        description={
+          aal2
+            ? "Save your recovery codes offline. You can also add a passkey as another authenticator."
+            : "Pair TOTP or a passkey below, then continue to the vault."
+        }
+      />
+      <KratosFlow
+        flow={flow}
+        title="Settings"
+        subtitle="Manage your credentials"
+        layout="embedded"
+      />
       <p className="veil-settings-continue">
-        <a className="veil-continue" href="https://app.veil.nyc">
+        <Link href="https://app.veil.nyc" variant="inline">
           Continue to Veil Vault →
-        </a>
+        </Link>
       </p>
     </main>
   )

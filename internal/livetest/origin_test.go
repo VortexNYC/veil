@@ -162,6 +162,31 @@ func TestOrigin(t *testing.T) {
 			t.Fatalf("mcp fetch decision=%v", sc["decision"])
 		}
 	})
+
+	t.Run("device_link_unauth", func(t *testing.T) {
+		pub := make([]byte, 32)
+		for i := range pub {
+			pub[i] = byte(i + 5)
+		}
+		code, body := postJSON(t, client, origin+"/v1/device-links", "", map[string]any{
+			"label": "livetest", "pubkey": pub,
+		})
+		assertNoLeak(t, body)
+		if code != 200 {
+			t.Fatalf("device-link create http=%d body=%q", code, clip(body))
+		}
+		var link struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(body, &link); err != nil || link.Token == "" {
+			t.Fatalf("device-link create json")
+		}
+		code, body = postJSON(t, client, origin+"/v1/device-links/"+link.Token+"/claim", "", nil)
+		assertNoLeak(t, body)
+		if code != 400 {
+			t.Fatalf("device-link claim before approve http=%d", code)
+		}
+	})
 }
 
 type useOut struct {
@@ -352,6 +377,39 @@ func get(t *testing.T, client *http.Client, url, jwt string) (int, []byte) {
 	}
 	if jwt != "" {
 		req.Header.Set("Authorization", "Bearer "+jwt)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.StatusCode, body
+}
+
+func postJSON(t *testing.T, client *http.Client, url, jwt string, payload any) (int, []byte) {
+	t.Helper()
+	var r io.Reader
+	if payload != nil {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jwt != "" {
+		req.Header.Set("Authorization", "Bearer "+jwt)
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0")
 	res, err := client.Do(req)

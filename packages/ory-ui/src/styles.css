@@ -1,24 +1,30 @@
-/* ory-ui styles — auth surfaces are always dark Kumo */
+/* ory-ui — Kratos flows share Kumo + better-auth-ui layout primitives. */
 @import "@cloudflare/kumo/styles/tailwind";
+@import "../styles/auth-tokens.css";
+@source "./**/*.{tsx,ts}";
+@source "../../../node_modules/@vortex-api/better-auth-ui/dist/**/*.js";
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 
 body {
-  background: var(--color-kumo-canvas, #0a0a0b);
-  color: var(--color-kumo-default, #f4f4f5);
+  background: var(--color-kumo-canvas);
+  color: var(--color-kumo-default);
   margin: 0;
   -webkit-font-smoothing: antialiased;
 }
 
-.dark, :root {
+.dark,
+:root {
   color-scheme: dark;
 }
 
 @layer base {
   ::placeholder {
-    color: var(--color-kumo-subtle, #a1a1aa);
+    color: var(--color-kumo-subtle);
     opacity: 0.5;
   }
 }
