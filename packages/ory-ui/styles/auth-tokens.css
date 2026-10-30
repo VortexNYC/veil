@@ -20,7 +20,7 @@
   --veil-radius-field: 0.75rem;
   --veil-radius-card: 1rem;
   --veil-pad-card: 1.5rem;
-  --veil-w-card: 24rem;
+  --veil-w-card: 22rem;
   --veil-focus-ring: 0 0 0 0.1875rem rgba(59, 130, 246, 0.35);
 }
 @media (prefers-contrast: more) {

@@ -2,6 +2,7 @@
 @import "tailwindcss";
 @import "@cloudflare/kumo/styles/tailwind";
 @source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+@source "../../../packages/ory-ui/src/**/*.{tsx,ts}";
 
 @layer base {
   html,

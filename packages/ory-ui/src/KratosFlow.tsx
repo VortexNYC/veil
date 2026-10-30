@@ -189,8 +189,8 @@ export default function KratosFlow({
   const submit = () => {}
 
   return (
-    <div className="min-h-[100dvh] bg-kumo-base px-4 py-10 flex items-start justify-center">
-      <div className="w-full max-w-sm rounded-xl border border-kumo-line bg-kumo-base p-6 shadow-xl">
+    <div className="veil-auth-shell">
+      <div className="veil-auth-card veil-flow">
         <h1 className="text-xl font-semibold text-kumo-text">Veil</h1>
         <h2 className="mt-4 text-lg font-semibold text-kumo-text">{title}</h2>
         {subtitle ? <p className="mt-1 text-sm text-kumo-subtle">{subtitle}</p> : null}
