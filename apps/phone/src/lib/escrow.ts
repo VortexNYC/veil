@@ -60,6 +60,21 @@ export async function loadLocalWrappedMaster(): Promise<Uint8Array | null> {
   return b64decode(raw);
 }
 
+/** Org master for approve: origin recovery share, else custody from a prior link claim. */
+export async function openOrgMasterForApprove(
+  fetchShare: () => Promise<{ enrolled: boolean; wrapped_master?: string }>,
+): Promise<Uint8Array> {
+  const share = await fetchShare();
+  if (share.enrolled && share.wrapped_master) {
+    return openWrappedMaster(decodeWireBytes(share.wrapped_master));
+  }
+  const local = await loadLocalWrappedMaster();
+  if (local) return openWrappedMaster(local);
+  throw new Error(
+    "no custody on this device — use a phone that enrolled recovery share, or link this device as new first",
+  );
+}
+
 async function custodianKeyPair(): Promise<nacl.BoxKeyPair> {
   const privHex = await SecureStore.getItemAsync(KEY_PRIV);
   if (!privHex) throw new Error("no custodian key on this device — generate one first");

@@ -1,4 +1,4 @@
-.PHONY: test vet fmt tidy sdk-fresh ci build identity-config identity-env identity-up glue prove-identity prove-hydra prove-cli-golden-flow prove-live prove-fill loadtest
+.PHONY: test vet fmt tidy sdk-fresh ci build identity-config identity-env identity-up glue prove-identity prove-hydra prove-cli-golden-flow prove-live prove-link-live prove-fill loadtest
 
 test:
 	env -u VEIL_HYDRA_ISSUER -u VEIL_HYDRA_ADMIN -u VEIL_HOME -u VEIL_OIDC_TOKEN -u VEIL_ORIGIN -u VEIL_OIDC_TOKEN_FILE -u VEIL_HYDRA_SECRET_FILE -u VEIL_AGENT VEIL_FILL_TOUCHID=0 go test -race -shuffle=on -timeout 15m ./...
@@ -92,6 +92,11 @@ prove-hydra:
 
 prove-live:
 	./scripts/prove-live.sh
+
+prove-link-live:
+	@test -n "$$VEIL_HUMAN_TOKEN_FILE" || VEIL_HUMAN_TOKEN_FILE="$$HOME/.config/veil/human.jwt"; \
+	export VEIL_HUMAN_TOKEN_FILE; \
+	cd apps/phone && node scripts/prove-device-link-live.mjs
 
 prove-fill:
 	./scripts/prove-fill.sh
