@@ -168,7 +168,12 @@ export const registerDevice = (platform: "apns" | "fcm", token: string, label: s
   });
 
 // Device-links — old-device-approve custody handoff (sealed ciphertext only).
-export interface DeviceLink { token: string; expires_at: string; sealed?: string }
+export interface DeviceLink {
+  token: string;
+  expires_at: string;
+  /** box.SealAnonymous blob — base64 on the wire (Go json.Marshal []byte). */
+  sealed?: string;
+}
 export const createDeviceLink = (label: string, pubkey: number[]) =>
   callPublic<DeviceLink>("/v1/device-links", { method: "POST", body: JSON.stringify({ label, pubkey }) });
 export const approveDeviceLink = (token: string, sealed: number[]) =>
@@ -178,4 +183,4 @@ export const claimDeviceLink = (token: string) =>
 export const getDeviceLink = (token: string) =>
   call<DeviceLink & { pubkey: number[]; label: string }>(`/v1/device-links/${token}`);
 export const getRecoveryShare = () =>
-  call<{ enrolled: boolean; wrapped_master?: number[] }>(`/v1/recovery/share`);
+  call<{ enrolled: boolean; wrapped_master?: string }>(`/v1/recovery/share`);

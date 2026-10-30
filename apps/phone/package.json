@@ -13,7 +13,8 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "prove:link-live": "node scripts/prove-device-link-live.mjs"
   },
   "dependencies": {
     "@bacons/apple-targets": "5.0.0",

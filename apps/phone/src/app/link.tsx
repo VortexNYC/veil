@@ -10,7 +10,15 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import { approveDeviceLink, claimDeviceLink, createDeviceLink, getDeviceLink, getRecoveryShare } from "../lib/api";
-import { acceptOffer, custodianPubHex, openWrappedMaster, sealForRecipient, unhex } from "../lib/escrow";
+import {
+  acceptOffer,
+  custodianPubHex,
+  decodeWireBytes,
+  openWrappedMaster,
+  persistLocalWrappedMaster,
+  sealForRecipient,
+  unhex,
+} from "../lib/escrow";
 
 const MODE_NEW = "new", MODE_APPROVE = "approve";
 
@@ -38,7 +46,9 @@ export default function Link() {
             if (poll.current) clearInterval(poll.current);
             setClaimed(c.sealed);
             const masterHex = await acceptOffer(c.sealed);
-            setMsg(`linked — org master landed (${masterHex.slice(0, 8)}…)`);
+            await persistLocalWrappedMaster(unhex(masterHex));
+            setMsg(`linked — custody on this device (${masterHex.slice(0, 8)}…). Sign in to fill.`);
+            router.replace("/sign-in");
           }
         } catch { /* not approved yet — keep polling */ }
       }, 3000);
@@ -55,7 +65,7 @@ export default function Link() {
       // Server only ever moves ciphertext.
       const share = await getRecoveryShare();
       if (!share.enrolled || !share.wrapped_master) throw new Error("no custody share on this device");
-      const master = await openWrappedMaster(new Uint8Array(share.wrapped_master));
+      const master = await openWrappedMaster(decodeWireBytes(share.wrapped_master));
       const sealed = await sealForRecipient(master, new Uint8Array(linkRow.pubkey));
       await approveDeviceLink(token.trim(), Array.from(sealed));
       setMsg("approved — the new device can claim its wrap");
