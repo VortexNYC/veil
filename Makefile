@@ -136,7 +136,7 @@ macos-app:
 # verifies every production surface via scripts/deploy-check.sh.
 deploy:
 	pnpm --filter veil-vault run deploy
-	railway up --service veil --detach
+	sh scripts/railway-redeploy-origin.sh veil
 	$(MAKE) macos-app
 	$(MAKE) fill-pack
 	./scripts/deploy-check.sh
