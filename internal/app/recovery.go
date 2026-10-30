@@ -97,6 +97,23 @@ func (a *App) EnrollRecoveryShare(ctx context.Context, rawToken string, pubkey [
 		adminEvent(p.ID, p.OrgID, "", protocol.ActionRecoveryShareEnrolled, "epoch=1"))
 }
 
+// RealignRecoveryCustodian re-wraps the member's org-key share under a new
+// phone custodian pubkey without rotating the org master — aal2 only.
+func (a *App) RealignRecoveryCustodian(ctx context.Context, rawToken string, pubkey []byte) (protocol.OrgKeyShare, error) {
+	p, err := a.requireMember(ctx, rawToken)
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	if err := human.RequireMFA(rawToken); err != nil {
+		return protocol.OrgKeyShare{}, fmt.Errorf("%w: %v", ErrForbidden, err)
+	}
+	if len(pubkey) != device.PublicSize {
+		return protocol.OrgKeyShare{}, fmt.Errorf("app: recovery pubkey must be %d bytes", device.PublicSize)
+	}
+	return a.Store.RealignOrgKeyShareCustodian(ctx, p.OrgID, p.ID, pubkey,
+		adminEvent(p.ID, p.OrgID, "", protocol.ActionRecoveryCustodianRealigned, ""))
+}
+
 // GetRecoveryShare returns the caller's own share — enrolled:false when the
 // member never enrolled. Any live member may read their own row; the blob
 // is ciphertext only.

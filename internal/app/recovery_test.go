@@ -81,6 +81,45 @@ func (f *fakeRecoveryStore) EnrollOrgKeyShare(_ context.Context, orgID, humanID 
 	return share, true, nil
 }
 
+func (f *fakeRecoveryStore) RealignOrgKeyShareCustodian(_ context.Context, orgID, humanID string, newPubkey []byte, audit ...protocol.AuditEvent) (protocol.OrgKeyShare, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := shareKey(orgID, humanID)
+	existing, ok := f.shares[k]
+	if !ok {
+		return protocol.OrgKeyShare{}, store.ErrNotFound
+	}
+	if bytesEqual(existing.Pubkey, newPubkey) {
+		return existing, nil
+	}
+	if f.pubkeys[string(newPubkey)] {
+		return protocol.OrgKeyShare{}, store.ErrRecoveryPubkey
+	}
+	delete(f.pubkeys, string(existing.Pubkey))
+	wrapped, err := device.Offer(f.master, newPubkey)
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	now := time.Now().UTC()
+	share := protocol.OrgKeyShare{
+		OrgID: orgID, HumanID: humanID, Pubkey: append([]byte(nil), newPubkey...),
+		WrappedMaster: wrapped, WrapPubkeyEpoch: existing.WrapPubkeyEpoch + 1,
+		OrgKeyVersion: existing.OrgKeyVersion, CreatedAt: existing.CreatedAt, UpdatedAt: now,
+	}
+	f.shares[k] = share
+	f.pubkeys[string(newPubkey)] = true
+	for _, e := range audit {
+		if err := f.Store.AppendAudit(e); err != nil {
+			return protocol.OrgKeyShare{}, err
+		}
+	}
+	return share, nil
+}
+
+func bytesEqual(a, b []byte) bool {
+	return hmac.Equal(a, b)
+}
+
 func (f *fakeRecoveryStore) OrgKeyShare(_ context.Context, orgID, humanID string) (protocol.OrgKeyShare, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -309,6 +348,31 @@ func recoveryApp(t *testing.T, owners ...string) (*App, *fakeRecoveryStore, *fak
 		admin.owners[owner.OrgID] = owners
 	}
 	return a, fs, admin, roles, notify, owner, member
+}
+
+func TestRecoveryRealignCustodianOpensNewKey(t *testing.T) {
+	a, _, _, _, _, owner, _ := recoveryApp(t)
+	a.Human = fakeVerifier{sub: owner.ID}
+	pub1, priv1, _ := device.Generate()
+	pub2, priv2, _ := device.Generate()
+	if _, _, err := a.EnrollRecoveryShare(context.Background(), "tok", pub1); err != nil {
+		t.Fatal(err)
+	}
+	share, err := a.RealignRecoveryCustodian(context.Background(), "tok", pub2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.WrapPubkeyEpoch != 2 {
+		t.Fatalf("epoch %d", share.WrapPubkeyEpoch)
+	}
+	got, err := device.Accept(share.WrappedMaster, priv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := device.Accept(share.WrappedMaster, priv1); err == nil {
+		t.Fatal("old key still opens share")
+	}
+	_ = got
 }
 
 func TestRecoveryEnrollRequiresMFA(t *testing.T) {

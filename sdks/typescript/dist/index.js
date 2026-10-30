@@ -1126,6 +1126,15 @@ var enrollRecovery = (options) => (options.client ?? client).post({
     ...options.headers
   }
 });
+var realignRecoveryCustodian = (options) => (options.client ?? client).post({
+  security: [{ scheme: "bearer", type: "http" }],
+  url: "/v1/recovery/realign-custodian",
+  ...options,
+  headers: {
+    "Content-Type": "application/json",
+    ...options.headers
+  }
+});
 var startRecovery = (options) => (options.client ?? client).post({
   security: [{ scheme: "bearer", type: "http" }],
   url: "/v1/recovery/start",
@@ -1360,6 +1369,7 @@ export {
   listShares,
   promoteOwner,
   provision,
+  realignRecoveryCustodian,
   redeemShare,
   registerDevice,
   removeGroupMember,

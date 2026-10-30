@@ -176,6 +176,11 @@ type Store interface {
 	// never rotates outside the recovery ceremony. Single-key stores have
 	// no org master and return ErrUnsupported.
 	EnrollOrgKeyShare(ctx context.Context, orgID, humanID string, pubkey []byte, audit ...protocol.AuditEvent) (share protocol.OrgKeyShare, created bool, err error)
+	// RealignOrgKeyShareCustodian re-wraps the committed org master under a
+	// new member pubkey without rotating the org key — for phone custodian
+	// drift after reinstall. aal2 + enrolled member only; ErrNotFound when
+	// never enrolled; ErrRecoveryPubkey when the pubkey belongs to another share.
+	RealignOrgKeyShareCustodian(ctx context.Context, orgID, humanID string, newPubkey []byte, audit ...protocol.AuditEvent) (protocol.OrgKeyShare, error)
 	// OrgKeyShare returns the member's enrolled share, ErrNotFound when
 	// the member never enrolled.
 	OrgKeyShare(ctx context.Context, orgID, humanID string) (protocol.OrgKeyShare, error)

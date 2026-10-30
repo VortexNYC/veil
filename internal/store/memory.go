@@ -161,6 +161,9 @@ func (m *Memory) RecoverOrgKey(context.Context, string, protocol.Owner, []byte) 
 func (m *Memory) EnrollOrgKeyShare(context.Context, string, string, []byte, ...protocol.AuditEvent) (protocol.OrgKeyShare, bool, error) {
 	return protocol.OrgKeyShare{}, false, ErrUnsupported
 }
+func (m *Memory) RealignOrgKeyShareCustodian(context.Context, string, string, []byte, ...protocol.AuditEvent) (protocol.OrgKeyShare, error) {
+	return protocol.OrgKeyShare{}, ErrUnsupported
+}
 func (m *Memory) OrgKeyShare(context.Context, string, string) (protocol.OrgKeyShare, error) {
 	return protocol.OrgKeyShare{}, ErrUnsupported
 }

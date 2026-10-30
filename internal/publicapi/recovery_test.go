@@ -87,6 +87,41 @@ func (f *fakeRecovery) OrgKeyShare(_ context.Context, orgID, humanID string) (pr
 	return share, nil
 }
 
+func (f *fakeRecovery) RealignOrgKeyShareCustodian(_ context.Context, orgID, humanID string, newPubkey []byte, audit ...protocol.AuditEvent) (protocol.OrgKeyShare, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := orgID + "|" + humanID
+	existing, ok := f.shares[k]
+	if !ok {
+		return protocol.OrgKeyShare{}, store.ErrNotFound
+	}
+	if string(existing.Pubkey) == string(newPubkey) {
+		return existing, nil
+	}
+	if f.pubkeys[string(newPubkey)] {
+		return protocol.OrgKeyShare{}, store.ErrRecoveryPubkey
+	}
+	delete(f.pubkeys, string(existing.Pubkey))
+	wrapped, err := device.Offer(f.master, newPubkey)
+	if err != nil {
+		return protocol.OrgKeyShare{}, err
+	}
+	now := time.Now().UTC()
+	share := protocol.OrgKeyShare{
+		OrgID: orgID, HumanID: humanID, Pubkey: append([]byte(nil), newPubkey...),
+		WrappedMaster: wrapped, WrapPubkeyEpoch: existing.WrapPubkeyEpoch + 1,
+		OrgKeyVersion: existing.OrgKeyVersion, CreatedAt: existing.CreatedAt, UpdatedAt: now,
+	}
+	f.shares[k] = share
+	f.pubkeys[string(newPubkey)] = true
+	for _, e := range audit {
+		if err := f.Store.AppendAudit(e); err != nil {
+			return protocol.OrgKeyShare{}, err
+		}
+	}
+	return share, nil
+}
+
 func (f *fakeRecovery) FileRecoveryRequest(_ context.Context, req protocol.RecoveryRequest, audit ...protocol.AuditEvent) (protocol.RecoveryRequest, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

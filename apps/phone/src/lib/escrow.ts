@@ -66,13 +66,41 @@ export async function openOrgMasterForApprove(
 ): Promise<Uint8Array> {
   const share = await fetchShare();
   if (share.enrolled && share.wrapped_master) {
-    return openWrappedMaster(decodeWireBytes(share.wrapped_master));
+    try {
+      return await openWrappedMaster(decodeWireBytes(share.wrapped_master));
+    } catch {
+      /* drift — ensureRecoveryShareMatchesCustodian should run at sign-in */
+    }
   }
   const local = await loadLocalWrappedMaster();
   if (local) return openWrappedMaster(local);
   throw new Error(
     "no custody on this device — use a phone that enrolled recovery share, or link this device as new first",
   );
+}
+
+/** After sign-in: enroll or realign the recovery share to this custodian pubkey. */
+export async function ensureRecoveryShareMatchesCustodian(
+  fetchShare: () => Promise<{ enrolled: boolean; wrapped_master?: string }>,
+  enroll: (pubkeyB64: string) => Promise<unknown>,
+  realign: (pubkeyB64: string) => Promise<unknown>,
+): Promise<void> {
+  const pubHex = await custodianPubHex();
+  const pubB64 = encodeWireBytes(unhex(pubHex));
+  const share = await fetchShare();
+  if (!share.enrolled) {
+    await enroll(pubB64);
+    return;
+  }
+  if (share.wrapped_master) {
+    try {
+      await openWrappedMaster(decodeWireBytes(share.wrapped_master));
+      return;
+    } catch {
+      /* realign below */
+    }
+  }
+  await realign(pubB64);
 }
 
 async function custodianKeyPair(): Promise<nacl.BoxKeyPair> {
