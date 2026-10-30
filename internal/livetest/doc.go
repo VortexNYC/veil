@@ -1,0 +1,3 @@
+// Package livetest holds integration tests against a running origin.
+// Run with: go test -tags liveorigin ./internal/livetest/ ...
+package livetest
