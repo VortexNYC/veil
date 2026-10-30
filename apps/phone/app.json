@@ -28,7 +28,8 @@
       "appleTeamId": "VFWGNKKT4G",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "Veil uses Face ID before a password leaves the vault."
+        "NSFaceIDUsageDescription": "Veil uses Face ID before a password leaves the vault.",
+        "NSCameraUsageDescription": "Veil uses the camera to scan a device-link QR when a trusted device approves this one."
       },
       "entitlements": {
         "com.apple.security.application-groups": [
