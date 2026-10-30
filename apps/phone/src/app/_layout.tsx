@@ -50,7 +50,12 @@ export default function Layout() {
             title: "Veil",
             headerRight: () => (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
-                <Pressable accessibilityRole="button" onPress={() => router.push("/requests")} hitSlop={12}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Requests"
+                  onPress={() => router.push("/requests")}
+                  hitSlop={12}
+                >
                   <Text style={{ color: "#f4f4f5", fontSize: 16, fontWeight: "600" }}>
                     Requests
                   </Text>
@@ -77,6 +82,7 @@ export default function Layout() {
         />
         <Stack.Screen name="escrow" options={{ title: "KEK Escrow" }} />
         <Stack.Screen name="add" options={{ title: "Add password", presentation: "modal" }} />
+        <Stack.Screen name="link" options={{ title: "Link Device" }} />
       </Stack>
     </SafeAreaProvider>
   );
