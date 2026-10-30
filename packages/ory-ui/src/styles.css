@@ -1,8 +1,8 @@
 /* ory-ui — Kratos flows share Kumo + better-auth-ui layout primitives. */
 @import "@cloudflare/kumo/styles/tailwind";
+@import "../styles/auth-tokens.css";
 @source "./**/*.{tsx,ts}";
 @source "../../../node_modules/@vortex-api/better-auth-ui/dist/**/*.js";
-@import "../styles/auth-tokens.css";
 
 html,
 body,

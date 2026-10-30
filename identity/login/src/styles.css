@@ -1,6 +1,4 @@
 @import "ory-ui/styles";
-@source "../../../packages/ory-ui/src/**/*.{tsx,ts}";
-@source "../../../node_modules/@vortex-api/better-auth-ui/dist/**/*.js";
 
 :root {
   color-scheme: dark;
