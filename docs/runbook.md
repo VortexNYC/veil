@@ -10,22 +10,36 @@ the service and must never be re-entered by hand.
 
 | Service | Role |
 |---|---|
-| `veil` | Origin — `/veil mcp` on `veil.nyc`. Stateless on `VEIL_POSTGRES_DSN`. |
-| `Postgres` | Store of record — `veil` and `identity` databases. |
+| `veil` | Origin — `/veil mcp` on `veil.nyc`. GitHub `main`, redeploy with `--from-source`. |
+| `Postgres` | Store of record — `veil`, `kratos`, `keto`, `railway` (hydra). **Image:** `ghcr.io/railwayapp-templates/postgres-ssl` — never deploy the repo Dockerfile here. |
 | `glue`, `kratos`, `keto`, `hydra` | Ory identity plane + broker glue. |
 | `veil-migrate` | One-shot `/veil migrate` — idempotent schema sync. |
 | `veil-sweep` | Hourly cron: expiry cleanup, audit partitions, retention. |
-| `veil-backup` | Daily cron: `pg_dump` of `veil` + `identity` to `veil-backups` volume. |
+| `veil-backup` | Daily cron (05:17 UTC): `pg_dump` ×4 + `pg_basebackup` → volume + R2 via `backup-ingest.veil.nyc`. |
+| `veil-wal` | Always-on WAL archiver (slot `wal_archive`) → R2. |
+| `veil-wal-dr` | Standby archiver in `iad` (slot `wal_archive_dr`). |
+| `veil-audit-export` | Hourly cron: audit JSONL → R2 (same ingest bearer as backup). |
+| `veil-monitor` | Every 15 min: stale heartbeats, `/ready`, ntfy/email. |
+
+Canvas groups in `.railway/railway.ts`: **Identity**, **Store**, **Broker**, **Backup plane**.
 
 ## Deploy
 
-Origin has no repo source — it deploys from a checkout:
+Origin and every GitHub-sourced service deploy from **`main`**, not a local
+`railway up` checkout (mis-linked CLI has deployed the broker onto **Postgres**
+before — treat that as sev-1).
 
 ```bash
 git checkout main && git pull
-railway up --service veil --detach -m "<what's shipping>"
-railway deployment list --service veil   # verify SUCCESS before walking away
+sh scripts/railway-redeploy-origin.sh veil   # link + redeploy --from-source
+./scripts/deploy-check.sh
+railway deployment list --service veil       # SUCCESS before walking away
 ```
+
+Identity images and backup-plane Dockerfiles: same pattern — always
+`railway service link <name>` then `railway redeploy --service <name> --from-source -y`.
+**Never** `railway redeploy --service Postgres` from the Veil repo; Postgres
+source is the template image (`railway service source connect … postgres-ssl`).
 
 `OpenPostgres` runs `EnsurePostgresSchema` on boot — a deploy migrates.
 `veil-migrate` exists for running a sync without touching the origin
@@ -135,6 +149,23 @@ the Keto tuple wipe + `PurgeOrg` by hand) is the teardown.
   sweep heartbeat is stale, or when `/ready` fails. A missing beat is
   an incident, not a nit.
 
+## Railway billing
+
+Workspace usage: `railway usage` and `railway usage projects`. Veil prod is
+the `veil` project (~$57/mo of the workspace bill). Soft/hard caps:
+`railway usage limit status` · `railway usage limit set --target workspace
+--soft <usd> --hard <usd>`. Set soft above the monthly estimate so alert
+email is signal, not noise — hard caps spend, soft does not.
+
+## Deploy guardrails
+
+- **Origin / GitHub services:** `sh scripts/railway-redeploy-origin.sh <service>`
+  (link + `redeploy --from-source`). Not `railway up` from a local checkout.
+- **Postgres:** template image only — `ghcr.io/railwayapp-templates/postgres-ssl`.
+  Never deploy the Veil repo Dockerfile to the Postgres service.
+- **IaC:** `railway config plan` then `railway config apply --yes` when the plan
+  matches intent (no surprise destroys).
+
 ## Operational secrets rotation
 
 Distinct from `veil key` (data-plane keys — `docs/key-rotation.md`).
@@ -148,6 +179,15 @@ The operational secrets to rotate on suspicion or quarterly:
   keep it short; a skew loses a send, never auth.
 - `OFFSITE_TOKEN` / `INGEST_TOKEN` — backup-ingest Bearer. Rotate on the
   worker and `veil-backup` together; a skew fails uploads, not dumps.
+  Worker secret: `cd apps/backup-ingest && printf '%s' "$TOKEN" | pnpm exec wrangler secret put OFFSITE_TOKEN`.
+  Railway holds the same value on `veil-backup`, `veil-wal`, `veil-wal-dr`, and
+  `VEIL_AUDIT_INGEST_TOKEN` on `veil-audit-export`. After rotation, smoke:
+  `curl -fsS -H "Authorization: Bearer $TOKEN" https://backup-ingest.veil.nyc/healthz`.
+- `VEIL_KEYSVC_URL` / `VEIL_KEYSVC_TOKEN` — origin unwrap for org_keys rows
+  sealed at `keys.veil.nyc` (0x02 blobs). Pinned in `.railway/railway.ts`;
+  production has every org_keys row on the service today. Drop from IaC only
+  after `veil key migrate-keysvc` and a verified row census (`get_byte(wrapped,0)=2`
+  count zero). See `docs/keysvc-rotation.md`.
 - `HYDRA_SYSTEM_SECRET` / `SECRETS_SYSTEM` — `SECRETS_SYSTEM` is a
   comma-separated list: the first entry encrypts new grant material,
   every entry decrypts. Rotate by prepending: `SECRETS_SYSTEM=NEW,OLD`,

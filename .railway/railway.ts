@@ -1,4 +1,4 @@
-import { defineRailway, image, github, postgres, preserve, project, service, volume } from "railway/iac";
+import { defineRailway, group, image, github, postgres, preserve, project, service, volume } from "railway/iac";
 
 // Full production plane: kratos, keto, glue, hydra, veil, Postgres.
 // Omitting a service here and applying deletes it. Secrets stay preserve().
@@ -58,7 +58,7 @@ export default defineRailway(() => {
     replicas: { "sfo": 1 },
     domains: [{ domain: "veil.nyc", port: 4461 }],
     volumeMounts: { "/spool": veilSpool },
-    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_AUDIT_SPOOL_DIR: "/spool", VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MAX_IN_FLIGHT_USE: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve(), VEIL_APNS_KEY: preserve(), VEIL_APNS_KEY_PATH: preserve(), VEIL_APNS_KEY_ID: preserve(), VEIL_APNS_TEAM_ID: preserve(), VEIL_APNS_BUNDLE: preserve(), VEIL_APNS_PROD: preserve(), POSTHOG_PROJECT_KEY: preserve(), VEIL_FCM_SERVICE_ACCOUNT: preserve() },
+    env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: preserve(), OTEL_EXPORTER_OTLP_TRACES_HEADERS: preserve(), OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: preserve(), OTEL_RESOURCE_ATTRIBUTES: preserve(), OTEL_SERVICE_NAME: preserve(), PORT: preserve(), VEIL_AUDIT_SPOOL_DIR: "/spool", VEIL_HOME: preserve(), VEIL_HYDRA_ADMIN: preserve(), VEIL_HYDRA_CLIENT_ID: preserve(), VEIL_HYDRA_ISSUER: preserve(), VEIL_KEK: preserve(), VEIL_KEYSVC_URL: "https://keys.veil.nyc", VEIL_KEYSVC_TOKEN: preserve(), VEIL_KETO_READ: preserve(), VEIL_KETO_WRITE: preserve(), VEIL_KRATOS_ADMIN: preserve(), VEIL_KRATOS_PUBLIC: preserve(), VEIL_MAIL_TOKEN: preserve(), VEIL_MAIL_URL: preserve(), VEIL_MCP_URL: preserve(), VEIL_MAX_IN_FLIGHT_USE: preserve(), VEIL_POSTGRES_DSN: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil", VEIL_PG_MAX_CONNS: preserve(), VEIL_PG_AUDIT_CONNS: preserve(), VEIL_FREE_USE_CAP: preserve(), VEIL_VORTEX_API_URL: preserve(), VEIL_VORTEX_API_KEY: preserve(), VEIL_VORTEX_MERCHANT_ID: preserve(), VEIL_VORTEX_ENV: preserve(), VEIL_VORTEX_METER_ID: preserve(), VEIL_VORTEX_USAGE_EVENT: preserve(), VEIL_VORTEX_PRICE_ID: preserve(), VEIL_BILLING_WEBHOOK_SECRET: preserve(), VEIL_CHECKOUT_SUCCESS_URL: preserve(), VEIL_CHECKOUT_CANCEL_URL: preserve(), VEIL_APNS_KEY: preserve(), VEIL_APNS_KEY_PATH: preserve(), VEIL_APNS_KEY_ID: preserve(), VEIL_APNS_TEAM_ID: preserve(), VEIL_APNS_BUNDLE: preserve(), VEIL_APNS_PROD: preserve(), POSTHOG_PROJECT_KEY: preserve(), VEIL_FCM_SERVICE_ACCOUNT: preserve() },
   });
   const veilMigrate = service("veil-migrate", {
     source: github("VortexNYC/veil", { branch: "main" }),
@@ -114,6 +114,8 @@ export default defineRailway(() => {
     volumeMounts: { "/backups": veilBackups },
     env: {
       PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      // Internal Railway Postgres speaks plain TCP; libpq "prefer" SSL breaks pg_receivewal.
+      PGSSLMODE: "disable",
       OFFSITE_TOKEN: preserve(),
     },
   });
@@ -133,6 +135,7 @@ export default defineRailway(() => {
     replicas: { "sfo": 1 },
     env: {
       PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      PGSSLMODE: "disable",
       OFFSITE_TOKEN: preserve(),
     },
   });
@@ -150,6 +153,7 @@ export default defineRailway(() => {
     replicas: { "iad": 1 },
     env: {
       PGDUMP_BASE: "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      PGSSLMODE: "disable",
       OFFSITE_TOKEN: preserve(),
       WAL_SLOT: "wal_archive_dr",
     },
@@ -218,7 +222,19 @@ export default defineRailway(() => {
     env: { DSN: preserve(), HYDRA_SYSTEM_SECRET: preserve(), OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT: preserve(), OIDC_SUBJECT_IDENTIFIERS_SUPPORTED_TYPES: preserve(), PORT: preserve(), SECRETS_SYSTEM: preserve(), SERVE_ADMIN_HOST: preserve(), SERVE_ADMIN_PORT: preserve(), SERVE_COOKIES_SAME_SITE_MODE: preserve(), SERVE_PUBLIC_CORS_ALLOWED_ORIGINS: preserve(), SERVE_PUBLIC_CORS_ALLOW_CREDENTIALS: preserve(), SERVE_PUBLIC_CORS_ENABLED: preserve(), SERVE_PUBLIC_HOST: preserve(), SERVE_PUBLIC_PORT: preserve(), URLS_CONSENT: preserve(), URLS_LOGIN: preserve(), URLS_LOGOUT: preserve(), URLS_SELF_ISSUER: preserve() },
   });
 
+  const identity = group("Identity", [kratos, keto, glue, hydra]);
+  const store = group("Store", [Postgres, postgresVolume, veilVolume, veilSpool]);
+  const broker = group("Broker", [veil, veilMigrate, veilSweep]);
+  const backupPlane = group("Backup plane", [
+    veilBackup,
+    veilBackups,
+    veilWal,
+    veilWalDr,
+    veilAuditExport,
+    veilMonitor,
+  ]);
+
   return project("veil", {
-    resources: [kratos, keto, veil, Postgres, glue, hydra, postgresVolume, veilVolume, veilSpool, veilMigrate, veilSweep, veilBackup, veilBackups, veilMonitor, veilAuditExport, veilWal, veilWalDr],
+    resources: [...identity, ...store, ...broker, ...backupPlane],
   });
 });
