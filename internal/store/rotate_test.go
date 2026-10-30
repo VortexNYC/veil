@@ -360,9 +360,38 @@ func TestPostgresWrapVsRotate(t *testing.T) {
 	}
 }
 
+// TestPostgresSealKeyAdoptsRotateKEK: after RotateKEK, new org_keys rows
+// must seal with the adopted KEK (p.kek), not a stale kekp copy.
+func TestPostgresSealKeyAdoptsRotateKEK(t *testing.T) {
+	dsn := os.Getenv("PG_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PG_TEST_DSN not set")
+	}
+	ctx := context.Background()
+	s := rotateSchema(t, dsn, "rot_sealtrack", testMasterKey(t))
+	defer s.Close()
+
+	if err := s.EnsureOrgKey(ctx, "org-a", testMasterKey(t)); err != nil {
+		t.Fatal(err)
+	}
+	newKEK, err := crypto.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RotateKEK(ctx, newKEK); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureOrgKey(ctx, "org-b", testMasterKey(t)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.resolveOrgKey(ctx, "org-b"); err != nil {
+		t.Fatalf("org-b after KEK rotation: %v", err)
+	}
+}
+
 // TestPostgresProvisionVsKEK: orgs provisioned during a KEK rotation can
-// never land sealed under the retired KEK — same-process inserts serialize
-// on kekMu and seal under the adopted key.
+// never land sealed under the retired KEK — EnsureOrgKey re-seals if an
+// INSERT blocked on RotateKEK's table lock, and sealKey/openKey both use p.kek.
 func TestPostgresProvisionVsKEK(t *testing.T) {
 	dsn := os.Getenv("PG_TEST_DSN")
 	if dsn == "" {

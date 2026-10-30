@@ -206,42 +206,97 @@ func (p *Postgres) EnsureOrgKey(ctx context.Context, orgID string, master []byte
 	if len(master) != crypto.KeySize {
 		return fmt.Errorf("store: org master must be %d bytes", crypto.KeySize)
 	}
-	// RLock spans seal + insert + verify: a KEK rotation can never commit
-	// between sealing under the old KEK and inserting — the row this writes
-	// always matches the KEK that sealed it. Outermost lock; no DB locks are
-	// held while acquiring it.
-	p.kekMu.RLock()
-	defer p.kekMu.RUnlock()
+	// Seal under a brief RLock only — never hold it across PutOrgKey. That
+	// INSERT can block on RotateKEK's table lock while RotateKEK retires the
+	// KEK the blob was sealed under; assertOrgKeyMaster rewraps under the
+	// adopted KEK (see rewrapOrgKeyUnderCurrentKEK).
+	const maxAttempts = 8
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		p.kekMu.RLock()
+		wrapped, err := p.sealKey(ctx, master, []byte(orgID))
+		p.kekMu.RUnlock()
+		if err != nil {
+			return err
+		}
+		n, err := retryOnDeadConn(func() (int64, error) {
+			return p.sqlc.PutOrgKey(ctx, sqlc.PutOrgKeyParams{
+				OrgID:      orgID,
+				Wrapped:    wrapped,
+				KeyVersion: 1,
+				CreatedAt:  time.Now().UTC(),
+			})
+		})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
+				return p.sqlc.OrgKey(ctx, orgID)
+			}); err == pgx.ErrNoRows {
+				return fmt.Errorf("store: org_keys insert conflicted but no row for %s", orgID)
+			} else if err != nil {
+				return err
+			}
+		}
+		lastErr = p.assertOrgKeyMaster(ctx, orgID, master)
+		if lastErr == nil {
+			return nil
+		}
+		if errors.Is(lastErr, ErrOrgKeyMismatch) {
+			return lastErr
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("store: ensure org key for %s: retries exhausted", orgID)
+}
+
+// assertOrgKeyMaster checks the committed row unwraps to master under this
+// store's KEK. Rows that landed under a retired KEK are re-sealed in place.
+func (p *Postgres) assertOrgKeyMaster(ctx context.Context, orgID string, master []byte) error {
+	row, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
+		return p.sqlc.OrgKey(ctx, orgID)
+	})
+	if err != nil {
+		return err
+	}
+	existing, err := p.openKey(ctx, row.Wrapped, []byte(orgID))
+	if err == nil {
+		if !hmac.Equal(existing, master) {
+			return ErrOrgKeyMismatch
+		}
+		return nil
+	}
+	if !errors.Is(err, crypto.ErrAuth) {
+		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
+	}
+	return p.rewrapOrgKeyUnderCurrentKEK(ctx, orgID, master)
+}
+
+// rewrapOrgKeyUnderCurrentKEK writes org_keys.wrapped sealed under the active
+// KEK. Caller must not hold kekMu; exclusive lock covers seal + UPDATE +
+// verify so RotateKEK cannot swap KEK mid-flight.
+func (p *Postgres) rewrapOrgKeyUnderCurrentKEK(ctx context.Context, orgID string, master []byte) error {
+	p.kekMu.Lock()
+	defer p.kekMu.Unlock()
 	wrapped, err := p.sealKey(ctx, master, []byte(orgID))
 	if err != nil {
 		return err
 	}
 	n, err := retryOnDeadConn(func() (int64, error) {
-		return p.sqlc.PutOrgKey(ctx, sqlc.PutOrgKeyParams{
-			OrgID:      orgID,
-			Wrapped:    wrapped,
-			KeyVersion: 1,
-			CreatedAt:  time.Now().UTC(),
-		})
+		return p.sqlc.RewrapOrgKey(ctx, sqlc.RewrapOrgKeyParams{OrgID: orgID, Wrapped: wrapped})
 	})
 	if err != nil {
 		return err
 	}
-	if n == 1 {
-		return nil
+	if n != 1 {
+		return fmt.Errorf("store: org_keys row for %s vanished during KEK rewrap", orgID)
 	}
-	row, err := retryOnDeadConn(func() (sqlc.OrgKey, error) {
-		return p.sqlc.OrgKey(ctx, orgID)
-	})
-	if err == pgx.ErrNoRows {
-		return fmt.Errorf("store: org_keys insert conflicted but no row for %s", orgID)
-	}
+	existing, err := p.openKey(ctx, wrapped, []byte(orgID))
 	if err != nil {
 		return err
-	}
-	existing, err := p.openKey(ctx, row.Wrapped, []byte(orgID))
-	if err != nil {
-		return fmt.Errorf("store: org_keys row for %s does not unwrap under this KEK: %w", orgID, err)
 	}
 	if !hmac.Equal(existing, master) {
 		return ErrOrgKeyMismatch
@@ -266,6 +321,10 @@ func (p *Postgres) HasOrgKey(ctx context.Context, orgID string) (bool, error) {
 // ErrRotationConflict is a concurrent rotation detected by the key_version
 // guard: another RotateOrgKey bumped the version first. Retry to converge.
 var ErrRotationConflict = errors.New("store: concurrent key rotation")
+
+// ErrOrgKeyRowMoved is returned when a pre-read org_keys blob no longer
+// matches the committed row. Callers should retry bounded.
+var ErrOrgKeyRowMoved = errors.New("store: org_keys row moved")
 
 // RotateOrgKey mints a fresh org master and rewraps every owner DEK under
 // it, in one transaction. Item ciphertexts seal under owner DEKs — the DEK
@@ -499,6 +558,17 @@ func recoveryAAD(orgID string, o protocol.Owner) []byte {
 // recovery key never persists — losing it strands the wrap, not the vault.
 // Re-minting replaces the row and clears used_at.
 func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error {
+	for attempt := 0; attempt < 3; attempt++ {
+		err := p.storeRecoveryWrap(ctx, orgID, o, recoveryKey, expiresAt)
+		if errors.Is(err, ErrOrgKeyRowMoved) {
+			continue
+		}
+		return err
+	}
+	return ErrOrgKeyRowMoved
+}
+
+func (p *Postgres) storeRecoveryWrap(ctx context.Context, orgID string, o protocol.Owner, recoveryKey []byte, expiresAt time.Time) error {
 	if len(recoveryKey) != crypto.KeySize {
 		return fmt.Errorf("store: recovery key must be %d bytes", crypto.KeySize)
 	}
@@ -534,7 +604,7 @@ func (p *Postgres) StoreRecoveryWrap(ctx context.Context, orgID string, o protoc
 		return err
 	}
 	if !hmac.Equal(row.Wrapped, preRow.Wrapped) {
-		return fmt.Errorf("store: org_keys row for %s moved during wrap store — retry", orgID)
+		return fmt.Errorf("%w during wrap store for %s", ErrOrgKeyRowMoved, orgID)
 	}
 	master := preMaster
 	wrapped, err := crypto.SealAAD(recoveryKey, master, recoveryAAD(orgID, o))
@@ -1202,6 +1272,9 @@ func (p *Postgres) RotateKEK(ctx context.Context, newKEK []byte) error {
 		return err
 	}
 	p.kek = append([]byte(nil), newKEK...)
+	if lk, ok := p.kekp.(*localKEK); ok {
+		lk.key = append([]byte(nil), newKEK...)
+	}
 	for _, row := range rows {
 		p.km.InvalidateOrg(row.OrgID)
 	}
