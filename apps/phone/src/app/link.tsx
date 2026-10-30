@@ -21,7 +21,6 @@ export default function Link() {
   const [token, setToken] = useState("");
   const [link, setLink] = useState<{ token: string } | null>(null);
   const [claimed, setClaimed] = useState<string | null>(null);
-  const [scanned, setScanned] = useState("");
   const [sealed, setSealed] = useState<string | null>(null);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -81,7 +80,7 @@ export default function Link() {
             </Pressable>
           ) : (
             <CameraView style={{ height: 220, borderRadius: 16, overflow: "hidden" }}
-              onBarcodeScanned={({ data }) => setScanned(data)} />
+              onBarcodeScanned={({ data }) => setToken(data.trim())} />
           )}
           <TextInput placeholder="link token or paste QR payload" placeholderTextColor="#52525b"
             value={token} onChangeText={setToken}
