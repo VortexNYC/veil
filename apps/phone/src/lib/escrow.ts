@@ -32,6 +32,34 @@ export function b64decode(s: string): Uint8Array {
   return out;
 }
 
+/** Origin JSON: []byte fields are standard base64 strings; tolerate legacy number[]. */
+export function decodeWireBytes(v: string | number[] | undefined): Uint8Array {
+  if (v === undefined) throw new Error("missing bytes");
+  if (typeof v === "string") return b64decode(v);
+  return new Uint8Array(v);
+}
+
+export function encodeWireBytes(b: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return globalThis.btoa(s);
+}
+
+const KEY_LOCAL_WRAPPED = "escrow.local.wrapped_master";
+
+/** After device-link claim, seal org master to this device's custodian key locally. */
+export async function persistLocalWrappedMaster(master: Uint8Array): Promise<void> {
+  const pubHex = await custodianPubHex();
+  const wrapped = await sealForRecipient(master, unhex(pubHex));
+  await SecureStore.setItemAsync(KEY_LOCAL_WRAPPED, encodeWireBytes(wrapped));
+}
+
+export async function loadLocalWrappedMaster(): Promise<Uint8Array | null> {
+  const raw = await SecureStore.getItemAsync(KEY_LOCAL_WRAPPED);
+  if (!raw) return null;
+  return b64decode(raw);
+}
+
 async function custodianKeyPair(): Promise<nacl.BoxKeyPair> {
   const privHex = await SecureStore.getItemAsync(KEY_PRIV);
   if (!privHex) throw new Error("no custodian key on this device — generate one first");
