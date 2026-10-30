@@ -1,11 +1,12 @@
-// iPhone-native KEK escrow custodian — VEILSHR1 parcels sealed with NaCl
-// SealAnonymous (X25519). Same envelope as `veil key escrow-seal/open` in Go:
-// VEILSHR1 || ordinal(1) || ceremony-fp(4) || share(33).
-// Custodian private key lives only in expo-secure-store on this device.
+// iPhone-native KEK escrow custodian — VEILSHR1 parcels and org-master
+// handoffs both use X25519. Org master on the origin is box.SealAnonymous
+// (device.Offer in Go); escrow parcels use the same anonymous seal with a
+// VEILSHR1 inner envelope. Custodian private key lives only in expo-secure-store.
 
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import nacl from "tweetnacl";
+import { open as openAnonymous, seal as sealAnonymous } from "tweetnacl-sealedbox-js";
 
 nacl.setPRNG((x, n) => {
   const rnd = Crypto.getRandomBytes(n);
@@ -24,16 +25,17 @@ export function unhex(s: string): Uint8Array {
   for (let i = 0; i < out.length; i++) out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
-function b64encode(b: Uint8Array): string {
-  let bin = "";
-  for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
-  return globalThis.btoa(bin);
-}
-function b64decode(s: string): Uint8Array {
+export function b64decode(s: string): Uint8Array {
   const bin = globalThis.atob(s.trim());
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+async function custodianKeyPair(): Promise<nacl.BoxKeyPair> {
+  const privHex = await SecureStore.getItemAsync(KEY_PRIV);
+  if (!privHex) throw new Error("no custodian key on this device — generate one first");
+  return nacl.box.keyPair.fromSecretKey(unhex(privHex));
 }
 
 export async function custodianPubHex(): Promise<string> {
@@ -49,13 +51,8 @@ export async function custodianPubHex(): Promise<string> {
 export interface OpenedShare { ordinal: number; fp: string; shareHex: string }
 
 export async function openParcel(parcelB64: string): Promise<OpenedShare> {
-  const privHex = await SecureStore.getItemAsync(KEY_PRIV);
-  if (!privHex) throw new Error("no custodian key on this device — generate one first");
-  const blob = b64decode(parcelB64);
-  if (blob.length < 56 + 13) throw new Error("parcel too short");
-  // Plain NaCl box: eph(32) || nonce(24) || ct — see escrow-seal --format phone.
-  const eph = blob.slice(0, 32), nonce = blob.slice(32, 56), ct = blob.slice(56);
-  const env = nacl.box.open(ct, nonce, eph, unhex(privHex));
+  const kp = await custodianKeyPair();
+  const env = openAnonymous(b64decode(parcelB64), kp.publicKey, kp.secretKey);
   if (!env) throw new Error("parcel does not open with this device's custodian key");
   if (env.length < 13 || !MAGIC.every((b, i) => env[i] === b))
     throw new Error("parcel is not a VEILSHR1 envelope");
@@ -66,28 +63,30 @@ export async function openParcel(parcelB64: string): Promise<OpenedShare> {
   return { ordinal, fp, shareHex: hex(share) };
 }
 
-// openBox — plain NaCl box (eph||nonce||ct) to this device's custodian key.
-// The org_key_shares wrapped_master envelope — no VEILSHR1 wrapper.
-export async function openBox(blobB64: string): Promise<string> {
-  const privHex = await SecureStore.getItemAsync(KEY_PRIV);
-  if (!privHex) throw new Error("no custodian key on this device");
-  const blob = b64decode(blobB64);
-  if (blob.length < 56) throw new Error("box too short");
-  const eph = blob.slice(0, 32), nonce = blob.slice(32, 56), ct = blob.slice(56);
-  const pt = nacl.box.open(ct, nonce, eph, unhex(privHex));
-  if (!pt) throw new Error("box does not open with this device's custodian key");
-  return hex(pt);
+// openWrappedMaster — 80-byte box.SealAnonymous from GET /v1/recovery/share.
+export async function openWrappedMaster(wrapped: Uint8Array): Promise<Uint8Array> {
+  if (wrapped.length !== 80) throw new Error(`wrapped_master is ${wrapped.length}B, want 80`);
+  const kp = await custodianKeyPair();
+  const master = openAnonymous(wrapped, kp.publicKey, kp.secretKey);
+  if (!master) throw new Error("wrapped_master does not open with this device's custodian key");
+  if (master.length !== 32) throw new Error(`master is ${master.length}B, want 32`);
+  return master;
 }
 
-// sealForRecipient — NaCl-box a master to a recipient custodian pubkey.
-// Same eph||nonce||ct envelope openParcel reads on the receiving side.
-export async function sealForRecipient(masterHex: string, recipientPubHex: string): Promise<string> {
-  const eph = nacl.box.keyPair();
-  const nonce = Crypto.getRandomBytes(24);
-  const ct = nacl.box.seal(unhex(masterHex), nonce, unhex(recipientPubHex), eph.secretKey);
-  const env = new Uint8Array(32 + 24 + ct.length);
-  env.set(eph.publicKey, 0); env.set(nonce, 32); env.set(ct, 56);
-  return b64encode(env);
+// acceptOffer — device-link claim: same SealAnonymous blob the approver posted.
+export async function acceptOffer(sealedB64: string): Promise<string> {
+  const kp = await custodianKeyPair();
+  const master = openAnonymous(b64decode(sealedB64), kp.publicKey, kp.secretKey);
+  if (!master) throw new Error("link blob does not open with this device's custodian key");
+  if (master.length !== 32) throw new Error(`master is ${master.length}B, want 32`);
+  return hex(master);
+}
+
+// sealForRecipient — device.Offer to the new device's custodian pubkey (raw bytes).
+export async function sealForRecipient(master: Uint8Array, recipientPub: Uint8Array): Promise<Uint8Array> {
+  if (master.length !== 32) throw new Error(`master is ${master.length}B, want 32`);
+  if (recipientPub.length !== 32) throw new Error(`pubkey is ${recipientPub.length}B, want 32`);
+  return sealAnonymous(master, recipientPub);
 }
 
 // registerThisDevice — one-shot post-sign-in: stable device id + the

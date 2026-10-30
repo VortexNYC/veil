@@ -1,6 +1,6 @@
 // Old-device-approve device linking (Signal-style QR handoff).
 // mode=new:      post custodian pubkey → show QR of the link token → poll
-//                claim → openParcel → this device holds the custody wrap.
+//                claim → acceptOffer → this device holds the org master wrap.
 // mode=approve:  scan the QR → seal the org master to the new pubkey →
 //                approve → server only ever moves ciphertext.
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -10,7 +10,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import { approveDeviceLink, claimDeviceLink, createDeviceLink, getDeviceLink, getRecoveryShare } from "../lib/api";
-import { custodianPubHex, hex, openBox, openParcel, sealForRecipient, unhex } from "../lib/escrow";
+import { acceptOffer, custodianPubHex, openWrappedMaster, sealForRecipient, unhex } from "../lib/escrow";
 
 const MODE_NEW = "new", MODE_APPROVE = "approve";
 
@@ -37,8 +37,8 @@ export default function Link() {
           if (c.sealed) {
             if (poll.current) clearInterval(poll.current);
             setClaimed(c.sealed);
-            const opened = await openParcel(c.sealed);
-            setMsg(`linked — custody wrap landed (share ${opened.ordinal}·${opened.fp})`);
+            const masterHex = await acceptOffer(c.sealed);
+            setMsg(`linked — org master landed (${masterHex.slice(0, 8)}…)`);
           }
         } catch { /* not approved yet — keep polling */ }
       }, 3000);
@@ -55,12 +55,9 @@ export default function Link() {
       // Server only ever moves ciphertext.
       const share = await getRecoveryShare();
       if (!share.enrolled || !share.wrapped_master) throw new Error("no custody share on this device");
-      const masterHex = await openBox(String(globalThis.btoa(String.fromCharCode(...share.wrapped_master))));
-      const sealB64 = await sealForRecipient(
-        masterHex,
-        hex(new Uint8Array(linkRow.pubkey)),
-      );
-      await approveDeviceLink(token.trim(), Array.from(unhex(sealB64)));
+      const master = await openWrappedMaster(new Uint8Array(share.wrapped_master));
+      const sealed = await sealForRecipient(master, new Uint8Array(linkRow.pubkey));
+      await approveDeviceLink(token.trim(), Array.from(sealed));
       setMsg("approved — the new device can claim its wrap");
     } catch (e) { setMsg(e instanceof Error ? e.message : "approve failed"); }
   };
