@@ -262,7 +262,12 @@ func (p *Postgres) assertOrgKeyMaster(ctx context.Context, orgID string, master 
 	if err != nil {
 		return err
 	}
+	// RLock around the unwrap, not the SELECT: a plain OrgKey read cannot
+	// block on RotateKEK's in-flight UPDATEs, but openKey reads p.kek which
+	// rotation swaps under the exclusive lock.
+	p.kekMu.RLock()
 	existing, err := p.openKey(ctx, row.Wrapped, []byte(orgID))
+	p.kekMu.RUnlock()
 	if err == nil {
 		if !hmac.Equal(existing, master) {
 			return ErrOrgKeyMismatch
@@ -2113,6 +2118,10 @@ func (p *Postgres) RotateKEKRemote(ctx context.Context) error {
 // remote 0x02 envelope. One-shot cutover: run once with VEIL_KEYSVC_* set
 // and the local VEIL_KEK still present, then drop the env key.
 func (p *Postgres) MigrateToKeyService(ctx context.Context) error {
+	// One-shot cutover: hold RLock for the whole pass so a concurrent
+	// RotateKEK cannot swap p.kek between the unwrap and the re-seal.
+	p.kekMu.RLock()
+	defer p.kekMu.RUnlock()
 	if !p.kekp.remote() {
 		return fmt.Errorf("store: VEIL_KEYSVC_URL/VEIL_KEYSVC_TOKEN required for migration")
 	}

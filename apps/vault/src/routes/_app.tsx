@@ -418,12 +418,7 @@ function PasswordGeneratorModal({
 }
 
 function lockVaultNow() {
-  if (typeof window !== "undefined" && window.location.protocol === "veil-app:") {
-    window.location.assign("veil-app://vault/lock");
-    return;
-  }
-  signOut();
-  window.location.assign("/");
+  void signOut();
 }
 
 function Shell() {
@@ -508,8 +503,7 @@ function Shell() {
                 <Sidebar.MenuButton
                   icon={SignOut}
                   onClick={() => {
-                    signOut();
-                    window.location.assign("/");
+                    void signOut();
                   }}
                 >
                   Sign out
@@ -533,8 +527,7 @@ function Shell() {
                 type="button"
                 variant="secondary"
                 onClick={() => {
-                  signOut();
-                  window.location.assign("/");
+                  void signOut();
                 }}
               >
                 Sign out

@@ -35,6 +35,10 @@ func main() {
 		NativeRedirectURLs: []string{
 			env("PHONE_REDIRECT_URL", "veil://oidc/callback"),
 		},
+		PostLogoutRedirectURLs: []string{
+			env("SPA_LOGOUT_REDIRECT_URL", "https://app.veil.nyc/login"),
+			"http://127.0.0.1:4470/login",
+		},
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
