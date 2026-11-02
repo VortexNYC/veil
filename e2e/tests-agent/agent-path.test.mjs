@@ -36,8 +36,9 @@ test("mcp: initialize + list_items returns metadata, no secrets", { skip: !TOKEN
 });
 
 test("mcp: fetch an ungranted item is denied", { skip: !UNGRANTED }, async () => {
-  const r = await mcp(UNGRANTED, "tools/call", { name: "fetch", arguments: { url: "https://api.github.com/user" } });
-  assert.ok(r.status === 401 || r.status === 403 || JSON.stringify(r.body).includes("error"), `expected denial, got ${r.status}`);
+  const r = await mcp(UNGRANTED, "tools/call", { name: "fetch", arguments: { item: "e2e-github" } });
+  const denied = r.body?.result?.isError === true || r.status === 401 || r.status === 403;
+  assert.ok(denied, `expected denial, got ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
 });
 
 test("cli: veil run spawns a child with injected dummy placeholders", { skip: !TOKEN }, async () => {
