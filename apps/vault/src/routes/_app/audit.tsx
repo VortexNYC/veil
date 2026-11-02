@@ -42,7 +42,12 @@ function Audit() {
   function reload() {
     void events().then((res) => {
       if (res.error || !res.data) {
-        setError("list failed");
+        const msg = typeof res.error === "string" ? res.error : "unknown";
+        setError(
+          /forbidden|owner|403/i.test(msg)
+            ? "The audit feed is visible to org owners."
+            : `list failed: ${msg}`,
+        );
         if (rows === null) setRows([]);
         return;
       }
