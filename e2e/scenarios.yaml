@@ -1,0 +1,142 @@
+# Veil e2e scenario catalog — the launch-stability matrix.
+# Each scenario: id, targets it must pass on, and which test file covers it.
+# targets: web (SPA vault @ app.veil.nyc), ext (apps/fill browser extension),
+#          cli (veil CLI vs origin), mcp (veil.nyc/mcp), ios, android, macos (Veal.app)
+# status: written | pending | manual (needs real hardware / Touch ID)
+
+scenarios:
+  # --- auth ---
+  - id: auth.signin-totp
+    title: Sign in with password + TOTP lands on items list
+    targets: [web, ios, android]
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
+  - id: auth.session-expired-remint
+    title: Expired session remints and continues
+    targets: [web]
+    status: pending
+  - id: auth.signout
+    title: Sign out clears session; protected routes redirect to login
+    targets: [web]
+    status: pending
+
+  # --- vault CRUD ---
+  - id: vault.items-list
+    title: Items list renders with search + account rows
+    targets: [web]
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
+  - id: vault.item-masked-reveal
+    title: Item detail masks secret; reveal control works
+    targets: [web]
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
+  - id: vault.search-filter
+    title: Search filters item list
+    targets: [web]
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
+  - id: vault.item-create
+    title: Create item via SPA; appears in list; audit row written
+    targets: [web]
+    status: pending
+  - id: vault.item-edit-archive
+    title: Edit then archive an item; archive removes it from default list
+    targets: [web]
+    status: pending
+  - id: vault.totp-live-code
+    title: TOTP item shows a live 6-digit code that rolls over
+    targets: [web]
+    status: pending
+  - id: vault.grant-add-list
+    title: Owner grants item to a human; grant appears in list
+    targets: [web]
+    status: pending
+  - id: vault.audit-visible
+    title: Audit page shows recent fill/use events
+    targets: [web]
+    status: pending
+
+  # --- extension fill ---
+  - id: fill.inline-suggest-pick
+    title: Field focus → inline suggestion; pick writes credentials
+    targets: [ext]
+    status: pending          # needs native host or origin mock on runner
+  - id: fill.cancel-writes-nothing
+    title: Cancel on access sheet writes nothing
+    targets: [ext]
+    status: manual           # Touch ID sheet — real Mac only
+  - id: fill.no-match-silent
+    title: No-match origin shows no Veil UI; typing lands
+    targets: [ext]
+    status: pending
+  - id: fill.two-logins-chooser
+    title: Two logins same site → chooser lists both
+    targets: [ext]
+    status: pending
+  - id: fill.save-new-login
+    title: New login submit → save offer → item created
+    targets: [ext]
+    status: pending
+  - id: fill.change-password-rotate
+    title: Update password → rotates existing item (no dup)
+    targets: [ext]
+    status: pending
+  - id: fill.suggest-password
+    title: Signup field → suggest-a-password fills + saves
+    targets: [ext]
+    status: pending
+  - id: fill.card-cvv-reprompt
+    title: Card fill writes fields; CVV always re-prompts
+    targets: [ext]
+    status: pending
+  - id: fill.passkey-webauthnio
+    title: webauthn.io register → assert round-trip
+    targets: [ext]
+    status: manual           # UV/confirm gate — real Mac only
+
+  # --- agent path ---
+  - id: agent.mcp-list-fetch-allow
+    title: MCP list_items + fetch allowed item → 200, no secret in list
+    targets: [mcp]
+    status: pending
+  - id: agent.mcp-fetch-deny
+    title: MCP fetch ungranted item → denied
+    targets: [mcp]
+    status: pending
+  - id: agent.cli-run-inject
+    title: veil run --inject resolves ${NAME} in child env only
+    targets: [cli]
+    status: pending
+  - id: agent.session-revoke
+    title: Revoked session token is denied on next use
+    targets: [cli]
+    status: pending
+  - id: agent.sdk-typescript
+    title: Generated TS SDK lists + uses against origin
+    targets: [cli]
+    status: pending
+
+  # --- phone / OS fill ---
+  - id: phone.ios-quicktype
+    title: iOS QuickType → Face ID → origin fill writes field
+    targets: [ios]
+    status: manual           # proven 2026-10-01 physical; automate via sim
+  - id: phone.android-autofill
+    title: Android Autofill dropdown → biometric → fill
+    targets: [android]
+    status: pending          # emulator + UIAutomator
+  - id: phone.add-item
+    title: Add a password on phone; shows in vault everywhere
+    targets: [ios, android]
+    status: pending
+
+  # --- macOS helper ---
+  - id: macos.cmd-backslash-fill
+    title: Cmd-\ in a text field → picker → Touch ID → types
+    targets: [macos]
+    status: manual           # tart VM has no Touch ID; real-hw soak
+  - id: macos.autofill-system-provider
+    title: System AutoFill menu lists Veil; pick → confirm → fills
+    targets: [macos]
+    status: manual

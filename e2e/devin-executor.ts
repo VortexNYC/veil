@@ -24,7 +24,7 @@ interface DevinAction {
 async function askDevin(prompt: string, cwd: string): Promise<string> {
   const { stdout } = await exec(
     "devin",
-    ["--print", "--model", "swe-2-medium", "--", prompt],
+    ["--print", "--model", "swe-2-medium", "--respect-workspace-trust", "false", "--", prompt],
     { cwd, timeout: 180_000, maxBuffer: 4 * 1024 * 1024 },
   );
   return stdout.trim();
