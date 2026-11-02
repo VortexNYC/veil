@@ -1,4 +1,4 @@
-import { test, secrets } from "e2e";
+import { test, secrets, expect } from "e2e";
 
 // Common workflows on the real deployed vault. Secrets come from
 // E2E_SECRET_* env or the local ~/.config/veil files — never committed.
@@ -9,6 +9,7 @@ async function signIn(screen: {
   getByRole: (r: string, n?: string) => { tap: () => Promise<unknown> };
 }, agent: {
   act: (instruction: string, opts?: { params?: Record<string, unknown> }) => Promise<unknown>;
+  waitFor?: never;
 }) {
   await agent.act(`type '${process.env.E2E_VAULT_EMAIL ?? "shlomo@vortex.nyc"}' into the ID field`);
   await agent.act("fill the Password field from secret 'vault-password'", {
@@ -20,7 +21,7 @@ async function signIn(screen: {
   // fill() resolves the secret function at fill time — inside the window.
   await screen.getByLabel("Authentication code").fill(secrets.get("totp-code"));
   await screen.getByRole("button", "Use Authenticator").tap();
-  await agent.waitFor("the vault Items list is visible", { timeout: 15000 })
+  await expect(screen.getByRole("searchbox")).toBeVisible({ timeout: 15_000 });
 }
 
 test("sign in and land on the items list", { platforms: ["web"], timeout: 300_000 }, async ({ app, agent, screen }) => {
