@@ -243,6 +243,30 @@ func TestEnsureFirstPartyAddsSPAWithoutDroppingLaptop(t *testing.T) {
 	}
 }
 
+func TestEnsureFirstPartyRegistersPostLogout(t *testing.T) {
+	ory := &fakeOry{}
+	k, h := ory.start(t)
+	g := newGlue(t, k, h)
+
+	err := g.EnsureFirstParty(context.Background(), FirstParty{
+		RedirectURL:            "http://127.0.0.1:4460/oidc/callback",
+		PostLogoutRedirectURLs: []string{"https://app.veil.nyc/login"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	uris, _ := ory.client["post_logout_redirect_uris"].([]any)
+	if len(uris) != 1 || uris[0] != "https://app.veil.nyc/login" {
+		t.Fatalf("post_logout %v", ory.client["post_logout_redirect_uris"])
+	}
+	if err := g.EnsureFirstParty(context.Background(), FirstParty{
+		RedirectURL:            "http://127.0.0.1:4460/oidc/callback",
+		PostLogoutRedirectURLs: []string{"veil://login"},
+	}); err == nil {
+		t.Fatal("post-logout: native scheme accepted")
+	}
+}
+
 func TestEnsureFirstPartyAddsNativeRedirect(t *testing.T) {
 	ory := &fakeOry{}
 	k, h := ory.start(t)

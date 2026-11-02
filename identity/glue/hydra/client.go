@@ -19,6 +19,11 @@ type FirstParty struct {
 	// NativeRedirectURLs are custom-scheme app callbacks (veil://…) that
 	// absurl's http(s) rule would reject. Hydra accepts them for public clients.
 	NativeRedirectURLs []string
+	// PostLogoutRedirectURLs are where RP-initiated logout
+	// (/oauth2/sessions/logout) may land after the OP session dies.
+	// Without at least one registered URI Hydra refuses the post-logout
+	// redirect and sign-out strands the user on a Hydra error page.
+	PostLogoutRedirectURLs []string
 }
 
 func (fp FirstParty) id() string {
@@ -61,6 +66,19 @@ func firstPartyClient(fp FirstParty) (*ory.OAuth2Client, error) {
 	if len(uris) == 0 {
 		return nil, fmt.Errorf("hydra: redirect")
 	}
+	postLogout := make([]string, 0, len(fp.PostLogoutRedirectURLs))
+	seenLogout := map[string]struct{}{}
+	for _, r := range fp.PostLogoutRedirectURLs {
+		u, err := absurl.Parse(r)
+		if err != nil {
+			return nil, fmt.Errorf("hydra: post-logout redirect: %w", err)
+		}
+		if _, ok := seenLogout[u]; ok {
+			continue
+		}
+		seenLogout[u] = struct{}{}
+		postLogout = append(postLogout, u)
+	}
 	c := ory.NewOAuth2Client()
 	c.SetClientId(fp.id())
 	c.SetClientName(fp.id())
@@ -68,6 +86,7 @@ func firstPartyClient(fp FirstParty) (*ory.OAuth2Client, error) {
 	c.SetResponseTypes([]string{"code"})
 	c.SetScope("openid offline_access")
 	c.SetRedirectUris(uris)
+	c.SetPostLogoutRedirectUris(postLogout)
 	c.SetSkipConsent(true)
 	c.SetSkipLogoutConsent(true)
 	c.SetTokenEndpointAuthMethod("none")

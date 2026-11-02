@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { amrOf, buildAuthorizeURL, claimsOf } from "./auth"
+import { amrOf, buildAuthorizeURL, buildLogoutURL, claimsOf } from "./auth"
 
 describe("buildAuthorizeURL", () => {
   it("lets a live session skip the prompt; force still re-auths for aal2", () => {
@@ -32,6 +32,20 @@ describe("buildAuthorizeURL", () => {
     expect(u.searchParams.get("scope")).toBe("openid")
     expect([...u.searchParams.keys()]).not.toEqual(
       expect.arrayContaining(["secret", "password", "token"]),
+    )
+  })
+})
+
+describe("buildLogoutURL", () => {
+  it("targets Hydra session logout with hint and registered post-logout URI", () => {
+    const url = new URL(
+      buildLogoutURL("tok", "https://app.veil.nyc/login"),
+    )
+    expect(url.origin).toBe("https://id.veil.nyc")
+    expect(url.pathname).toBe("/oauth2/sessions/logout")
+    expect(url.searchParams.get("id_token_hint")).toBe("tok")
+    expect(url.searchParams.get("post_logout_redirect_uri")).toBe(
+      "https://app.veil.nyc/login",
     )
   })
 })

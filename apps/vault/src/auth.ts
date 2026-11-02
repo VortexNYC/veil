@@ -1,3 +1,5 @@
+import { frontend } from "./ory"
+
 export const issuer = "https://id.veil.nyc"
 export const clientID = "veil"
 export const originAPI = "https://veil.nyc"
@@ -169,8 +171,37 @@ export async function finishLogin(href: string): Promise<void> {
   sessionStorage.setItem(tokenKey, idToken)
 }
 
-export function signOut(): void {
+export function buildLogoutURL(idToken: string, postLogout: string): string {
+  const u = new URL("/oauth2/sessions/logout", issuer)
+  u.searchParams.set("id_token_hint", idToken)
+  u.searchParams.set("post_logout_redirect_uri", postLogout)
+  return u.toString()
+}
+
+// Sign out ends the Ory sessions, not just ours: clearing sessionStorage
+// alone leaves Hydra's OP session and the Kratos session alive, and /login
+// silently re-mints an id_token on the next authorize hop. Chain Kratos
+// browser logout (id.veil.nyc is in allowed_return_urls) into Hydra's
+// RP-initiated logout — skip_logout_consent lands the browser back on /login
+// with no session anywhere.
+export async function signOut(): Promise<void> {
+  const idToken = sessionStorage.getItem(tokenKey)
   sessionStorage.removeItem(tokenKey)
   sessionStorage.removeItem(verifierKey)
   sessionStorage.removeItem(stateKey)
+  sessionStorage.removeItem("veil.aal2_flow")
+  if (window.location.protocol === "veil-app:") {
+    window.location.assign("veil-app://vault/lock")
+    return
+  }
+  const postLogout = `${window.location.origin}/login`
+  const end = idToken ? buildLogoutURL(idToken, postLogout) : postLogout
+  try {
+    const flow = await frontend.createBrowserLogoutFlow({ returnTo: end })
+    window.location.assign(flow.logout_url)
+    return
+  } catch {
+    // No Kratos session — the Hydra hop (or bare /login) still finishes it.
+  }
+  window.location.assign(end)
 }
