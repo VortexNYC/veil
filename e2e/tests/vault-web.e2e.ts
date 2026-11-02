@@ -50,8 +50,8 @@ test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent,
   await signIn(screen, agent);
   // Deterministic: the agent loses the top bar inside item-detail views.
   await app.open("/items");
-  await expect(screen.getByRole("button", "Sign out")).toBeVisible();
-  await screen.getByRole("button", "Sign out").tap();
+  await expect(screen.getByRole("button", "Sign out").first()).toBeVisible();
+  await screen.getByRole("button", "Sign out").first().tap();
   await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
   await app.open("/items");
   await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
