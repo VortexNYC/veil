@@ -16,7 +16,7 @@ async function signIn(agent: {
   let totpOk = false;
   for (let i = 0; i < 3 && !totpOk; i++) {
     try {
-      await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and press Enter to submit (do not click 'Use Authenticator' — that switches methods)", {
+      await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field, then click the 'Use Authenticator' button in that same section to submit", {
         params: { "totp-code": secrets.get("totp-code") },
       });
       totpOk = true;
