@@ -45,13 +45,16 @@ test("search filters the item list", { platforms: ["web"] }, async ({ app, agent
   await agent.assert("the list shows only items related to github");
 });
 
-test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent, screen, browser }) => {
   await app.open("/login");
   await signIn(screen, agent);
-  await agent.act("go back to the items list, then click the 'Sign out' button in the top bar");
-  await agent.assert("the app is back on the sign-in screen");
-  await app.open("/");
-  await agent.assert("the app does not show the items list — it asks for sign-in");
+  // Deterministic: the agent loses the top bar inside item-detail views.
+  await app.open("/items");
+  await expect(screen.getByRole("button", "Sign out")).toBeVisible();
+  await screen.getByRole("button", "Sign out").tap();
+  await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
+  await app.open("/items");
+  await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
 });
 
 test("create item → appears in list → delete cleans up", { platforms: ["web"] }, async ({ app, agent, screen }) => {
