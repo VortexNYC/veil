@@ -27,7 +27,7 @@ urls:
   login: http://127.0.0.1:4433/self-service/login/browser
   # skip_consent still redirects here with skip=true. Glue accepts without a screen.
   consent: http://127.0.0.1:4456/
-  logout: http://127.0.0.1:4455/logout
+  logout: http://127.0.0.1:4456/logout
 
 secrets:
   system:

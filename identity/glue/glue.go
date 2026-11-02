@@ -121,12 +121,31 @@ func (g *Glue) AcceptConsent(ctx context.Context, challenge string) (string, err
 	return g.tokens.AcceptConsent(ctx, challenge)
 }
 
+func (g *Glue) AcceptLogout(ctx context.Context, challenge string) (string, error) {
+	if g.tokens == nil {
+		return "", fmt.Errorf("glue: hydra admin not configured")
+	}
+	return g.tokens.AcceptLogout(ctx, challenge)
+}
+
 func (g *Glue) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	consent := r.URL.Query().Get("consent_challenge")
+	q := r.URL.Query()
+	// Same handler for both skip-consent and skip-logout-consent hops:
+	// the client has no screens, every challenge is auto-accepted.
+	if logout := q.Get("logout_challenge"); logout != "" {
+		redirectTo, err := g.AcceptLogout(r.Context(), logout)
+		if err != nil {
+			http.Error(w, "logout request failed", http.StatusBadRequest)
+			return
+		}
+		http.Redirect(w, r, redirectTo, http.StatusFound)
+		return
+	}
+	consent := q.Get("consent_challenge")
 	if consent == "" {
 		http.Error(w, "missing consent_challenge", http.StatusBadRequest)
 		return
