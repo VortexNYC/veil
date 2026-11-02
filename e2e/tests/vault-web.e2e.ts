@@ -20,7 +20,7 @@ async function signIn(screen: {
   // minted at secrets.get() goes stale before an LLM submits it.
   // fill() resolves the secret function at fill time — inside the window.
   await screen.getByLabel("Authentication code").fill(secrets.get("totp-code"));
-  await screen.getByRole("button", "Use Authenticator").tap();
+  await agent.act("click the 'Use Authenticator' button once to submit the code");
   await expect(screen.getByRole("heading", "Sign in")).toBeHidden({ timeout: 30_000 });
   await expect(screen.getByText(/item|search/i).first()).toBeVisible({ timeout: 15_000 });
 }
