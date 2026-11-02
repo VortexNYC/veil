@@ -48,7 +48,7 @@ test("search filters the item list", { platforms: ["web"] }, async ({ app, agent
 test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent, screen }) => {
   await app.open("/login");
   await signIn(screen, agent);
-  await agent.act("click the 'Sign out' button in the top bar");
+  await agent.act("go back to the items list, then click the 'Sign out' button in the top bar");
   await agent.assert("the app is back on the sign-in screen");
   await app.open("/");
   await agent.assert("the app does not show the items list — it asks for sign-in");
