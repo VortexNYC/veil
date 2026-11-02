@@ -640,3 +640,34 @@ func TestRemoveMemberRotatesAndDropsShare(t *testing.T) {
 		t.Fatalf("removed member's share still enrolled: %v", err)
 	}
 }
+
+func TestResetHumanMFA(t *testing.T) {
+	a, _, admin, _, _, owner, member := recoveryApp(t)
+	a.Human = fakeVerifier{sub: owner.ID}
+	a.MFAReset = admin
+	aal2 := "a." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"s","amr":["pwd","totp"]}`)) + ".b"
+
+	// aal1 owner token — refused before any wiring.
+	if err := a.ResetHumanMFA(context.Background(), jwtWithAMR("pwd"), member.ID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("aal1: %v", err)
+	}
+	// Outsider target — not a member of the org.
+	if err := a.ResetHumanMFA(context.Background(), aal2, "outsider"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("outsider: %v", err)
+	}
+	// Happy path — aal2 owner resets a member; the call lands with the org.
+	if err := a.ResetHumanMFA(context.Background(), aal2, member.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(admin.calls) == 0 || admin.calls[0] != "mfa:"+owner.OrgID+":"+member.ID {
+		t.Fatalf("calls: %v", admin.calls)
+	}
+
+	// Non-owner cannot reset anyone.
+	a2, _, admin2, _, _, _, member2 := recoveryApp(t)
+	a2.Human = fakeVerifier{sub: member2.ID}
+	a2.MFAReset = admin2
+	if err := a2.ResetHumanMFA(context.Background(), aal2, member2.ID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("member: %v", err)
+	}
+}

@@ -486,6 +486,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/sessions", s.createSession)
 	mux.HandleFunc("POST /v1/provision", s.provision)
 	mux.HandleFunc("POST /v1/invites", s.createInvite)
+	mux.HandleFunc("POST /v1/humans/{id}/reset-mfa", s.resetHumanMFA)
 	// Share links (VTX-783): create/list/revoke are owner ops; redeem is
 	// the public one-time read — the link id is the capability.
 	mux.HandleFunc("POST /v1/shares", s.createShare)
@@ -1628,6 +1629,31 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 		out.RecoveryURL = inv.RecoveryURL
 	}
 	writeJSON(w, out)
+}
+
+// resetHumanMFA is the owner-only lightweight MFA reset: wipes the member's
+// Kratos second factors and mails a re-enrollment link to their address.
+// The recovery code never leaves the identity plane.
+func (s *Server) resetHumanMFA(w http.ResponseWriter, r *http.Request) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := s.App.ResetHumanMFA(r.Context(), raw, r.PathValue("id")); err != nil {
+		switch {
+		case errors.Is(err, app.ErrForbidden):
+			http.Error(w, "forbidden", http.StatusForbidden)
+		case errors.Is(err, app.ErrUnauthorized):
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		case errors.Is(err, store.ErrNotFound):
+			http.Error(w, "not found", http.StatusNotFound)
+		default:
+			http.Error(w, "reset failed", http.StatusBadGateway)
+		}
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 func shareView(sh protocol.Share) ShareView {

@@ -364,6 +364,7 @@ func openOriginApp(home string) (*app.App, error) {
 		a.Members = g
 		a.Provision = g
 		a.Invites = glueInviter{g}
+		a.MFAReset = g
 		a.OrgAdmin = g
 		a.Notify = g
 		a.Directory = g
@@ -690,7 +691,26 @@ func humanCmd(home *string) *cobra.Command {
 			return encode(cmd, humans)
 		},
 	}
-	c.AddCommand(invite, login, list)
+	resetMFA := &cobra.Command{
+		Use:   "reset-mfa IDENTITY_ID",
+		Short: "Wipe a member's second factors and email them a re-enrollment link. Owner + aal2.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, err := humanToken(tokenFile)
+			if err != nil {
+				return err
+			}
+			if raw == "" {
+				return fmt.Errorf("reset-mfa: VEIL_HUMAN_TOKEN_FILE required")
+			}
+			if _, err := originDo(cmd.Context(), http.MethodPost, "/v1/humans/"+args[0]+"/reset-mfa", raw, nil); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "mfa wiped for %s — re-enrollment link emailed\n", args[0])
+			return nil
+		},
+	}
+	c.AddCommand(invite, login, list, resetMFA)
 	return c
 }
 
