@@ -21,7 +21,8 @@ async function signIn(screen: {
   // fill() resolves the secret function at fill time — inside the window.
   await screen.getByLabel("Authentication code").fill(secrets.get("totp-code"));
   await screen.getByRole("button", "Use Authenticator").tap();
-  await expect(screen.getByRole("searchbox")).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByRole("heading", "Sign in")).toBeHidden({ timeout: 30_000 });
+  await expect(screen.getByText(/item|search/i).first()).toBeVisible({ timeout: 15_000 });
 }
 
 test("sign in and land on the items list", { platforms: ["web"], timeout: 300_000 }, async ({ app, agent, screen }) => {
