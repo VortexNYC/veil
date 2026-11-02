@@ -7,7 +7,7 @@ import { test, secrets } from "e2e";
 async function signIn(agent: {
   act: (instruction: string, opts?: { params?: Record<string, unknown> }) => Promise<unknown>;
 }) {
-  await agent.act("type 'shlomo@vortex.nyc' into the ID field");
+  await agent.act(`type '${process.env.E2E_VAULT_EMAIL ?? "shlomo@vortex.nyc"}' into the ID field`);
   await agent.act("fill the Password field from secret 'vault-password'", {
     params: { "vault-password": secrets.get("vault-password") },
   });
