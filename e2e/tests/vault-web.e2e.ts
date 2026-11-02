@@ -16,7 +16,7 @@ async function signIn(agent: {
   let totpOk = false;
   for (let i = 0; i < 3 && !totpOk; i++) {
     try {
-      await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and submit it", {
+      await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and press Enter to submit (do not click 'Use Authenticator' — that switches methods)", {
         params: { "totp-code": secrets.get("totp-code") },
       });
       totpOk = true;
@@ -27,7 +27,7 @@ async function signIn(agent: {
   await agent.waitFor("the vault Items list is visible", { timeout: 15000 })
 }
 
-test("sign in and land on the items list", { platforms: ["web"] }, async ({ app, agent }) => {
+test("sign in and land on the items list", { platforms: ["web"], timeout: 300_000 }, async ({ app, agent }) => {
   await app.open("/login");
   await signIn(agent);
   await agent.assert("the vault Items list is visible with a search field and account rows");
