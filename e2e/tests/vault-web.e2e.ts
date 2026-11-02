@@ -12,9 +12,18 @@ async function signIn(agent: {
     params: { "vault-password": secrets.get("vault-password") },
   });
   await agent.act("tap the 'Sign in with password' button");
-  await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and tap Continue", {
-    params: { "totp-code": secrets.get("totp-code") },
-  });
+  // Each retry mints a fresh TOTP — a code typed slowly goes stale in 30s.
+  let totpOk = false;
+  for (let i = 0; i < 3 && !totpOk; i++) {
+    try {
+      await agent.act("enter the 6-digit authenticator code from secret 'totp-code' into the Authentication code field and submit it", {
+        params: { "totp-code": secrets.get("totp-code") },
+      });
+      totpOk = true;
+    } catch (err) {
+      if (i === 2) throw err;
+    }
+  }
   await agent.waitFor("the vault Items list is visible", { timeout: 15000 })
 }
 
