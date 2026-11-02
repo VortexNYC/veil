@@ -40,8 +40,15 @@ test("mcp: fetch an ungranted item is denied", { skip: !UNGRANTED }, async () =>
   assert.ok(r.status === 401 || r.status === 403 || JSON.stringify(r.body).includes("error"), `expected denial, got ${r.status}`);
 });
 
-test("cli: veil run --inject resolves refs in child env only", { skip: !TOKEN }, async () => {
-  // Local vault path — exercises inject resolution without printing secrets.
-  const { stdout } = await run("veil", ["run", "--inject", "--", "env"], { env: { ...process.env, VEIL_API_KEY: TOKEN } });
+test("cli: veil run spawns a child with injected dummy placeholders", { skip: !TOKEN }, async () => {
+  // Origin run path (no local vault on the runner): child env gets
+  // veil-inject dummies; HTTPS_PROXY MITM resolves real use calls.
+  const env = {
+    ...process.env,
+    VEIL_AGENT: process.env.E2E_AGENT_NAME ?? "e2e-runner",
+    VEIL_HYDRA_SECRET_FILE: process.env.E2E_AGENT_SECRET_FILE ?? `${process.env.HOME}/.config/veil/e2e-runner.hydra`,
+    VEIL_ORIGIN: ORIGIN,
+  };
+  const { stdout } = await run("veil", ["run", "--", "env"], { env });
   assert.ok(!stdout.includes("${"), "no unresolved refs leak through");
 });
