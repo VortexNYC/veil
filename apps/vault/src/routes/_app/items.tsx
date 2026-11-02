@@ -931,6 +931,11 @@ function Items() {
                     Travel safe — stays visible when Travel Mode is on
                   </Text>
                 </label>
+                {error ? (
+                  <Text as="p" variant="error" size="sm">
+                    {error}
+                  </Text>
+                ) : null}
                 <div className="flex justify-end">
                   <Button type="submit" variant="primary">
                     Save

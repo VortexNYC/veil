@@ -529,6 +529,16 @@ function Shell() {
               <Badge variant="neutral">
                 {aal2 ? "password + TOTP" : "session"}
               </Badge>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  signOut();
+                  window.location.assign("/");
+                }}
+              >
+                Sign out
+              </Button>
             </div>
             <div className="flex items-center gap-2">
               {updateReady ? (
