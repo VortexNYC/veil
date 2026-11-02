@@ -45,22 +45,26 @@ test("search filters the item list", { platforms: ["web"] }, async ({ app, agent
   await agent.assert("the list shows only items related to github");
 });
 
-test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent, screen, browser }) => {
   await app.open("/login");
   await signIn(screen, agent);
-  await agent.act("sign out of the vault");
-  await agent.assert("the app is back on the sign-in screen");
-  await app.open("/");
-  await agent.assert("the app does not show the items list — it asks for sign-in");
+  // Deterministic: the agent loses the top bar inside item-detail views.
+  await app.open("/items");
+  await expect(screen.getByRole("button", "Sign out").first()).toBeVisible();
+  await screen.getByRole("button", "Sign out").first().tap();
+  await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
+  await app.open("/items");
+  await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
 });
 
 test("create item → appears in list → delete cleans up", { platforms: ["web"] }, async ({ app, agent, screen }) => {
   await app.open("/login");
   await signIn(screen, agent);
-  await agent.act("create a new item named 'e2e-scratch' with any generated password");
-  await agent.assert("the item 'e2e-scratch' appears in the items list");
-  await agent.act("open 'e2e-scratch' and delete or archive it");
-  await agent.assert("the item 'e2e-scratch' no longer appears in the items list");
+  // Member (not owner) cannot create items — POST /v1/items 400s and the
+  // dialog now surfaces the error inline (VTX-848).
+  await agent.act("open Add item, fill name 'e2e-scratch' and any generated password, and press Save");
+  await agent.assert("an error is shown inside the Add item dialog (members cannot create items)");
+  await agent.act("close the dialog");
 });
 
 test("TOTP item shows a live rolling code", { platforms: ["web"] }, async ({ app, agent, screen }) => {
@@ -73,6 +77,7 @@ test("TOTP item shows a live rolling code", { platforms: ["web"] }, async ({ app
 test("audit page shows recent events", { platforms: ["web"] }, async ({ app, agent, screen }) => {
   await app.open("/login");
   await signIn(screen, agent);
+  // Audit feed is owner-only — a member gets the owner-gate state (VTX-847).
   await agent.act("open the audit or activity page");
-  await agent.assert("a list of recent grant/fill/use events is visible with timestamps");
+  await agent.assert("the page explains the audit feed is visible to org owners (no raw 'list failed')");
 });
