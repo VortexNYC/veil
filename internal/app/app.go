@@ -143,7 +143,13 @@ type App struct {
 	Provision Provisioner
 	Invites   Inviter
 	OrgAdmin  OrgAdmin
-	Notify    RequestNotify
+	// MFAReset is the lightweight owner path to wipe a member's Kratos
+	// second factors — same ResetMemberMFA shape as OrgAdmin but optional:
+	// nil where MFA reset is unconfigured (local vaults).
+	MFAReset interface {
+		ResetMemberMFA(ctx context.Context, orgID, identityID string) error
+	}
+	Notify RequestNotify
 	// Push wakes registered phone devices on a filed ask — the same
 	// RequestNotify shape as email, fanned out next to it. Nil when the
 	// APNs envs are unset.
@@ -1794,6 +1800,40 @@ func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteRe
 	}
 	a.auditBestEffort(adminEvent(sub, h.OrgID, "", protocol.ActionMemberInvited, "email="+email))
 	return res, nil
+}
+
+// ResetHumanMFA wipes a member's second factors (totp, webauthn) and mails
+// the re-enrollment link to their own Kratos address — the lightweight
+// owner path for a lost authenticator or a churned test identity, no
+// member-key ceremony required. Owner + aal2; the target must be a live
+// member of the caller's org. Local vaults (MFAReset nil) are unconfigured.
+func (a *App) ResetHumanMFA(ctx context.Context, rawToken, memberID string) error {
+	if a.Human == nil {
+		return fmt.Errorf("app: human verifier not configured")
+	}
+	if a.MFAReset == nil {
+		return fmt.Errorf("app: mfa reset not configured")
+	}
+	if err := human.RequireMFA(rawToken); err != nil {
+		return fmt.Errorf("%w: %v", ErrForbidden, err)
+	}
+	p, err := a.requireOwner(ctx, rawToken)
+	if err != nil {
+		return err
+	}
+	memberID = strings.TrimSpace(memberID)
+	member, err := a.Members.IsMember(ctx, p.OrgID, memberID)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return store.ErrNotFound
+	}
+	if err := a.MFAReset.ResetMemberMFA(ctx, p.OrgID, memberID); err != nil {
+		return err
+	}
+	a.auditBestEffort(adminEvent(p.ID, p.OrgID, "", protocol.ActionMemberInvited, "mfa_reset="+memberID))
+	return nil
 }
 
 // ErrUnauthorized marks token/principal resolution failure on verbs that
