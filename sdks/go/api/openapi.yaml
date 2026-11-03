@@ -1497,8 +1497,8 @@ paths:
           description: aal1 token — realign requires a second factor
         "404":
           description: member never enrolled a recovery share
-      summary: Re-wrap the member's org-key share under a new phone custodian pubkey
-        without rotating the org master (reinstall drift). aal2 required.
+      summary: Re-wrap the caller's org-key share under a new recovery or custodian
+        pubkey without rotating the org master. aal2 and an existing share are required.
       tags:
       - Recovery
   /v1/recovery/start:
