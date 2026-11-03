@@ -20,8 +20,7 @@ import (
 )
 
 // originMCPServer is the laptop stdio MCP adapter (for Grok CLI, Cursor,
-// Claude Code, and Devin CLI). Exposes the exact same 5-tool surface as
-// origin HTTP MCP (list_items, match_items, check, fetch, approval_status).
+// Claude Code, and Devin CLI). Exposes the same tool surface as origin HTTP MCP.
 // Bearer is re-read from the token file on every call. Secrets never return.
 func originMCPServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "veil", Version: "0.1.0"}, nil)
@@ -125,6 +124,16 @@ func originMCPServer() *mcp.Server {
 		var out mcpserver.ApprovalStatusOut
 		if err := callOriginMCPTool(ctx, "approval_status", in, &out); err != nil {
 			return nil, mcpserver.ApprovalStatusOut{}, err
+		}
+		return nil, out, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "request_fill",
+		Description: "Ask a human to approve a website login for a granted item. You never receive the password. Poll approval_status; fill runs on the human device via Veil extension.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpserver.RequestFillIn) (*mcp.CallToolResult, mcpserver.FetchOut, error) {
+		var out mcpserver.FetchOut
+		if err := callOriginMCPTool(ctx, "request_fill", in, &out); err != nil {
+			return nil, mcpserver.FetchOut{}, err
 		}
 		return nil, out, nil
 	})

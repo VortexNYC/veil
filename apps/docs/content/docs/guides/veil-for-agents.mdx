@@ -1,0 +1,32 @@
+---
+title: Veil for Agents
+description: Match 1Password for Agents — MCP fetch for APIs and request_fill for website logins without secrets in the model.
+---
+
+Veil for Agents is our product name for the same invariant as [1Password for Agents](https://1password.com/personal-ai-agent-integrations): **agents never hold passwords**.
+
+## Two lanes
+
+| Lane | Tool | When |
+|------|------|------|
+| **API / HTTP** | `fetch`, `check`, `match_items` | GitHub, Stripe, Firecrawl, … |
+| **Website login** | **`request_fill`** + `approval_status` | Grok/Muse/Instinct/Town browser tasks |
+
+After **`request_fill`** is approved, the human’s **Veil extension + host** on the browser device execute-fill — the model still never sees the secret.
+
+## Six MCP tools
+
+`list_items` · `match_items` · `check` · `fetch` · **`request_fill`** · `approval_status`
+
+## Per-host wiring
+
+| Host | Veil |
+|------|------|
+| Grok Bot | [Grok guide](/guides/grok) — custom MCP |
+| Muse, Instinct, Town | Dedicated agent + grants + same MCP |
+| Cursor, Codex, Devin | `veil mcp laptop` / stdio |
+| OpenAI / Anthropic (1P waitlist) | Custom MCP now — no wait |
+
+Compare to 1Password’s partner list: [1Password for Agents landscape](/guides/1password-for-agents-landscape).
+
+Setup: [Onboarding](/guides/onboarding) · `veil onboard status`.

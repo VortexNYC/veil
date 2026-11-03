@@ -1,6 +1,6 @@
 ---
 name: veil
-description: Use Veil MCP (list_items, match_items, check, fetch, approval_status) to make authenticated API calls to GitHub, Linear, Cloudflare, Firecrawl, Gmail, Resend, and other services without ever touching plaintext secrets.
+description: Use Veil MCP (list_items, match_items, check, fetch, request_fill, approval_status) to make authenticated API calls and website login approvals without ever touching plaintext secrets.
 ---
 
 # Veil — Credential Broker MCP Skill
@@ -35,7 +35,10 @@ Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints 
    - If the grant is `level1` and requires human approval, returns `decision: "need_approval"` and `request_id`.
 5. **`approval_status`** (`mcp__veil__approval_status` / `veil__approval_status`):
    - Input: `{ "request_id": "req_..." }`
-   - Polls the status (`open`, `approved`, `denied`, `expired`) of a `level1` approval request without re-triggering the upstream call. Once `status === "approved"`, retry `fetch`.
+   - Polls the status (`open`, `approved`, `denied`, `expired`) of a level1 or **fill** approval request. Once `status === "approved"`, retry `fetch` or continue the browser task after local fill.
+6. **`request_fill`** (`mcp__veil__request_fill` / `veil__request_fill`):
+   - Input: `{ "item": "airbnb", "url": "https://www.airbnb.com/login" }`
+   - Files a **website login** approval (1Password for Agents shape). You never receive the password. Human approves at app.veil.nyc/requests; fill runs on their device via Veil extension + host.
 
 ## Grok (grok.com + Grok Bot)
 
