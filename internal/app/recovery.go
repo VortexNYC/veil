@@ -97,8 +97,8 @@ func (a *App) EnrollRecoveryShare(ctx context.Context, rawToken string, pubkey [
 		adminEvent(p.ID, p.OrgID, "", protocol.ActionRecoveryShareEnrolled, "epoch=1"))
 }
 
-// RealignRecoveryCustodian re-wraps the member's org-key share under a new
-// phone custodian pubkey without rotating the org master — aal2 only.
+// RealignRecoveryCustodian re-wraps the caller's org-key share under a new
+// recovery/custodian pubkey without rotating the org master — aal2 only.
 func (a *App) RealignRecoveryCustodian(ctx context.Context, rawToken string, pubkey []byte) (protocol.OrgKeyShare, error) {
 	p, err := a.requireMember(ctx, rawToken)
 	if err != nil {

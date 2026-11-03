@@ -238,7 +238,7 @@ export declare const getRecoveryShare: <ThrowOnError extends boolean = false>(op
  */
 export declare const enrollRecovery: <ThrowOnError extends boolean = false>(options: Options<EnrollRecoveryData, ThrowOnError>) => RequestResult<EnrollRecoveryResponses, EnrollRecoveryErrors, ThrowOnError>;
 /**
- * Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+ * Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
  */
 export declare const realignRecoveryCustodian: <ThrowOnError extends boolean = false>(options: Options<RealignRecoveryCustodianData, ThrowOnError>) => RequestResult<RealignRecoveryCustodianResponses, RealignRecoveryCustodianErrors, ThrowOnError>;
 /**

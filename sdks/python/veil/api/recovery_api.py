@@ -1699,7 +1699,7 @@ class RecoveryApi:
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RecoveryShare:
-        """Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+        """Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
 
 
         :param enroll_request: (required)
@@ -1769,7 +1769,7 @@ class RecoveryApi:
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[RecoveryShare]:
-        """Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+        """Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
 
 
         :param enroll_request: (required)
@@ -1839,7 +1839,7 @@ class RecoveryApi:
         _headers: Optional[Dict[StrictStr, Any]] = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+        """Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
 
 
         :param enroll_request: (required)

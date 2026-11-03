@@ -665,7 +665,7 @@ func (r RecoveryAPIRealignRecoveryCustodianRequest) Execute() (*RecoveryShare, *
 }
 
 /*
-RealignRecoveryCustodian Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+RealignRecoveryCustodian Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
 
  @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
  @return RecoveryAPIRealignRecoveryCustodianRequest

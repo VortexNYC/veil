@@ -375,6 +375,85 @@ func TestRecoveryRealignCustodianOpensNewKey(t *testing.T) {
 	_ = got
 }
 
+func TestRecoveryRealignRequiresAAL2(t *testing.T) {
+	a, fs, _, _, _, owner, _ := recoveryApp(t)
+	a.Human = fakeVerifier{sub: owner.ID}
+	pub, _, err := device.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.EnrollRecoveryShare(context.Background(), "tok", pub); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.RealignRecoveryCustodian(context.Background(), jwtWithAMR("pwd"), pub); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("aal1 realign: %v", err)
+	}
+	share, err := fs.OrgKeyShare(context.Background(), owner.OrgID, owner.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.WrapPubkeyEpoch != 1 || !bytesEqual(share.Pubkey, pub) {
+		t.Fatalf("aal1 changed enrolled share: %+v", share)
+	}
+}
+
+func TestRecoveryRealignRestoresProofForPendingRequest(t *testing.T) {
+	a, _, _, _, _, owner, _ := recoveryApp(t)
+	ctx := context.Background()
+	a.Human = fakeVerifier{sub: owner.ID}
+
+	oldPub, oldPriv, err := device.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.EnrollRecoveryShare(ctx, "tok", oldPub); err != nil {
+		t.Fatal(err)
+	}
+	stagedPub, stagedPriv, err := device.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _, err := a.StartRecovery(ctx, "tok", StartRecoveryInput{NewPubkey: stagedPub})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newPub, newPriv, err := device.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.RealignRecoveryCustodian(ctx, "tok", newPub); err != nil {
+		t.Fatal(err)
+	}
+	state, err := a.GetRecoveryShare(ctx, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := device.Accept(state.WrappedMaster, oldPriv); err == nil {
+		t.Fatal("lost old private key still opens re-planted share")
+	}
+	master, err := device.Accept(state.WrappedMaster, newPriv)
+	if err != nil {
+		t.Fatalf("replacement key does not open share: %v", err)
+	}
+	proof := hmac.New(sha256.New, master)
+	proof.Write([]byte(req.ID))
+	done, err := a.CompleteRecovery(ctx, "tok", req.ID, proof.Sum(nil))
+	if err != nil {
+		t.Fatalf("completed request using replacement key proof: %v", err)
+	}
+	if done.Status != protocol.RecoveryCompleted {
+		t.Fatalf("status %q", done.Status)
+	}
+	post, err := a.GetRecoveryShare(ctx, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := device.Accept(post.WrappedMaster, stagedPriv); err != nil {
+		t.Fatalf("completed share not moved to staged key: %v", err)
+	}
+}
+
 func TestRecoveryEnrollRequiresMFA(t *testing.T) {
 	a, _, _, _, _, owner, _ := recoveryApp(t)
 	a.Human = fakeVerifier{sub: owner.ID}

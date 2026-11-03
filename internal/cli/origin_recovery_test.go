@@ -1,14 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,6 +121,119 @@ func TestRecoveryEnrollPostsPubkey(t *testing.T) {
 	derived, _ := device.Public(priv)
 	if base64.StdEncoding.EncodeToString(derived) != posted.Pubkey {
 		t.Fatal("posted pubkey does not match the escrowed key")
+	}
+}
+
+func TestRecoveryEnrollRotateRealignsExistingKey(t *testing.T) {
+	home := t.TempDir()
+	keyPath := filepath.Join(home, "recovery.key")
+	pub, priv, err := device.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, priv, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var posted []publicapi.EnrollRecoveryRequest
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/recovery/realign-custodian" {
+			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
+			return
+		}
+		raw, readErr := io.ReadAll(r.Body)
+		if readErr != nil {
+			t.Error(readErr)
+		}
+		if strings.Contains(string(raw), base64.StdEncoding.EncodeToString(priv)) ||
+			strings.Contains(string(raw), hex.EncodeToString(priv)) {
+			t.Error("private recovery key sent to origin")
+		}
+		var request publicapi.EnrollRecoveryRequest
+		if err := json.Unmarshal(raw, &request); err != nil {
+			t.Error(err)
+		}
+		mu.Lock()
+		posted = append(posted, request)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pubkey":            base64.StdEncoding.EncodeToString(pub),
+			"wrap_pubkey_epoch": 2,
+		})
+	}))
+	t.Cleanup(origin.Close)
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HUMAN_TOKEN", "tok-human")
+
+	for range 2 {
+		stdout, err := run(t, home, "", "recovery", "enroll", "--rotate")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(stdout, base64.StdEncoding.EncodeToString(priv)) ||
+			strings.Contains(stdout, hex.EncodeToString(priv)) {
+			t.Fatal("private recovery key printed")
+		}
+		if !strings.Contains(stdout, `"rotated": true`) {
+			t.Fatalf("rotation result missing from %q", stdout)
+		}
+		if !strings.Contains(stdout, `"epoch": 2`) {
+			t.Fatalf("rotated epoch missing from %q", stdout)
+		}
+	}
+	mu.Lock()
+	got := append([]publicapi.EnrollRecoveryRequest(nil), posted...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("realign calls %d, want 2 for safe retry", len(got))
+	}
+	for _, request := range got {
+		postedPub, err := base64.StdEncoding.DecodeString(request.Pubkey)
+		if err != nil || !bytes.Equal(postedPub, pub) {
+			t.Fatalf("posted key %q does not match local public key", request.Pubkey)
+		}
+	}
+	after, err := os.ReadFile(keyPath)
+	if err != nil || !bytes.Equal(after, priv) {
+		t.Fatal("rotate replaced the local key instead of reusing it")
+	}
+}
+
+func TestRecoveryEnrollRotateCreatesMissingKeyFile(t *testing.T) {
+	home := t.TempDir()
+	var posted publicapi.EnrollRecoveryRequest
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/recovery/realign-custodian" {
+			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
+			t.Error(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"wrap_pubkey_epoch": 2})
+	}))
+	t.Cleanup(origin.Close)
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HUMAN_TOKEN", "tok-human")
+
+	if _, err := run(t, home, "", "recovery", "enroll", "--rotate"); err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(home, "recovery.key")
+	priv, err := os.ReadFile(keyPath)
+	if err != nil || len(priv) != device.PublicSize {
+		t.Fatalf("recovery key missing or malformed: %v", err)
+	}
+	info, err := os.Stat(keyPath)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("recovery key mode: %v, %v", info, err)
+	}
+	pub, err := device.Public(priv)
+	if err != nil || base64.StdEncoding.EncodeToString(pub) != posted.Pubkey {
+		t.Fatal("realign did not post the public key matching the new local private key")
 	}
 }
 
