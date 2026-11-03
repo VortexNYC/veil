@@ -1453,8 +1453,8 @@ func (s *Server) enrollRecovery(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, share)
 }
 
-// POST /v1/recovery/realign-custodian — re-wrap the member's share under a
-// new phone custodian pubkey without rotating the org master (reinstall drift).
+// POST /v1/recovery/realign-custodian — re-wrap the caller's share under a
+// new recovery/custodian pubkey without rotating the org master.
 func (s *Server) realignRecoveryCustodian(w http.ResponseWriter, r *http.Request) {
 	raw := bearer(r.Header.Get("Authorization"))
 	if raw == "" || app.IsSessionToken(raw) {

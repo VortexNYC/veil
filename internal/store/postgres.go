@@ -908,9 +908,9 @@ func (p *Postgres) EnrollOrgKeyShare(ctx context.Context, orgID, humanID string,
 	return orgKeyShareFromSqlc(ins), created, nil
 }
 
-// RealignOrgKeyShareCustodian moves the member's share to a new phone
-// custodian pubkey without minting a fresh org master — the recovery
-// ceremony stays for lost-key cases; this is reinstall drift only.
+// RealignOrgKeyShareCustodian moves the member's share to a new recovery or
+// custodian pubkey without minting a fresh org master. The caller must hold
+// the private key for the new pubkey before committing this realignment.
 func (p *Postgres) RealignOrgKeyShareCustodian(ctx context.Context, orgID, humanID string, newPubkey []byte, audit ...protocol.AuditEvent) (protocol.OrgKeyShare, error) {
 	if len(newPubkey) != device.PublicSize {
 		return protocol.OrgKeyShare{}, fmt.Errorf("store: recovery pubkey must be %d bytes", device.PublicSize)

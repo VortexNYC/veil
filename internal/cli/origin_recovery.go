@@ -77,9 +77,10 @@ func recoveryCmd(home *string) *cobra.Command {
 	}
 
 	var outFile string
+	var rotateShare bool
 	enroll := &cobra.Command{
 		Use:   "enroll",
-		Short: "Enroll your recovery share: keypair to --out-file (0600), pubkey to the origin. Owner aal2.",
+		Short: "Enroll your recovery share; --rotate replaces the enrolled key (aal2).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if outFile == "" {
 				p, err := recoveryKeyPath(*home)
@@ -96,24 +97,48 @@ func recoveryCmd(home *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			body, _ := json.Marshal(publicapi.EnrollRecoveryRequest{
+			body, err := json.Marshal(publicapi.EnrollRecoveryRequest{
 				Pubkey: base64.StdEncoding.EncodeToString(pub),
 			})
-			res, err := originDo(cmd.Context(), http.MethodPost, "/v1/recovery/enroll", raw, body)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "recovery key written to %s — keep it somewhere safe\n", outFile)
-			var share json.RawMessage
-			_ = json.Unmarshal(res, &share)
-			return encode(cmd, map[string]any{
+			path := "/v1/recovery/enroll"
+			if rotateShare {
+				path = "/v1/recovery/realign-custodian"
+			}
+			res, err := originDo(cmd.Context(), http.MethodPost, path, raw, body)
+			if err != nil {
+				return err
+			}
+			if rotateShare {
+				fmt.Fprintf(cmd.ErrOrStderr(), "recovery key written to %s — previous recovery key is invalidated; keep this key safe\n", outFile)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "recovery key written to %s — keep it somewhere safe\n", outFile)
+			}
+			var share struct {
+				WrapPubkeyEpoch int `json:"wrap_pubkey_epoch"`
+			}
+			if err := json.Unmarshal(res, &share); err != nil {
+				return err
+			}
+			if rotateShare && share.WrapPubkeyEpoch < 1 {
+				return fmt.Errorf("recovery enroll --rotate: origin returned an invalid share epoch")
+			}
+			out := map[string]any{
 				"enrolled": true,
 				"pubkey":   hex.EncodeToString(pub),
 				"out_file": outFile,
-			})
+			}
+			if rotateShare {
+				out["rotated"] = true
+				out["epoch"] = share.WrapPubkeyEpoch
+			}
+			return encode(cmd, out)
 		},
 	}
 	enroll.Flags().StringVar(&outFile, "out-file", "", "write the recovery private key here (default ~/.veil/recovery.key). 0600, never stdout.")
+	enroll.Flags().BoolVar(&rotateShare, "rotate", false, "replace your enrolled share with the key in --out-file (AAL2); invalidates the old key on other devices")
 
 	keygen := &cobra.Command{
 		Use:   "keygen",
