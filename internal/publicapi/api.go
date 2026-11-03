@@ -2618,7 +2618,7 @@ func (s *Server) requireItemWrite(w http.ResponseWriter, r *http.Request) (proto
 	if !ok {
 		return protocol.Principal{}, false
 	}
-	item, err := s.App.Store.Item(r.PathValue("name"))
+	item, err := s.App.ResolveItem(p.OrgID, r.PathValue("name"))
 	if err != nil {
 		http.Error(w, "not found", http.StatusBadRequest)
 		return protocol.Principal{}, false

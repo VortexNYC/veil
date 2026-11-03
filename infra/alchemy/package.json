@@ -25,6 +25,7 @@
     "sync:branch-state": "node scripts/sync-branch-in-ci-state.mjs",
     "strip:kratos-resend-escrow": "node scripts/strip-kratos-resend-escrow.mjs",
     "finish:main-branch": "node scripts/finish-main-branch.mjs",
+    "rotate:git-exposure": "node scripts/rotate-git-exposure.mjs",
     "manifest:list": "node --experimental-strip-types scripts/list-preserve-manifest.ts"
   },
   "dependencies": {
