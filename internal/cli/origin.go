@@ -468,7 +468,7 @@ func originItemUpdate(cmd *cobra.Command, name string, addURIs, tags []string, l
 		if err != nil {
 			return err
 		}
-		last, err = originDo(cmd.Context(), http.MethodPatch, "/v1/items/"+name, tok, payload)
+		last, err = originDo(cmd.Context(), http.MethodPatch, "/v1/items/"+url.PathEscape(name), tok, payload)
 		if err != nil {
 			return err
 		}
@@ -485,7 +485,7 @@ func originItemArchive(cmd *cobra.Command, name string) error {
 	if err != nil {
 		return err
 	}
-	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+name+"/archive", tok, nil)
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+url.PathEscape(name)+"/archive", tok, nil)
 	if err != nil {
 		return err
 	}
@@ -501,7 +501,7 @@ func originItemDelete(cmd *cobra.Command, name string) error {
 	if err != nil {
 		return err
 	}
-	raw, err := originDo(cmd.Context(), http.MethodDelete, "/v1/items/"+name, tok, nil)
+	raw, err := originDo(cmd.Context(), http.MethodDelete, "/v1/items/"+url.PathEscape(name), tok, nil)
 	if err != nil {
 		return err
 	}
@@ -852,7 +852,7 @@ func originRotateItem(cmd *cobra.Command, name, mgmtItem string, interval time.D
 			return err
 		}
 	}
-	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+name+"/rotate", tok, payload)
+	raw, err := originDo(cmd.Context(), http.MethodPost, "/v1/items/"+url.PathEscape(name)+"/rotate", tok, payload)
 	if err != nil {
 		return err
 	}

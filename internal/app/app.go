@@ -779,7 +779,7 @@ type UpdateItemPatch struct {
 }
 
 func (a *App) UpdateItemPatchFor(actor protocol.Principal, name string, replaceURIs, addURIs, tags []string, login string, token []byte, travelSafe *bool, patch UpdateItemPatch) (protocol.Item, error) {
-	item, err := a.Store.Item(name)
+	item, err := a.ResolveItem(actor.OrgID, name)
 	if err != nil {
 		return protocol.Item{}, err
 	}
@@ -923,7 +923,7 @@ func (a *App) RotateItemWith(actor protocol.Principal, name string, opts RotateO
 		}
 		return protocol.Item{}, ErrForbidden
 	}
-	item, err := a.Store.Item(name)
+	item, err := a.ResolveItem(actor.OrgID, name)
 	if err != nil {
 		return protocol.Item{}, err
 	}
@@ -2095,6 +2095,25 @@ func (a *App) CanCreateGrant(p protocol.Principal) (bool, error) {
 
 func (a *App) OwnsVault(p protocol.Principal) (bool, error) {
 	return a.ownsVault(p)
+}
+
+// ResolveItem loads an item by id, or by name within orgID when id lookup misses.
+func (a *App) ResolveItem(orgID, ref string) (protocol.Item, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return protocol.Item{}, fmt.Errorf("app: missing item")
+	}
+	item, err := a.Store.Item(ref)
+	if err == nil {
+		if orgID != "" && item.OrgID != orgID {
+			return protocol.Item{}, ErrForbidden
+		}
+		return item, nil
+	}
+	if orgID == "" {
+		return protocol.Item{}, err
+	}
+	return a.Store.ItemByName(orgID, ref)
 }
 
 func (a *App) MayWriteItem(p protocol.Principal, item protocol.Item) (bool, error) {
