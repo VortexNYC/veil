@@ -58,6 +58,12 @@ The two modes are the product. The OS API is not the same on every surface. Desi
 | iOS | **33** (proven live 2026-10-01, passwords + passkeys) | System AutoFill bar. Choose. Add a password is the other phone screen. | Selecting a suggestion writes the field. OS-shaped execute. Face ID in that process. Passkeys proven on webauthn.io: register (Save in Veil) + assert, both Face-ID gated, both signing OS clientDataHash on origin. | Associated domains + app id. |
 | Android | **34** (proven 2026-10-01, passwords; passkeys pending real device) | AutofillService / Credential Manager. | Same: pick then write. | Package name + Digital Asset Links. |
 
+On Linux, the browser host's local confirm uses a per-fill Zenity or KDialog
+Allow/Cancel prompt when a desktop session is available. If neither dialog
+tool nor a desktop session exists, Veil leaves confirmation unattached and
+fails closed before releasing a secret. This is not the 36 native-app tray
+helper; Windows/Linux native-app fill APIs remain a separate investigation.
+
 Chrome on a Mac is 37, not 32. Safari *pages* are 37. Safari filling *Mail.app* is 32.
 
 Phone is add + fill only. No grants, agents, audit, SSH, or the SPA.

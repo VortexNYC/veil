@@ -2679,7 +2679,7 @@ func fillCmd(home *string) *cobra.Command {
 				// warm: a prompt costs a pipe round trip + the LA eval
 				// instead of ~6s of process boot + AppKit init per
 				// confirm. Prewarm now so the first prompt is warm too.
-				if h.Confirm != nil {
+				if h.Confirm != nil && runtime.GOOS == "darwin" {
 					h.Confirm = confirm.TouchIDServer
 					confirm.PrewarmServer()
 				}
@@ -3164,7 +3164,7 @@ func attachFillConfirm(h *fill.Host) {
 	}
 	h.ApplyConfig(cfg)
 	if confirm.Enabled() {
-		h.Confirm = confirm.TouchID
+		h.Confirm = confirm.Local
 	}
 }
 
