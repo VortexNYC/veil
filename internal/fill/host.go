@@ -23,12 +23,13 @@ type HostConfig struct {
 	PasswordFile string `json:"kratos_password_file,omitempty"`
 	TOTPFile     string `json:"kratos_totp_file,omitempty"`
 	Debug        bool   `json:"debug,omitempty"`
-	// TouchID is Mac confirm. Chrome launches the host with no env we control.
-	// nil = default on. false leaves Confirm unattached; confirm() fails closed.
+	// TouchID is the legacy name for the local-confirm opt-out. Chrome
+	// launches the host with no env we control. nil = default on; false
+	// leaves Confirm unattached and secret release fails closed.
 	TouchID *bool `json:"touch_id,omitempty"`
 	// Confirm is the confirmation policy: ""|"origin" (default) reuses one
-	// Touch ID within a site for ConfirmTTL, "strict" prompts every release,
-	// "session" reuses across sites. CVV prompts regardless.
+	// local confirmation within a site for ConfirmTTL; "strict" prompts every
+	// release, "session" reuses across sites. CVV prompts regardless.
 	Confirm string `json:"confirm,omitempty"`
 	// ConfirmTTL is the reuse window in seconds (default 30).
 	ConfirmTTL int `json:"confirm_ttl_seconds,omitempty"`

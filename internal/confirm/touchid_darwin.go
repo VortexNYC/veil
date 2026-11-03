@@ -345,6 +345,11 @@ import "C"
 
 const touchIDAvailable = true
 
+// Local is this platform's device-owner prompt — Touch ID on Mac.
+var Local = TouchID
+
+func confirmAvailable() bool { return touchIDAvailable }
+
 // warmAppKit runs NSApp init once at --confirm-server spawn so the first
 // request never pays it. Must run on the main thread (ServeStdio is).
 func warmAppKit() {

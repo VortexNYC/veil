@@ -1,5 +1,6 @@
-// Package confirm is Touch ID at fill time. The native host prompts
-// before a secret goes to the extension. Host.Confirm nil fails closed.
+// Package confirm provides device-owner confirmation at fill time. The
+// native host prompts before a secret goes to the extension; Host.Confirm
+// nil fails closed.
 package confirm
 
 import (
@@ -16,12 +17,14 @@ import (
 	"time"
 )
 
-// Enabled is Mac + VEIL_FILL_TOUCHID not "0". Linux/Windows wait for 35–36.
+// Enabled reports a usable local confirm surface and VEIL_FILL_TOUCHID
+// not "0". Mac is Touch ID; Linux is a desktop prompt (zenity/kdialog);
+// Windows waits on 35.
 func Enabled() bool {
 	if os.Getenv("VEIL_FILL_TOUCHID") == "0" {
 		return false
 	}
-	return touchIDAvailable
+	return confirmAvailable()
 }
 
 // Action is the allow-line verb. "Veil wants to fill a card" → "fill a card".
