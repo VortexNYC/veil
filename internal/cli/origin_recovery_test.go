@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -134,14 +135,13 @@ func TestRecoveryEnrollRotateRealignsExistingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var calls int
-	var posted publicapi.EnrollRecoveryRequest
+	var mu sync.Mutex
+	var posted []publicapi.EnrollRecoveryRequest
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/recovery/realign-custodian" {
 			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
 			return
 		}
-		calls++
 		raw, readErr := io.ReadAll(r.Body)
 		if readErr != nil {
 			t.Error(readErr)
@@ -150,9 +150,13 @@ func TestRecoveryEnrollRotateRealignsExistingKey(t *testing.T) {
 			strings.Contains(string(raw), hex.EncodeToString(priv)) {
 			t.Error("private recovery key sent to origin")
 		}
-		if err := json.Unmarshal(raw, &posted); err != nil {
+		var request publicapi.EnrollRecoveryRequest
+		if err := json.Unmarshal(raw, &request); err != nil {
 			t.Error(err)
 		}
+		mu.Lock()
+		posted = append(posted, request)
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"pubkey":            base64.StdEncoding.EncodeToString(pub),
@@ -179,12 +183,17 @@ func TestRecoveryEnrollRotateRealignsExistingKey(t *testing.T) {
 			t.Fatalf("rotated epoch missing from %q", stdout)
 		}
 	}
-	postedPub, err := base64.StdEncoding.DecodeString(posted.Pubkey)
-	if err != nil || !bytes.Equal(postedPub, pub) {
-		t.Fatalf("posted key %q does not match local public key", posted.Pubkey)
+	mu.Lock()
+	got := append([]publicapi.EnrollRecoveryRequest(nil), posted...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("realign calls %d, want 2 for safe retry", len(got))
 	}
-	if calls != 2 {
-		t.Fatalf("realign calls %d, want 2 for safe retry", calls)
+	for _, request := range got {
+		postedPub, err := base64.StdEncoding.DecodeString(request.Pubkey)
+		if err != nil || !bytes.Equal(postedPub, pub) {
+			t.Fatalf("posted key %q does not match local public key", request.Pubkey)
+		}
 	}
 	after, err := os.ReadFile(keyPath)
 	if err != nil || !bytes.Equal(after, priv) {
