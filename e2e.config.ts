@@ -29,9 +29,14 @@ const totpNow = (): string => {
   return String(((h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3]) % 1e6).padStart(6, "0");
 };
 
-// Agent steps run through Devin SWE-2 Medium (local `devin --print`),
-// no model API key needed. Secrets come from env — never committed:
-//   E2E_SECRET_VAULT_PASSWORD, E2E_TOTP_SEED
+// Targets: web → @e2e-dev/web (Chromium). Debug/proof in a real browser →
+// agent-browser (`vb`). ios/android → @e2e-dev/mobile → agent-device.
+// macOS Veil.app / tray → agent-desktop (not wired into this config yet).
+//
+// Agent steps (where tests still use agent.act) run through Devin SWE-2 Medium
+// (`devin --print`). Secrets from env — never committed:
+//   E2E_SECRET_VAULT_PASSWORD, E2E_TOTP_SEED, E2E_VAULT_EMAIL (member human)
+//   E2E_PHONE_ITEM_NAME — vault item row to open on phone (default github)
 export default {
   tests: ["e2e/tests/**/*.e2e.ts"],
   targets: [

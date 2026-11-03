@@ -8,8 +8,13 @@ scenarios:
   # --- auth ---
   - id: auth.signin-totp
     title: Sign in with password + TOTP lands on items list
-    targets: [web, ios, android]
+    targets: [web]
     file: e2e/tests/vault-web.e2e.ts
+    status: written
+  - id: phone.ios-signin-items
+    title: Phone OIDC sign-in → items list → item detail
+    targets: [ios]
+    file: e2e/tests/phone.e2e.ts
     status: written
   - id: auth.session-expired-remint
     title: Expired session remints and continues
@@ -18,7 +23,8 @@ scenarios:
   - id: auth.signout
     title: Sign out clears session; protected routes redirect to login
     targets: [web]
-    status: pending
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
 
   # --- vault CRUD ---
   - id: vault.items-list
@@ -39,7 +45,8 @@ scenarios:
   - id: vault.item-create
     title: Create item via SPA; appears in list; audit row written
     targets: [web]
-    status: pending
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
   - id: vault.item-edit-archive
     title: Edit then archive an item; archive removes it from default list
     targets: [web]
@@ -47,7 +54,8 @@ scenarios:
   - id: vault.totp-live-code
     title: TOTP item shows a live 6-digit code that rolls over
     targets: [web]
-    status: pending
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
   - id: vault.grant-add-list
     title: Owner grants item to a human; grant appears in list
     targets: [web]
@@ -55,7 +63,8 @@ scenarios:
   - id: vault.audit-visible
     title: Audit page shows recent fill/use events
     targets: [web]
-    status: pending
+    file: e2e/tests/vault-web.e2e.ts
+    status: written
 
   # --- extension fill ---
   - id: fill.inline-suggest-pick

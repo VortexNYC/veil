@@ -129,6 +129,7 @@ export default function Items() {
         ListHeaderComponent={
           <View style={{ paddingHorizontal: 16, paddingBottom: 10, gap: 10 }}>
             <TextInput
+              accessibilityLabel="Search accounts"
               value={query}
               onChangeText={setQuery}
               placeholder="Search accounts, usernames, domains, or '2fa'…"
@@ -204,7 +205,9 @@ export default function Items() {
           ) : null
         }
         renderItem={({ item }) => (
-          <Pressable accessibilityRole="button"
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={item.name}
             onPress={() =>
               router.push({
                 pathname: "/item/[id]",
