@@ -95,7 +95,7 @@ Legend: **met** / **partial** / **gap** / **N/A**.
 | A1.1 Capacity planning | met | `docs/scale.md`; pool sizing budgeted across replicas + audit pool; PgBouncer deferred behind a measured trigger. |
 | A1.2 Availability monitoring | met | `/health` liveness, `/ready` deep (issuer + PG + 5xx window). |
 | A1.3 Recovery | met | See CC7.4 / CC9.2. |
-| **SLA decision** | **open** | Private alpha: publish **no SLA**. Say so on the security page instead of implying one. |
+| **SLA decision** | **closed (beta)** | Public beta: **no uptime SLA** — stated on `/security`. |
 
 ## Confidentiality (C-series)
 
@@ -128,7 +128,7 @@ Ordered by what hurts a real customer first. Every gap has an owner action.
 | G1 | ~~No privacy policy~~ — `/privacy` shipped (collection, subprocessors, retention, alpha terms) | closed for alpha | Formal ToS + legal pass remain a pre-launch item, not an alpha blocker. |
 | G2 | ~~No incident response plan~~ | closed | `docs/incident-response.md` shipped — severity ladder, comms, postmortem, bus factor. |
 | G3 | ~~No vendor register~~ | closed | Register below; Vortex added when billing went live. Annual SOC-report collection stands. |
-| G4 | No scheduled access review | medium | Quarterly checklist in runbook; first one at next calendar quarter. |
+| G4 | No scheduled access review | medium | Quarterly checklist in `docs/runbook.md` § Quarterly access review; **first due 2026-02-01**. |
 | G5 | ~~No consolidated risk register~~ | closed | Risk register section below is it — promote to `docs/risk-register.md` only if it outgrows this doc. |
 | G6 | No external security review | medium | Schedule a scoped review (or self-review pass) before public launch; alpha is invite-only so blast radius is bounded. |
 | G7 | Support impersonation = owner curl | low | Document as procedure; formal support role only when volume demands. |
