@@ -256,8 +256,7 @@ Before inviting a new org (or a large batch), run the gate and deploy from GitHu
 git fetch origin main && git checkout main && git merge --ff-only origin/main
 sh scripts/railway-redeploy-origin.sh veil
 sh scripts/deploy-check.sh
-sh scripts/alpha-ready.sh
-make prove-live   # optional; CLI use/deny on mini — run before a big cohort
+make prove-live
 ```
 
 **Onboard a customer org**

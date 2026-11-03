@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Origin proof. Railway origin + https://veil.nyc. Never prints tokens or vault secrets.
+# Origin proof: Railway https://veil.nyc + public Hydra. Runs on the operator
+# laptop only — no SSH, no local identity docker. Never prints tokens or secrets.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,85 +8,43 @@ cd "$ROOT"
 
 ORIGIN="${VEIL_ORIGIN:-https://veil.nyc}"
 ISSUER="${VEIL_HYDRA_ISSUER:-https://id.veil.nyc}"
-SSH_HOST="${VEIL_LIVE_SSH:-mini}"
-MINI_HOME="${VEIL_LIVE_HOME:-/Users/shlomokabareti/.veil}"
-MINI_BIN="${VEIL_LIVE_BIN:-/Users/shlomokabareti/.local/bin/veil}"
-# mini's checkout stays at Projects/veil (VortexNYC/veil owns ~/Projects/veil there);
-# agent hydra secrets live under ~/.config/vortex on both machines.
-MINI_SECRET="${VEIL_LIVE_SECRET:-/Users/shlomokabareti/.config/vortex/veil/cursor.hydra}"
-MINI_IDENTITY="${VEIL_LIVE_IDENTITY:-/Users/shlomokabareti/Projects/veil/identity}"
+VEIL_BIN="${VEIL_LIVE_BIN:-${VEIL_BIN:-$(command -v veil 2>/dev/null || echo "$HOME/.local/bin/veil")}}"
+SECRET="${VEIL_LIVE_SECRET:-${VEIL_HYDRA_SECRET_FILE:-$HOME/.config/vortex/veil/cursor.hydra}}"
 AGENT="${VEIL_LIVE_AGENT:-cursor}"
 JWT_FILE="$(mktemp)"
 CLI_OUT="$(mktemp)"
-chmod 600 "$JWT_FILE"
-chmod 600 "$CLI_OUT"
-
+chmod 600 "$JWT_FILE" "$CLI_OUT"
 cleanup() { rm -f "$JWT_FILE" "$CLI_OUT"; }
 trap cleanup EXIT
 
-remote() {
-  ssh -o BatchMode=yes "$SSH_HOST" "$@"
-}
-
-ensure_identity() {
-  echo "== identity via $SSH_HOST"
-  remote "set -euo pipefail
-    cd '$MINI_IDENTITY'
-    docker compose --env-file .env -f compose.yml up -d >/dev/null 2>&1
-    for i in \$(seq 1 20); do
-      if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:4444/health/ready; then
-        exit 0
-      fi
-      sleep 1
-    done
-    echo 'hydra not ready on mini' >&2
-    exit 1
-  "
-}
-
-mint() {
-  echo "== mint $AGENT via $SSH_HOST (jwt not printed)"
-  remote "set -euo pipefail
-    export VEIL_HOME='$MINI_HOME' VEIL_HYDRA_ISSUER='$ISSUER'
-    rm -f /tmp/veil-prove-live.jwt
-    '$MINI_BIN' agent token '$AGENT' --secret-file '$MINI_SECRET' --out-file /tmp/veil-prove-live.jwt >/dev/null
-    chmod 600 /tmp/veil-prove-live.jwt
-  "
-  scp -q "$SSH_HOST:/tmp/veil-prove-live.jwt" "$JWT_FILE"
-  remote "rm -f /tmp/veil-prove-live.jwt"
-}
-
-echo "== origin $ORIGIN"
-ensure_identity
-
-code="$(curl -sS -o /tmp/veil-prove-health.txt -w '%{http_code}' --max-time 10 "$ORIGIN/health")"
-echo "== GET /health http=$code"
-test "$code" = "200"
-
-ready_code="$(curl -sS -o /tmp/veil-prove-ready.txt -w '%{http_code}' --max-time 10 "$ORIGIN/ready" || true)"
-echo "== GET /ready http=$ready_code"
-if test "$ready_code" != "200"; then
-  echo "== issuer discovery (Mini process may not have /ready until rebuild)"
-  curl -sf --max-time 10 "$ISSUER/.well-known/openid-configuration" >/dev/null
+if [ -n "${VEIL_LIVE_SSH:-}" ]; then
+	echo "== note: VEIL_LIVE_SSH is ignored (prove-live is local-only since 2026-11)" >&2
 fi
 
-mint
+echo "== deploy-check"
+sh scripts/deploy-check.sh
+
+echo "== issuer $ISSUER"
+curl -sf --max-time 15 "$ISSUER/.well-known/openid-configuration" >/dev/null
+
+echo "== mint $AGENT (jwt not printed)"
+VEIL_ORIGIN="$ORIGIN" VEIL_HYDRA_ISSUER="$ISSUER" \
+	"$VEIL_BIN" agent token "$AGENT" --secret-file "$SECRET" --out-file "$JWT_FILE" >/dev/null
 test -s "$JWT_FILE"
 
 echo "== go test liveorigin"
 VEIL_ORIGIN="$ORIGIN" VEIL_LIVE_JWT_FILE="$JWT_FILE" \
-  go test -tags liveorigin ./internal/livetest -count=1 -timeout 3m
+	go test -tags liveorigin ./internal/livetest -count=1 -timeout 5m
 
-echo "== CLI use github on $SSH_HOST"
-remote "set -euo pipefail
-  export VEIL_HOME='$MINI_HOME' VEIL_HYDRA_ISSUER='$ISSUER'
-  '$MINI_BIN' use --agent '$AGENT' --item github --url https://api.github.com/user
-" >"$CLI_OUT"
+echo "== CLI use github (VEIL_ORIGIN HTTP)"
+export VEIL_ORIGIN
+"$VEIL_BIN" use --agent "$AGENT" --oidc-token-file "$JWT_FILE" \
+	--item github --url https://api.github.com/user >"$CLI_OUT"
 python3 - <<PY
 import json, re
 from pathlib import Path
 raw = Path("$CLI_OUT").read_text()
-if re.search(r"ghp_|lin_api_|cfut|cfat_|eyJ", raw):
+if re.search(r"ghp_|gho_|github_pat_|lin_api_|cfut|cfat_|eyJ", raw):
     raise SystemExit("cli leaked secret pattern")
 j = json.loads(raw)
 if j.get("decision") != "allow" or j.get("status") != 200:
@@ -97,10 +56,8 @@ print("cli github ok")
 PY
 
 echo "== CLI deny wrong host"
-remote "set -euo pipefail
-  export VEIL_HOME='$MINI_HOME' VEIL_HYDRA_ISSUER='$ISSUER'
-  '$MINI_BIN' use --agent '$AGENT' --item github --url https://example.com/
-" >"$CLI_OUT"
+"$VEIL_BIN" use --agent "$AGENT" --oidc-token-file "$JWT_FILE" \
+	--item github --url https://example.com/ >"$CLI_OUT"
 python3 - <<PY
 import json
 from pathlib import Path
