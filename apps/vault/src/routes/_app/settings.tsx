@@ -28,6 +28,11 @@ import {
 import { claimsOf, token } from "../../auth";
 import { frontend } from "../../ory";
 import { PageChrome } from "../../page-chrome";
+import {
+  agentApprovalAlertsEnabled,
+  ensureNotificationPermission,
+  setAgentApprovalAlertsEnabled,
+} from "../../agent-approval-alerts";
 
 export const Route = createFileRoute("/_app/settings")({
   component: Settings,
@@ -36,6 +41,63 @@ export const Route = createFileRoute("/_app/settings")({
 // Inside Veil.app the SPA is served over the veil-app: scheme — the Mac
 // Fill settings window replaces the .dmg download there.
 const isMacApp = typeof window !== "undefined" && window.location.protocol === "veil-app:";
+
+function AgentApprovalAlertsCard() {
+  const [on, setOn] = useState(() => agentApprovalAlertsEnabled());
+  const [perm, setPerm] = useState<string>(() =>
+    typeof window !== "undefined" && "Notification" in window
+      ? Notification.permission
+      : "unsupported",
+  );
+
+  const toggle = async () => {
+    if (!on) {
+      const p = await ensureNotificationPermission();
+      setPerm(p);
+      if (p !== "granted") {
+        return;
+      }
+    }
+    const next = !on;
+    setAgentApprovalAlertsEnabled(next);
+    setOn(next);
+  };
+
+  return (
+    <LayerCard className="p-6">
+      <div className="mb-4">
+        <h3 className="text-base font-semibold text-kumo-strong">Agent approval alerts</h3>
+        <p className="mt-1 text-sm text-kumo-subtle">
+          Browser notifications when a level-1 agent (Grok, Cursor, …) files a new open
+          request. Owners only — resolve at Requests. On mobile, allow notifications for
+          app.veil.nyc.
+        </p>
+      </div>
+      {perm === "denied" ? (
+        <p className="text-sm text-red-400">
+          Notifications blocked — enable for app.veil.nyc in browser or system settings.
+        </p>
+      ) : null}
+      {perm === "unsupported" ? (
+        <p className="text-sm text-kumo-subtle">This browser does not support notifications.</p>
+      ) : (
+        <Button type="button" variant={on ? "primary" : "secondary"} onClick={() => void toggle()}>
+          {on ? "Alerts on" : "Enable alerts"}
+        </Button>
+      )}
+      <p className="mt-3 text-xs text-kumo-subtle">
+        <a
+          className="underline"
+          href="https://veil.nyc/docs/guides/grok"
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Grok + Veil
+        </a>
+      </p>
+    </LayerCard>
+  );
+}
 
 
 // LinkedDevicesCard lists the human's registered devices — each POSTs its
@@ -396,6 +458,7 @@ function Settings() {
           </LayerCard>
         ) : null}
         <TravelModeCard />
+        <AgentApprovalAlertsCard />
         <RecoveryKitCard />
         <LinkedDevicesCard />
         <LayerCard>

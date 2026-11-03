@@ -131,7 +131,12 @@ veil grant add --agent cursor --item github --level level2
 
 # Print the stdio MCP config for Cursor (uses token file path, never embeds the JWT)
 veil mcp laptop
+
+# Grok (grok.com custom connector — public URL, no tunnel)
+VEIL_AGENT=grok veil mcp http   # paste JSON at grok.com/connectors → Custom
 ```
+
+Human checklist: `veil onboard status` · docs [`onboarding`](docs/onboarding.md), [`grok`](docs/grok.md), [`migration-1password`](docs/migration-1password.md). Grok is **not** the 1Password Password Managers integration — API inject vs website autofill.
 
 ### 4. Single-Binary Self-Host Mode (No Ory Containers Required)
 

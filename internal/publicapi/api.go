@@ -518,6 +518,7 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/audit/events", s.auditFeed)
 	mux.HandleFunc("GET /v1/billing", s.getBilling)
 	mux.HandleFunc("POST /v1/billing/checkout", s.postBillingCheckout)
+	mux.HandleFunc("GET /v1/onboarding", s.getOnboarding)
 	// Phone push endpoints — the app registers its OS push token so
 	// approval asks and ops pages reach the lock screen.
 	mux.HandleFunc("POST /v1/devices", s.registerDevice)
@@ -2174,6 +2175,25 @@ func (s *Server) getBilling(w http.ResponseWriter, r *http.Request) {
 		v.Included = &cap
 	}
 	writeJSON(w, v)
+}
+
+// GET /v1/onboarding — human setup checklist for SPA and `veil onboard status`.
+// Owner-only facts (import, agents) are omitted for members. Not an MCP tool.
+func (s *Server) getOnboarding(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requirePrincipal(w, r)
+	if !ok {
+		return
+	}
+	if p.Kind != protocol.PrincipalHuman {
+		http.Error(w, "human only", http.StatusForbidden)
+		return
+	}
+	view, err := s.App.OnboardingFor(p)
+	if err != nil {
+		http.Error(w, "onboarding failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, view)
 }
 
 // POST /v1/billing/checkout — the upgrade click (VEIL-67). Owner-only:

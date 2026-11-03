@@ -1,0 +1,46 @@
+---
+title: Grok
+description: Custom MCP to veil.nyc, level-1 approvals, and how this differs from 1Password × Grok Bot.
+---
+
+Bearer is the **`grok`** agent (`agent-grok:<hydra_secret>` or reminted JWT). Finish [onboarding](/guides/onboarding) first — import, agent, grants.
+
+## Not 1Password for Grok Bot
+
+[1Password × Grok Bot](https://support.1password.com/1password-grok-bot/) is a native **Password Managers** link: Grok opens a **website login**, you approve in the **1Password app**, 1Password **autofills**. Grok never sees the password.
+
+Veil is **Custom MCP** at `https://veil.nyc/mcp`: **HTTP credential inject** for APIs. Same invariant (no secret in the model), different job. See [Migrating from 1Password](/guides/migration-1password) to move vault + re-wire Grok.
+
+## grok.com custom connector
+
+Origin is public — **no tunnel** for `veil.nyc`.
+
+```bash
+export VEIL_ORIGIN=https://veil.nyc
+export VEIL_AGENT=grok
+veil agent add grok
+veil agent hydra grok --secret-file ~/.config/vortex/veil/grok.hydra
+veil mcp http
+```
+
+Paste the JSON at [grok.com/connectors](https://grok.com/connectors) → **Custom**. Never use `${file:}` in cloud MCP config.
+
+## MCP tools
+
+Same five as [Agents](/guides/agents): `list_items`, `match_items`, `check`, `fetch`, `approval_status`.
+
+- **`check`** — on `need_approval`, files the ask and returns `request_id` (does not call upstream).
+- **Level1** — human resolves at [app.veil.nyc/requests](https://app.veil.nyc/requests); enable **Agent approval alerts** in Settings for browser notifications on your phone.
+
+## Grok Bot desktop
+
+- HTTP custom connector when supported.
+- Local MCP: `veil mcp laptop` with `grok.hydra` on the machine Grok spawns from.
+
+## Website login (Airbnb, …)
+
+MCP **`fetch` does not fill HTML login forms**. Install Veil **fill** (extension + host) on the device Grok’s browser uses. Agents move the cursor; secrets leave via fill, not MCP. Details: `docs/fill.md` in the repo.
+
+## Dual stack during migration
+
+You can keep 1Password Grok for personal web errands and Veil MCP for engineering until import is complete. Disconnect 1Password from Grok Bot when Veil is the only store you want agents to use.

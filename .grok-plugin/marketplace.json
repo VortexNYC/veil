@@ -1,0 +1,14 @@
+{
+  "name": "veil",
+  "owner": {
+    "name": "Vortex",
+    "url": "https://veil.nyc"
+  },
+  "plugins": [
+    {
+      "name": "veil",
+      "source": "./",
+      "description": "Veil MCP skill + Grok connector setup (https://veil.nyc/mcp)"
+    }
+  ]
+}
