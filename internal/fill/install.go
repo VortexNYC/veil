@@ -52,23 +52,41 @@ func InstallOrigin(env InstallEnv) error {
 	if err := WriteHostConfig(env.VaultHome, cfg); err != nil {
 		return err
 	}
-	// Every Chromium build keeps its own host-manifest dir keyed by its
-	// product channel — stable Chrome, for Testing, and unbranded
-	// Chromium do not share a lookup path.
-	chromeDirs := []string{
-		"Google/Chrome",
-		"Google/Chrome for Testing",
-		"Google/ChromeForTesting",
-		"Chromium",
-		"Microsoft Edge",
-		"BraveSoftware/Brave-Browser",
-		"Arc/User Data",
-		"Vivaldi",
-		"com.operasoftware.Opera",
+	var chromeDirs []string
+	var ffDir string
+	if runtime.GOOS == "darwin" {
+		// Every Chromium build keeps its own host-manifest dir keyed by its
+		// product channel — stable Chrome, for Testing, and unbranded
+		// Chromium do not share a lookup path.
+		for _, d := range []string{
+			"Google/Chrome",
+			"Google/Chrome for Testing",
+			"Google/ChromeForTesting",
+			"Chromium",
+			"Microsoft Edge",
+			"BraveSoftware/Brave-Browser",
+			"Arc/User Data",
+			"Vivaldi",
+			"com.operasoftware.Opera",
+		} {
+			chromeDirs = append(chromeDirs, filepath.Join(env.UserHome, "Library/Application Support", d, "NativeMessagingHosts"))
+		}
+		ffDir = filepath.Join(env.UserHome, "Library/Application Support/Mozilla/NativeMessagingHosts")
+	} else {
+		// Linux: XDG config dirs per channel. Chrome reads
+		// $XDG_CONFIG_HOME/google-chrome/NativeMessagingHosts, unbranded
+		// builds use chromium/. Firefox wants dotted lowercase.
+		xdg := os.Getenv("XDG_CONFIG_HOME")
+		if xdg == "" {
+			xdg = filepath.Join(env.UserHome, ".config")
+		}
+		for _, d := range []string{"google-chrome", "google-chrome-beta", "chromium", "microsoft-edge", "BraveSoftware/Brave-Browser"} {
+			chromeDirs = append(chromeDirs, filepath.Join(xdg, d, "NativeMessagingHosts"))
+		}
+		ffDir = filepath.Join(env.UserHome, ".mozilla", "native-messaging-hosts")
 	}
 	var chromePath []string
-	for _, d := range chromeDirs {
-		dir := filepath.Join(env.UserHome, "Library/Application Support", d, "NativeMessagingHosts")
+	for _, dir := range chromeDirs {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			continue
 		}
@@ -81,7 +99,6 @@ func InstallOrigin(env InstallEnv) error {
 	if len(chromePath) == 0 {
 		return fmt.Errorf("fill: no writable native-messaging dir")
 	}
-	ffDir := filepath.Join(env.UserHome, "Library/Application Support/Mozilla/NativeMessagingHosts")
 	if err := os.MkdirAll(ffDir, 0o755); err != nil {
 		return err
 	}
