@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "KratosRpcToken",
+  "logicalId": "KratosRpcToken",
+  "instanceId": "f499cbb40259831a1113a254c3396836",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "c2e43169aa8ac31acc3fba1659e0b66d59ac19625e2d8e25f4375e5d8b30d5f8"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Kratos"
+  ],
+  "removalPolicy": "destroy"
+}

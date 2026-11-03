@@ -3,10 +3,13 @@
 This project defines its Railway infrastructure in code.
 
 ```txt
-.railway/railway.ts
+.railway/railway.ts          ← production apply path today
+infra/alchemy/alchemy.run.ts ← Alchemy adopt slice (plan clean; cutover later)
 ```
 
 Use this file to describe the Railway project you want: services, databases, buckets, custom domains, replicas, groups, and environment variables.
+
+Alchemy (`infra/alchemy/`) declares the full production plane (services, domains, volumes, groups). Run `pnpm --filter @veil/railway-alchemy plan` from the repo root. `.railway/railway.ts` stays authoritative for bulk `preserve()` secrets until cutover; do not drop services from either file.
 
 The TypeScript file imports `railway/iac`. Install the SDK from the repository root:
 

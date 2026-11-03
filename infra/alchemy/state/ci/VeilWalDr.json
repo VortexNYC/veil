@@ -1,0 +1,53 @@
+{
+  "status": "updated",
+  "fqn": "VeilWalDr",
+  "logicalId": "VeilWalDr",
+  "instanceId": "541ae75a3f2c66acb6e633678a284f88",
+  "resourceType": "Railway.Service",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "veil-wal-dr",
+    "repo": "VortexNYC/veil",
+    "dockerfilePath": "Dockerfile.wal",
+    "region": "iad",
+    "startCommand": "sh /wal-archive.sh",
+    "publicDomain": false,
+    "env": {
+      "PGDUMP_BASE": "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
+      "PGSSLMODE": "disable",
+      "WAL_SLOT": "wal_archive_dr"
+    },
+    "rpcToken": {
+      "__redacted__": "d0e76fa224b136664f590dc2bac6a3e3a90a1ef870fc37438302d66015131055"
+    },
+    "isExternal": true
+  },
+  "attr": {
+    "serviceId": "2d96f168-918b-4356-97f3-9ee0c9d8a438",
+    "name": "veil-wal-dr",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "repo": "VortexNYC/veil",
+    "startCommand": "sh /wal-archive.sh",
+    "region": "iad",
+    "dnsName": "veil-wal-dr.railway.internal",
+    "rpcToken": "",
+    "deploymentId": "b4d197c5-55ec-4559-94c4-fd580c75614c",
+    "deploymentStatus": "INITIALIZING",
+    "code": {
+      "hash": ""
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "BackupPlane"
+  ],
+  "removalPolicy": "destroy"
+}

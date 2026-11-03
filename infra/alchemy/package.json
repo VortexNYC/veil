@@ -1,0 +1,21 @@
+{
+  "name": "@veil/railway-alchemy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "plan": "alchemy plan --adopt",
+    "plan-dry": "alchemy plan --adopt --dry-run",
+    "deploy": "alchemy deploy --adopt -y --no-input",
+    "destroy": "alchemy destroy",
+    "login:railway": "node scripts/railway-oauth-profile.mjs",
+    "seed:volumes": "node scripts/seed-volume-state.mjs",
+    "export:ci-state": "node scripts/export-ci-state.mjs",
+    "secret:github": "node scripts/set-github-railway-secret.mjs"
+  },
+  "dependencies": {
+    "@alchemy.run/railway": "2.0.0-beta.85",
+    "@effect/platform-node": "^4.1.2",
+    "alchemy": "2.0.0-beta.85",
+    "effect": "^4.1.2"
+  }
+}

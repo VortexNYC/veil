@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "VeilAuditExportRpcToken",
+  "logicalId": "VeilAuditExportRpcToken",
+  "instanceId": "e7eed72a940499d4897ab5ae6a9e1ae2",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "45823346450014b74351170c9cd8742dc590ef06c8c5e279d5fd3dd6adb4f0eb"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "VeilAuditExport"
+  ],
+  "removalPolicy": "destroy"
+}

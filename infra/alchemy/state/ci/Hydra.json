@@ -1,0 +1,54 @@
+{
+  "status": "updated",
+  "fqn": "Hydra",
+  "logicalId": "Hydra",
+  "instanceId": "3debe6ef451e7a587c627a61f61927c1",
+  "resourceType": "Railway.Service",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "hydra",
+    "image": "oryd/hydra:v26.2.0",
+    "port": 4444,
+    "region": "sfo",
+    "startCommand": "hydra serve all --sqa-opt-out",
+    "preDeploy": {
+      "command": "hydra migrate sql -e --yes"
+    },
+    "publicDomain": false,
+    "rpcToken": {
+      "__redacted__": "bcbe44c18bc4c43f58394cd7890fe25b2d12fa95df4a64fc0850e0d83c24560c"
+    },
+    "isExternal": true
+  },
+  "attr": {
+    "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+    "name": "hydra",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "image": "oryd/hydra:v26.2.0",
+    "healthcheckPath": "",
+    "startCommand": "hydra serve all --sqa-opt-out",
+    "region": "sfo",
+    "port": 4444,
+    "dnsName": "hydra.railway.internal",
+    "rpcToken": "",
+    "deploymentId": "0ec43aab-57da-43b5-bc6c-a29c8b3a9e56",
+    "deploymentStatus": "SUCCESS",
+    "code": {
+      "hash": ""
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "DomainIdVeilNyc",
+    "Identity"
+  ],
+  "removalPolicy": "destroy"
+}

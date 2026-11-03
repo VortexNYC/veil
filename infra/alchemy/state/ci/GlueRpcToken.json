@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "GlueRpcToken",
+  "logicalId": "GlueRpcToken",
+  "instanceId": "7edcd3ca988da80eb2b77c06053c88b1",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "08f0ed13c5141caf796fa43caab344a76482d9f05f91a462f659399fc7cc260b"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Glue"
+  ],
+  "removalPolicy": "destroy"
+}

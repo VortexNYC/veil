@@ -1,0 +1,52 @@
+{
+  "status": "updated",
+  "fqn": "Keto",
+  "logicalId": "Keto",
+  "instanceId": "d21f722d1446f308a662fabf1dc7486b",
+  "resourceType": "Railway.Service",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "keto",
+    "repo": "VortexNYC/veil",
+    "dockerfilePath": "identity/keto/Dockerfile",
+    "region": "sfo",
+    "startCommand": "keto serve -c /etc/config/keto/keto.yml",
+    "preDeploy": {
+      "command": "keto -c /etc/config/keto/keto.yml migrate up -y"
+    },
+    "publicDomain": false,
+    "rpcToken": {
+      "__redacted__": "3751fa85b2e2e9ffc3cccff031a9bc5806b621f41c556563ca33d911642ba189"
+    },
+    "isExternal": true
+  },
+  "attr": {
+    "serviceId": "59ecdbd2-1940-4946-bcdf-409317ec3e8a",
+    "name": "keto",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "repo": "VortexNYC/veil",
+    "replicas": 1,
+    "startCommand": "keto serve -c /etc/config/keto/keto.yml",
+    "region": "sfo",
+    "dnsName": "keto.railway.internal",
+    "rpcToken": "",
+    "deploymentId": "616a32f8-b87c-4947-9643-8e9d9a3bbdc4",
+    "deploymentStatus": "INITIALIZING",
+    "code": {
+      "hash": ""
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Identity"
+  ],
+  "removalPolicy": "destroy"
+}

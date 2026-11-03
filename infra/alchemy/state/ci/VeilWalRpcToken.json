@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "VeilWalRpcToken",
+  "logicalId": "VeilWalRpcToken",
+  "instanceId": "926dd7252e4640dc42d5f60be519fd7f",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "0e2737649e87e43daa7614b31ee46e3d911b7f3f4bd9639b9a5728b2ad2543b7"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "VeilWal"
+  ],
+  "removalPolicy": "destroy"
+}

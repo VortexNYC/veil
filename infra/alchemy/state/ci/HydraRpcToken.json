@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "HydraRpcToken",
+  "logicalId": "HydraRpcToken",
+  "instanceId": "0ec8c0b9b9e5381354ad4245c35b7753",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "bcbe44c18bc4c43f58394cd7890fe25b2d12fa95df4a64fc0850e0d83c24560c"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Hydra"
+  ],
+  "removalPolicy": "destroy"
+}

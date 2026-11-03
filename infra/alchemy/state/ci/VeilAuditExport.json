@@ -1,0 +1,54 @@
+{
+  "status": "updated",
+  "fqn": "VeilAuditExport",
+  "logicalId": "VeilAuditExport",
+  "instanceId": "834842445b6d7107fb20b9cdc397e297",
+  "resourceType": "Railway.Service",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "veil-audit-export",
+    "repo": "VortexNYC/veil",
+    "dockerfilePath": "Dockerfile",
+    "region": "sfo",
+    "startCommand": "/veil audit-export",
+    "restartPolicyType": "NEVER",
+    "cronSchedule": "42 * * * *",
+    "publicDomain": false,
+    "env": {
+      "VEIL_POSTGRES_DSN": "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil"
+    },
+    "rpcToken": {
+      "__redacted__": "45823346450014b74351170c9cd8742dc590ef06c8c5e279d5fd3dd6adb4f0eb"
+    },
+    "isExternal": true
+  },
+  "attr": {
+    "serviceId": "e6884f69-af2d-417d-8a1b-719d452180c4",
+    "name": "veil-audit-export",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "repo": "VortexNYC/veil",
+    "startCommand": "/veil audit-export",
+    "cronSchedule": "42 * * * *",
+    "region": "sfo",
+    "dnsName": "veil-audit-export.railway.internal",
+    "rpcToken": "",
+    "deploymentId": "73079667-0089-4d41-8bfa-9b3bbb9c252a",
+    "deploymentStatus": "INITIALIZING",
+    "code": {
+      "hash": ""
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "BackupPlane"
+  ],
+  "removalPolicy": "destroy"
+}

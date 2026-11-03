@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "VeilMonitorRpcToken",
+  "logicalId": "VeilMonitorRpcToken",
+  "instanceId": "649166a83d06991637ddef0ebba402b3",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "9d1cda6abf2a0f169c5bf7ae8d0afc2885933575082059a27b0dd6d08873b034"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "VeilMonitor"
+  ],
+  "removalPolicy": "destroy"
+}
