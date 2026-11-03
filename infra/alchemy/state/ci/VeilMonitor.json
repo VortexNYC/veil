@@ -24,12 +24,22 @@
       "VEIL_POSTGRES_DSN": "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/veil",
       "VEIL_MAIL_URL": "${{VeilOrigin.VEIL_MAIL_URL}}",
       "VEIL_MAIL_TOKEN": "${{VeilOrigin.VEIL_MAIL_TOKEN}}",
-      "VEIL_READY_URL": "https://veil.nyc/ready"
+      "VEIL_READY_URL": "https://veil.nyc/ready",
+      "VEIL_ALERT_TO": "${{shared.VEIL_ALERT_TO}}",
+      "VEIL_NTFY_TOPIC": "${{shared.VEIL_NTFY_TOPIC}}",
+      "VEIL_APNS_KEY": "${{shared.VEIL_APNS_KEY}}",
+      "VEIL_APNS_KEY_PATH": "${{shared.VEIL_APNS_KEY_PATH}}",
+      "VEIL_APNS_KEY_ID": "${{shared.VEIL_APNS_KEY_ID}}",
+      "VEIL_APNS_TEAM_ID": "${{shared.VEIL_APNS_TEAM_ID}}",
+      "VEIL_APNS_BUNDLE": "${{shared.VEIL_APNS_BUNDLE}}",
+      "VEIL_APNS_PROD": "${{shared.VEIL_APNS_PROD}}",
+      "POSTHOG_PROJECT_KEY": "${{shared.POSTHOG_PROJECT_KEY}}"
     },
     "rpcToken": {
       "__redacted__": "9d1cda6abf2a0f169c5bf7ae8d0afc2885933575082059a27b0dd6d08873b034"
     },
-    "isExternal": true
+    "isExternal": true,
+    "branch": "main"
   },
   "attr": {
     "serviceId": "e709fc87-f18a-44c8-8d33-16d9279fdef4",
@@ -42,7 +52,7 @@
     "region": "sfo",
     "dnsName": "veil-monitor.railway.internal",
     "rpcToken": "",
-    "deploymentId": "fc193fb4-023a-4095-81ef-8d95d11e8e13",
+    "deploymentId": "9aaee5ae-07dd-410f-99a8-e8a113f41f56",
     "deploymentStatus": "INITIALIZING",
     "code": {
       "hash": ""

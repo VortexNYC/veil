@@ -2,12 +2,25 @@ import * as Railway from "@alchemy.run/railway";
 import type { Project } from "@alchemy.run/railway/Project";
 import * as Effect from "effect/Effect";
 import { pgDumpBase, pgVeilDsn } from "./railway-env.ts";
+import { defineProductionNetwork } from "./network.ts";
+import {
+  defineProductionVariables,
+  defineIdentityVariables,
+  defineBrokerVariables,
+  offsiteTokenRef,
+  auditIngestTokenRef,
+} from "./variables/index.ts";
 
 const VEIL_REPO = "VortexNYC/veil";
 const POSTGRES_IMAGE = "ghcr.io/railwayapp-templates/postgres-ssl:18";
 
-/** Repo-linked services: no `branch` until Railway OAuth has GitHub repo access. */
-const REPO = { repo: VEIL_REPO } as const;
+/** GitHub branch: set `VEIL_RAILWAY_REPO_BRANCH=main` when OAuth has repo access (not account API tokens). */
+const REPO = {
+  repo: VEIL_REPO,
+  ...(process.env.VEIL_RAILWAY_REPO_BRANCH?.trim()
+    ? { branch: process.env.VEIL_RAILWAY_REPO_BRANCH.trim() }
+    : {}),
+} as const;
 
 export const defineProductionPlane = (veilProject: Project) =>
   Effect.gen(function* () {
@@ -18,6 +31,13 @@ export const defineProductionPlane = (veilProject: Project) =>
       region: "sfo",
       publicDomain: false,
     });
+
+    const network = yield* defineProductionNetwork(veilProject, postgres);
+
+    const variables = yield* defineProductionVariables(veilProject);
+    const offsiteShared = variables.offsite.shared;
+    const auditIngestShared = variables.auditIngest.shared;
+    const monitorRefs = variables.monitor.refs;
 
     const hydra = yield* Railway.Service("Hydra", {
       project: veilProject,
@@ -64,6 +84,13 @@ export const defineProductionPlane = (veilProject: Project) =>
       publicDomain: false,
     });
 
+    const identityVariables = yield* defineIdentityVariables(veilProject, {
+      hydra,
+      kratos,
+      keto,
+      glue,
+    });
+
     const veilOrigin = yield* Railway.Service("VeilOrigin", {
       project: veilProject,
       name: "veil",
@@ -80,6 +107,8 @@ export const defineProductionPlane = (veilProject: Project) =>
         VEIL_POSTGRES_DSN: pgVeilDsn(postgres),
       },
     });
+
+    const brokerVariables = yield* defineBrokerVariables(veilProject, veilOrigin);
 
     const veilMigrate = yield* Railway.Service("VeilMigrate", {
       project: veilProject,
@@ -124,6 +153,7 @@ export const defineProductionPlane = (veilProject: Project) =>
       env: {
         PGDUMP_BASE: pgDumpBase(postgres),
         PGSSLMODE: "disable",
+        OFFSITE_TOKEN: offsiteTokenRef,
       },
     });
 
@@ -138,6 +168,7 @@ export const defineProductionPlane = (veilProject: Project) =>
       env: {
         PGDUMP_BASE: pgDumpBase(postgres),
         PGSSLMODE: "disable",
+        OFFSITE_TOKEN: offsiteTokenRef,
       },
     });
 
@@ -153,6 +184,7 @@ export const defineProductionPlane = (veilProject: Project) =>
         PGDUMP_BASE: pgDumpBase(postgres),
         PGSSLMODE: "disable",
         WAL_SLOT: "wal_archive_dr",
+        OFFSITE_TOKEN: offsiteTokenRef,
       },
     });
 
@@ -168,6 +200,7 @@ export const defineProductionPlane = (veilProject: Project) =>
       publicDomain: false,
       env: {
         VEIL_POSTGRES_DSN: pgVeilDsn(postgres),
+        VEIL_AUDIT_INGEST_TOKEN: auditIngestTokenRef,
       },
     });
 
@@ -186,6 +219,15 @@ export const defineProductionPlane = (veilProject: Project) =>
         VEIL_MAIL_URL: Railway.ref(veilOrigin, "VEIL_MAIL_URL"),
         VEIL_MAIL_TOKEN: Railway.ref(veilOrigin, "VEIL_MAIL_TOKEN"),
         VEIL_READY_URL: "https://veil.nyc/ready",
+        VEIL_ALERT_TO: monitorRefs.VEIL_ALERT_TO,
+        VEIL_NTFY_TOPIC: monitorRefs.VEIL_NTFY_TOPIC,
+        VEIL_APNS_KEY: monitorRefs.VEIL_APNS_KEY,
+        VEIL_APNS_KEY_PATH: monitorRefs.VEIL_APNS_KEY_PATH,
+        VEIL_APNS_KEY_ID: monitorRefs.VEIL_APNS_KEY_ID,
+        VEIL_APNS_TEAM_ID: monitorRefs.VEIL_APNS_TEAM_ID,
+        VEIL_APNS_BUNDLE: monitorRefs.VEIL_APNS_BUNDLE,
+        VEIL_APNS_PROD: monitorRefs.VEIL_APNS_PROD,
+        POSTHOG_PROJECT_KEY: monitorRefs.POSTHOG_PROJECT_KEY,
       },
     });
 
@@ -252,25 +294,35 @@ export const defineProductionPlane = (veilProject: Project) =>
     const identity = yield* Railway.Group("Identity", {
       project: veilProject,
       name: "Identity",
-      resources: [hydra, kratos, keto, glue],
+      resources: [hydra, kratos, keto, glue, ...identityVariables.resources],
     });
 
     const store = yield* Railway.Group("Store", {
       project: veilProject,
       name: "Store",
-      resources: [postgres, postgresVolume, pwmVolume, veilSpoolVolume],
+      resources: [
+        postgres,
+        network.mesh,
+        network.postgresEndpoint,
+        postgresVolume,
+        pwmVolume,
+        veilSpoolVolume,
+      ],
     });
 
     const broker = yield* Railway.Group("Broker", {
       project: veilProject,
       name: "Broker",
-      resources: [veilOrigin, veilMigrate, veilSweep],
+      resources: [veilOrigin, veilMigrate, veilSweep, ...brokerVariables.resources],
     });
 
     const backupPlane = yield* Railway.Group("BackupPlane", {
       project: veilProject,
       name: "Backup plane",
       resources: [
+        offsiteShared,
+        auditIngestShared,
+        ...variables.monitor.resources,
         veilBackup,
         veilBackupsVolume,
         veilWal,
@@ -282,6 +334,8 @@ export const defineProductionPlane = (veilProject: Project) =>
 
     return {
       postgres,
+      network,
+      variables,
       hydra,
       kratos,
       keto,

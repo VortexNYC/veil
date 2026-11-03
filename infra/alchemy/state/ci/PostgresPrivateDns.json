@@ -1,0 +1,60 @@
+{
+  "status": "created",
+  "fqn": "PostgresPrivateDns",
+  "logicalId": "PostgresPrivateDns",
+  "instanceId": "44cafbf7b3642919569a33d28e9bf1e1",
+  "resourceType": "Railway.PrivateNetworkEndpoint",
+  "props": {
+    "network": {
+      "publicId": "9e0c83eb-b603-4c59-9e72-7444c32d5bb4",
+      "networkId": "3943742556",
+      "name": "railway",
+      "dnsName": "railway",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "tags": [
+        "SUPPORTS_IPV4_PRIVNETS"
+      ],
+      "createdAt": "2026-09-10T13:26:52.067Z",
+      "previousPrivateNetworkDisabled": false
+    },
+    "service": {
+      "serviceId": "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+      "name": "Postgres",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "image": "ghcr.io/railwayapp-templates/postgres-ssl:18",
+      "replicas": 1,
+      "region": "sfo",
+      "dnsName": "Postgres.railway.internal",
+      "rpcToken": "",
+      "deploymentId": "8df53094-ce90-4084-931a-ee5f503b91eb",
+      "deploymentStatus": "SUCCESS",
+      "code": {
+        "hash": ""
+      }
+    },
+    "name": "postgres"
+  },
+  "attr": {
+    "publicId": "aa697f0e-1976-4f30-bdc4-37129f44a5b5",
+    "dnsName": "postgres",
+    "newDnsName": "postgres",
+    "privateIps": [],
+    "serviceInstanceId": "826754a0-ebab-46b9-8313-e3453d560339",
+    "serviceId": "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+    "privateNetworkId": "9e0c83eb-b603-4c59-9e72-7444c32d5bb4",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "syncStatus": "ACTIVE",
+    "tags": [],
+    "createdAt": "2026-09-10T13:27:28.457Z",
+    "previousDnsPrefix": "postgres"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Store"
+  ],
+  "removalPolicy": "destroy"
+}

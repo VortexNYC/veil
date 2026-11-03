@@ -1,0 +1,52 @@
+{
+  "status": "updated",
+  "fqn": "VeilOriginVEILVORTEXAPIURL",
+  "logicalId": "VeilOriginVEILVORTEXAPIURL",
+  "instanceId": "7ad485fa4cfef6d0bcf6b5fc0d5233f8",
+  "resourceType": "Railway.Variable",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "service": {
+      "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+      "name": "veil",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "repo": "VortexNYC/veil",
+      "healthcheckPath": "/health",
+      "healthcheckTimeout": 300,
+      "startCommand": "/veil mcp",
+      "region": "sfo",
+      "port": 4461,
+      "dnsName": "veil.railway.internal",
+      "rpcToken": "",
+      "deploymentId": "620de907-7de2-4eb2-a566-e3942f3f9b61",
+      "deploymentStatus": "SUCCESS",
+      "code": {
+        "hash": ""
+      }
+    },
+    "name": "VEIL_VORTEX_API_URL",
+    "value": {
+      "__redacted__": "https://api.sandbox.vortex.nyc"
+    }
+  },
+  "attr": {
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+    "name": "VEIL_VORTEX_API_URL",
+    "digest": "https://api.sandbox.vortex.nyc"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Broker"
+  ],
+  "removalPolicy": "destroy"
+}

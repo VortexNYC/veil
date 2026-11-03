@@ -15,6 +15,72 @@
     "name": "Backup plane",
     "resources": [
       {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "OFFSITE_TOKEN",
+        "digest": "c2526769da38f5218b686351d4bc5f3cefe4ee704c6216bd0c7dcd3ad8480c49"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_AUDIT_INGEST_TOKEN",
+        "digest": "c2526769da38f5218b686351d4bc5f3cefe4ee704c6216bd0c7dcd3ad8480c49"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_ALERT_TO",
+        "digest": "shlomo@vortex.nyc"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_NTFY_TOPIC",
+        "digest": "veil-ops-500c2f72"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_APNS_KEY",
+        "digest": "fea411d7889c1dc6d474053feec8ab029de5138ab5314b2822da8d1b89ffb6b3"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_APNS_KEY_PATH",
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_APNS_KEY_ID",
+        "digest": "9ZR9A2NT9U"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_APNS_TEAM_ID",
+        "digest": "VFWGNKKT4G"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_APNS_BUNDLE",
+        "digest": "nyc.veil.phone"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "VEIL_APNS_PROD",
+        "digest": "1"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "name": "POSTHOG_PROJECT_KEY",
+        "digest": "7ce4669a032a9dd32152a07b7be32d569e3455f70e382260168f14949bfd5699"
+      },
+      {
         "serviceId": "f8b4b114-cef5-453d-8874-fd0fc52ba2e8",
         "name": "veil-backup",
         "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
@@ -25,7 +91,7 @@
         "region": "sfo",
         "dnsName": "veil-backup.railway.internal",
         "rpcToken": "",
-        "deploymentId": "4de4a984-5403-41b1-ae1d-71f4e44b3c9b",
+        "deploymentId": "fb4a46da-edc7-4f04-b555-e70f00e63c6e",
         "deploymentStatus": "INITIALIZING",
         "code": {
           "hash": ""
@@ -54,7 +120,7 @@
         "region": "sfo",
         "dnsName": "veil-wal.railway.internal",
         "rpcToken": "",
-        "deploymentId": "ca315709-9688-4798-854c-65d7b62d5823",
+        "deploymentId": "1c8b9c6a-5c9d-417f-bd09-5ef2f14e1cb9",
         "deploymentStatus": "INITIALIZING",
         "code": {
           "hash": ""
@@ -70,7 +136,7 @@
         "region": "iad",
         "dnsName": "veil-wal-dr.railway.internal",
         "rpcToken": "",
-        "deploymentId": "b4d197c5-55ec-4559-94c4-fd580c75614c",
+        "deploymentId": "96f203d5-2f7d-4006-a66f-773935b34771",
         "deploymentStatus": "INITIALIZING",
         "code": {
           "hash": ""
@@ -87,7 +153,7 @@
         "region": "sfo",
         "dnsName": "veil-audit-export.railway.internal",
         "rpcToken": "",
-        "deploymentId": "73079667-0089-4d41-8bfa-9b3bbb9c252a",
+        "deploymentId": "922beff3-2db0-40ea-9dd6-a1c495444d29",
         "deploymentStatus": "INITIALIZING",
         "code": {
           "hash": ""
@@ -104,7 +170,7 @@
         "region": "sfo",
         "dnsName": "veil-monitor.railway.internal",
         "rpcToken": "",
-        "deploymentId": "fc193fb4-023a-4095-81ef-8d95d11e8e13",
+        "deploymentId": "9aaee5ae-07dd-410f-99a8-e8a113f41f56",
         "deploymentStatus": "INITIALIZING",
         "code": {
           "hash": ""

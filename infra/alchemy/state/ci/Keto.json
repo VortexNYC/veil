@@ -24,7 +24,8 @@
     "rpcToken": {
       "__redacted__": "3751fa85b2e2e9ffc3cccff031a9bc5806b621f41c556563ca33d911642ba189"
     },
-    "isExternal": true
+    "isExternal": true,
+    "branch": "main"
   },
   "attr": {
     "serviceId": "59ecdbd2-1940-4946-bcdf-409317ec3e8a",
@@ -37,8 +38,8 @@
     "region": "sfo",
     "dnsName": "keto.railway.internal",
     "rpcToken": "",
-    "deploymentId": "616a32f8-b87c-4947-9643-8e9d9a3bbdc4",
-    "deploymentStatus": "INITIALIZING",
+    "deploymentId": "eb9ba161-e37c-4def-9c0c-38941dfd3e56",
+    "deploymentStatus": "SUCCESS",
     "code": {
       "hash": ""
     }
@@ -46,6 +47,7 @@
   "bindings": [],
   "providerVersion": 0,
   "downstream": [
+    "KetoDSN",
     "Identity"
   ],
   "removalPolicy": "destroy"

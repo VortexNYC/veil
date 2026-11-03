@@ -21,12 +21,14 @@
     "env": {
       "PGDUMP_BASE": "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
       "PGSSLMODE": "disable",
-      "WAL_SLOT": "wal_archive_dr"
+      "WAL_SLOT": "wal_archive_dr",
+      "OFFSITE_TOKEN": "${{shared.OFFSITE_TOKEN}}"
     },
     "rpcToken": {
       "__redacted__": "d0e76fa224b136664f590dc2bac6a3e3a90a1ef870fc37438302d66015131055"
     },
-    "isExternal": true
+    "isExternal": true,
+    "branch": "main"
   },
   "attr": {
     "serviceId": "2d96f168-918b-4356-97f3-9ee0c9d8a438",
@@ -38,7 +40,7 @@
     "region": "iad",
     "dnsName": "veil-wal-dr.railway.internal",
     "rpcToken": "",
-    "deploymentId": "b4d197c5-55ec-4559-94c4-fd580c75614c",
+    "deploymentId": "96f203d5-2f7d-4006-a66f-773935b34771",
     "deploymentStatus": "INITIALIZING",
     "code": {
       "hash": ""

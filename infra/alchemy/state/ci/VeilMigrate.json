@@ -26,7 +26,8 @@
     "rpcToken": {
       "__redacted__": "9ac0234e0fd20cc42167a1a16c730b071946b1bdc0f59efe7d5a3829b7567bec"
     },
-    "isExternal": true
+    "isExternal": true,
+    "branch": "main"
   },
   "attr": {
     "serviceId": "a51258d1-8742-49af-b1ca-5b8d677160ed",
@@ -38,8 +39,8 @@
     "region": "sfo",
     "dnsName": "veil-migrate.railway.internal",
     "rpcToken": "",
-    "deploymentId": "0ba62286-fcf7-459d-8e58-c318d3c59c09",
-    "deploymentStatus": "INITIALIZING",
+    "deploymentId": "90dc023b-be4b-4fdc-8646-a7de5c503a0c",
+    "deploymentStatus": "SUCCESS",
     "code": {
       "hash": ""
     }

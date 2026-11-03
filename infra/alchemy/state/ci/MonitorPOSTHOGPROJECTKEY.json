@@ -1,0 +1,32 @@
+{
+  "status": "updated",
+  "fqn": "MonitorPOSTHOGPROJECTKEY",
+  "logicalId": "MonitorPOSTHOGPROJECTKEY",
+  "instanceId": "6248371e7332388c1cd48270672eeaab",
+  "resourceType": "Railway.Variable",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "POSTHOG_PROJECT_KEY",
+    "value": {
+      "__redacted__": "7ce4669a032a9dd32152a07b7be32d569e3455f70e382260168f14949bfd5699"
+    }
+  },
+  "attr": {
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "name": "POSTHOG_PROJECT_KEY",
+    "digest": "7ce4669a032a9dd32152a07b7be32d569e3455f70e382260168f14949bfd5699"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "BackupPlane"
+  ],
+  "removalPolicy": "destroy"
+}

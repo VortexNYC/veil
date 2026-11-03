@@ -1,0 +1,50 @@
+{
+  "status": "updated",
+  "fqn": "GlueKETOWRITEURL",
+  "logicalId": "GlueKETOWRITEURL",
+  "instanceId": "5bab9e4187a9cac5538515c1d3d6fafc",
+  "resourceType": "Railway.Variable",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "service": {
+      "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+      "name": "glue",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "repo": "VortexNYC/veil",
+      "startCommand": "/identity-glue",
+      "region": "sfo",
+      "port": 4456,
+      "dnsName": "glue.railway.internal",
+      "rpcToken": "",
+      "deploymentId": "86586b6a-7d46-46d6-a1a9-454a3df0b824",
+      "deploymentStatus": "SUCCESS",
+      "code": {
+        "hash": ""
+      }
+    },
+    "name": "KETO_WRITE_URL",
+    "value": {
+      "__redacted__": "http://keto.railway.internal:4467"
+    }
+  },
+  "attr": {
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+    "name": "KETO_WRITE_URL",
+    "digest": "http://keto.railway.internal:4467"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Identity"
+  ],
+  "removalPolicy": "destroy"
+}

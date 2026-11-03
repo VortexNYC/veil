@@ -1,0 +1,32 @@
+{
+  "status": "created",
+  "fqn": "OffsiteTokenShared",
+  "logicalId": "OffsiteTokenShared",
+  "instanceId": "04a238c02dce58e3e7d83265d5459de1",
+  "resourceType": "Railway.Variable",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "OFFSITE_TOKEN",
+    "value": {
+      "__redacted__": "c2526769da38f5218b686351d4bc5f3cefe4ee704c6216bd0c7dcd3ad8480c49"
+    }
+  },
+  "attr": {
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "name": "OFFSITE_TOKEN",
+    "digest": "c2526769da38f5218b686351d4bc5f3cefe4ee704c6216bd0c7dcd3ad8480c49"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "BackupPlane"
+  ],
+  "removalPolicy": "destroy"
+}

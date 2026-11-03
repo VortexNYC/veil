@@ -26,7 +26,8 @@
     "rpcToken": {
       "__redacted__": "963be42976db4eb53756dac33f21b3439e20e1ffec8c06e78d4db33e5fc39967"
     },
-    "isExternal": true
+    "isExternal": true,
+    "branch": "main"
   },
   "attr": {
     "serviceId": "b45f9ae0-aa04-4261-8455-2e3a36d29b9a",
@@ -40,7 +41,7 @@
     "dnsName": "veil-sweep.railway.internal",
     "rpcToken": "",
     "deploymentId": "8bb65a54-5f42-473c-8b13-7dace85248fc",
-    "deploymentStatus": "INITIALIZING",
+    "deploymentStatus": "SUCCESS",
     "code": {
       "hash": ""
     }

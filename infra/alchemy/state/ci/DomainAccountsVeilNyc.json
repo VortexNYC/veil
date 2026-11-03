@@ -16,8 +16,8 @@
       "region": "sfo",
       "dnsName": "kratos.railway.internal",
       "rpcToken": "",
-      "deploymentId": "8061eaba-62f6-428f-9b16-8181ea12d8c3",
-      "deploymentStatus": "INITIALIZING",
+      "deploymentId": "f0bd85af-3208-4404-b685-32bc5014c291",
+      "deploymentStatus": "DEPLOYING",
       "code": {
         "hash": ""
       }
