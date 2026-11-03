@@ -32,6 +32,8 @@ import { signedIn, signOut, token, amrOf } from "../auth";
 import { CACHE_KEYS, preloadVaultCache, readCache, writeCache } from "../cache";
 import { FilterPill } from "../ui";
 import { billing, billingCheckout, recoveryShare, registerDevice } from "../origin";
+import { OnboardingBanner } from "../onboarding-banner";
+import { useAgentApprovalAlerts } from "../use-agent-approval-alerts";
 import type { BillingView, RecoveryShare } from "@vortex-api/veil";
 
 export const Route = createFileRoute("/_app")({
@@ -423,6 +425,7 @@ function lockVaultNow() {
 
 function Shell() {
   useRegisterWebDevice();
+  useAgentApprovalAlerts(true);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [genOpen, setGenOpen] = useState(false);
@@ -563,6 +566,7 @@ function Shell() {
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-auto">
             <BillingBanner />
+            <OnboardingBanner />
             <RecoveryKitBanner />
             <Outlet />
           </div>

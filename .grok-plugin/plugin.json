@@ -1,0 +1,22 @@
+{
+  "name": "veil",
+  "displayName": "Veil",
+  "version": "1.0.0",
+  "description": "Credential broker MCP for Grok: list_items, match_items, check, fetch, approval_status against https://veil.nyc/mcp — agents never receive vault secrets.",
+  "author": {
+    "name": "Vortex",
+    "url": "https://veil.nyc"
+  },
+  "homepage": "https://veil.nyc/docs/guides/grok",
+  "repository": "https://github.com/VortexNYC/veil",
+  "license": "MIT",
+  "keywords": [
+    "veil",
+    "credentials",
+    "mcp",
+    "grok",
+    "1password",
+    "agents"
+  ],
+  "skills": "../skills/"
+}

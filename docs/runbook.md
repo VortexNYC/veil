@@ -257,6 +257,8 @@ git fetch origin main && git checkout main && git merge --ff-only origin/main
 sh scripts/railway-redeploy-origin.sh veil
 sh scripts/deploy-check.sh
 make prove-live
+
+Human/agent setup: `docs/onboarding.md` · `docs/grok.md` · `docs/migration-1password.md` · `veil onboard status` · SPA checklist banner · Settings → Agent approval alerts (level1 + Grok).
 ```
 
 **Onboard a customer org**
@@ -271,7 +273,8 @@ make prove-live
 4. Set expectations: **Mac / iOS / Android** fill is proven (extension + system
    AutoFill). **Windows / Linux** = **browser extension only** (slices 35–36 native
    apps are not shipped). **Import** = one-shot `veil item import` (1Password export,
-   CSV, Bitwarden JSON) — not Connect sync.
+   CSV, Bitwarden JSON) — not Connect sync. **Grok** = Custom MCP (`veil mcp http`) +
+   optional fill for website login — not 1Password for Agents OAuth (`docs/grok.md`).
 5. **Billing (Vortex only)** — prod uses `VEIL_VORTEX_*` + webhook
    (`docs/billing.md`). Sandbox merchant is fine for dogfood; flip env + keys before
    charging non-Vortex strangers. Owner sees cap in SPA via `GET /v1/billing`;

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "veil": {
+      "type": "http",
+      "url": "https://veil.nyc/mcp",
+      "headers": {
+        "Authorization": "Bearer agent-grok:REPLACE_WITH_HYDRA_CLIENT_SECRET"
+      }
+    }
+  }
+}

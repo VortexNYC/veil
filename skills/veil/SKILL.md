@@ -36,3 +36,24 @@ Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints 
 5. **`approval_status`** (`mcp__veil__approval_status` / `veil__approval_status`):
    - Input: `{ "request_id": "req_..." }`
    - Polls the status (`open`, `approved`, `denied`, `expired`) of a `level1` approval request without re-triggering the upstream call. Once `status === "approved"`, retry `fetch`.
+
+## Grok (grok.com + Grok Bot)
+
+**Not** the [1Password × Grok Bot](https://support.1password.com/1password-grok-bot/) Password Managers integration. That path autofills **website logins** after approval in the 1Password app. Veil uses **Custom MCP** to `https://veil.nyc/mcp` for **HTTP API inject**.
+
+Before Grok can call tools: human must import items, create agent `grok`, and grant items (`veil onboard status`).
+
+```bash
+export VEIL_AGENT=grok
+veil mcp http   # grok.com/connectors → Custom — paste JSON; never ${file:} in cloud config
+```
+
+- **API tasks** (GitHub, Stripe, …): `match_items` → `fetch`.
+- **Level1**: human approves at app.veil.nyc/requests; you poll `approval_status`.
+- **Website login in Grok Bot** (Airbnb, …): MCP cannot fill forms — human needs Veil **fill** extension + host on that device (`docs/fill.md` execute mode).
+
+Human docs: https://veil.nyc/docs/guides/grok · https://veil.nyc/docs/guides/migration-1password
+
+## Human-only (never MCP)
+
+Import, provision, invites, agent creation, grants — owner or SPA. Tell the human to run `veil onboard guide` or open app.veil.nyc.

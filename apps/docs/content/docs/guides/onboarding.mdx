@@ -1,0 +1,39 @@
+---
+title: Onboarding
+description: Human checklist, MCP tools, Grok, and migration — SPA, CLI, and GET /v1/onboarding.
+---
+
+Humans administer the vault; agents **Use** granted items over MCP. Agents never import, invite, or provision.
+
+## Checklist
+
+- **SPA:** banner until `complete` (`GET /v1/onboarding`).
+- **CLI:** `veil onboard status` · `veil onboard guide`.
+
+Owner `complete`: ≥1 item, ≥1 agent, every agent has ≥1 grant.
+
+## Personas
+
+| Persona | Imports | Creates agents | MCP |
+|--------|---------|----------------|-----|
+| Human alone | SPA / CLI | SPA | — |
+| Human + Cursor | Human | Human | `veil mcp stdio` / `laptop` |
+| Human + Grok | Human | Human | [Grok guide](/guides/grok) |
+
+## MCP tools (five)
+
+`list_items` · `match_items` · `check` · `fetch` · `approval_status`
+
+Not on MCP: import, provision, invites, secrets in responses.
+
+## Migration
+
+[Migrating from 1Password](/guides/migration-1password) — including Grok Bot users.
+
+## Grok
+
+[Grok + Veil](/guides/grok) — custom connector, approvals, fill vs API.
+
+## Operator gate
+
+`make prove-live` before a cohort. Repo: `docs/runbook.md`.

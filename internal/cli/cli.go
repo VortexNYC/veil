@@ -97,6 +97,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(sweepCmd(&home))
 	root.AddCommand(monitorCmd())
 	root.AddCommand(doctorCmd(&home, version))
+	root.AddCommand(onboardCmd())
 	root.AddCommand(auditExportCmd())
 	root.AddCommand(reportCmd(&home))
 	root.AddCommand(recoveryCmd(&home))
