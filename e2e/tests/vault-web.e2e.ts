@@ -57,7 +57,7 @@ test("sign out clears the session", { platforms: ["web"] }, async ({ app, agent,
   await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
 });
 
-test("create item → appears in list → delete cleans up", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("member cannot create item; inline error is shown", { platforms: ["web"] }, async ({ app, agent, screen }) => {
   await app.open("/login");
   await signIn(screen, agent);
   // Member (not owner) cannot create items — POST /v1/items 400s and the
