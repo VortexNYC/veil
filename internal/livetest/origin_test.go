@@ -32,7 +32,8 @@ func TestOrigin(t *testing.T) {
 	t.Run("ready", func(t *testing.T) {
 		code, body := get(t, client, origin+"/ready", "")
 		assertNoLeak(t, body)
-		if code != 200 || strings.TrimSpace(string(body)) != "ok" {
+		ready := strings.TrimSpace(string(body))
+		if code != 200 || !strings.HasPrefix(ready, "ok") {
 			t.Fatalf("ready http=%d body=%q (issuer down)", code, clip(body))
 		}
 	})

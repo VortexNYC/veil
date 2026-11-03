@@ -119,6 +119,11 @@
     <li>Signup is open during the public beta; org owners can also invite an email — the invite carries a one-time recovery code.</li>
   </ul>
 
+  <h2>Availability</h2>
+  <p>During public beta we publish <strong>no uptime SLA</strong>. Origin health is
+  monitored internally (<code>/health</code>, <code>/ready</code>, backup heartbeats).
+  Outages are handled as operator incidents — not contractual credits.</p>
+
   <h2>Operations</h2>
   <ul>
     <li>Daily encrypted-at-rest dumps of every backing database, with restore drills run against real artifacts; offsite copies land in object storage on a separate failure domain.</li>

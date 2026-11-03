@@ -244,6 +244,43 @@ Who can reach what — diff reality against expectation each quarter:
 
 Anything unexplained is an S2 until proven otherwise.
 
+First review due **2026-02-01** (calendar quarter after 2025-11 rotation). Record
+the diff in Pile, not email.
+
+## Private alpha cohort
+
+Before inviting a new org (or a large batch), run the gate and deploy from GitHub
+`main` — never `railway up` from a laptop checkout (`scripts/railway-redeploy-origin.sh`).
+
+```bash
+git fetch origin main && git checkout main && git merge --ff-only origin/main
+sh scripts/railway-redeploy-origin.sh veil
+sh scripts/deploy-check.sh
+sh scripts/alpha-ready.sh
+make prove-live   # optional; CLI use/deny on mini — run before a big cohort
+```
+
+**Onboard a customer org**
+
+1. Owner signs up at `https://app.veil.nyc` (Kratos password + TOTP) or uses
+   `POST /v1/provision` after Hydra login — fresh org + wrapped master.
+2. Owner invites members: `veil human invite EMAIL --code-file …` (recovery code
+   file mode 600; never chat). Invitee completes recovery at `login.veil.nyc`.
+3. Owner adds items and grants (`grant add --human` / `--agent`). Agents mint with
+   `veil agent hydra` + `agent token --out-file` (origin admin for Hydra PUT) or
+   glue on first bind.
+4. Set expectations: **Mac / iOS / Android** fill is proven (extension + system
+   AutoFill). **Windows / Linux** = **browser extension only** (slices 35–36 native
+   apps are not shipped). **Import** = one-shot `veil item import` (1Password export,
+   CSV, Bitwarden JSON) — not Connect sync.
+5. **Billing (Vortex only)** — prod uses `VEIL_VORTEX_*` + webhook
+   (`docs/billing.md`). Sandbox merchant is fine for dogfood; flip env + keys before
+   charging non-Vortex strangers. Owner sees cap in SPA via `GET /v1/billing`;
+   upgrade is `POST /v1/billing/checkout` when `VEIL_VORTEX_PRICE_ID` is set.
+
+**After rotation or Hydra secret incidents:** every human re-login + every agent
+`agent token` remint before telling customers “you’re good.”
+
 ## Incidents
 
 `docs/incident-response.md` has the severity ladder, comms template, and
