@@ -162,7 +162,7 @@ function Control({
             .querySelectorAll("[data-veil-group] input, [data-veil-group] textarea, [data-veil-group] select")
             .forEach((el) => {
               const own = (el as HTMLElement).closest("[data-veil-group]")?.getAttribute("data-veil-group")
-              if (own !== g) (el as HTMLInputElement).disabled = true
+              if (own != null && own !== g) (el as HTMLInputElement).disabled = true
             })
         }
         onPick(name(n) || "method", value(n))
