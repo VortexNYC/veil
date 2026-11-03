@@ -62,7 +62,10 @@ test("create item → appears in list → delete cleans up", { platforms: ["web"
   await signIn(screen, agent);
   // Member (not owner) cannot create items — POST /v1/items 400s and the
   // dialog now surfaces the error inline (VTX-848).
-  await agent.act("open Add item, fill name 'e2e-scratch' and any generated password, and press Save");
+  await agent.act("click the Add item button");
+  await agent.act("type 'e2e-scratch' into the Name field");
+  await agent.act("type 'hunter2-scratch' into the Password field");
+  await agent.act("press Save");
   await agent.assert("an error is shown inside the Add item dialog (members cannot create items)");
   await agent.act("close the dialog");
 });
