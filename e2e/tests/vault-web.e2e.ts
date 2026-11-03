@@ -60,7 +60,7 @@ test("member cannot create item; inline error is shown", { platforms: ["web"] },
   // dialog now surfaces the error inline (VTX-848).
   await agent.act("click the Add item button");
   await agent.act("type 'e2e-scratch' into the Name field");
-  await agent.act("type 'hunter2-scratch' into the Password field");
+  await screen.getByLabel("Secret").fill("e2e-test-placeholder");
   await agent.act("press Save");
   await agent.assert("an error is shown inside the Add item dialog (members cannot create items)");
   await agent.act("close the dialog");
