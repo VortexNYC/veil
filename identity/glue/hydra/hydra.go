@@ -18,6 +18,8 @@ import (
 
 var ErrChallenge = errors.New("glue: consent challenge")
 
+var ErrLogoutChallenge = errors.New("glue: logout challenge")
+
 const DefaultClientID = "veil" // first-party Hydra client ID + default audience
 
 type Client struct {
@@ -61,6 +63,36 @@ func (c *Client) AcceptConsent(ctx context.Context, challenge string) (string, e
 	redirectTo := accepted.GetRedirectTo()
 	if redirectTo == "" {
 		return "", ErrChallenge
+	}
+	return redirectTo, nil
+}
+
+// AcceptLogout is the skip_logout_consent half of RP-initiated logout.
+// /oauth2/sessions/logout still redirects the browser to URLS_LOGOUT
+// carrying a logout_challenge — the verifier (this hop, glue) resolves
+// it and hands back the registered post_logout_redirect_uri.
+func (c *Client) AcceptLogout(ctx context.Context, challenge string) (string, error) {
+	if c == nil || c.admin == nil {
+		return "", fmt.Errorf("hydra: admin not configured")
+	}
+	if challenge == "" {
+		return "", ErrLogoutChallenge
+	}
+	if _, resp, err := c.admin.OAuth2API.GetOAuth2LogoutRequest(ctx).LogoutChallenge(challenge).Execute(); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrLogoutChallenge, err)
+	} else {
+		_ = resp
+	}
+	accepted, resp, err := c.admin.OAuth2API.AcceptOAuth2LogoutRequest(ctx).
+		LogoutChallenge(challenge).
+		Execute()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrLogoutChallenge, err)
+	}
+	_ = resp
+	redirectTo := accepted.GetRedirectTo()
+	if redirectTo == "" {
+		return "", ErrLogoutChallenge
 	}
 	return redirectTo, nil
 }

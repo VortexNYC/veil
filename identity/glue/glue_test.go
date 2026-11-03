@@ -119,6 +119,15 @@ func (f *fakeOry) start(t *testing.T) (kratosURL, hydraURL string) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"redirect_to": "http://127.0.0.1:4460/oidc/callback?code=ok"})
+		case r.Method == http.MethodGet && r.URL.Path == "/admin/oauth2/auth/requests/logout":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"challenge": r.URL.Query().Get("logout_challenge"),
+				"client":    map[string]any{"client_id": DefaultClientID},
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/admin/oauth2/auth/requests/logout/accept":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"redirect_to": "https://app.veil.nyc/login"})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/admin/clients/"):
 			if f.client == nil {
 				http.NotFound(w, r)
@@ -182,6 +191,21 @@ func TestHandlerConsentAcceptsWithoutScreen(t *testing.T) {
 	}
 	if strings.Contains(loc, humanEmail) || strings.Contains(loc, sessionTok) {
 		t.Fatal("secret leaked")
+	}
+}
+
+func TestHandlerLogoutAcceptsWithoutScreen(t *testing.T) {
+	ory := &fakeOry{}
+	k, h := ory.start(t)
+	g := newGlue(t, k, h)
+
+	rec := httptest.NewRecorder()
+	g.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/logout?logout_challenge=l-1", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "https://app.veil.nyc/login" {
+		t.Fatalf("location %q", loc)
 	}
 }
 
