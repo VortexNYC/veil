@@ -11,6 +11,11 @@ scenarios:
     targets: [web]
     file: e2e/tests/vault-web.e2e.ts
     status: written
+  - id: phone.ios-signin-items
+    title: Phone OIDC sign-in → items list → item detail
+    targets: [ios]
+    file: e2e/tests/phone.e2e.ts
+    status: written
   - id: auth.session-expired-remint
     title: Expired session remints and continues
     targets: [web]

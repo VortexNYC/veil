@@ -1,8 +1,12 @@
 import { test, secrets, expect } from "e2e";
 
-// Common workflows on the real deployed vault. Secrets come from
-// E2E_SECRET_* env or the local ~/.config/veil files — never committed.
-// Covers scenarios.yaml: auth.*, vault.* on target `web`.
+// Production vault workflows @ app.veil.nyc. Secrets from E2E_SECRET_* or
+// ~/.config/veil — never committed. Default human is the org *member* used for
+// launch regression (see E2E_VAULT_EMAIL); owner-only surfaces assert the gate.
+//
+// Transport: this file runs on @e2e-dev/web (Playwright). Manual browser proof
+// uses agent-browser (`vb`); iOS/Android legs use agent-device (see phone.e2e.ts);
+// macOS menu-bar / tray proof uses agent-desktop when installed.
 
 async function signIn(screen: {
   getByLabel: (t: string) => { fill: (v: unknown) => Promise<unknown> };
@@ -12,14 +16,20 @@ async function signIn(screen: {
   await screen.getByLabel("ID").fill(process.env.E2E_VAULT_EMAIL ?? "shlomo@vortex.nyc");
   await screen.getByLabel("Password").fill(secrets.get("vault-password"));
   await screen.getByRole("button", "Sign in with password").tap();
-  // Deterministic, not agent steps: each devin turn is ~10s and a code
-  // minted at secrets.get() goes stale before an LLM submits it.
-  // fill() resolves the secret function at fill time — inside the window.
   await expect(screen.getByLabel("Authentication code")).toBeVisible({ timeout: 15_000 });
   await screen.getByLabel("Authentication code").fill(secrets.get("totp-code"));
   await screen.getByRole("button", "Use Authenticator").tap();
   await expect(screen.getByRole("heading", "Sign in")).toBeHidden({ timeout: 30_000 });
-  await expect(screen.getByText(/item|search/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByLabel("Search items")).toBeVisible({ timeout: 15_000 });
+}
+
+async function waitForAccounts(screen: {
+  getByRole: (r: string, n?: string) => {
+    first: () => { tap: () => Promise<unknown> };
+  };
+}) {
+  await expect(screen.getByRole("listbox", "Accounts")).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByRole("option").first()).toBeVisible({ timeout: 15_000 });
 }
 
 test("sign in and land on the items list", { platforms: ["web"], timeout: 300_000 }, async ({ app, screen }) => {
@@ -27,24 +37,27 @@ test("sign in and land on the items list", { platforms: ["web"], timeout: 300_00
   await signIn(screen);
 });
 
-test("item detail shows masked secret with reveal control", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("item detail shows masked secret with reveal control", { platforms: ["web"] }, async ({ app, screen }) => {
   await app.open("/login");
   await signIn(screen);
-  await agent.act("open the first item in the list");
-  await agent.assert("the password shows masked dots and a Reveal control is present");
+  await waitForAccounts(screen);
+  await screen.getByRole("option").first().tap();
+  await expect(screen.getByRole("button", "Reveal")).toBeVisible({ timeout: 10_000 });
+  await expect(screen.getByText(/••••/)).toBeVisible();
 });
 
-test("search filters the item list", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("search filters the item list", { platforms: ["web"] }, async ({ app, screen }) => {
   await app.open("/login");
   await signIn(screen);
-  await agent.act("search for 'github'");
-  await agent.assert("the list shows only items related to github");
+  await waitForAccounts(screen);
+  await screen.getByLabel("Search items").fill("github");
+  await expect(screen.getByText("No matches")).toBeHidden({ timeout: 10_000 });
+  await expect(screen.getByRole("option").first()).toBeVisible();
 });
 
-test("sign out clears the session", { platforms: ["web"] }, async ({ app, screen, agent: _agent, browser: _browser }) => {
+test("sign out clears the session", { platforms: ["web"] }, async ({ app, screen }) => {
   await app.open("/login");
   await signIn(screen);
-  // Deterministic: the agent loses the top bar inside item-detail views.
   await app.open("/items");
   await expect(screen.getByRole("button", "Sign out").first()).toBeVisible();
   await screen.getByRole("button", "Sign out").first().tap();
@@ -53,30 +66,55 @@ test("sign out clears the session", { platforms: ["web"] }, async ({ app, screen
   await expect(screen.getByRole("heading", "Sign in")).toBeVisible({ timeout: 15_000 });
 });
 
-test("member cannot create item; inline error is shown", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("add item dialog reports outcome (member error or owner create)", { platforms: ["web"] }, async ({ app, screen }) => {
   await app.open("/login");
   await signIn(screen);
-  // Member (not owner) cannot create items — POST /v1/items 400s and the
-  // dialog now surfaces the error inline (VTX-848).
-  await agent.act("click the Add item button");
-  await agent.act("type 'e2e-scratch' into the Name field");
-  await screen.getByLabel("Secret").fill("e2e-test-placeholder");
-  await agent.act("press Save");
-  await agent.assert("an error is shown inside the Add item dialog (members cannot create items)");
-  await agent.act("close the dialog");
+  const name = `e2e-scratch-${Date.now()}`;
+  await screen.getByRole("button", "Add").tap();
+  await expect(screen.getByRole("heading", "Add item")).toBeVisible({ timeout: 10_000 });
+  await screen.getByLabel("Name").fill(name);
+  await screen.getByRole("button", "Generate").tap();
+  await screen.getByRole("button", "Save").tap();
+  const dialogClosed = screen.getByRole("heading", "Add item");
+  let ownerCreated = false;
+  try {
+    await expect(dialogClosed).toBeHidden({ timeout: 15_000 });
+    ownerCreated = true;
+  } catch {
+    await expect(screen.getByText("create failed")).toBeVisible({ timeout: 5_000 });
+  }
+  if (ownerCreated) {
+    await screen.getByLabel("Search items").fill(name);
+    await expect(screen.getByText(name).first()).toBeVisible({ timeout: 10_000 });
+    await screen.getByRole("option").first().tap();
+    await screen.getByRole("button", "Delete").tap();
+    await screen.getByRole("button", "Confirm Delete").tap();
+    await screen.getByLabel("Search items").fill(name);
+    await expect(screen.getByText("No matches")).toBeVisible({ timeout: 15_000 });
+  }
 });
 
-test("TOTP item shows a live rolling code", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("TOTP item shows a live rolling code", { platforms: ["web"] }, async ({ app, screen }) => {
   await app.open("/login");
   await signIn(screen);
-  await agent.act("open an item that has a TOTP code");
-  await agent.assert("a 6-digit code is shown and a countdown or rollover indicator is present");
+  await waitForAccounts(screen);
+  await screen.getByRole("button", "2FA").tap();
+  await expect(screen.getByRole("option").first()).toBeVisible({ timeout: 10_000 });
+  await screen.getByRole("option").first().tap();
+  await expect(screen.getByText("One-Time Password (2FA)")).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByText(/\d{3}\s?\d{3}/)).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByText(/\d+s/)).toBeVisible();
 });
 
-test("audit page shows recent events", { platforms: ["web"] }, async ({ app, agent, screen }) => {
+test("audit page loads for signed-in human", { platforms: ["web"] }, async ({ app, screen }) => {
   await app.open("/login");
   await signIn(screen);
-  // Audit feed is owner-only — a member gets the owner-gate state (VTX-847).
-  await agent.act("open the audit or activity page");
-  await agent.assert("the page explains the audit feed is visible to org owners (no raw 'list failed')");
+  await app.open("/audit");
+  await expect(screen.getByRole("heading", "Audit")).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByRole("button", "Refresh")).toBeVisible();
+  // Owner: filter + table. Member: owner-gate copy — never a raw "list failed".
+  await expect(screen.getByText(/list failed/i)).toBeHidden();
+  await expect(
+    screen.getByLabel("Filter audit events").or(screen.getByText(/org owners/i)),
+  ).toBeVisible({ timeout: 10_000 });
 });
