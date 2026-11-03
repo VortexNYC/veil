@@ -26,8 +26,8 @@
         "port": 4444,
         "dnsName": "hydra.railway.internal",
         "rpcToken": "",
-        "deploymentId": "0ec43aab-57da-43b5-bc6c-a29c8b3a9e56",
-        "deploymentStatus": "SUCCESS",
+        "deploymentId": "2097a84b-7fd9-4bde-992a-9fa48841df00",
+        "deploymentStatus": "INITIALIZING",
         "code": {
           "hash": ""
         }
@@ -43,8 +43,8 @@
         "region": "sfo",
         "dnsName": "kratos.railway.internal",
         "rpcToken": "",
-        "deploymentId": "8061eaba-62f6-428f-9b16-8181ea12d8c3",
-        "deploymentStatus": "INITIALIZING",
+        "deploymentId": "f0bd85af-3208-4404-b685-32bc5014c291",
+        "deploymentStatus": "DEPLOYING",
         "code": {
           "hash": ""
         }
@@ -60,8 +60,8 @@
         "region": "sfo",
         "dnsName": "keto.railway.internal",
         "rpcToken": "",
-        "deploymentId": "616a32f8-b87c-4947-9643-8e9d9a3bbdc4",
-        "deploymentStatus": "INITIALIZING",
+        "deploymentId": "eb9ba161-e37c-4def-9c0c-38941dfd3e56",
+        "deploymentStatus": "SUCCESS",
         "code": {
           "hash": ""
         }
@@ -77,11 +77,284 @@
         "port": 4456,
         "dnsName": "glue.railway.internal",
         "rpcToken": "",
-        "deploymentId": "8c944707-a0f7-4c05-bddd-5068bdca1ee5",
-        "deploymentStatus": "INITIALIZING",
+        "deploymentId": "86586b6a-7d46-46d6-a1a9-454a3df0b824",
+        "deploymentStatus": "SUCCESS",
         "code": {
           "hash": ""
         }
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_IN",
+        "digest": "header"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_NAME",
+        "digest": "Authorization"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE",
+        "digest": "51e2ef3185f4dccd3f38a94db5744093d10e25731e064b022814575e10e036ef"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "COURIER_HTTP_REQUEST_CONFIG_AUTH_TYPE",
+        "digest": "api_key"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "COURIER_SMTP_CONNECTION_URI",
+        "digest": "808e2c7ac51c9c9ac87b5d5d51395512f2f3da650301c92950a89f4ebcfbb2d7"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "DSN",
+        "digest": "a3b0dbac0de99863c828a9f9d7e1af6e7c01d629fd06c4d87aed221cdce56cd9"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "PORT",
+        "digest": "4433"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "SECRETS_CIPHER",
+        "digest": "2bd45ed4eefa228ceba05e928d87d51e74d26f89a36c8869d7e899b946939838"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "SECRETS_COOKIE",
+        "digest": "47e60fc14b1ae2340e91dedd0973faf98afdef9cabd9b3528cced0819b2337ec"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+        "name": "SERVE_PUBLIC_PORT",
+        "digest": "4433"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "59ecdbd2-1940-4946-bcdf-409317ec3e8a",
+        "name": "DSN",
+        "digest": "c120be5459e46b146b1703203d6018593b4f6b0b2c110c5594aca2901d993277"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "DSN",
+        "digest": "766d9b3963b257c38c061a92613c303e6db39b9d8709279d587838d0c8760490"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "HYDRA_SYSTEM_SECRET",
+        "digest": "c3a63e1266bde3271878e98072b3958eafbe6eda909deda77841e61bc6c1ad2e"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT",
+        "digest": "dccdece631ced6880997726df7e230dfadd5755ab8e473f0cd0122c0638290b4"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "OIDC_SUBJECT_IDENTIFIERS_SUPPORTED_TYPES",
+        "digest": "public"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "PORT",
+        "digest": "4444"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SECRETS_SYSTEM",
+        "digest": "c3a63e1266bde3271878e98072b3958eafbe6eda909deda77841e61bc6c1ad2e"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_ADMIN_HOST",
+        "digest": "0.0.0.0"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_ADMIN_PORT",
+        "digest": "4445"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_COOKIES_SAME_SITE_MODE",
+        "digest": "Lax"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_PUBLIC_CORS_ALLOWED_ORIGINS",
+        "digest": "https://app.veil.nyc,http://127.0.0.1:4470,http://localhost:4470"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_PUBLIC_CORS_ALLOW_CREDENTIALS",
+        "digest": "false"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_PUBLIC_CORS_ENABLED",
+        "digest": "true"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_PUBLIC_HOST",
+        "digest": "0.0.0.0"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "SERVE_PUBLIC_PORT",
+        "digest": "4444"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "URLS_CONSENT",
+        "digest": "https://consent.veil.nyc/"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "URLS_LOGIN",
+        "digest": "https://accounts.veil.nyc/self-service/login/browser"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "URLS_LOGOUT",
+        "digest": "https://login.veil.nyc/logout"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "e3d9773a-bbce-4e5b-856c-64b1e8e6ec36",
+        "name": "URLS_SELF_ISSUER",
+        "digest": "https://id.veil.nyc"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "BOOTSTRAP_EMAIL",
+        "digest": "shlomo@vortex.nyc"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "BOOTSTRAP_PASSWORD",
+        "digest": "f5138b030473558b6f61d11b15a6a3683811ca018ff52585602cc35278d27c93"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "BROKER_REDIRECT_URL",
+        "digest": "http://127.0.0.1:4460/oidc/callback"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "HYDRA_ADMIN_URL",
+        "digest": "http://hydra.railway.internal:4445"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "HYDRA_CLIENT_ID",
+        "digest": "veil"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "KETO_READ_URL",
+        "digest": "http://keto.railway.internal:4466"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "KETO_WRITE_URL",
+        "digest": "http://keto.railway.internal:4467"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "KRATOS_ADMIN",
+        "digest": "http://kratos.railway.internal:4434"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "KRATOS_PUBLIC",
+        "digest": "http://kratos.railway.internal:4433"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+        "name": "PORT",
+        "digest": "4456"
       }
     ]
   },

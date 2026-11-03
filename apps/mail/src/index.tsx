@@ -11,7 +11,6 @@ interface Env {
 	EMAIL: SendEmail;
 	EMAIL_FROM: string;
 	MAIL_TOKEN: string;
-	RESEND_KEY?: string;
 	TELNYX_API_KEY?: string;
 	TELNYX_MESSAGING_PROFILE_ID?: string;
 	TELNYX_FROM?: string;
@@ -268,19 +267,8 @@ export default {
 			return Response.json({ error: "unknown template or missing subject/html" }, { status: 400 });
 		}
 		try {
-			if (env.RESEND_KEY) {
-				const res = await fetch("https://api.resend.com/emails", {
-					method: "POST",
-					headers: { Authorization: `Bearer ${env.RESEND_KEY}`, "Content-Type": "application/json" },
-					body: JSON.stringify({ from: env.EMAIL_FROM, to: [body.to], subject, html, text }),
-				});
-				if (!res.ok) {
-					return Response.json({ error: "send failed", detail: await res.text() }, { status: 502 });
-				}
-			} else {
-				const raw = buildMime(env.EMAIL_FROM, body.to, subject, text, html);
-				await env.EMAIL.send(new EmailMessage(mimeFromAddress(env.EMAIL_FROM), body.to, raw));
-			}
+			const raw = buildMime(env.EMAIL_FROM, body.to, subject, text, html);
+			await env.EMAIL.send(new EmailMessage(mimeFromAddress(env.EMAIL_FROM), body.to, raw));
 		} catch (err) {
 			return Response.json({ error: "send failed", detail: String(err) }, { status: 502 });
 		}

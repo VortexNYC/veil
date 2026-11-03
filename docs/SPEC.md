@@ -343,7 +343,7 @@ human
   directory          Kratos image          pinned, not the running product
   password           Kratos                same
   recovery           Kratos code flow      same
-  mail               Kratos courier        origin: Resend HTTP, from noreply@veil.nyc.
+  mail               Kratos courier        HTTP → mail.veil.nyc (Cloudflare Email worker).
                                            compose still mailpit. Railway blocks outbound SMTP.
   who a human is     our schema            email only, on disk
   screens            Ory Elements on Vite+  written. React + TanStack Router.
@@ -796,7 +796,7 @@ Next: Mac helper (slice 32). Typed-save / TOTP-from-page on Chrome are CFT-prove
 - [x] `human login --out-file` mints a Hydra ID token to disk. PKCE. `prompt=login` so Hydra cannot skip on a remembered session. `amr` must include totp. HTTP remint uses VEIL_LOGIN_EMAIL + password/TOTP files. Never stdout. Owner CLI and fill use `VEIL_HUMAN_TOKEN_FILE`, not the agent JWT.
 - [x] Identity on origin. Sibling Railway services: official Kratos, Keto, glue, Hydra. Login UI is Cloudflare Workers (`veil-login`) at `https://login.veil.nyc`. Kratos public is `https://accounts.veil.nyc`. Glue consent is `https://consent.veil.nyc`. Hydra first-party client `veil`. Live human mint against `https://id.veil.nyc`. Grants stay in the vault.
 - [x] Kratos MFA is official `totp` + `webauthn` (second factor, not passwordless) plus `lookup_secret`. Identity schema has totp account_name and webauthn identifier. Login UI is Ory Elements. Not a DIY MFA.
-- [x] Origin Kratos courier is Resend HTTP (`api.resend.com`) from `noreply@veil.nyc`. Compose stays mailpit. `--watch-courier` on origin. Railway blocks outbound SMTP. Recovery email is a product sender.
+- [x] Origin Kratos courier is HTTP to `https://mail.veil.nyc/` (Cloudflare Email worker, `apps/mail`). From `noreply@veil.nyc`. Compose stays mailpit. `--watch-courier` on origin. Railway blocks outbound SMTP. Not Resend.
 - [x] Human grants are the same grant object. `grant add --human` XOR `--agent`. CreateGrantRequest.human is a Kratos identity id, not email. Fill/list is owned or granted. Owner lists org items; a member lists items they own plus grants. Not a family vault. Not collections. Not Keto tuples.
 - [x] Family member `POST /v1/items` stamps OwnerUser. Owner stamps org. Import, grant-create, and grant-list stay owner. Agent 403. Generate is not a lie.
 - [x] SPA vault is Cloudflare (`apps/vault`, `app.veil.nyc`). Kumo. Browser PKCE, `prompt=login`, ID token kept only if `amr` contains totp. Origin CORS for that origin. Hydra first-party keeps the laptop callback and adds the SPA. Items, grants, agents, audit via generated SDK. Invite recovery code stays `--code-file`. Settings is Ory Elements. Not Tauri. Human reveal is `POST /v1/items/{name}/reveal` — human JWT only, audited as `reveal`, off the OpenAPI contract like `/v1/fill/*`; the SPA shows it from item row actions. No agent path.

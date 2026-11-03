@@ -1,0 +1,32 @@
+{
+  "status": "updated",
+  "fqn": "MonitorVEILNTFYTOPIC",
+  "logicalId": "MonitorVEILNTFYTOPIC",
+  "instanceId": "2fe0c48cbdd361e0ec7e54e6f4c992d6",
+  "resourceType": "Railway.Variable",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "VEIL_NTFY_TOPIC",
+    "value": {
+      "__redacted__": "veil-ops-500c2f72"
+    }
+  },
+  "attr": {
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "name": "VEIL_NTFY_TOPIC",
+    "digest": "veil-ops-500c2f72"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "BackupPlane"
+  ],
+  "removalPolicy": "destroy"
+}

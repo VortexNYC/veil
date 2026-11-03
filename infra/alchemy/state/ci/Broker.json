@@ -27,7 +27,7 @@
         "port": 4461,
         "dnsName": "veil.railway.internal",
         "rpcToken": "",
-        "deploymentId": "601ae6cf-9fee-4bd1-85bc-ab2bd8742fe3",
+        "deploymentId": "620de907-7de2-4eb2-a566-e3942f3f9b61",
         "deploymentStatus": "SUCCESS",
         "code": {
           "hash": ""
@@ -43,8 +43,8 @@
         "region": "sfo",
         "dnsName": "veil-migrate.railway.internal",
         "rpcToken": "",
-        "deploymentId": "0ba62286-fcf7-459d-8e58-c318d3c59c09",
-        "deploymentStatus": "INITIALIZING",
+        "deploymentId": "90dc023b-be4b-4fdc-8646-a7de5c503a0c",
+        "deploymentStatus": "SUCCESS",
         "code": {
           "hash": ""
         }
@@ -61,10 +61,297 @@
         "dnsName": "veil-sweep.railway.internal",
         "rpcToken": "",
         "deploymentId": "8bb65a54-5f42-473c-8b13-7dace85248fc",
-        "deploymentStatus": "INITIALIZING",
+        "deploymentStatus": "SUCCESS",
         "code": {
           "hash": ""
         }
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        "digest": "https://us.i.posthog.com/i/v1/traces"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+        "digest": "1bd77150514400f3b84b2d4411e12b9eb638c969b5e1d2e6a1e1f1319541eb7f"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL",
+        "digest": "http/protobuf"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "OTEL_RESOURCE_ATTRIBUTES",
+        "digest": "907540609ca5ac9e1c73fdcd0d4b1ddefe5b5a3f189bc87f83d18c229799bdad"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "OTEL_SERVICE_NAME",
+        "digest": "veil"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "PORT",
+        "digest": "4461"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_HOME",
+        "digest": "/data"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_HYDRA_ADMIN",
+        "digest": "http://hydra.railway.internal:4445"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_HYDRA_CLIENT_ID",
+        "digest": "veil"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_HYDRA_ISSUER",
+        "digest": "https://id.veil.nyc"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_KEK",
+        "digest": "9d1dc236fc6f6a2f9dcee77a197a34c59a3324ad37204d06d508e97a0a9425c4"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_KEYSVC_TOKEN",
+        "digest": "7f72a3570fe98e537d76c5be5a5457468e39b4dc0d8a567dd228ea8683b37ca2"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_KETO_READ",
+        "digest": "http://keto.railway.internal:4466"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_KETO_WRITE",
+        "digest": "http://keto.railway.internal:4467"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_KRATOS_ADMIN",
+        "digest": "http://kratos.railway.internal:4434"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_KRATOS_PUBLIC",
+        "digest": "http://kratos.railway.internal:4433"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_MAIL_TOKEN",
+        "digest": "1e65d153680aa95b274e6d32000987468818f16b8e2babb47d964eb31a97130b"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_MAIL_URL",
+        "digest": "https://mail.veil.nyc/"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_MCP_URL",
+        "digest": "https://veil.nyc/mcp"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_MAX_IN_FLIGHT_USE",
+        "digest": "300"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_PG_MAX_CONNS",
+        "digest": "20"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_PG_AUDIT_CONNS",
+        "digest": "2"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_FREE_USE_CAP",
+        "digest": "500"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_API_URL",
+        "digest": "https://api.sandbox.vortex.nyc"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_API_KEY",
+        "digest": "4329e3b3879f37fd4ad43c364eb94112f5270758b5e4e472573e83efeae877c3"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_MERCHANT_ID",
+        "digest": "795f8c1654c641b30799ba5c7353916b35299b32a86d3883e5d1a1e93d7cc2e6"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_ENV",
+        "digest": "sandbox"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_METER_ID",
+        "digest": "mtr_credential_use"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_USAGE_EVENT",
+        "digest": "credential_use"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_VORTEX_PRICE_ID",
+        "digest": "veil-pro-monthly"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_BILLING_WEBHOOK_SECRET",
+        "digest": "359bafb29b48feafa5991e1e54dac5c0a837ea0e835d05f3280da79d2130f850"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_CHECKOUT_SUCCESS_URL",
+        "digest": "https://app.veil.nyc/billing?paid=1"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_CHECKOUT_CANCEL_URL",
+        "digest": "https://app.veil.nyc/billing"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_APNS_KEY",
+        "digest": "fea411d7889c1dc6d474053feec8ab029de5138ab5314b2822da8d1b89ffb6b3"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_APNS_KEY_PATH",
+        "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_APNS_KEY_ID",
+        "digest": "9ZR9A2NT9U"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_APNS_TEAM_ID",
+        "digest": "VFWGNKKT4G"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_APNS_BUNDLE",
+        "digest": "nyc.veil.phone"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_APNS_PROD",
+        "digest": "1"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "POSTHOG_PROJECT_KEY",
+        "digest": "7ce4669a032a9dd32152a07b7be32d569e3455f70e382260168f14949bfd5699"
+      },
+      {
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "name": "VEIL_FCM_SERVICE_ACCOUNT",
+        "digest": "206e6326cf7bdcf5219cfcba7f2db8d081f9fbbd180a12425759ba41646022aa"
       }
     ]
   },

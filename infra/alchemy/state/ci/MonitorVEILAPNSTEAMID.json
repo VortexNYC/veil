@@ -1,0 +1,32 @@
+{
+  "status": "created",
+  "fqn": "MonitorVEILAPNSTEAMID",
+  "logicalId": "MonitorVEILAPNSTEAMID",
+  "instanceId": "b3b8e550f73d44c4811da0b66fbb06f6",
+  "resourceType": "Railway.Variable",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "VEIL_APNS_TEAM_ID",
+    "value": {
+      "__redacted__": "VFWGNKKT4G"
+    }
+  },
+  "attr": {
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "name": "VEIL_APNS_TEAM_ID",
+    "digest": "VFWGNKKT4G"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "BackupPlane"
+  ],
+  "removalPolicy": "destroy"
+}

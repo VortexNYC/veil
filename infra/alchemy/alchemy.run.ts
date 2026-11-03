@@ -5,9 +5,9 @@ import { defineProductionPlane } from "./src/plane.ts";
 
 /**
  * Veil production Railway plane — Alchemy management path.
- * Parity target: `.railway/railway.ts`. Secrets and preserve() vars stay
- * on Railway until explicitly declared here; Service env only sets literals
- * and ${{Postgres.*}} templates that match the IaC file.
+ * Parity target: `.railway/railway.ts` (reference only during migration).
+ * Secrets: migrate `preserve()` names in `src/preserve-manifest.ts` to
+ * `Railway.Variable` + `Redacted` / `Railway.ref` — never plaintext in git.
  */
 export default Alchemy.Stack(
   "VeilRailway",

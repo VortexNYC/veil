@@ -100,6 +100,6 @@ Note the escrow now covers more than the KEK: `veil-env-escrow.json` is a
 full per-service var snapshot (235 vars, 11 services) including kratos
 cipher/cookie secrets, hydra `SECRETS_SYSTEM` (the full rotation list —
 verified 2026-09-30 after the drill caught a 48/97-char truncation),
-hydra pairwise salt, courier/resend, glue bootstrap, billing vars.
+hydra pairwise salt, courier (mail.veil.nyc / Cloudflare Email), glue bootstrap, billing vars.
 Re-snapshot whenever a prod var changes; treat it as equal-weight to the
 KEK — it contains the KEK too.

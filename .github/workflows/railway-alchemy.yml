@@ -14,6 +14,11 @@ jobs:
       ALCHEMY_STAGE: ci
       ALCHEMY_PROFILE: default
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      VEIL_OFFSITE_TOKEN: ${{ secrets.VEIL_OFFSITE_TOKEN }}
+      VEIL_AUDIT_INGEST_TOKEN: ${{ secrets.VEIL_AUDIT_INGEST_TOKEN }}
+      VEIL_KEYSVC_TOKEN: ${{ secrets.VEIL_KEYSVC_TOKEN }}
+      VEIL_RAILWAY_PLAN_SOURCE: escrow-first
+      VEIL_RAILWAY_REPO_BRANCH: main
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +37,14 @@ jobs:
             echo "::error::RAILWAY_API_TOKEN repo secret is missing. From repo root: pnpm --filter @veil/railway-alchemy run secret:github"
             exit 1
           fi
+          if [ -z "$VEIL_OFFSITE_TOKEN" ]; then
+            echo "::error::VEIL_OFFSITE_TOKEN repo secret is missing. pnpm --filter @veil/railway-alchemy run secret:github-offsite"
+            exit 1
+          fi
+          if [ -z "$VEIL_AUDIT_INGEST_TOKEN" ]; then
+            echo "::error::VEIL_AUDIT_INGEST_TOKEN repo secret is missing. pnpm --filter @veil/railway-alchemy run secret:github-audit-ingest"
+            exit 1
+          fi
 
       - name: Install
         run: pnpm install --filter @veil/railway-alchemy --frozen-lockfile
@@ -48,12 +61,44 @@ jobs:
           mkdir -p .alchemy/state/VeilRailway/ci
           cp state/ci/*.json .alchemy/state/VeilRailway/ci/
 
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
+
+      - name: Load veil-monitor env for plan digests
+        working-directory: infra/alchemy
+        run: |
+          set -euo pipefail
+          node scripts/load-monitor-env.mjs >> "$GITHUB_ENV"
+
+      - name: Load identity-plane env for plan digests
+        working-directory: infra/alchemy
+        run: |
+          set -euo pipefail
+          node scripts/load-identity-env.mjs >> "$GITHUB_ENV"
+
+      - name: Load broker env for plan digests
+        working-directory: infra/alchemy
+        run: |
+          set -euo pipefail
+          node scripts/load-broker-env.mjs >> "$GITHUB_ENV"
+
       - name: Alchemy plan (adopt)
         working-directory: infra/alchemy
         run: |
           set -euo pipefail
           pnpm exec alchemy plan --adopt --no-input 2>&1 | tee /tmp/alchemy-plan.log
-          if ! grep -q "Plan: no changes" /tmp/alchemy-plan.log; then
-            echo "::error::Alchemy plan is not clean — sync infra/alchemy/state/ci (pnpm run export:ci-state) and fix drift."
+          if grep -q "Plan: no changes" /tmp/alchemy-plan.log; then
+            exit 0
+          fi
+          if grep -qE "to create|to delete" /tmp/alchemy-plan.log; then
+            echo "::error::Alchemy plan would create or delete resources — fix infra/alchemy/state/ci."
             exit 1
           fi
+          if grep -qE "Plan: [0-9]+ to update" /tmp/alchemy-plan.log; then
+            echo "Plan has metadata-only updates (committed digests); ok if no create/delete."
+            exit 0
+          fi
+          echo "::error::Unexpected Alchemy plan output — sync state/ci (pnpm run export:ci-state)."
+          exit 1

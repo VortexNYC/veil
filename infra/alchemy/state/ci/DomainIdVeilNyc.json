@@ -17,8 +17,8 @@
       "port": 4444,
       "dnsName": "hydra.railway.internal",
       "rpcToken": "",
-      "deploymentId": "0ec43aab-57da-43b5-bc6c-a29c8b3a9e56",
-      "deploymentStatus": "SUCCESS",
+      "deploymentId": "2097a84b-7fd9-4bde-992a-9fa48841df00",
+      "deploymentStatus": "INITIALIZING",
       "code": {
         "hash": ""
       }

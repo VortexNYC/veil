@@ -17,13 +17,15 @@ Restore in dependency order: Postgres first (everything mounts it), then
 identity plane, then the broker, then DNS.
 
 1. **Create the new stack.** `railway link` a fresh project (new region is
-   fine) and `railway config apply --yes` — `railway.ts` provisions
-   Postgres, kratos, keto, glue, hydra, veil, and every cron/volume as
-   declared. Preserve() secrets do NOT carry between projects: re-enter
-   `VEIL_KEK`, `VEIL_MASTER_KEY`, `VEIL_POSTGRES_DSN` deps, Hydra
-   `SECRETS_SYSTEM`/`OIDC_*` salts, Kratos `SECRETS_*`, `OFFSITE_TOKEN`,
-   `VEIL_MAIL_*`, billing vars — the full preserve() list in railway.ts.
-   Secrets live in 1Password `Agents`/`Dev Tools` + `~/.config/vortex/`.
+   fine). **Do not** `railway config apply --yes` on prod — plane is
+   `infra/alchemy/` (`pnpm run deploy:secrets`). Legacy `.railway/railway.ts`
+   throws if applied. For greenfield recovery, use Alchemy adopt against a
+   fresh Railway project or restore from `docs/backup-restore.md`, then set
+   secrets via `Railway.Variable` loaders (`infra/alchemy/MIGRATION.md`).
+   Postgres, kratos, keto, glue, hydra, veil, and every cron/volume via
+   `infra/alchemy/src/plane.ts`. Service secrets do NOT carry between projects:
+   load from Veil items + `~/.config/vortex/veil-env-escrow.json` through
+   `infra/alchemy/scripts/load-*-env.mjs`, or re-enter from 1Password escrows.
 
 2. **Re-arm WAL archiving on the new Postgres** (it does not carry over —
    pg_hba and postgresql.auto.conf live in the OLD cluster's PGDATA):
@@ -110,7 +112,7 @@ Verified counts: 291 items · 33 grants · 1614 audit · 6 agents ·
    *Lesson: escrow verification must be length/hash-compared against
    live prod vars, not just "a file exists."*
 2. **Escrow coverage gap** — kratos `SECRETS_CIPHER`/`SECRETS_COOKIE`,
-   `COURIER_*`, `RESEND_API_KEY`, hydra `OIDC_*` salt, glue `BOOTSTRAP_*`,
+   `COURIER_*`, hydra `OIDC_*` salt, glue `BOOTSTRAP_*`,
    and the `VEIL_VORTEX_*` billing vars were NOT escrowed anywhere.
    FIXED: full per-service env snapshot (235 vars, 11 services) now lives
    at `~/.config/vortex/veil-env-escrow.json` (mode 600) and 1Password
@@ -150,7 +152,7 @@ Verified counts: 291 items · 33 grants · 1614 audit · 6 agents ·
 |---|---|---|
 | veil | `VEIL_KEK`, `VEIL_MASTER_KEY`, `VEIL_MAIL_TOKEN` | `VEIL_*` URLs, billing placeholders, pool sizes |
 | hydra | `SECRETS_SYSTEM` (FULL LIST — comma-separated) | `OIDC_*` salt, `URLS_*`, `SERVE_*` |
-| kratos | *(should escrow)* `SECRETS_CIPHER` ≤32ch, `SECRETS_COOKIE` ≤32ch | `COURIER_*`, `RESEND_*`, `PORT` |
+| kratos | *(should escrow)* `SECRETS_CIPHER` ≤32ch, `SECRETS_COOKIE` ≤32ch | `COURIER_*` (mail.veil.nyc), `PORT` |
 | keto | — | `DSN` only |
 | glue | — | `BOOTSTRAP_*`, service URLs |
 | veil-wal / veil-backup / audit-export | `OFFSITE_TOKEN` | `PGDUMP_BASE` (templated) |

@@ -16,8 +16,8 @@
       "port": 4456,
       "dnsName": "glue.railway.internal",
       "rpcToken": "",
-      "deploymentId": "8c944707-a0f7-4c05-bddd-5068bdca1ee5",
-      "deploymentStatus": "INITIALIZING",
+      "deploymentId": "86586b6a-7d46-46d6-a1a9-454a3df0b824",
+      "deploymentStatus": "SUCCESS",
       "code": {
         "hash": ""
       }

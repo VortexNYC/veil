@@ -1,7 +1,8 @@
-// Copy live Alchemy state into committed CI snapshot (strips attr rpcToken strings).
+// Copy live Alchemy state into committed CI snapshot (strips rpcToken; hashes secret digests for git).
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { digestForGit } from "./digest-for-git.mjs";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const stage = process.env.ALCHEMY_STAGE ?? `live_${process.env.USER ?? "local"}`;
@@ -24,7 +25,18 @@ const scrub = (value) => {
     if (typeof value.rpcToken === "string" && value.rpcToken.length >= 32) {
       value.rpcToken = "";
     }
+    if (typeof value.digest === "string") {
+      value.digest = digestForGit(value.digest);
+    }
     for (const v of Object.values(value)) scrub(v);
+  }
+};
+
+const scrubDoc = (doc) => {
+  if (doc?.resourceType === "Railway.Variable" && doc.props?.value?.__redacted__) {
+    const d = digestForGit(String(doc.props.value.__redacted__));
+    doc.props.value = { __redacted__: d };
+    if (doc.attr && typeof doc.attr === "object") doc.attr.digest = d;
   }
 };
 
@@ -33,8 +45,12 @@ for (const name of readdirSync(src).filter((n) => n.endsWith(".json"))) {
   if (doc.attr && typeof doc.attr === "object" && "rpcToken" in doc.attr) {
     doc.attr.rpcToken = "";
   }
+  scrubDoc(doc);
   scrub(doc.props);
-  scrub(doc.old);
+  if (doc.old?.props) {
+    scrubDoc(doc.old);
+    scrub(doc.old.props);
+  }
   writeFileSync(join(dst, name), `${JSON.stringify(doc, null, 2)}\n`);
 }
 

@@ -20,12 +20,14 @@
     "publicDomain": false,
     "env": {
       "PGDUMP_BASE": "postgresql://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}",
-      "PGSSLMODE": "disable"
+      "PGSSLMODE": "disable",
+      "OFFSITE_TOKEN": "${{shared.OFFSITE_TOKEN}}"
     },
     "rpcToken": {
       "__redacted__": "0e2737649e87e43daa7614b31ee46e3d911b7f3f4bd9639b9a5728b2ad2543b7"
     },
-    "isExternal": true
+    "isExternal": true,
+    "branch": "main"
   },
   "attr": {
     "serviceId": "f6aaa0ab-ebd6-4135-9cec-ab5997b95eb3",
@@ -37,7 +39,7 @@
     "region": "sfo",
     "dnsName": "veil-wal.railway.internal",
     "rpcToken": "",
-    "deploymentId": "ca315709-9688-4798-854c-65d7b62d5823",
+    "deploymentId": "1c8b9c6a-5c9d-417f-bd09-5ef2f14e1cb9",
     "deploymentStatus": "INITIALIZING",
     "code": {
       "hash": ""

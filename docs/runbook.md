@@ -2,11 +2,12 @@
 
 Veil production lives in the Railway project `veil`
 (`project/92578292-9436-407b-af3e-0f7b19a74289`), environment
-`production`. Source of truth for the plane is `.railway/railway.ts` —
-change it there, review with `railway config plan`, apply with
-`railway config apply`. Do not hand-edit service config in the
-dashboard; `preserve()` secrets are the exception — they live only in
-the service and must never be re-entered by hand.
+`production`. Source of truth for the plane is **`infra/alchemy/`**
+(`alchemy.run.ts`, `src/plane.ts`). Review with `pnpm plan`, apply with
+`pnpm run deploy:secrets` (see `infra/alchemy/README.md`). **Do not**
+`railway config apply` — `.railway/railway.ts` is frozen. Do not hand-edit
+service shape in the dashboard; secrets are `Railway.Variable` (digest in
+Alchemy state, not git).
 
 | Service | Role |
 |---|---|
@@ -21,7 +22,7 @@ the service and must never be re-entered by hand.
 | `veil-audit-export` | Hourly cron: audit JSONL → R2 (same ingest bearer as backup). |
 | `veil-monitor` | Every 15 min: stale heartbeats, `/ready`, ntfy/email. |
 
-Canvas groups in `.railway/railway.ts`: **Identity**, **Store**, **Broker**, **Backup plane**.
+Canvas groups match `infra/alchemy/src/plane.ts`: **Identity**, **Store**, **Broker**, **Backup plane**.
 
 ## Deploy
 
@@ -163,16 +164,16 @@ email is signal, not noise — hard caps spend, soft does not.
   (link + `redeploy --from-source`). Not `railway up` from a local checkout.
 - **Postgres:** template image only — `ghcr.io/railwayapp-templates/postgres-ssl`.
   Never deploy the Veil repo Dockerfile to the Postgres service.
-- **IaC:** `railway config plan` then `railway config apply --yes` when the plan
-  matches intent (no surprise destroys).
+- **IaC:** `cd infra/alchemy && pnpm plan` then `pnpm run deploy` when the plan
+  matches intent. Refresh `state/ci/` after adopt (`pnpm run export:ci-state`).
 
 ## Operational secrets rotation
 
 Distinct from `veil key` (data-plane keys — `docs/key-rotation.md`).
 The operational secrets to rotate on suspicion or quarterly:
 
-- `VEIL_MAIL_TOKEN` / `VEIL_MAIL_URL` — Resend worker creds. Rotate on
-  the worker (`wrangler secret put`), then on `veil`, `veil-monitor`,
+- `VEIL_MAIL_TOKEN` / `VEIL_MAIL_URL` — Cloudflare mail worker (`mail.veil.nyc`) creds. Rotate on
+  the worker (`wrangler secret put MAIL_TOKEN`), then on `veil`, `veil-monitor`,
   `glue` (`preserve()` vars — set by hand). `veil-monitor` inherits via
   the `${{veil.VEIL_MAIL_TOKEN}}` reference, so only the worker secret
   and the `veil` var need setting. Sends fail during the skew window —
@@ -184,9 +185,9 @@ The operational secrets to rotate on suspicion or quarterly:
   `VEIL_AUDIT_INGEST_TOKEN` on `veil-audit-export`. After rotation, smoke:
   `curl -fsS -H "Authorization: Bearer $TOKEN" https://backup-ingest.veil.nyc/healthz`.
 - `VEIL_KEYSVC_URL` / `VEIL_KEYSVC_TOKEN` — origin unwrap for org_keys rows
-  sealed at `keys.veil.nyc` (0x02 blobs). Pinned in `.railway/railway.ts`;
-  production has every org_keys row on the service today. Drop from IaC only
-  after `veil key migrate-keysvc` and a verified row census (`get_byte(wrapped,0)=2`
+  sealed at `keys.veil.nyc` (0x02 blobs). `Railway.Variable` in
+  `infra/alchemy/src/variables/broker.ts`. Drop only after
+  `veil key migrate-keysvc` and a verified row census (`get_byte(wrapped,0)=2`
   count zero). See `docs/keysvc-rotation.md`.
 - `HYDRA_SYSTEM_SECRET` / `SECRETS_SYSTEM` — `SECRETS_SYSTEM` is a
   comma-separated list: the first entry encrypts new grant material,

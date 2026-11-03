@@ -1,35 +1,23 @@
-# Railway configuration
+# Railway configuration (legacy — frozen)
 
-This project defines its Railway infrastructure in code.
+**Production apply: `infra/alchemy/` only.** `.railway/railway.ts` throws if applied; it is kept so old docs/links resolve, not as IaC.
 
 ```txt
-.railway/railway.ts          ← production apply path today
-infra/alchemy/alchemy.run.ts ← Alchemy adopt slice (plan clean; cutover later)
+infra/alchemy/alchemy.run.ts  ← plan + deploy (`pnpm run deploy:secrets`)
+.railway/railway.ts           ← frozen; do not apply
 ```
 
-Use this file to describe the Railway project you want: services, databases, buckets, custom domains, replicas, groups, and environment variables.
+Do **not** run `railway config apply` on prod.
 
-Alchemy (`infra/alchemy/`) declares the full production plane (services, domains, volumes, groups). Run `pnpm --filter @veil/railway-alchemy plan` from the repo root. `.railway/railway.ts` stays authoritative for bulk `preserve()` secrets until cutover; do not drop services from either file.
+---
 
-The TypeScript file imports `railway/iac`. Install the SDK from the repository root:
+The notes below describe the legacy SDK workflow if you still need `railway config pull` for diffing.
 
 ```bash
 pnpm add railway
 ```
 
-## Common commands
-
-Create the configuration files:
-
-```bash
-railway config init
-```
-
-Import an existing Railway project into code:
-
-```bash
-railway config pull
-```
+## Common commands (legacy)
 
 Preview what Railway would change:
 
@@ -37,7 +25,7 @@ Preview what Railway would change:
 railway config plan
 ```
 
-Apply the planned changes:
+Apply (avoid on prod during Alchemy migration):
 
 ```bash
 railway config apply
@@ -45,17 +33,7 @@ railway config apply
 
 ## Notes
 
-- This file is the **full** production plane: kratos, keto, glue, hydra, veil, Postgres. Omitting a service and applying deletes it.
-- `railway config plan` is safe and does not change Railway.
-- `railway config apply` previews changes and asks before applying unless you pass `--yes`.
-- Destructive changes in non-interactive or agent sessions require `railway config apply --confirm-destructive` after reviewing the plan.
-- Do not apply a landmine subset. Secrets stay `preserve()`.
+- Omitting a service in `.railway/railway.ts` and applying **deletes** it — another reason not to apply during cutover.
+- Secrets are `preserve()` here; Alchemy uses `Railway.Variable` + `Redacted.make` / adopt (digest in state only).
 - Never `railway up` without `railway service link` on the intended service.
   Postgres must never use the Veil repo Dockerfile — only the postgres-ssl template.
-- CI should pin a plan (`railway config plan --out railway-plan.json`) and apply that file on merge (`railway config apply --plan railway-plan.json --yes --confirm-destructive`) so the reviewed change set is what lands. On GitHub Actions, use https://github.com/railwayapp/config.
-- Services already managed by `railway.json` must be migrated before `.railway/railway.ts` can manage them.
-- Keep one `.railway` file for the whole project. A named `export const partial` (or `PARTIAL` / `const Partial`) is a last resort for separate repos that cannot share that file. Do not add it unless omit=delete across repos is a blocker.
-- Use `replicas` for scaling; advanced placement can still specify region names.
-- Use `group("Name", [resources])` to keep large projects organized on the Railway canvas.
-- Secrets imported from Railway are rendered as `preserve()` so existing values are retained without writing secret values to source. Use `railway config pull --omit-preserved-variables` for a smaller import. `railway config pull --include-variables` decrypts and inlines non-sealed values (including secrets that were never sealed).
-- `railway config migrate` finds every `railway.json` / `railway.toml` in the repository and writes them into this one file.

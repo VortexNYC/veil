@@ -10,7 +10,22 @@
     "login:railway": "node scripts/railway-oauth-profile.mjs",
     "seed:volumes": "node scripts/seed-volume-state.mjs",
     "export:ci-state": "node scripts/export-ci-state.mjs",
-    "secret:github": "node scripts/set-github-railway-secret.mjs"
+    "scrub:ci-state-secrets": "node scripts/scrub-ci-state-secrets.mjs",
+    "secret:github": "node scripts/set-github-railway-secret.mjs",
+    "secret:github-offsite": "node scripts/set-github-offsite-secret.mjs",
+    "secret:github-audit-ingest": "node scripts/set-github-audit-ingest-secret.mjs",
+    "secret:github-keysvc": "node scripts/set-github-keysvc-secret.mjs",
+    "deploy:secrets": "node scripts/deploy-with-veil-secrets.mjs",
+    "sync:broker-keysvc": "node scripts/sync-broker-keysvc-to-railway.mjs",
+    "merge:keysvc-escrow": "node scripts/merge-keysvc-into-escrow.mjs",
+    "merge:broker-escrow-gaps": "node scripts/merge-broker-escrow-gaps.mjs",
+    "merge:monitor-escrow-gaps": "node scripts/merge-monitor-escrow-gaps.mjs",
+    "finish:broker": "node scripts/finish-broker-adopt.mjs",
+    "set:repo-branch": "node scripts/set-repo-branch-main.mjs",
+    "sync:branch-state": "node scripts/sync-branch-in-ci-state.mjs",
+    "strip:kratos-resend-escrow": "node scripts/strip-kratos-resend-escrow.mjs",
+    "finish:main-branch": "node scripts/finish-main-branch.mjs",
+    "manifest:list": "node --experimental-strip-types scripts/list-preserve-manifest.ts"
   },
   "dependencies": {
     "@alchemy.run/railway": "2.0.0-beta.85",
