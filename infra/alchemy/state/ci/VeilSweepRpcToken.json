@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "VeilSweepRpcToken",
+  "logicalId": "VeilSweepRpcToken",
+  "instanceId": "9f59593216ed201220c489e52216d1dd",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "963be42976db4eb53756dac33f21b3439e20e1ffec8c06e78d4db33e5fc39967"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "VeilSweep"
+  ],
+  "removalPolicy": "destroy"
+}

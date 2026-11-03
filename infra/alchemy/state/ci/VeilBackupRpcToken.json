@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "VeilBackupRpcToken",
+  "logicalId": "VeilBackupRpcToken",
+  "instanceId": "9390b8671b4c5dc436deb2cd7da0b06c",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "594bedb780d6d68e2ad6e9b94e9353f288f28c0f31db6c32699e508ef81bf41e"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "VeilBackup"
+  ],
+  "removalPolicy": "destroy"
+}

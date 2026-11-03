@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "PostgresRpcToken",
+  "logicalId": "PostgresRpcToken",
+  "instanceId": "699297190de255897dba67974f3e21de",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "f7d6a47ec226012cdc177d5a00cc8fda52acb341a2871d5ec1b31b16d6d57950"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Postgres"
+  ],
+  "removalPolicy": "destroy"
+}

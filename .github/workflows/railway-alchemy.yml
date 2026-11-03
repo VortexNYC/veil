@@ -1,0 +1,59 @@
+name: railway-alchemy
+
+on:
+  pull_request:
+    paths:
+      - "infra/alchemy/**"
+      - ".railway/**"
+  workflow_dispatch:
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    env:
+      ALCHEMY_STAGE: ci
+      ALCHEMY_PROFILE: default
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Require Railway token
+        run: |
+          if [ -z "$RAILWAY_API_TOKEN" ]; then
+            echo "::error::RAILWAY_API_TOKEN repo secret is missing. From repo root: pnpm --filter @veil/railway-alchemy run secret:github"
+            exit 1
+          fi
+
+      - name: Install
+        run: pnpm install --filter @veil/railway-alchemy --frozen-lockfile
+
+      - name: Alchemy profile (env auth)
+        run: |
+          mkdir -p "$HOME/.alchemy/profiles/default"
+          printf '%s\n' '{"format":"alchemy.profile/v1","provider":"Railway","metadata":{},"values":{"method":"env"}}' \
+            > "$HOME/.alchemy/profiles/default/railway.json"
+
+      - name: Restore committed Alchemy state
+        working-directory: infra/alchemy
+        run: |
+          mkdir -p .alchemy/state/VeilRailway/ci
+          cp state/ci/*.json .alchemy/state/VeilRailway/ci/
+
+      - name: Alchemy plan (adopt)
+        working-directory: infra/alchemy
+        run: |
+          set -euo pipefail
+          pnpm exec alchemy plan --adopt --no-input 2>&1 | tee /tmp/alchemy-plan.log
+          if ! grep -q "Plan: no changes" /tmp/alchemy-plan.log; then
+            echo "::error::Alchemy plan is not clean — sync infra/alchemy/state/ci (pnpm run export:ci-state) and fix drift."
+            exit 1
+          fi

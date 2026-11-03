@@ -1,0 +1,96 @@
+{
+  "status": "updated",
+  "fqn": "Store",
+  "logicalId": "Store",
+  "instanceId": "86f66c525680de9338b87d434e979793",
+  "resourceType": "Railway.Group",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "Store",
+    "resources": [
+      {
+        "serviceId": "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+        "name": "Postgres",
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "image": "ghcr.io/railwayapp-templates/postgres-ssl:18",
+        "replicas": 1,
+        "region": "sfo",
+        "dnsName": "Postgres.railway.internal",
+        "rpcToken": "",
+        "deploymentId": "8df53094-ce90-4084-931a-ee5f503b91eb",
+        "deploymentStatus": "SUCCESS",
+        "code": {
+          "hash": ""
+        }
+      },
+      {
+        "volumeId": "d374606b-2a0c-4805-8e72-568fc7fe8e30",
+        "volumeInstanceId": "8eded854-3fd9-4c95-8b8b-ef91ed2b066a",
+        "name": "postgres-volume",
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "mountPath": "/var/lib/postgresql/data",
+        "region": "sfo",
+        "serviceId": "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+        "state": "READY",
+        "sizeMB": 5000,
+        "createdAt": "2026-09-10T13:27:27.955Z"
+      },
+      {
+        "volumeId": "474002f6-6773-42a4-aaa2-767ee16d62b3",
+        "volumeInstanceId": "8cc694bb-86f0-4fc8-9a34-ec36c4cba588",
+        "name": "pwm-volume",
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "mountPath": "/data",
+        "region": "sfo",
+        "serviceId": "a51258d1-8742-49af-b1ca-5b8d677160ed",
+        "state": "READY",
+        "sizeMB": 500,
+        "createdAt": "2026-09-10T14:07:03.123Z"
+      },
+      {
+        "volumeId": "f527debb-44d2-47ea-9bec-049d648fb549",
+        "volumeInstanceId": "f8083443-8cc1-4285-9e20-a3b3fd612b81",
+        "name": "veil-spool",
+        "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+        "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+        "mountPath": "/spool",
+        "region": "sfo",
+        "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+        "state": "READY",
+        "sizeMB": 500,
+        "createdAt": "2026-09-30T22:46:55.236Z"
+      }
+    ]
+  },
+  "attr": {
+    "groupId": "e13ff957-fdab-47c5-aed9-b7f0b5e418a0",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "name": "Store",
+    "collapsed": false,
+    "serviceIds": [
+      "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+      "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+      "a51258d1-8742-49af-b1ca-5b8d677160ed"
+    ],
+    "volumeIds": [
+      "474002f6-6773-42a4-aaa2-767ee16d62b3",
+      "d374606b-2a0c-4805-8e72-568fc7fe8e30",
+      "f527debb-44d2-47ea-9bec-049d648fb549"
+    ],
+    "bucketIds": []
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [],
+  "removalPolicy": "destroy"
+}

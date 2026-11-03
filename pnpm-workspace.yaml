@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "infra/alchemy"
   - "identity/login"
   - "apps/backup-ingest"
   - "apps/docs"

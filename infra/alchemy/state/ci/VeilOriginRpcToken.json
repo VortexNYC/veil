@@ -1,0 +1,18 @@
+{
+  "status": "created",
+  "fqn": "VeilOriginRpcToken",
+  "logicalId": "VeilOriginRpcToken",
+  "instanceId": "7f798d469d4bf3de80eed37ac6624669",
+  "resourceType": "Alchemy.Random",
+  "attr": {
+    "text": {
+      "__redacted__": "cc28449d51a33cc31c95efbff6638f0deada5386d1b608ba85362bfdc950998c"
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "VeilOrigin"
+  ],
+  "removalPolicy": "destroy"
+}

@@ -1,0 +1,54 @@
+{
+  "status": "updated",
+  "fqn": "Kratos",
+  "logicalId": "Kratos",
+  "instanceId": "8b8f0958db1cbfb83daf53280acf8292",
+  "resourceType": "Railway.Service",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "name": "kratos",
+    "repo": "VortexNYC/veil",
+    "dockerfilePath": "identity/kratos/Dockerfile",
+    "region": "sfo",
+    "startCommand": "kratos serve -c /etc/config/kratos/kratos.yml --sqa-opt-out --watch-courier",
+    "healthcheck": "/health/ready",
+    "preDeploy": {
+      "command": "kratos -c /etc/config/kratos/kratos.yml migrate sql -e --yes"
+    },
+    "publicDomain": false,
+    "rpcToken": {
+      "__redacted__": "c2e43169aa8ac31acc3fba1659e0b66d59ac19625e2d8e25f4375e5d8b30d5f8"
+    },
+    "isExternal": true
+  },
+  "attr": {
+    "serviceId": "38d057f6-8505-4877-935f-909ffcd1d65e",
+    "name": "kratos",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "repo": "VortexNYC/veil",
+    "healthcheckPath": "/health/ready",
+    "startCommand": "kratos serve -c /etc/config/kratos/kratos.yml --sqa-opt-out --watch-courier",
+    "region": "sfo",
+    "dnsName": "kratos.railway.internal",
+    "rpcToken": "",
+    "deploymentId": "8061eaba-62f6-428f-9b16-8181ea12d8c3",
+    "deploymentStatus": "INITIALIZING",
+    "code": {
+      "hash": ""
+    }
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "DomainAccountsVeilNyc",
+    "Identity"
+  ],
+  "removalPolicy": "destroy"
+}

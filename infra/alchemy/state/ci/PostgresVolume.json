@@ -1,0 +1,54 @@
+{
+  "status": "updated",
+  "fqn": "PostgresVolume",
+  "logicalId": "PostgresVolume",
+  "instanceId": "8eded854-3fd9-4c95-8b8b-ef91ed2b066a",
+  "resourceType": "Railway.Volume",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "mountPath": "/var/lib/postgresql/data",
+    "service": {
+      "serviceId": "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+      "name": "Postgres",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "image": "ghcr.io/railwayapp-templates/postgres-ssl:18",
+      "replicas": 1,
+      "region": "sfo",
+      "dnsName": "Postgres.railway.internal",
+      "rpcToken": "",
+      "deploymentId": "8df53094-ce90-4084-931a-ee5f503b91eb",
+      "deploymentStatus": "SUCCESS",
+      "code": {
+        "hash": ""
+      }
+    },
+    "region": "sfo",
+    "sizeMB": 5000
+  },
+  "attr": {
+    "volumeId": "d374606b-2a0c-4805-8e72-568fc7fe8e30",
+    "volumeInstanceId": "8eded854-3fd9-4c95-8b8b-ef91ed2b066a",
+    "name": "postgres-volume",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "mountPath": "/var/lib/postgresql/data",
+    "region": "sfo",
+    "serviceId": "88259809-8163-4ce4-9d62-dbb6eb8b3ab4",
+    "state": "READY",
+    "sizeMB": 5000,
+    "createdAt": "2026-09-10T13:27:27.955Z"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Store"
+  ],
+  "removalPolicy": "destroy"
+}

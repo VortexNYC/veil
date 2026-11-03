@@ -1,0 +1,65 @@
+{
+  "status": "updated",
+  "fqn": "DomainConsentVeilNyc",
+  "logicalId": "DomainConsentVeilNyc",
+  "instanceId": "8547a658ff5f74f52ac10e49ab55461a",
+  "resourceType": "Railway.CustomDomain",
+  "props": {
+    "service": {
+      "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+      "name": "glue",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "repo": "VortexNYC/veil",
+      "startCommand": "/identity-glue",
+      "region": "sfo",
+      "port": 4456,
+      "dnsName": "glue.railway.internal",
+      "rpcToken": "",
+      "deploymentId": "8c944707-a0f7-4c05-bddd-5068bdca1ee5",
+      "deploymentStatus": "INITIALIZING",
+      "code": {
+        "hash": ""
+      }
+    },
+    "environment": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "domain": "consent.veil.nyc",
+    "targetPort": 4456
+  },
+  "attr": {
+    "customDomainId": "76531412-d7b5-44de-a35e-7c2352a4823b",
+    "domain": "consent.veil.nyc",
+    "serviceId": "91358b0f-8887-4d70-9787-d5ddec615df5",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "targetPort": 4456,
+    "verified": true,
+    "certificateStatus": "CERTIFICATE_STATUS_TYPE_VALID",
+    "verificationDnsHost": "_railway-verify.consent",
+    "verificationToken": "railway-verify=597255ed4b5e95b9ece59cbc20fa3b29bfaa94cc6d9cedbbb62c795a66f8f44d",
+    "dnsRecords": [
+      {
+        "name": "consent.veil.nyc",
+        "type": "CNAME",
+        "value": "7h07gkub.up.railway.app"
+      },
+      {
+        "name": "_railway-verify.consent.veil.nyc",
+        "type": "TXT",
+        "value": "railway-verify=597255ed4b5e95b9ece59cbc20fa3b29bfaa94cc6d9cedbbb62c795a66f8f44d"
+      }
+    ],
+    "syncStatus": "ACTIVE",
+    "url": "https://consent.veil.nyc"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [],
+  "removalPolicy": "destroy"
+}

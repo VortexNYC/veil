@@ -1,0 +1,57 @@
+{
+  "status": "updated",
+  "fqn": "VeilSpoolVolume",
+  "logicalId": "VeilSpoolVolume",
+  "instanceId": "f8083443-8cc1-4285-9e20-a3b3fd612b81",
+  "resourceType": "Railway.Volume",
+  "props": {
+    "project": {
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "name": "veil",
+      "workspaceId": "61f54908-59a9-40ab-a535-3789bb43bdd4",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "url": "https://railway.com/project/92578292-9436-407b-af3e-0f7b19a74289"
+    },
+    "mountPath": "/spool",
+    "service": {
+      "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+      "name": "veil",
+      "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+      "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+      "repo": "VortexNYC/veil",
+      "healthcheckPath": "/health",
+      "healthcheckTimeout": 300,
+      "startCommand": "/veil mcp",
+      "region": "sfo",
+      "port": 4461,
+      "dnsName": "veil.railway.internal",
+      "rpcToken": "",
+      "deploymentId": "601ae6cf-9fee-4bd1-85bc-ab2bd8742fe3",
+      "deploymentStatus": "SUCCESS",
+      "code": {
+        "hash": ""
+      }
+    },
+    "region": "sfo",
+    "sizeMB": 500
+  },
+  "attr": {
+    "volumeId": "f527debb-44d2-47ea-9bec-049d648fb549",
+    "volumeInstanceId": "f8083443-8cc1-4285-9e20-a3b3fd612b81",
+    "name": "veil-spool",
+    "projectId": "92578292-9436-407b-af3e-0f7b19a74289",
+    "environmentId": "a4b00b5d-533a-4701-b96a-bbf9bedd35c9",
+    "mountPath": "/spool",
+    "region": "sfo",
+    "serviceId": "7d8c7c08-c72b-4b18-9e0a-30bdfb740011",
+    "state": "READY",
+    "sizeMB": 500,
+    "createdAt": "2026-09-30T22:46:55.236Z"
+  },
+  "bindings": [],
+  "providerVersion": 0,
+  "downstream": [
+    "Store"
+  ],
+  "removalPolicy": "destroy"
+}
