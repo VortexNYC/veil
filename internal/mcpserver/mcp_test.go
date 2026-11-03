@@ -800,3 +800,48 @@ func TestMCPCheckDryRun(t *testing.T) {
 		t.Fatal("check leaked secret")
 	}
 }
+
+func TestMCPRequestFill(t *testing.T) {
+	a, err := app.Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	iss := newTestIssuer(t)
+	if _, err := a.AddItem("airbnb", "https://www.airbnb.com", []byte(secret)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgent("grok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.BindWorkload("grok", iss.URL, "agent-grok", "veil"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddGrant("grok", "airbnb", protocol.Level1); err != nil {
+		t.Fatal(err)
+	}
+	public := "http://veil.test/mcp"
+	ts := httptest.NewServer(Mux(a, public, iss.URL))
+	t.Cleanup(ts.Close)
+	ctx := context.Background()
+	cs := connect(t, ctx, ts.URL+Path, iss.token(t, "agent-grok", "veil"))
+	defer cs.Close()
+
+	out, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "request_fill",
+		Arguments: RequestFillIn{Item: "airbnb", URL: "https://www.airbnb.com/login"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte("need_approval")) || !bytes.Contains(raw, []byte("request_id")) {
+		t.Fatalf("request_fill: %s", raw)
+	}
+	if scrub.Contains(raw, []byte(secret)) {
+		t.Fatal("request_fill leaked secret")
+	}
+}

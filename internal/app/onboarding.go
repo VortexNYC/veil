@@ -66,6 +66,7 @@ var mcpToolNames = []string{
 	"match_items",
 	"check",
 	"fetch",
+	"request_fill",
 	"approval_status",
 }
 
@@ -75,6 +76,7 @@ func onboardingDocs() map[string]string {
 		"grok":                "https://veil.nyc/docs/guides/grok",
 		"migration_1password": "https://veil.nyc/docs/guides/migration-1password",
 		"1p_agents_landscape": "https://veil.nyc/docs/guides/1password-for-agents-landscape",
+		"veil_for_agents":     "https://veil.nyc/docs/guides/veil-for-agents",
 		"agents":              "https://veil.nyc/docs/guides/agents",
 	}
 }
@@ -119,6 +121,16 @@ func (a *App) OnboardingFor(p protocol.Principal) (OnboardingView, error) {
 					"If Grok spawns local MCP: `veil mcp laptop` with grok.hydra on PATH — parent must be Grok or set VEIL_AGENT=grok.",
 					"Website tasks (Airbnb, …): install Veil fill on the device Grok’s browser uses — MCP fetch does not fill login forms.",
 					"Disconnect 1Password from Grok Bot after migrating if Veil is the only store you want agents to use.",
+				},
+			},
+			{
+				ID:    "personal_agents",
+				Title: "Personal agents (Muse, Instinct, Town, Grok errands)",
+				Steps: []string{
+					"Same vault checklist; one Hydra agent per host (muse, instinct, grok, …).",
+					"Grant website login items; use MCP request_fill + approval_status for sign-in — not fetch with password.",
+					"Human approves at Requests; Veil extension + host on the browser device execute-fill after approval.",
+					"See docs/veil-for-agents.md — parity with 1Password for Agents without their OAuth slot.",
 				},
 			},
 			{

@@ -9,9 +9,9 @@ Last reviewed against [1password.com/personal-ai-agent-integrations](https://1pa
 | Partner | Job | Platforms (1P marketing) | Veil displacement |
 |--------|-----|--------------------------|-------------------|
 | **Meta Muse** | Personal errands, plans | iOS, Android, Web | Import + human fill; no Muse OAuth slot — MCP if Muse ever exposes HTTP tools |
-| **SpaceXSI Grok Bot** | Personal + coding teammate, browser tasks | iOS, Android, macOS, Windows, Linux | [grok.md](./grok.md) — Custom MCP + fill execute |
-| **Instinct** | Personal agent (mobile-first) | iOS, Android | Same pattern as Grok for API; fill for web |
-| **Town (Townie)** | Email/calendar/work assistant | iOS, Android, macOS, Windows, Linux | Org grants + MCP for APIs; fill for web |
+| **SpaceXSI Grok Bot** | Personal + coding teammate, browser tasks | iOS, Android, macOS, Windows, Linux | [veil-for-agents.md](./veil-for-agents.md) — MCP + **request_fill** + fill execute |
+| **Instinct** | Personal agent (mobile-first) | iOS, Android | Same |
+| **Town (Townie)** | Email/calendar/work assistant | iOS, Android, macOS, Windows, Linux | Same |
 
 ## Waitlist / coming soon (1P marketing page)
 
@@ -53,7 +53,7 @@ These are **developer / env** paths on the marketplace — **not** the Grok-styl
 
 | Agent class | 1Password gives | Veil gives |
 |-------------|-----------------|------------|
-| **Personal assistant** (Muse, Town, Instinct, Grok errands) | Native OAuth + in-app approval + form autofill | Import + **fill execute** on user device; no native partner slot without xAI/Meta/etc. deal |
+| **Personal assistant** (Muse, Town, Instinct, Grok errands) | Native OAuth + in-app approval + form autofill | **`request_fill`** MCP + Requests + fill execute on device |
 | **Coding / API** (Cursor, Codex, Devin, cloud MCP) | Environments MCP (env files) or manual | **Five-tool MCP**, grants, audit, honey, sessions, WIF |
 | **Browser automation** (Browserbase, Anchor) | Partner inject into browser session | MCP for API + fill for login forms |
 

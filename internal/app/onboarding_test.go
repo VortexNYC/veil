@@ -49,7 +49,7 @@ func TestOnboardingMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(view.McpTools) != 5 {
+	if len(view.McpTools) != 6 {
 		t.Fatalf("mcp tools: %v", view.McpTools)
 	}
 	if view.Docs["grok"] == "" {

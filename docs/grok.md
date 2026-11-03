@@ -51,7 +51,7 @@ The broker exchanges `agent-<name>:<secret>` at Hydra server-side (cached). Pref
 1. Open [grok.com/connectors](https://grok.com/connectors) → **New Connector** → **Custom**.
 2. Server URL: `https://veil.nyc/mcp`
 3. Authentication: **Bearer** header from `veil mcp http` (never `${file:}` in cloud JSON — hosts send the literal string and origin 401s).
-4. Grok discovers five tools (names may be prefixed, e.g. `veil__fetch`):
+4. Grok discovers six tools (names may be prefixed, e.g. `veil__fetch`):
 
 | Tool | Role |
 |------|------|
@@ -59,7 +59,8 @@ The broker exchanges `agent-<name>:<secret>` at Hydra server-side (cached). Pref
 | `match_items` | Which item matches a URL |
 | `check` | Dry-run decision; on `need_approval` **files** the ask and returns `request_id` |
 | `fetch` | Upstream HTTP with inject |
-| `approval_status` | Poll level-1 request; retry `fetch` when `approved` |
+| **`request_fill`** | Website login approval — no password to Grok |
+| `approval_status` | Poll level-1 or fill request; retry `fetch` or continue after local fill |
 
 Skill for Grok: repo `skills/veil/SKILL.md` (install via `.grok-plugin`).
 
@@ -86,15 +87,10 @@ When `fetch` or `check` returns `decision: "need_approval"`:
 
 Tasks like “book Airbnb” or “sign into this dashboard in the browser” are **not** solved by MCP `fetch`:
 
-- Login forms, OAuth buttons, passkeys, and CAPTCHA need **fill** (`docs/fill.md` **execute** mode).
-- Agents **never** receive fill secrets on MCP; they move the cursor, the **Veil extension + Go host** writes fields after Touch ID / confirm.
-
-On the Mac where Grok Bot’s browser runs:
-
-1. Install **Veil fill** (extension + native host / `Veil.app`).
-2. Human grants and fill as today — no Grok ↔ Veil native “Password Managers” slot.
-
-For parity with 1Password Grok, a future **xAI partnership** could add Veil to Grok Bot’s password-manager list. Until then: **MCP for APIs**, **fill for web login**.
+1. Agent: `match_items` → **`request_fill`** with item + page URL.
+2. Human: approve at **Requests** (same as 1Password for Agents posture).
+3. Agent: poll **`approval_status`** → continue automation.
+4. On the device running the browser: **Veil extension + Go host** execute-fill (agent moves cursor; secret never on MCP).
 
 ## What Grok must never do
 

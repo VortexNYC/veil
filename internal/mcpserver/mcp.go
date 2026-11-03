@@ -54,8 +54,13 @@ type MatchIn struct {
 	URL string `json:"url" jsonschema:"URL to match against granted item URIs"`
 }
 
+type RequestFillIn struct {
+	Item string `json:"item" jsonschema:"granted item name or id for a website login"`
+	URL  string `json:"url,omitempty" jsonschema:"page URL the agent is trying to sign into; must match item URIs when set"`
+}
+
 type ApprovalStatusIn struct {
-	RequestID string `json:"request_id" jsonschema:"approval request id from a fetch decision=need_approval"`
+	RequestID string `json:"request_id" jsonschema:"approval request id from fetch, check, or request_fill"`
 }
 
 type ApprovalStatusOut struct {
@@ -151,6 +156,26 @@ func New(a *app.App) *mcp.Server {
 		}
 		out, err := approvalStatus(a, agentID, in.RequestID)
 		return nil, out, err
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "request_fill",
+		Description: "Ask a human to approve a website login for this granted item — 1Password for Agents shape. You never receive the password. After approval, the human's Veil fill extension writes fields on their device; poll approval_status then continue the browser task.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in RequestFillIn) (*mcp.CallToolResult, FetchOut, error) {
+		agentID, err := principal(req)
+		if err != nil {
+			return nil, FetchOut{}, err
+		}
+		filed, err := a.RequestAgentFill(ctx, agentID, in.Item, in.URL)
+		if err != nil {
+			return nil, FetchOut{Decision: string(protocol.DecisionDeny), Reason: err.Error()}, nil
+		}
+		exp := filed.ExpiresAt
+		return nil, FetchOut{
+			Decision:         string(protocol.DecisionNeedApproval),
+			Reason:           "fill approval required",
+			RequestID:        filed.ID,
+			RequestExpiresAt: &exp,
+		}, nil
 	})
 	return server
 }
