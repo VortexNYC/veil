@@ -189,7 +189,9 @@ type bearerRoundTripper struct {
 
 func (b bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	clone := req.Clone(req.Context())
-	clone.Header.Set("Authorization", "Bearer "+b.tok)
+	if err := originAttachAuth(clone, b.tok); err != nil {
+		return nil, err
+	}
 	return b.base.RoundTrip(clone)
 }
 

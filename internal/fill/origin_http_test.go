@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/VortexNYC/veil/internal/app"
+	"github.com/VortexNYC/veil/internal/dpop"
 	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/publicapi"
@@ -19,6 +20,7 @@ import (
 
 func originAPI(t *testing.T, a *app.App) *httptest.Server {
 	t.Helper()
+	dpop.ResetDefaultVerifierForTest()
 	mux := http.NewServeMux()
 	ident := func(_ context.Context, raw string) (protocol.Principal, error) {
 		if raw == "human" {

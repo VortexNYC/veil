@@ -22,7 +22,7 @@ Agents get the **ability to use** a credential—they never receive the plaintex
 └──────────────────────────────────────┬─────────────────────────────────────┘
                                        │
                     Short-lived OIDC / Hydra JWT / Session
-                     (+ optional RFC 9449 DPoP ES256 proof)
+                     (RFC 9449 DPoP ES256 from the CLI by default; optional elsewhere)
                                        ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                          Veil Broker & Vault Origin                        │

@@ -240,7 +240,7 @@ func TestCompiledBinaryAgainstOriginHTTP(t *testing.T) {
 	if err := os.WriteFile(secFile, []byte(secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	extra := []string{"VEIL_ORIGIN=" + srv.URL, "VEIL_HUMAN_TOKEN_FILE=" + tok}
+	extra := []string{"VEIL_ORIGIN=" + srv.URL, "VEIL_HUMAN_TOKEN_FILE=" + tok, "VEIL_DPOP=0"}
 	veilEnv(t, bin, home, extra, "item", "add", "stripe", "--uri", "https://dashboard.stripe.com", "--secret-file", secFile, "--login", login)
 	listOut := veilEnv(t, bin, home, extra, "item", "list")
 	var listed []protocol.Item
@@ -327,7 +327,7 @@ func TestCompiledBinaryJSONPingMatchFill(t *testing.T) {
 	if err := os.WriteFile(secFile, []byte(secret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	extra := []string{"VEIL_ORIGIN=" + srv.URL, "VEIL_HUMAN_TOKEN_FILE=" + tok}
+	extra := []string{"VEIL_ORIGIN=" + srv.URL, "VEIL_HUMAN_TOKEN_FILE=" + tok, "VEIL_DPOP=0"}
 	veilEnv(t, bin, home, extra, "item", "add", "stripe", "--uri", "https://dashboard.stripe.com", "--secret-file", secFile, "--login", login)
 
 	cmd := exec.Command(bin, "fill", "--home", home)

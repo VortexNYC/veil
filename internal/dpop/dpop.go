@@ -80,6 +80,15 @@ func NewVerifier() *Verifier {
 	}
 }
 
+// ResetDefaultVerifierForTest clears replay and bind-on-first-use state on the
+// process-wide verifier. For tests only.
+func ResetDefaultVerifierForTest() {
+	defaultVerifier.mu.Lock()
+	defer defaultVerifier.mu.Unlock()
+	defaultVerifier.jtis = map[string]time.Time{}
+	defaultVerifier.pins = map[string]pinEntry{}
+}
+
 // VerifyRequest checks the request's DPoP header against accessToken using the
 // process-wide verifier.
 func VerifyRequest(r *http.Request, accessToken string) error {

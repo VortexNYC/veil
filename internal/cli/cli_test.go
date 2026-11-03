@@ -34,6 +34,7 @@ const secret = "sk_live_CLI_SECRET"
 
 func run(t *testing.T, home string, stdin string, args ...string) (string, error) {
 	t.Helper()
+	t.Setenv("VEIL_DPOP", "0")
 	cmd := New("test")
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)

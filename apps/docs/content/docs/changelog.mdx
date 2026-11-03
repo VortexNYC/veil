@@ -5,6 +5,10 @@ description: What changed in Veil. Private alpha.
 
 Veil is in private alpha. Breaking changes land without notice until `v1`.
 
+## 2026-11-03 — CLI sends DPoP by default
+
+- **`VEIL_ORIGIN` HTTP from the Go CLI** (`veil mcp stdio`, `veil use`, owner/admin routes): RFC 9449 **`DPoP`** proofs on by default; persistent **`*.dpop`** key file beside the JWT (`VEIL_DPOP=0` to disable). See [DPoP guide](/docs/guides/dpop).
+
 ## 2026-10-22 — OIDC Workload Federation, Outbound Anthropic WIF, Dual-Phase Rotation & Self-Host
 
 - **OIDC Workload Federation (`veil agent bind`)**: First-class presets for **Vercel** (`--preset vercel`), **GitHub Actions** (`--preset github-actions`), **Fly.io** (`--preset fly`), **Better Auth**, **Clerk**, **WorkOS**, and custom HTTPS OIDC issuers. Supports subject-prefix wildcards, custom claim rules (`--claim owner_id=team_...`), `veil agent verify-issuer` (`POST /v1/workloads/verify-issuer`), `veil agent workloads` / `veil agent unbind`, and DB-level `org_id` isolation.
