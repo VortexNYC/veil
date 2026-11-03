@@ -55,6 +55,7 @@ import (
 	"github.com/VortexNYC/veil/internal/sshagent"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/VortexNYC/veil/internal/totpenroll"
+	"github.com/VortexNYC/veil/internal/trayd"
 	"github.com/VortexNYC/veil/internal/workload"
 )
 
@@ -87,6 +88,7 @@ func New(version string) *cobra.Command {
 	root.AddCommand(runCmd(&home))
 	root.AddCommand(serveCmd(&home))
 	root.AddCommand(fillCmd(&home))
+	root.AddCommand(trayCmd(&home))
 	root.AddCommand(sshCmd(&home))
 	root.AddCommand(auditCmd(&home))
 	root.AddCommand(genCmd())
@@ -2572,6 +2574,23 @@ func serveCmd(home *string) *cobra.Command {
 	}
 	c.Flags().StringVar(&path, "socket", "", "unix socket path (default <home>/veil.sock)")
 	return c
+}
+
+func trayCmd(home *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "tray",
+		Short: "Persistent fill helper — answers confirm prompts for the native host over a user socket.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := confirm.TraySocketPath()
+			if path == "" {
+				return fmt.Errorf("tray: could not resolve a socket path (XDG_RUNTIME_DIR, VEIL_HOME, HOME)")
+			}
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			slog.Info("veil tray listening", "socket", path)
+			return trayd.Serve(ctx, path, nil)
+		},
+	}
 }
 
 func fillCmd(home *string) *cobra.Command {
