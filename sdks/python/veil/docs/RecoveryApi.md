@@ -10,7 +10,7 @@ Method | HTTP request | Description
 [**get_recovery**](RecoveryApi.md#get_recovery) | **GET** /v1/recovery/{id} | One request. Owners (aal2) get the confirmer view — human_email, current_epoch, confirmer_wrapped_master; the initiator or target member gets the bare row.
 [**get_recovery_share**](RecoveryApi.md#get_recovery_share) | **GET** /v1/recovery/share | The caller&#39;s own recovery-share state: enrolled flag, pubkey, and wrapped_master (ciphertext only — never the plaintext master).
 [**list_recoveries**](RecoveryApi.md#list_recoveries) | **GET** /v1/recovery | Owner-only (aal2) list of org recovery requests filtered by status.
-[**realign_recovery_custodian**](RecoveryApi.md#realign_recovery_custodian) | **POST** /v1/recovery/realign-custodian | Re-wrap the member&#39;s org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+[**realign_recovery_custodian**](RecoveryApi.md#realign_recovery_custodian) | **POST** /v1/recovery/realign-custodian | Re-wrap the caller&#39;s org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
 [**start_recovery**](RecoveryApi.md#start_recovery) | **POST** /v1/recovery/start | Files (or returns the existing open) recovery request. Self-start needs no aal2 — a locked-out member may hold only aal1. Owner-initiated starts (human_id set) require aal2 + owner. One open request per member: a refile returns the live row with created&#x3D;false and suppresses duplicate notifications.
 
 
@@ -494,7 +494,7 @@ Name | Type | Description  | Notes
 # **realign_recovery_custodian**
 > RecoveryShare realign_recovery_custodian(enroll_request)
 
-Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
 
 ### Example
 
@@ -530,7 +530,7 @@ with veil.ApiClient(configuration) as api_client:
     enroll_request = veil.EnrollRequest() # EnrollRequest | 
 
     try:
-        # Re-wrap the member's org-key share under a new phone custodian pubkey without rotating the org master (reinstall drift). aal2 required.
+        # Re-wrap the caller's org-key share under a new recovery or custodian pubkey without rotating the org master. aal2 and an existing share are required.
         api_response = api_instance.realign_recovery_custodian(enroll_request)
         print("The response of RecoveryApi->realign_recovery_custodian:\n")
         pprint(api_response)
