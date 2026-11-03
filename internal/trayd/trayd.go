@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/VortexNYC/veil/internal/confirm"
 )
@@ -38,6 +39,16 @@ func Serve(ctx context.Context, path string, render renderFunc) error {
 	// refuses so two helpers never fight over requests.
 	l, err := net.Listen("unix", path)
 	if err != nil {
+		// Never unlink a live daemon's socket. Only reclaim the path if it
+		// exists but cannot be dialed, indicating a stale filesystem socket.
+		conn, dialErr := net.DialTimeout("unix", path, 100*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			return fmt.Errorf("tray: another helper is listening on %s", path)
+		}
+		if _, statErr := os.Lstat(path); statErr != nil {
+			return err
+		}
 		if rerr := os.Remove(path); rerr != nil {
 			return err
 		}
