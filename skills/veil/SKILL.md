@@ -5,7 +5,7 @@ description: Use Veil MCP (list_items, match_items, check, fetch, request_fill, 
 
 # Veil — Credential Broker MCP Skill
 
-Veil (`https://veil.nyc/mcp`) is mounted as the `veil` MCP server. **Agents never receive secrets.** Instead of reading API keys from `.env` or 1Password, use Veil's 5 MCP tools so the Veil broker injects the credential at the edge and scrubs any echoed secret from the response.
+Veil (`https://veil.nyc/mcp`) is mounted as the `veil` MCP server. **Agents never receive secrets.** Use these **six** MCP tools so the broker injects at the edge or files a human ask.
 
 ## Connecting an agent
 
@@ -35,10 +35,20 @@ Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints 
    - If the grant is `level1` and requires human approval, returns `decision: "need_approval"` and `request_id`.
 5. **`approval_status`** (`mcp__veil__approval_status` / `veil__approval_status`):
    - Input: `{ "request_id": "req_..." }`
-   - Polls the status (`open`, `approved`, `denied`, `expired`) of a level1 or **fill** approval request. Once `status === "approved"`, retry `fetch` or continue the browser task after local fill.
+   - Polls the status (`open`, `approved`, `denied`, `expired`). Response includes `action` (`use` vs `fill`). When `action` is `fill` and `status` is `approved`, the human must run browser fill (extension + host) — not another `fetch`.
 6. **`request_fill`** (`mcp__veil__request_fill` / `veil__request_fill`):
    - Input: `{ "item": "airbnb", "url": "https://www.airbnb.com/login" }`
-   - Files a **website login** approval (1Password for Agents shape). You never receive the password. Human approves at app.veil.nyc/requests; fill runs in a browser that has the Veil extension + native host (see **Browser automation** below).
+   - Files a **website login** approval. Returns `decision: need_approval`, `request_id`, `approval_url`, `action: fill`. Poll `approval_status`; execute fill on the browser device (CDP `veilAgentic` — not an MCP tool).
+
+## State machine (Grok / Muse / cloud MCP)
+
+| Intent | Tools | Human | Agent after approve |
+|--------|-------|-------|---------------------|
+| Call an API | `match_items` → `fetch` (or `check` first) | level1: approve at `approval_url` | Retry same `fetch` |
+| Sign into a website | `match_items` → **`request_fill`** | Approve at `approval_url` | Poll `approval_status`; partner runs **fillCredential** in Chromium with Veil extension |
+| Dry-run API policy | `check` | Same as fetch if `need_approval` | Same |
+
+**Not on MCP (by design):** approve/deny (human only), passwords/TOTP/passkeys, `execute_fill` (browser CDP only).
 
 ## Browser automation (agent-browser, Browserbase, Playwright)
 

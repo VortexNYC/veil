@@ -44,6 +44,11 @@ type FetchOut struct {
 	BodyB64          string      `json:"body_b64,omitempty"`
 	RequestID        string      `json:"request_id,omitempty"`
 	RequestExpiresAt *time.Time  `json:"request_expires_at,omitempty"`
+	// ApprovalURL is where the human resolves open asks (Requests UI). Set on
+	// need_approval and request_fill — agents tell the human, never visit it themselves.
+	ApprovalURL string `json:"approval_url,omitempty"`
+	// Action distinguishes API Use asks from website fill asks once filed.
+	Action string `json:"action,omitempty"`
 }
 
 type ListOut struct {
@@ -123,6 +128,7 @@ func New(a *app.App) *mcp.Server {
 			Reason:           got.Reason,
 			RequestID:        got.RequestID,
 			RequestExpiresAt: got.RequestExpiresAt,
+			ApprovalURL:      approvalURLForDecision(got.Decision),
 		}, nil
 	})
 	mcp.AddTool(server, &mcp.Tool{
@@ -175,6 +181,8 @@ func New(a *app.App) *mcp.Server {
 			Reason:           "fill approval required",
 			RequestID:        filed.ID,
 			RequestExpiresAt: &exp,
+			ApprovalURL:      "https://app.veil.nyc/requests",
+			Action:           string(filed.Action),
 		}, nil
 	})
 	return server
@@ -221,6 +229,7 @@ func Fetch(ctx context.Context, a *app.App, agentID string, in FetchIn) (FetchOu
 		Reason:           got.Reason,
 		RequestID:        got.RequestID,
 		RequestExpiresAt: got.RequestExpiresAt,
+		ApprovalURL:      approvalURLForDecision(got.Decision),
 	}
 	if got.Fetch != nil {
 		out.Status = got.Fetch.Status
@@ -232,6 +241,13 @@ func Fetch(ctx context.Context, a *app.App, agentID string, in FetchIn) (FetchOu
 		}
 	}
 	return out, nil
+}
+
+func approvalURLForDecision(d protocol.Decision) string {
+	if d == protocol.DecisionNeedApproval {
+		return "https://app.veil.nyc/requests"
+	}
+	return ""
 }
 
 // approvalStatus reads one ask. It is scoped to the caller — an agent may only

@@ -535,6 +535,12 @@ func originGrantAdd(cmd *cobra.Command, grantee, item, level string, expires tim
 	if err != nil {
 		return err
 	}
+	if group == "" {
+		item, err = originResolveItemRef(cmd.Context(), tok, item)
+		if err != nil {
+			return err
+		}
+	}
 	in := publicapi.CreateGrantRequest{Item: item, Level: level}
 	switch {
 	case group != "":

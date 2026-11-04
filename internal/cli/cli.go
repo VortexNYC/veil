@@ -1773,6 +1773,26 @@ func agentCmd(home *string) *cobra.Command {
 	_ = token.MarkFlagRequired("secret-file")
 	_ = token.MarkFlagRequired("out-file")
 	c.AddCommand(token)
+
+	fill := &cobra.Command{Use: "fill", Short: "Website login asks for agentic autofill (Browserbase shape)"}
+	var fillItem, fillURL, fillAgent string
+	fillReq := &cobra.Command{
+		Use:   "request",
+		Short: "File a fill approval for a granted item + login URL",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() == "" {
+				return fmt.Errorf("agent fill request: VEIL_ORIGIN is required")
+			}
+			return originAgentFillRequest(cmd, fillAgent, fillItem, fillURL)
+		},
+	}
+	fillReq.Flags().StringVar(&fillAgent, "agent", "", "agent id (default VEIL_AGENT)")
+	fillReq.Flags().StringVar(&fillItem, "item", "", "granted item name or id")
+	fillReq.Flags().StringVar(&fillURL, "url", "", "HTTPS login page URL")
+	_ = fillReq.MarkFlagRequired("item")
+	_ = fillReq.MarkFlagRequired("url")
+	fill.AddCommand(fillReq)
+	c.AddCommand(fill)
 	return c
 }
 
@@ -1900,6 +1920,12 @@ func grantCmd(home *string) *cobra.Command {
 				return err
 			}
 			defer a.Close()
+			if groupName == "" {
+				itemName, err = resolveLocalItemRef(a.Store, itemName)
+				if err != nil {
+					return err
+				}
+			}
 			var until *time.Time
 			if expires > 0 {
 				t := time.Now().Add(expires)
@@ -2271,7 +2297,20 @@ func requestCmd(home *string) *cobra.Command {
 	}
 	list.Flags().StringVar(&status, "status", "open", "open|approved|denied|expired|cancelled")
 	approve.Flags().DurationVar(&ttl, "ttl", 15*time.Minute, "approval lifetime")
-	c.AddCommand(list, approve, deny)
+	var watchTimeout time.Duration
+	watch := &cobra.Command{
+		Use:   "watch REQUEST_ID",
+		Short: "Block until a request is approved, denied, or expired (SSE + poll). For dogfood beside the agent.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() == "" {
+				return fmt.Errorf("request watch: VEIL_ORIGIN is required")
+			}
+			return originRequestWatch(cmd, args[0], watchTimeout)
+		},
+	}
+	watch.Flags().DurationVar(&watchTimeout, "timeout", time.Hour, "max wait")
+	c.AddCommand(list, approve, deny, watch)
 	return c
 }
 
