@@ -56,6 +56,33 @@ Custom Semgrep rules in `.semgrep/veil-auth.yml` flag regressions (e.g. `createI
 2. Targeted tests: `go test ./internal/publicapi/ -run MFA -count=1`
 3. After edits, `make gate` before push (pre-push hook runs the heavy suite).
 
+## Local Devin + Strix (optional)
+
+Self-hosted Strix on your Mac with **local Devin CLI** — not Strix Cloud, not `devin --cloud` unless you choose that separately.
+
+1. **Install once:** `curl -sSL https://strix.ai/install | bash` (Docker + sandbox image). Strix agent skills: `npx skills add usestrix/strix -g -y` (copies into `~/.agents/skills/`; Devin reads that tree).
+2. **LLM env** (mode `600`, not in git): `~/.config/vortex/strix.env` — `STRIX_LLM` + `LLM_API_KEY` (OpenRouter) for Strix; `DEVIN_MODEL=swe-2-high` for local Devin. Source before both tools: `set -a && . ~/.config/vortex/strix.env && set +a`.
+3. **Playbook:** global skill `devin-strix-local` in `~/.agents/skills/`, project pointer `.devin/skills/veil-strix-local/` in this repo.
+4. **One command (Devin SWE-2 + Strix):** `./scripts/devin-strix-veil.sh` from repo root (after `strix.env` exists). Strix agents still use OpenRouter via `strix.env`; Devin SWE-2 runs the pass and summarizes.
+
+```bash
+cd ~/Projects/veil
+./scripts/devin-strix-veil.sh
+```
+
+Or Devin drives the shell steps: `./scripts/devin-strix-veil.sh devin-drive`
+
+Legacy manual:
+
+```bash
+cd ~/Projects/veil
+set -a && . ~/.config/vortex/strix.env && set +a
+devin -p --permission-mode smart --model "${DEVIN_MODEL:-swe-2-high}" --respect-workspace-trust false -- \
+  "Follow devin-strix-local — OSS Strix quick scan on Veil auth paths after make security-fast. No strix cloud, no prod URLs."
+```
+
+Findings land in `strix_runs/` (gitignored). You pay **Devin ACUs** plus **LLM tokens** via `--max-budget`; not Strix Cloud credits.
+
 ## Paid scanners (optional)
 
 - **[Sandchest](https://veil.nyc/docs/guides/sandchest/)** — separate Stripe credits; not part of Devin.
