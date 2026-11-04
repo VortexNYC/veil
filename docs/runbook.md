@@ -247,6 +247,24 @@ Anything unexplained is an S2 until proven otherwise.
 First review due **2026-02-01** (calendar quarter after 2025-11 rotation). Record
 the diff in Pile, not email.
 
+## Docs (`veil.nyc/docs`)
+
+Blume site: `apps/docs`. **Normal ship:** push `main` → cloudflare-ci mirrors GitHub to
+Artifacts → CI runs `buildCommand` (includes `pnpm --filter @vortex-api/veil-docs build`)
+then `deployCommand` (`wrangler deploy --config dist/server/wrangler.json` under
+`apps/docs`). **Verify:** `curl -fsS -o /dev/null -w '%{http_code}\n' https://veil.nyc/docs/guides/<slug>/`
+(expect `200`; bare path 307s to trailing slash).
+
+If `main` has the MDX but the URL 404s for more than ~15 minutes after merge, run the
+same deploy locally (Cloudflare credentials on the laptop):
+
+```bash
+sh scripts/docs-deploy.sh
+# or: pnpm run docs:deploy
+```
+
+Do not use this to ship origin — Railway owns `veil.nyc` API; this worker is docs-only.
+
 ## Private alpha cohort
 
 Before inviting a new org (or a large batch), run the gate and deploy from GitHub
