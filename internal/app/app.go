@@ -442,7 +442,8 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 	}
 	a.Broker.OnRequestFiled = func(ctx context.Context, req protocol.ApprovalRequest) {
 		n := a.Notify
-		if n == nil {
+		p := a.Push
+		if n == nil && p == nil {
 			return
 		}
 		// Notify is remote hops (Keto owners, Kratos emails, mail POST) —
@@ -451,16 +452,17 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 		go func() {
 			dctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			_ = n.NotifyRequest(dctx, req)
+			skipMail := false
+			if p != nil {
+				if devs, err := a.Store.PushDevices(req.OrgID); err == nil && len(devs) > 0 {
+					_ = p.NotifyRequest(dctx, req)
+					skipMail = true
+				}
+			}
+			if n != nil && !skipMail {
+				_ = n.NotifyRequest(dctx, req)
+			}
 		}()
-		p := a.Push
-		if p != nil {
-			go func() {
-				dctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				_ = p.NotifyRequest(dctx, req)
-			}()
-		}
 	}
 	if err := a.attachHydra(); err != nil {
 		_ = s.Close()

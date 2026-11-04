@@ -103,7 +103,24 @@ Same row as MCP **`request_fill`**. MCP-only agents can skip this HTTP and use `
 
 ### 2. Human approval
 
-Send the human to **`approval_url`** (or push via vault notifications). They approve the fill ask like any other agent request.
+Owners resolve asks on any connected surface — pick what matches where you are:
+
+| Surface | Command / action |
+|---------|------------------|
+| **CLI (beside the agent)** | `veil request list` · `veil request approve REQUEST_ID` · **`veil request watch REQUEST_ID`** (blocks until approved/denied) |
+| **Vault** | [app.veil.nyc/requests](https://app.veil.nyc/requests) — enable **Agent approval alerts** in Settings for browser notifications |
+| **iPhone** | Veil app → **Requests** (push when `/v1/devices` is registered and APNs is configured) |
+| **Mac `Veil.app`** | macOS notification → opens embedded vault at `/requests` (SSE + poll on the requests stream) |
+| **Email** | Backup when the org has **no** registered push devices |
+
+File from the agent laptop:
+
+```bash
+veil agent fill request --item Stripe --url 'https://dashboard.stripe.com/login'
+# stderr prints: veil request watch req-…
+```
+
+Send the human to **`approval_url`** only when none of the above are in reach.
 
 ### 3. Poll until approved (backend, agent JWT)
 

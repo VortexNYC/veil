@@ -2,11 +2,8 @@
 //  RequestWatcher.swift
 //  Veil
 //
-//  The approve-on-another-device reach: polls the origin's requests
-//  surface and raises a macOS notification for each new open ask, so a
-//  fill filed by another device surfaces here instead of needing the
-//  vault open. Clicking the banner opens the vault where the approve
-//  lives. Human-token HTTP only — the agent path never sees this.
+//  The approve-on-another-device reach: SSE + poll on the origin requests
+//  surface and raise a macOS notification for each new open ask.
 
 import Cocoa
 import UserNotifications
@@ -27,11 +24,18 @@ final class RequestWatcher {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
         center.delegate = Delegate.shared
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        let path = tokenPath
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             self?.poll()
         }
         timer?.fire()
+        streamTask = RequestStreamTask(origin: origin, tokenPath: path) { [weak self] in
+            self?.poll()
+        }
+        streamTask?.start()
     }
+
+    private var streamTask: RequestStreamTask?
 
     private var tokenPath: String {
         if let d = try? Data(contentsOf: URL(fileURLWithPath: FillSettingsModel.path)),
