@@ -83,3 +83,30 @@ func TestItemCreateRequiresAAL2AMR(t *testing.T) {
 		t.Fatalf("aal1 create item: want 403, got %d", code)
 	}
 }
+
+func TestFillLoginsRequiresAAL2AMR(t *testing.T) {
+	a := testApp(t)
+	owner := protocol.Principal{Kind: protocol.PrincipalHuman, ID: app.DefaultHuman, OrgID: protocol.LocalOrgID}
+	if _, err := a.Store.PlantHuman(owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddItem("github", "https://github.com", []byte("secret")); err != nil {
+		t.Fatal(err)
+	}
+	baseIdent := identity(a)
+	jwtIdent := func(ctx context.Context, raw string) (protocol.Principal, error) {
+		if _, ok := human.AMR(raw); ok {
+			return owner, nil
+		}
+		return baseIdent(ctx, raw)
+	}
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(CORS(mux))
+	t.Cleanup(srv.Close)
+	(&Server{App: a, Identity: jwtIdent}).Mount(mux)
+	aal1 := jwtWithAMR(t, "password")
+	code, _ := doJSON(t, srv, http.MethodPost, "/v1/fill/logins", aal1, FillLoginsRequest{URL: "https://github.com/user"})
+	if code != http.StatusForbidden {
+		t.Fatalf("aal1 fill logins: want 403, got %d", code)
+	}
+}

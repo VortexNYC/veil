@@ -2997,6 +2997,7 @@ func (s *SQLite) PutDeviceLink(ctx context.Context, l protocol.DeviceLink) error
 		(token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT (token) DO UPDATE SET
+		  org_id=excluded.org_id, human_id=excluded.human_id,
 		  sealed=excluded.sealed, approved_by=excluded.approved_by, consumed_at=excluded.consumed_at`,
 		l.Token, l.OrgID, l.HumanID, l.Label, l.Pubkey, l.Sealed, l.ApprovedBy,
 		l.CreatedAt.Format(time.RFC3339), l.ExpiresAt.Format(time.RFC3339), consumed)

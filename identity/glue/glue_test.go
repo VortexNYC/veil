@@ -20,12 +20,13 @@ const (
 )
 
 type fakeOry struct {
-	client      map[string]any
-	putClient   int
-	inviteEmail string
-	inviteOrg   string
-	inviteN     int
-	identities  []fakeIdent
+	client          map[string]any
+	putClient       int
+	inviteEmail     string
+	inviteOrg       string
+	inviteN         int
+	identities      []fakeIdent
+	consentClientID string
 }
 
 type fakeIdent struct {
@@ -38,9 +39,13 @@ func (f *fakeOry) start(t *testing.T) (kratosURL, hydraURL string) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/admin/identities":
 			want := r.URL.Query().Get("organization_id")
+			cred := r.URL.Query().Get("credentials_identifier")
 			var out []map[string]any
 			for _, id := range f.identities {
 				if want != "" && id.org != want {
+					continue
+				}
+				if cred != "" && id.email != cred {
 					continue
 				}
 				out = append(out, map[string]any{
@@ -100,6 +105,10 @@ func (f *fakeOry) start(t *testing.T) (kratosURL, hydraURL string) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/admin/oauth2/auth/requests/consent":
+			clientID := DefaultClientID
+			if f.consentClientID != "" {
+				clientID = f.consentClientID
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"challenge":                       r.URL.Query().Get("consent_challenge"),
@@ -107,7 +116,7 @@ func (f *fakeOry) start(t *testing.T) (kratosURL, hydraURL string) {
 				"subject":                         identityID,
 				"requested_scope":                 []string{"openid"},
 				"requested_access_token_audience": []string{DefaultClientID},
-				"client":                          map[string]any{"client_id": DefaultClientID},
+				"client":                          map[string]any{"client_id": clientID},
 			})
 		case r.Method == http.MethodPut && r.URL.Path == "/admin/oauth2/auth/requests/consent/accept":
 			raw, err := io.ReadAll(r.Body)
@@ -191,6 +200,36 @@ func TestHandlerConsentAcceptsWithoutScreen(t *testing.T) {
 	}
 	if strings.Contains(loc, humanEmail) || strings.Contains(loc, sessionTok) {
 		t.Fatal("secret leaked")
+	}
+}
+
+func TestHandlerConsentRejectsAgentClient(t *testing.T) {
+	ory := &fakeOry{consentClientID: AgentClientPrefix + "evil"}
+	k, h := ory.start(t)
+	g := newGlue(t, k, h)
+
+	rec := httptest.NewRecorder()
+	g.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/?consent_challenge=c-agent", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIdentityByEmailUsesCredentialFilter(t *testing.T) {
+	ory := &fakeOry{
+		identities: []fakeIdent{
+			{id: "id-a", org: LocalOrgID, email: "a@example.com"},
+			{id: "id-b", org: LocalOrgID, email: "b@example.com"},
+		},
+	}
+	k, h := ory.start(t)
+	g := newGlue(t, k, h)
+	got, err := g.IdentityID(context.Background(), "b@example.com", LocalOrgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "id-b" {
+		t.Fatalf("id %q", got)
 	}
 }
 

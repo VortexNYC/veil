@@ -25,6 +25,7 @@ import (
 	"github.com/VortexNYC/veil/internal/broker"
 	"github.com/VortexNYC/veil/internal/crypto"
 	"github.com/VortexNYC/veil/internal/device"
+	"github.com/VortexNYC/veil/internal/dpop"
 	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/human"
 	"github.com/VortexNYC/veil/internal/id"
@@ -327,6 +328,7 @@ func OpenPostgres(dsn string) (*App, error) {
 	// window Postgres itself cannot: a store write that fails outright (or
 	// an outbox insert that fails with it) is fsynced to local disk and
 	// relayed in order once the store recovers.
+	dpop.SetCoordinator(dpop.NewPostgresCoordinator(s.Pool()))
 	return finish("", cfg, s, spoolAuditor("", s))
 }
 

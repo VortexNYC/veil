@@ -143,9 +143,9 @@ func (c *Client) List(ctx context.Context, orgID string) ([]string, error) {
 	if c == nil || c.admin == nil {
 		return nil, fmt.Errorf("kratos: admin is required")
 	}
-	ids, _, err := c.admin.IdentityAPI.ListIdentities(ctx).OrganizationId(orgID).Execute()
+	ids, err := c.listIdentitiesInOrg(ctx, orgID)
 	if err != nil {
-		return nil, fmt.Errorf("kratos: list identities: %w", err)
+		return nil, err
 	}
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -158,6 +158,29 @@ func (c *Client) List(ctx context.Context, orgID string) ([]string, error) {
 		out = append(out, id.GetId())
 	}
 	return out, nil
+}
+
+func (c *Client) listIdentitiesInOrg(ctx context.Context, orgID string) ([]ory.Identity, error) {
+	var out []ory.Identity
+	var page int64 = 1
+	for {
+		batch, _, err := c.admin.IdentityAPI.ListIdentities(ctx).
+			OrganizationId(orgID).
+			Page(page).
+			PageSize(250).
+			Execute()
+		if err != nil {
+			return nil, fmt.Errorf("kratos: list identities: %w", err)
+		}
+		out = append(out, batch...)
+		if len(batch) < 250 {
+			return out, nil
+		}
+		page++
+		if page > 4096 {
+			return nil, fmt.Errorf("kratos: list identities: pagination limit")
+		}
+	}
 }
 
 func emailTrait(traits any) string {
@@ -177,19 +200,33 @@ func (c *Client) IdentityByEmail(ctx context.Context, email, orgID string) (stri
 	if !strings.Contains(email, "@") || strings.ContainsAny(email, " \t\n") {
 		return "", fmt.Errorf("kratos: email")
 	}
-	ids, _, err := c.admin.IdentityAPI.ListIdentities(ctx).OrganizationId(orgID).Execute()
+	ids, _, err := c.admin.IdentityAPI.ListIdentities(ctx).
+		OrganizationId(orgID).
+		CredentialsIdentifier(email).
+		Execute()
 	if err != nil {
 		return "", fmt.Errorf("kratos: list identities: %w", err)
 	}
+	var found string
 	for _, id := range ids {
 		if id.GetId() == "" {
 			continue
 		}
-		if emailTrait(id.GetTraits()) == email {
-			return id.GetId(), nil
+		if org := id.GetOrganizationId(); org != "" && org != orgID {
+			continue
 		}
+		if emailTrait(id.GetTraits()) != email {
+			continue
+		}
+		if found != "" && found != id.GetId() {
+			return "", fmt.Errorf("kratos: ambiguous email")
+		}
+		found = id.GetId()
 	}
-	return "", fmt.Errorf("kratos: identity not found")
+	if found == "" {
+		return "", fmt.Errorf("kratos: identity not found")
+	}
+	return found, nil
 }
 
 // SetOrganization binds an identity to an org. Provisioning owns this write:

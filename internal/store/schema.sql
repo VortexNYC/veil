@@ -276,6 +276,21 @@ CREATE TABLE usage_counters (
     PRIMARY KEY (org_id, window_start)
 );
 
+-- RFC 9449 bind-on-first-use and jti replay — shared across origin replicas.
+CREATE TABLE dpop_pins (
+    token_hash TEXT PRIMARY KEY,
+    jkt TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE dpop_jtis (
+    token_hash TEXT NOT NULL,
+    jti TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (token_hash, jti)
+);
+CREATE INDEX dpop_pins_expires_at ON dpop_pins (expires_at);
+CREATE INDEX dpop_jtis_expires_at ON dpop_jtis (expires_at);
+
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA pg_catalog;
 CREATE INDEX idx_items_name_trgm ON items USING GIN (name gin_trgm_ops);
 CREATE INDEX idx_items_uris_trgm ON items USING GIN (uris gin_trgm_ops);

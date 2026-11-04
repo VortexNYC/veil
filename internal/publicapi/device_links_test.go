@@ -81,6 +81,45 @@ func TestDeviceLinkCreateClaimUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestDeviceLinkScopedAfterApprove(t *testing.T) {
+	a := testApp(t)
+	srv := apiServer(t, a)
+	pub := make([]byte, 32)
+	for i := range pub {
+		pub[i] = byte(i + 1)
+	}
+	code, raw := doJSON(t, srv, "POST", "/v1/device-links", "", map[string]any{
+		"label": "new-phone", "pubkey": pub,
+	})
+	if code != 200 {
+		t.Fatalf("create: %d %s", code, raw)
+	}
+	var created protocol.DeviceLink
+	if err := json.Unmarshal(raw, &created); err != nil {
+		t.Fatal(err)
+	}
+
+	code, raw = doJSON(t, srv, "POST", "/v1/device-links/"+created.Token+"/approve", "human", map[string]any{
+		"sealed": []byte("blob"),
+	})
+	if code != 204 {
+		t.Fatalf("approve: %d %s", code, raw)
+	}
+
+	code, _ = doJSON(t, srv, "GET", "/v1/device-links/"+created.Token, "member", nil)
+	if code != 400 {
+		t.Fatalf("same-org other human get: want 400, got %d", code)
+	}
+	code, _ = doJSON(t, srv, "GET", "/v1/device-links/"+created.Token, "otherorg", nil)
+	if code != 400 {
+		t.Fatalf("other org get: want 400, got %d", code)
+	}
+	code, raw = doJSON(t, srv, "GET", "/v1/device-links/"+created.Token, "human", nil)
+	if code != 200 {
+		t.Fatalf("approver get: want 200, got %d %s", code, raw)
+	}
+}
+
 func TestDeviceLinkOfferAcceptHandoff(t *testing.T) {
 	a := testApp(t)
 	srv := apiServer(t, a)
