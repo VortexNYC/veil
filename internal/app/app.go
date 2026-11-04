@@ -404,8 +404,11 @@ func finish(dir string, cfg config, s store.Store, auditor audit.Auditor) (*App,
 		a.Push = push.New(s, &senders)
 	}
 	// Free-tier gate (VEIL-60): VEIL_FREE_USE_CAP sets the per-org per-month
-	// use allowance on the free plan. Unset/zero = metering off.
-	if v := os.Getenv("VEIL_FREE_USE_CAP"); v != "" {
+	// use allowance on the free plan. Unset/zero = metering off. Public beta
+	// defaults to metering off unless VEIL_BETA_FREE=0 (see BetaFreeEnabled).
+	if BetaFreeEnabled() {
+		a.Broker.FreeUseCap = 0
+	} else if v := os.Getenv("VEIL_FREE_USE_CAP"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			a.Broker.FreeUseCap = n
 		}
@@ -482,6 +485,17 @@ func (a *App) attachHydra() error {
 	a.Human = v
 	a.hydraIssuer = iss
 	return nil
+}
+
+// BetaFreeEnabled is true unless VEIL_BETA_FREE is 0, false, or no. When
+// true, the Use gate does not enforce VEIL_FREE_USE_CAP (public beta is free).
+func BetaFreeEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VEIL_BETA_FREE"))) {
+	case "0", "false", "no":
+		return false
+	default:
+		return true
+	}
 }
 
 func firstEnv(keys ...string) string {

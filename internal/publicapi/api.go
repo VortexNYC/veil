@@ -2188,6 +2188,10 @@ func (s *Server) postBillingCheckout(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if app.BetaFreeEnabled() {
+		http.Error(w, "billing unavailable during public beta", http.StatusNotFound)
+		return
+	}
 	url, err := s.App.BillingCheckoutURL(r.Context(), p.OrgID)
 	if err != nil {
 		if errors.Is(err, app.ErrBillingDisabled) {

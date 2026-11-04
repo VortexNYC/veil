@@ -1,9 +1,14 @@
 ---
 title: Changelog
-description: What changed in Veil. Private alpha.
+description: What changed in Veil. Public beta.
 ---
 
-Veil is in private alpha. Breaking changes land without notice until `v1`.
+Veil is in public beta. Breaking changes land without notice until `v1`.
+
+## 2026-11-04 — Public beta is free
+
+- **Hosted beta has no usage cap and no checkout.** Origin defaults to **`VEIL_BETA_FREE`** (metering off even if `VEIL_FREE_USE_CAP` is still set on Railway). Set **`VEIL_BETA_FREE=0`** when re-enabling paid metering. **`POST /v1/billing/checkout`** returns 404 during beta.
+- **Site, vault Settings, terms, privacy, and security** copy now say beta is free — no $1/mo or 100-use/month messaging until pricing ships.
 
 ## 2026-11-03 — CLI sends DPoP by default
 

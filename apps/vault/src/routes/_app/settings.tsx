@@ -414,46 +414,60 @@ function Settings() {
         {paid ? <Banner title="Subscription active — thank you for subscribing to Veil!" /> : null}
         {view ? (
           <LayerCard>
-            <LayerCard.Secondary>Plan &amp; Billing</LayerCard.Secondary>
+            <LayerCard.Secondary>Plan</LayerCard.Secondary>
             <LayerCard.Primary>
-              <Text as="p" variant="heading">
-                {view.plan === "active" ? "Veil ($1/mo per human user)" : "Free tier"}
-              </Text>
-              <Text as="p" variant="secondary">
-                {view.used}
-                {view.included != null ? ` of ${view.included}` : ""} credential uses this month
-              </Text>
-              {view.included != null ? (
-                <Meter
-                  label="Free-tier usage"
-                  value={Math.min(100, (view.used / Math.max(view.included, 1)) * 100)}
-                  customValue={`${view.used} / ${view.included}`}
-                />
-              ) : null}
-              {view.plan !== "active" ? (
+              {view.included == null && view.plan !== "active" ? (
                 <>
-                  <Text as="p" variant="secondary">
-                    $1/month per human user for unlimited credential uses. AI agents are free and do
-                    not count as users.
+                  <Text as="p" variant="heading">
+                    Public beta — free
                   </Text>
-                  <div>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={() => {
-                        void billingCheckout().then((res) => {
-                          const url = res.data?.checkout_url || view.upgrade_url;
-                          if (url) {
-                            window.location.assign(url);
-                          }
-                        });
-                      }}
-                    >
-                      Subscribe — $1/mo per user
-                    </Button>
-                  </div>
+                  <Text as="p" variant="secondary">
+                    No credit card. Unlimited credential uses while the beta lasts. AI agents are
+                    free and do not count as users. We will announce pricing before v1.
+                  </Text>
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <Text as="p" variant="heading">
+                    {view.plan === "active" ? "Veil ($1/mo per human user)" : "Free tier"}
+                  </Text>
+                  <Text as="p" variant="secondary">
+                    {view.used}
+                    {view.included != null ? ` of ${view.included}` : ""} credential uses this month
+                  </Text>
+                  {view.included != null ? (
+                    <Meter
+                      label="Free-tier usage"
+                      value={Math.min(100, (view.used / Math.max(view.included, 1)) * 100)}
+                      customValue={`${view.used} / ${view.included}`}
+                    />
+                  ) : null}
+                  {view.plan !== "active" ? (
+                    <>
+                      <Text as="p" variant="secondary">
+                        $1/month per human user for unlimited credential uses. AI agents are free and
+                        do not count as users.
+                      </Text>
+                      <div>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={() => {
+                            void billingCheckout().then((res) => {
+                              const url = res.data?.checkout_url || view.upgrade_url;
+                              if (url) {
+                                window.location.assign(url);
+                              }
+                            });
+                          }}
+                        >
+                          Subscribe — $1/mo per user
+                        </Button>
+                      </div>
+                    </>
+                  ) : null}
+                </>
+              )}
             </LayerCard.Primary>
           </LayerCard>
         ) : null}

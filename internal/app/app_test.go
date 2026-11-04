@@ -302,6 +302,7 @@ func TestLevel2SkipsApproval(t *testing.T) {
 // silently drop the env-configured fields — metering and the notify hook were
 // dead wherever that ran. finish() is now the only construction site.
 func TestFinishAppliesBrokerEnv(t *testing.T) {
+	t.Setenv("VEIL_BETA_FREE", "0")
 	t.Setenv("VEIL_FREE_USE_CAP", "7")
 	t.Setenv("VEIL_MAX_IN_FLIGHT_USE", "9")
 	dir := t.TempDir()
@@ -318,6 +319,28 @@ func TestFinishAppliesBrokerEnv(t *testing.T) {
 	}
 	if a.Broker.OnRequestFiled == nil {
 		t.Fatal("OnRequestFiled not set")
+	}
+}
+
+func TestBetaFreeDisablesUseCap(t *testing.T) {
+	t.Setenv("VEIL_FREE_USE_CAP", "500")
+	dir := t.TempDir()
+	a, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Broker.FreeUseCap != 0 {
+		t.Fatalf("FreeUseCap = %d, want 0 while beta free is default", a.Broker.FreeUseCap)
+	}
+	t.Setenv("VEIL_BETA_FREE", "0")
+	a2, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a2.Close()
+	if a2.Broker.FreeUseCap != 500 {
+		t.Fatalf("FreeUseCap = %d, want 500 when VEIL_BETA_FREE=0", a2.Broker.FreeUseCap)
 	}
 }
 
