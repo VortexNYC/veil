@@ -59,6 +59,44 @@ async function findWorker(context) {
   throw new Error("Veil service worker not found");
 }
 
+async function waitForLoginSurface(page) {
+  const timeout = Number(process.env.VEIL_LOGIN_READY_MS || 60_000);
+  await page.waitForFunction(
+    () => {
+      const pw = document.querySelector('input[type="password"]');
+      const user = document.querySelector(
+        'input[type="email"], input[type="text"][name*="user" i], input[name="login"], input#login_field, input[name="identifier"]',
+      );
+      return !!(pw || user);
+    },
+    { timeout },
+  );
+}
+
+async function loginSurfaceState(page) {
+  return page.evaluate(() => {
+    const pw = document.querySelector('input[type="password"]');
+    const user = document.querySelector(
+      'input[type="email"], input[type="text"][name*="user" i], input[name="login"], input#login_field, input[name="identifier"]',
+    );
+    return {
+      url: location.href,
+      title: document.title,
+      hasPassword: !!pw,
+      passwordLen: pw && "value" in pw ? String(pw.value).length : 0,
+      hasUser: !!user,
+      userLen: user && "value" in user ? String(user.value).length : 0,
+    };
+  });
+}
+
+function holdMs() {
+  if (process.env.VEIL_HOLD_MS !== undefined) {
+    return Number(process.env.VEIL_HOLD_MS);
+  }
+  return process.env.VEIL_HEADLESS === "1" ? 5_000 : 180_000;
+}
+
 export async function signIn({ showApproval }) {
   requireEnv();
   const expected = new URL(SUCCESS_URL || LOGIN_URL);
@@ -106,7 +144,11 @@ export async function signIn({ showApproval }) {
   const context = await chromium.launchPersistentContext(profile, launchOpts);
   try {
     const page = await context.newPage();
-    await page.goto(LOGIN_URL);
+    await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded", timeout: 90_000 });
+    await waitForLoginSurface(page).catch(() => {});
+    const before = await loginSurfaceState(page);
+    console.error(`before fill: url=${before.url} userLen=${before.userLen} passLen=${before.passwordLen}`);
+
     const worker = await findWorker(context);
     const tabId = await worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -122,9 +164,24 @@ export async function signIn({ showApproval }) {
       { tabId, requestId: filed.request_id, itemId: ITEM_ID, submit: true },
     );
     if (!filled.success) throw new Error(filled.error?.code || "fill failed");
-    console.error(`fill ok request=${filed.request_id}`);
+
+    await page.waitForTimeout(1500);
+    const after = await loginSurfaceState(page);
+    console.error(
+      `after fill: url=${after.url} userLen=${after.userLen} passLen=${after.passwordLen} (request=${filed.request_id})`,
+    );
+    if (after.passwordLen === 0 && after.userLen === 0) {
+      throw new Error("fill reported ok but no credentials visible in form fields");
+    }
+    console.error("fill ok — complete 2FA/passkey/CAPTCHA in the browser if prompted");
+
+    const hold = holdMs();
+    if (hold > 0) {
+      console.error(`holding browser open ${Math.round(hold / 1000)}s (VEIL_HOLD_MS) — finish sign-in`);
+      await new Promise((r) => setTimeout(r, hold));
+    }
+
     if (process.env.VEIL_SKIP_SUCCESS_URL === "1") {
-      await new Promise((r) => setTimeout(r, 5000));
       return;
     }
     await page.waitForURL(

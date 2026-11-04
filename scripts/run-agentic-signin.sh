@@ -43,6 +43,7 @@ export VEIL_SUCCESS_URL="$SUCCESS_URL"
 export VEIL_ITEM_ID="$ITEM_ID"
 export VEIL_SKIP_SUCCESS_URL="${VEIL_SKIP_SUCCESS_URL:-1}"
 export VEIL_HEADLESS="${VEIL_HEADLESS:-0}"
+export VEIL_HOLD_MS="${VEIL_HOLD_MS:-$([[ "${VEIL_HEADLESS:-0}" == 1 ]] && echo 5000 || echo 180000)}"
 
 PROFILE="${VEIL_AGENTIC_PROFILE:-$HOME/.veil/agentic-chromium-profile}"
 NM="$PROFILE/NativeMessagingHosts"
