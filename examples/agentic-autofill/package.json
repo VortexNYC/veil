@@ -1,0 +1,8 @@
+{
+  "name": "veil-agentic-autofill-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "1.52.0"
+  }
+}

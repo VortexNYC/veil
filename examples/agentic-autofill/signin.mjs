@@ -20,7 +20,6 @@ const EXT = process.env.VEIL_EXTENSION_PATH || "";
 const LOGIN_URL = process.env.VEIL_LOGIN_URL || "";
 const SUCCESS_URL = process.env.VEIL_SUCCESS_URL || "";
 const ITEM_ID = process.env.VEIL_ITEM_ID || "";
-const EXT_ID = "oboonakemofpalcgghocfoadofidjkkk";
 
 function requireEnv() {
   for (const [k, v] of [
@@ -40,7 +39,7 @@ async function agentFetch(path, init = {}) {
     headers: {
       Authorization: `Bearer ${TOKEN}`,
       "Content-Type": "application/json",
-      ...(init.headers || {}),
+      ...init.headers,
     },
   });
   if (!res.ok) throw new Error(`${path} ${res.status}`);
@@ -48,10 +47,12 @@ async function agentFetch(path, init = {}) {
 }
 
 async function findWorker(context) {
-  const want = `chrome-extension://${EXT_ID}/background.js`;
   for (let i = 0; i < 60; i++) {
     for (const w of context.serviceWorkers()) {
-      if (w.url() === want) return w;
+      const u = w.url();
+      if (u.startsWith("chrome-extension://") && u.endsWith("/background.js")) {
+        return w;
+      }
     }
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -69,25 +70,40 @@ export async function signIn({ showApproval }) {
     method: "POST",
     body: JSON.stringify({ item_id: ITEM_ID, url: LOGIN_URL }),
   });
-  await showApproval(filed.approval_url || "https://app.veil.nyc/requests");
+  await showApproval(
+    filed.approval_url || "https://app.veil.nyc/requests",
+    filed.request_id,
+  );
 
   const deadline = Date.now() + 120_000;
+  let approved = false;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
     const st = await agentFetch(`/v1/agent/fill/request/${filed.request_id}`);
-    if (st.status === "approved") break;
+    if (st.status === "approved") {
+      approved = true;
+      break;
+    }
     if (st.status === "denied" || st.status === "expired") {
       throw new Error(`request ${st.status}`);
     }
   }
+  if (!approved) throw new Error("approval timeout");
 
-  const context = await chromium.launchPersistentContext("", {
-    channel: "chromium",
+  const profile =
+    process.env.VEIL_AGENTIC_PROFILE ||
+    `${process.env.HOME}/.veil/agentic-chromium-profile`;
+  const launchOpts = {
+    headless: process.env.VEIL_HEADLESS === "1",
+    ignoreDefaultArgs: ["--disable-extensions"],
     args: [
       `--disable-extensions-except=${EXT}`,
       `--load-extension=${EXT}`,
     ],
-  });
+  };
+  const exe = process.env.VEIL_CHROMIUM_EXECUTABLE?.trim();
+  if (exe) launchOpts.executablePath = exe;
+  const context = await chromium.launchPersistentContext(profile, launchOpts);
   try {
     const page = await context.newPage();
     await page.goto(LOGIN_URL);
@@ -106,14 +122,25 @@ export async function signIn({ showApproval }) {
       { tabId, requestId: filed.request_id, itemId: ITEM_ID, submit: true },
     );
     if (!filled.success) throw new Error(filled.error?.code || "fill failed");
-    await page.waitForURL((u) => {
-      try {
-        const got = new URL(u);
-        return got.origin === expected.origin && got.pathname.startsWith(expected.pathname);
-      } catch {
-        return false;
-      }
-    }, { timeout: 60_000 });
+    console.error(`fill ok request=${filed.request_id}`);
+    if (process.env.VEIL_SKIP_SUCCESS_URL === "1") {
+      await new Promise((r) => setTimeout(r, 5000));
+      return;
+    }
+    await page.waitForURL(
+      (u) => {
+        try {
+          const got = new URL(u);
+          return (
+            got.origin === expected.origin &&
+            got.pathname.startsWith(expected.pathname)
+          );
+        } catch {
+          return false;
+        }
+      },
+      { timeout: Number(process.env.VEIL_SUCCESS_TIMEOUT_MS || 120_000) },
+    );
   } finally {
     await context.close();
   }
@@ -121,8 +148,8 @@ export async function signIn({ showApproval }) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   signIn({
-    showApproval: async (url) => {
-      console.error("Approve in vault:", url);
+    showApproval: async (url, requestId) => {
+      console.error("Approve in vault:", url, requestId || "");
     },
   }).catch((err) => {
     console.error(err);

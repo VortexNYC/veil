@@ -209,6 +209,24 @@ Use a **persistent profile** with the extension pre-loaded (see above). Your cod
 
 Default isolated `vb` sessions without the extension will never fill — that is expected.
 
+### Playwright persistent profile (Chrome for Testing)
+
+Use **`playwright-core`** with a **persistent user-data dir**, not default Playwright Chromium alone: load the unpacked extension (`--load-extension`, `--disable-extensions-except`), set `ignoreDefaultArgs: ['--disable-extensions']`, and point at **Chrome for Testing** via `VEIL_CHROMIUM_EXECUTABLE` if Playwright’s bundled browser is missing or corrupt.
+
+Chromium resolves native messaging hosts from the **profile** directory. After `veil fill install`, copy `nyc.veil.fill.json` into:
+
+`$PROFILE/NativeMessagingHosts/` (e.g. `~/.veil/agentic-chromium-profile/NativeMessagingHosts/`)
+
+Otherwise `connectNative('nyc.veil.fill')` fails with *Specified native messaging host not found* and agentic init returns `internal`.
+
+Dogfood wrapper (requests fill, CLI approve, fill credential):
+
+```bash
+VEIL_HEADLESS=0 bash scripts/run-agentic-signin.sh Stripe 'https://dashboard.stripe.com/login'
+```
+
+Requires agent JWT, human JWT (`~/.config/veil/human.jwt`), fill bridge, and `~/.veil/extension` from `make macos-app` / fill install.
+
 ## Example
 
 See [`examples/agentic-autofill/signin.mjs`](../../examples/agentic-autofill/signin.mjs) for a minimal Playwright + CDP sketch (env: `VEIL_AGENT_TOKEN`, extension path, login URLs).
