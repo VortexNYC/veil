@@ -777,6 +777,23 @@ func originRequestResolve(cmd *cobra.Command, id, verb string, ttl time.Duration
 	return encode(cmd, out)
 }
 
+func originRequestResolveQuiet(cmd *cobra.Command, id, verb string, ttl time.Duration) error {
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	var payload []byte
+	if verb == "approve" {
+		payload, err = json.Marshal(map[string]string{"ttl": ttl.String()})
+		if err != nil {
+			return err
+		}
+	}
+	path := "/v1/requests/" + url.PathEscape(id) + "/" + verb
+	_, err = originDo(cmd.Context(), http.MethodPost, path, tok, payload)
+	return err
+}
+
 func originAgentAdd(cmd *cobra.Command, name string) error {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {

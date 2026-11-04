@@ -202,20 +202,85 @@ Navigate or assert the post-login URL yourself (`successUrl` pattern in Browserb
 
 ## agent-browser / `vb`
 
-Use **`vb`** (agent-browser) for navigation, snapshots, and screenshots — not the Playwright `run-agentic-signin.sh` runner.
+`veil agent fill run` invokes **`vb`** internally (`--open`). For snapshots after fill, use **`--snapshot`** (wraps `agent-browser`). Manual `vb` is optional debugging only.
 
-1. **Chrome for Testing** — set `AGENT_BROWSER_EXECUTABLE_PATH` to agent-browser’s bundled CfT (branded `Google Chrome.app` loads the extension but **does not expose the Veil service worker to CDP**, so agentic fill cannot run).
-2. Persistent **`--profile ~/.veil/agent-browser-profile`** + **`--extension ~/.veil/extension`**, with `NativeMessagingHosts/nyc.veil.fill.json` copied into that profile.
-3. **`veil agent fill request`** → human approve (`veil request approve` or app.veil.nyc/requests).
-4. **`node examples/agentic-autofill/worker-fill.mjs`** (CDP `veilAgentic` on the extension worker) — or **`bash scripts/vb-agentic-login.sh ITEM URL`** which wires steps 1–4 and leaves the window open.
+## Cursor / agent CLI
+
+No bash scripts for dogfood or proof — only the CLI.
+
+**Preferred entry:** one command, phased stderr, JSON on stdout when done.
 
 ```bash
-export AGENT_BROWSER_SESSION=veil-live
-export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.agent-browser/browsers/chrome-154.0.8037.57/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
-vb veil-live --headed --extension "$HOME/.veil/extension" --profile "$HOME/.veil/agent-browser-profile" open 'https://github.com/login'
-# … approve fill request …
-REQUEST_ID=req-… VEIL_ITEM_ID=github PAGE_URL_SUBSTR=github.com node examples/agentic-autofill/worker-fill.mjs
-agent-browser snapshot -i -c
+export VEIL_ORIGIN=https://veil.nyc
+export VEIL_AGENT=cursor
+export VEIL_OIDC_TOKEN_FILE=$HOME/.config/veil/human.jwt   # optional: CLI watch SSE
+
+veil agent fill check --agent cursor
+veil agent fill login \
+  --item github \
+  --url 'https://github.com/login'
+```
+
+| Step | What you see |
+|------|----------------|
+| **1/4 Prepare** | Profile + native host + fill bridge |
+| **2/4 Open** | Headed Chrome (`veil-github` session by default) on the login URL |
+| **3/4 Approve** | macOS opens `app.veil.nyc/requests` — tap Approve (same `request_id` as stderr) |
+| **4/4 Autofill** | CDP fill + field-length proof — Chrome closes unless `--keep-open` |
+
+Stdout (agents parse this):
+
+```json
+{
+  "ok": true,
+  "request_id": "req_…",
+  "item": "github",
+  "verify": { "user_len": 12, "pass_len": 40, "has_password": true },
+  "session_closed": true,
+  "next_human_step": "Fields filled on the login page; submit or complete 2FA if the site still requires it."
+}
+```
+
+Post-login automation (after you complete 2FA): add `--assert-url 'https://github.com/'`. Or keep the window: `--keep-open --hold 5m`.
+
+Orphan sessions: `veil agent fill close --all` or `veil agent fill close --session veil-github`.
+
+Lower-level control (same engine):
+
+```bash
+veil agent fill run --item github --url 'https://github.com/login' --json
+```
+
+| Command | Purpose |
+|---------|---------|
+| `veil fill install --profile DIR` | Native host manifest in Chrome user-data-dir |
+| `veil grant resolve --agent A --item NAME` | Granted item id |
+| `veil agent fill check` | Preflight |
+| `veil agent fill login` | Opinionated journey + JSON result |
+| `veil agent fill run` | Full path with extra flags (`--snapshot`, `--assert-url`, …) |
+| `veil agent fill close` | Tear down agent-browser sessions |
+
+### Migration inventory (run each with `veil agent fill run`)
+
+| Item | Login URL |
+|------|-----------|
+| Stripe | `https://dashboard.stripe.com/login` |
+| github | `https://github.com/login` |
+| Google (Personal) | `https://accounts.google.com` |
+| cloudflare-login | `https://dash.cloudflare.com/login` |
+| LinkedIn | `https://www.linkedin.com/login` |
+| X (twitter) | `https://x.com/i/flow/login` |
+| Apple ID | `https://appleid.apple.com` |
+
+Pass per site: approve → `worker fill ok` → **`verify-fields ok`** (field lengths only) → you finish 2FA → optional `--assert-url`.
+
+### Debug (split steps)
+
+```bash
+veil agent fill request --item github --url 'https://github.com/login' --wait-approved
+veil request watch REQUEST_ID
+# after approved, if browser already open with extension:
+# only for engineering — prefer fill run
 ```
 
 Fill injects credentials; **you** finish 2FA/passkey in the headed window. `agent-browser eval` can check field lengths without printing secrets.
@@ -226,23 +291,9 @@ Default isolated `vb` sessions without the extension will never fill — that is
 
 Use **`playwright-core`** with a **persistent user-data dir**, not default Playwright Chromium alone: load the unpacked extension (`--load-extension`, `--disable-extensions-except`), set `ignoreDefaultArgs: ['--disable-extensions']`, and point at **Chrome for Testing** via `VEIL_CHROMIUM_EXECUTABLE` if Playwright’s bundled browser is missing or corrupt.
 
-Chromium resolves native messaging hosts from the **profile** directory. After `veil fill install`, copy `nyc.veil.fill.json` into:
+Chromium resolves native messaging hosts from the **profile** directory. Use **`veil fill install --profile $PROFILE`** or let **`veil agent fill run`** install into the profile automatically.
 
-`$PROFILE/NativeMessagingHosts/` (e.g. `~/.veil/agentic-chromium-profile/NativeMessagingHosts/`)
-
-Otherwise `connectNative('nyc.veil.fill')` fails with *Specified native messaging host not found* and agentic init returns `internal`.
-
-Dogfood wrapper (requests fill, CLI approve, fill credential):
-
-```bash
-VEIL_HEADLESS=0 bash scripts/run-agentic-signin.sh Stripe 'https://dashboard.stripe.com/login'
-```
-
-Requires agent JWT, human JWT (`~/.config/veil/human.jwt`), fill bridge, and `~/.veil/extension` from `make macos-app` / fill install.
-
-## Example
-
-See [`examples/agentic-autofill/signin.mjs`](../../examples/agentic-autofill/signin.mjs) for a minimal Playwright + CDP sketch (env: `VEIL_AGENT_TOKEN`, extension path, login URLs).
+Partner reference implementation: [`examples/agentic-autofill/signin.mjs`](../../examples/agentic-autofill/signin.mjs) (Playwright sketch only — not the dogfood path).
 
 ## Related
 

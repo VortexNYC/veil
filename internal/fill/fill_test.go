@@ -455,6 +455,26 @@ func TestInstallOriginBakesOriginNotToken(t *testing.T) {
 	}
 }
 
+func TestInstallNativeMessagingProfile(t *testing.T) {
+	vaultDir := t.TempDir()
+	profile := t.TempDir()
+	hostBin := filepath.Join(vaultDir, HostFile)
+	if err := os.WriteFile(hostBin, []byte("host\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallNativeMessagingProfile(vaultDir, profile); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(profile, "NativeMessagingHosts", JSONHostName+".json")
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(hostBin)) {
+		t.Fatalf("manifest %q", raw)
+	}
+}
+
 func TestInstallOriginKeepsExistingConfig(t *testing.T) {
 	user := t.TempDir()
 	vaultDir := t.TempDir()

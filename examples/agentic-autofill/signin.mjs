@@ -145,7 +145,7 @@ export async function signIn({ showApproval }) {
   try {
     const page = await context.newPage();
     await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded", timeout: 90_000 });
-    await waitForLoginSurface(page).catch(() => {});
+    await waitForLoginSurface(page);
     const before = await loginSurfaceState(page);
     console.error(`before fill: url=${before.url} userLen=${before.userLen} passLen=${before.passwordLen}`);
 

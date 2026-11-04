@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 )
 
 func Install(bin, vaultHome, userHome string) error {
@@ -107,6 +109,52 @@ func InstallOrigin(env InstallEnv) error {
 		return err
 	}
 	return InstallBridgeAgent(env)
+}
+
+// InstallNativeMessagingProfile writes the Chrome native-messaging manifest
+// into profileDir/NativeMessagingHosts. Agent-browser and Playwright
+// user-data-dir profiles do not inherit Application Support host manifests.
+func InstallNativeMessagingProfile(vaultHome, profileDir string) error {
+	profileDir = strings.TrimSpace(profileDir)
+	if profileDir == "" {
+		return fmt.Errorf("fill: profile dir is required")
+	}
+	host := HostPath(vaultHome)
+	if _, err := os.Stat(host); err != nil {
+		return fmt.Errorf("fill host missing at %s — run veil fill install", host)
+	}
+	dir := filepath.Join(profileDir, "NativeMessagingHosts")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, JSONHostName+".json"), ManifestJSONChrome(host), 0o644)
+}
+
+// DefaultAgentBrowserChrome returns Chrome for Testing from agent-browser's
+// install dir when present. Branded Chrome hides the MV3 worker from CDP.
+func DefaultAgentBrowserChrome(userHome string) string {
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	base := filepath.Join(userHome, ".agent-browser", "browsers")
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return ""
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "chrome-") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	for i := len(names) - 1; i >= 0; i-- {
+		exe := filepath.Join(base, names[i], "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing")
+		if st, err := os.Stat(exe); err == nil && !st.IsDir() {
+			return exe
+		}
+	}
+	return ""
 }
 
 // BridgeLabel is the launchd job Safari's sandboxed appex reaches over
