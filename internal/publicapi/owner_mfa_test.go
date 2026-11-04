@@ -57,3 +57,29 @@ func TestOwnerGrantRequiresAAL2AMR(t *testing.T) {
 		t.Fatalf("aal2 grant: got %d", code)
 	}
 }
+
+func TestItemCreateRequiresAAL2AMR(t *testing.T) {
+	a := testApp(t)
+	owner := protocol.Principal{Kind: protocol.PrincipalHuman, ID: app.DefaultHuman, OrgID: protocol.LocalOrgID}
+	if _, err := a.Store.PlantHuman(owner); err != nil {
+		t.Fatal(err)
+	}
+	baseIdent := identity(a)
+	jwtIdent := func(ctx context.Context, raw string) (protocol.Principal, error) {
+		if _, ok := human.AMR(raw); ok {
+			return owner, nil
+		}
+		return baseIdent(ctx, raw)
+	}
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(CORS(mux))
+	t.Cleanup(srv.Close)
+	(&Server{App: a, Identity: jwtIdent}).Mount(mux)
+	aal1 := jwtWithAMR(t, "password")
+	code, _ := doJSON(t, srv, http.MethodPost, "/v1/items", aal1, map[string]any{
+		"name": "blocked", "uri": "https://example.com", "secret": "s",
+	})
+	if code != http.StatusForbidden {
+		t.Fatalf("aal1 create item: want 403, got %d", code)
+	}
+}

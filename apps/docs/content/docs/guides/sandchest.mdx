@@ -47,7 +47,7 @@ Docker on your metal: model endpoint secret belongs in Veil, not in `.env` on di
 Findings we track outside Sandchest:
 
 - **Owner HTTP routes** now require Hydra **`amr`** second factor (`totp`, `webauthn`, or `lookup_secret`) — same rule as recovery and the vault SPA.
-- **Item create / item write HTTP** still accept any human JWT that passes identity — confirm SPA never remints password-only tokens before tightening `requireHuman` item routes.
+- **Item create / item write HTTP** require the same Hydra **`amr`** second factor as owner routes.
 - **DPoP pin map** is in-process memory today — multi-replica origin needs shared pin store before strict DPoP rollout at scale.
 - **Cloud MCP** static Bearer — no per-request DPoP until the host sends proofs; prefer laptop `veil mcp stdio`.
 
