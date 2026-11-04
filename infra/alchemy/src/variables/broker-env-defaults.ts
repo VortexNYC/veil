@@ -4,6 +4,7 @@ export const brokerEnvDefaults = {
   VEIL_PG_AUDIT_CONNS: "2",
   VEIL_VORTEX_USAGE_EVENT: "credential_use",
   VEIL_APNS_KEY_PATH: "",
+  VEIL_BETA_FREE: "1",
 };
 
 /** Service-scoped vars allowed to adopt as empty string. */

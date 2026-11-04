@@ -154,6 +154,7 @@ func TestGetBilling(t *testing.T) {
 // POST /v1/billing/checkout — the upgrade click. Owner-only; composes a
 // hosted Vortex subscription checkout against the org's billing link.
 func TestBillingCheckout(t *testing.T) {
+	t.Setenv("VEIL_BETA_FREE", "0")
 	a := testApp(t)
 	var posted map[string]any
 	vx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,5 +226,24 @@ func TestBillingCheckout(t *testing.T) {
 	}
 	if ob.CustomerID != "cus_1" || ob.BillingAccountID != "bacc_1" {
 		t.Fatalf("link %v", ob)
+	}
+}
+
+func TestBillingCheckoutBlockedDuringBeta(t *testing.T) {
+	a := testApp(t)
+	a.BillingCustomers = &billing.Client{BaseURL: "http://unused", Key: "vp_t", MerchantID: "ma_7", Environment: "sandbox", PriceID: "price_pro"}
+	mux := http.NewServeMux()
+	(&Server{App: a, Identity: identity(a)}).Mount(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/billing/checkout", nil)
+	req.Header.Set("Authorization", "Bearer human")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("checkout during beta: %d", res.StatusCode)
 	}
 }

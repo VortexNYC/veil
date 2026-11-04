@@ -267,6 +267,9 @@ Do not use this to ship origin — Railway owns `veil.nyc` API; this worker is d
 
 ## Private alpha cohort
 
+Hosted Veil is **free during the public beta** (no use cap). The section title is legacy;
+onboarding steps below still apply.
+
 Before inviting a new org (or a large batch), run the gate and deploy from GitHub
 `main` — never `railway up` from a laptop checkout (`scripts/railway-redeploy-origin.sh`).
 
@@ -293,10 +296,11 @@ Human/agent setup: `docs/onboarding.md` · `docs/grok.md` · `docs/migration-1pa
    apps are not shipped). **Import** = one-shot `veil item import` (1Password export,
    CSV, Bitwarden JSON) — not Connect sync. **Grok** = Custom MCP (`veil mcp http`) +
    optional fill for website login — not 1Password for Agents OAuth (`docs/grok.md`).
-5. **Billing (Vortex only)** — prod uses `VEIL_VORTEX_*` + webhook
-   (`docs/billing.md`). Sandbox merchant is fine for dogfood; flip env + keys before
-   charging non-Vortex strangers. Owner sees cap in SPA via `GET /v1/billing`;
-   upgrade is `POST /v1/billing/checkout` when `VEIL_VORTEX_PRICE_ID` is set.
+5. **Billing during beta** — hosted origin runs with **`VEIL_BETA_FREE`** (default on):
+   no **`payment_required`** use cap, no checkout in the vault. Vortex wiring can stay
+   provisioned; **`POST /v1/billing/checkout`** is 404 until beta ends. See
+   `docs/billing.md`. When launching paid plans: set **`VEIL_BETA_FREE=0`**, configure
+   **`VEIL_FREE_USE_CAP`** / price id, refresh site + terms, then announce.
 
 **After rotation or Hydra secret incidents:** every human re-login + every agent
 `agent token` remint before telling customers “you’re good.”

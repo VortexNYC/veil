@@ -1,5 +1,12 @@
 # Billing — Vortex integration
 
+**Public beta (default):** hosted Veil is **free** — no monthly use cap, no checkout.
+Origin enables this with **`BetaFreeEnabled()`** (`VEIL_BETA_FREE` unset or any value other
+than `0` / `false` / `no`). That forces **`FreeUseCap = 0`** even when Railway still has
+`VEIL_FREE_USE_CAP` set. **`POST /v1/billing/checkout`** returns 404 during beta. Set
+**`VEIL_BETA_FREE=0`** and configure **`VEIL_FREE_USE_CAP`** / Vortex when turning billing
+on after v1.
+
 Veil is a billing customer of Vortex, not a billing platform. Enforcement
 stays local — the `Use` path never depends on Vortex being reachable — while
 Vortex owns the customer record, subscriptions, checkout, and (post-VOR-580)
