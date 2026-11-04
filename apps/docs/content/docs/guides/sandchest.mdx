@@ -1,0 +1,54 @@
+---
+title: Sandchest + Veil
+description: Run Cap Sandchest security scans on Veil while broker credentials stay in the vault.
+---
+
+[Sandchest](https://github.com/CapSoftware/Sandchest) is an agent-native offensive security product: recon, deep scan, and PR review on GitHub repos. Veil is the credential broker for **your** coding agents. Use both MCP servers from the same laptop — they solve different problems.
+
+## Quick setup (hosted)
+
+1. **Install Sandchest on GitHub** — [sandchest.com](https://www.sandchest.com), connect repos (include `VortexNYC/veil` when auditing auth).
+2. **Connect an agent** — MCP: `https://www.sandchest.com/api/mcp` (OAuth in browser) or [device flow](https://www.sandchest.com/docs/agents) → `sck_…` API key.
+3. **Store the key in Veil** (optional but recommended):
+   - Item `sandchest`, URI `https://www.sandchest.com/api/`, secret = `sck_…` (never paste into chat).
+   - Grant agent `security` or `cursor` **fetch** to that host only.
+4. **Cursor / Claude** — two MCP entries:
+   - **veil** — `veil mcp stdio` (or `https://veil.nyc/mcp` with Hydra bearer).
+   - **sandchest** — URL above; or `Authorization: Bearer` with Veil **`fetch`** inject if your harness supports calling Sandchest through Veil (same as any API item).
+
+Paste prompt from Sandchest home (**Set up with your agent**) — it reads `https://www.sandchest.com/docs/agents.md` and walks `get_me` → `next_steps`.
+
+## Scan Veil’s authentication platform
+
+Point Sandchest at **`VortexNYC/veil`** and prioritize these trees (human + agent auth, not vault crypto internals):
+
+| Area | Path | Why |
+|------|------|-----|
+| HTTP auth gate | `internal/publicapi/api.go` | `resolve`, `requireOwner`, `/v1/use`, fill routes |
+| DPoP | `internal/dpop/` | Bind-on-first-use, replay cache |
+| Human OIDC | `internal/human/`, `identity/glue/` | Hydra id_token, `amr`, Kratos login |
+| Agents | `identity/glue/hydra/`, `internal/mcpserver/` | Client credentials, MCP bearer |
+| Sessions | `internal/app/session.go` | `ses_` leases |
+| Identity UI | `apps/vault/src/auth.ts`, `routes/login.tsx` | aal2 / OIDC |
+| Fill bridge | `internal/fill/` | Human token, no secret on MCP |
+
+After a deep scan, run fix prompts in a checkout where **GitHub** and **model** calls go through Veil — not plain env keys.
+
+## Veil onboarding
+
+`veil onboard status` includes the **Sandchest security scan** playbook when you are the org owner. SPA checklist links here.
+
+## Self-host Sandchest
+
+Docker on your metal: model endpoint secret belongs in Veil, not in `.env` on disk — run compose under `veil run --inject` with a `${MODEL_KEY}` ref (see [self-host](https://github.com/CapSoftware/Sandchest/tree/main/docker#readme)). Sandchest AGPL; do not copy its source into Veil.
+
+## Auth review notes (Veil-maintained)
+
+Findings we track outside Sandchest:
+
+- **Owner HTTP routes** now require Hydra **`amr`** second factor (`totp`, `webauthn`, or `lookup_secret`) — same rule as recovery and the vault SPA.
+- **Item create / item write HTTP** still accept any human JWT that passes identity — confirm SPA never remints password-only tokens before tightening `requireHuman` item routes.
+- **DPoP pin map** is in-process memory today — multi-replica origin needs shared pin store before strict DPoP rollout at scale.
+- **Cloud MCP** static Bearer — no per-request DPoP until the host sends proofs; prefer laptop `veil mcp stdio`.
+
+File Sandchest findings in Pile against `veil`; do not put customer scan output in the repo.

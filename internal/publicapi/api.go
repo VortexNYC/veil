@@ -32,6 +32,7 @@ import (
 	"github.com/VortexNYC/veil/internal/device"
 	"github.com/VortexNYC/veil/internal/dpop"
 	"github.com/VortexNYC/veil/internal/health"
+	"github.com/VortexNYC/veil/internal/human"
 	"github.com/VortexNYC/veil/internal/id"
 	"github.com/VortexNYC/veil/internal/material"
 	"github.com/VortexNYC/veil/internal/oneimport"
@@ -2566,14 +2567,7 @@ func (s *Server) resolve(r *http.Request) (protocol.Principal, error) {
 }
 
 func (s *Server) resolveAgentID(r *http.Request) (string, error) {
-	raw := bearer(r.Header.Get("Authorization"))
-	var p protocol.Principal
-	var err error
-	if s.Identity != nil {
-		p, err = s.Identity(r.Context(), raw)
-	} else {
-		p, err = s.App.PrincipalFromOIDC(r.Context(), raw)
-	}
+	p, err := s.resolve(r)
 	if err != nil {
 		return "", err
 	}
@@ -2623,6 +2617,11 @@ func (s *Server) requireHuman(w http.ResponseWriter, r *http.Request) (protocol.
 func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
 	p, ok := s.requireHuman(w, r)
 	if !ok {
+		return protocol.Principal{}, false
+	}
+	raw := bearer(r.Header.Get("Authorization"))
+	if err := human.RequireMFA(raw); err != nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return protocol.Principal{}, false
 	}
 	ok, err := s.App.OwnsVault(p)
