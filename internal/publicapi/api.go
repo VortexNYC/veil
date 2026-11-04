@@ -9,7 +9,6 @@ package publicapi
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -2857,7 +2856,7 @@ func (s *Server) registerLinkedDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req linkedDeviceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil || req.ID == "" {
 		http.Error(w, "id required", http.StatusBadRequest)
 		return
 	}
@@ -2898,22 +2897,16 @@ type deviceLinkRequest struct {
 // approve time via the approver's session.
 func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
 	var req deviceLinkRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Pubkey) != 32 {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil || len(req.Pubkey) != 32 {
 		http.Error(w, "pubkey (32B) required", http.StatusBadRequest)
 		return
 	}
-	var tok [16]byte
-	if _, err := rand.Read(tok[:]); err != nil {
-		http.Error(w, "mint failed", http.StatusInternalServerError)
-		return
-	}
-	now := time.Now()
-	l := protocol.DeviceLink{
-		Token: hex.EncodeToString(tok[:]),
-		Label: req.Label, Pubkey: req.Pubkey,
-		CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute),
-	}
-	if err := s.App.Store.PutDeviceLink(r.Context(), l); err != nil {
+	l, err := s.App.MintDeviceLink(r.Context(), clientIP(r), req.Label, req.Pubkey)
+	if err != nil {
+		if errors.Is(err, app.ErrDeviceLinkLimit) {
+			http.Error(w, "rate limit", http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, "link failed", http.StatusInternalServerError)
 		return
 	}
@@ -2953,7 +2946,7 @@ func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req approveLinkRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Sealed) == 0 {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil || len(req.Sealed) == 0 {
 		http.Error(w, "sealed required", http.StatusBadRequest)
 		return
 	}
@@ -2970,13 +2963,13 @@ func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
 // wrap once; the token dies on read. Unauthenticated: the 128-bit token IS
 // the proof, and the sealed blob only opens under the link's custodian key.
 func (s *Server) claimDeviceLink(w http.ResponseWriter, r *http.Request) {
-	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
-	if err != nil || l.ConsumedAt != nil || len(l.Sealed) == 0 || time.Now().After(l.ExpiresAt) {
+	l, err := s.App.ClaimDeviceLink(r.Context(), clientIP(r), r.PathValue("token"))
+	if err != nil {
+		if errors.Is(err, app.ErrDeviceLinkLimit) {
+			http.Error(w, "rate limit", http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, "link invalid", http.StatusBadRequest)
-		return
-	}
-	if err := s.App.Store.ConsumeDeviceLink(r.Context(), l.Token); err != nil {
-		http.Error(w, "claim failed", http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, l)
