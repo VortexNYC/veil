@@ -1,0 +1,62 @@
+---
+title: OSS security for coding agents
+description: Zero-SaaS security checks Cursor, Devin, and other agents can run on the Veil repo before you pay for scanners.
+---
+
+Coding agents should default to **open-source CLI tools** and the Veil test bar. No Sandchest credits, no Devin Security ACU burn, unless you explicitly opt in.
+
+## One command (repo root)
+
+```bash
+make security-fast
+```
+
+Runs, in order:
+
+1. **`pnpm run scan:secrets`** — secretlint (same family as CI `secret-scan`)
+2. **`make vuln`** — pinned `govulncheck` on `./...`
+3. **`make security-semgrep`** — `.semgrep/veil-auth.yml` on auth trees (regression guards for MFA/owner gates)
+
+Requires **[Semgrep](https://semgrep.dev/)** on PATH (`brew install semgrep`). Semgrep Cloud login is **not** required.
+
+Optional broader pass (may report pre-existing issues):  
+`semgrep scan --metrics=off --config p/golang internal/`
+
+## Optional extras (still $0)
+
+| Tool | When | Command |
+|------|------|---------|
+| **gosec** | Go security smells | `go install github.com/securego/gosec/v2/cmd/gosec@latest` then `gosec ./internal/...` |
+| **osv-scanner** | Lockfile CVEs (JS + Go) | `brew install osv-scanner` then `osv-scanner -r .` |
+| **pnpm audit** | npm advisory DB | `pnpm audit --audit-level=high` |
+| **Merge bar** | Full contract | `make gate` (race tests, vitest, docs build) |
+| **Structured audit** | Deep pass, no prod probes | `~/.agents/skills/security-audit-skill/` — findings go to Pile |
+
+## Auth paths to scan
+
+Same focus as owner MFA work — not vault crypto internals:
+
+| Area | Path |
+|------|------|
+| HTTP auth gate | `internal/publicapi/` |
+| DPoP | `internal/dpop/` |
+| Human OIDC | `internal/human/`, `identity/glue/` |
+| Agents / MCP | `internal/mcpserver/`, `identity/glue/hydra/` |
+| Sessions | `internal/app/session.go` |
+| Vault SPA auth | `apps/vault/src/` |
+| Fill bridge | `internal/fill/` |
+
+Custom Semgrep rules in `.semgrep/veil-auth.yml` flag regressions (e.g. `createItem` calling `requireHuman` without `requireHumanMFA`).
+
+## Agent playbook
+
+1. `make security-fast` — fix anything red before proposing auth changes.
+2. Targeted tests: `go test ./internal/publicapi/ -run MFA -count=1`
+3. After edits, `make gate` before push (pre-push hook runs the heavy suite).
+
+## Paid scanners (optional)
+
+- **[Sandchest](https://veil.nyc/docs/guides/sandchest/)** — separate Stripe credits; not part of Devin.
+- **Devin Security 2.0** — consumes Devin plan quota; use **Basic**, one repo, no mass auto-remediation until you check usage.
+
+Default for Vortex engineering: **OSS stack above**.

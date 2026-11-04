@@ -37,6 +37,7 @@ export default defineConfig({
           "guides/oidc",
           "guides/wif",
           "guides/dpop",
+          "guides/oss-security",
           "guides/sandchest",
         ],
       },

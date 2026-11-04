@@ -1,4 +1,4 @@
-.PHONY: test vet fmt tidy sdk-fresh ci build identity-config identity-env identity-up glue prove-identity prove-hydra prove-cli-golden-flow prove-live prove-link-live prove-fill loadtest
+.PHONY: test vet fmt tidy sdk-fresh ci build identity-config identity-env identity-up glue prove-identity prove-hydra prove-cli-golden-flow prove-live prove-link-live prove-fill loadtest security-fast security-semgrep
 
 test:
 	env -u VEIL_HYDRA_ISSUER -u VEIL_HYDRA_ADMIN -u VEIL_HOME -u VEIL_OIDC_TOKEN -u VEIL_ORIGIN -u VEIL_OIDC_TOKEN_FILE -u VEIL_HYDRA_SECRET_FILE -u VEIL_AGENT VEIL_FILL_TOUCHID=0 VEIL_DPOP=0 go test -race -shuffle=on -timeout 15m ./...
@@ -43,6 +43,21 @@ gate:
 # bad tool release. Bump deliberately.
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+# OSS security pass for coding agents — no SaaS. Semgrep optional on PATH.
+SEMGREP ?= semgrep
+SEMGREP_AUTH_PATHS = internal/publicapi internal/human internal/dpop internal/fill identity/glue internal/mcpserver apps/vault/src
+
+security-semgrep:
+	@command -v $(SEMGREP) >/dev/null 2>&1 || { echo "security-semgrep: install semgrep (e.g. brew install semgrep)" >&2; exit 1; }
+	$(SEMGREP) scan --metrics=off --error \
+		--config .semgrep/veil-auth.yml \
+		$(SEMGREP_AUTH_PATHS)
+
+security-fast:
+	pnpm run scan:secrets
+	$(MAKE) vuln
+	$(MAKE) security-semgrep
 
 prove-cli-golden-flow:
 	go test ./internal/cli ./internal/mcpserver ./internal/publicapi -count=1
