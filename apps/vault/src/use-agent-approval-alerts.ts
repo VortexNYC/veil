@@ -34,7 +34,7 @@ export function useAgentApprovalAlerts(enabled: boolean): void {
       if (prevOpen.current !== null && n > prevOpen.current) {
         const newest = res.data.requests[0];
         if (newest) {
-          notifyAgentApprovalRequest(newest.agent_id, newest.item_id);
+          notifyAgentApprovalRequest(newest.id, newest.agent_id, newest.item_id, newest.action);
         }
       }
       prevOpen.current = n;

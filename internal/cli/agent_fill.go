@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -18,6 +19,10 @@ import (
 )
 
 const agentFillStepTotal = 4
+
+func agentFillAutoApproveAllowed() bool {
+	return os.Getenv("VEIL_CI") == "1" || os.Getenv("VEIL_ALLOW_AUTO_APPROVE") == "1"
+}
 
 func agentFillInteractiveConfirm(opts agentFillRunOpts) bool {
 	if !opts.Confirm {
@@ -153,10 +158,15 @@ func agentFillRun(cmd *cobra.Command, opts agentFillRunOpts) error {
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "request_id=%s\n", requestID)
 
 	if strings.TrimSpace(os.Getenv("VEIL_AUTO_APPROVE")) == "1" {
-		if err := originRequestResolveQuiet(cmd, requestID, "approve", 15*time.Minute); err != nil {
+		if !agentFillAutoApproveAllowed() {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"warning: ignoring VEIL_AUTO_APPROVE — approve in Veil.app (step 3/4), or set VEIL_CI=1 for automation\n",
+			)
+		} else if err := originRequestResolveQuiet(cmd, requestID, "approve", 15*time.Minute); err != nil {
 			return err
+		} else {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "auto-approved (VEIL_AUTO_APPROVE + VEIL_CI) — running fill…\n")
 		}
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "auto-approved (VEIL_AUTO_APPROVE) — running fill…\n")
 	} else if opts.WaitApproved || opts.Confirm {
 		if err := originRequestAwaitApproval(cmd, agentName, requestID, opts.ApprovalTimeout, agentFillInteractiveConfirm(opts)); err != nil {
 			return err
@@ -237,7 +247,7 @@ func agentFillRun(cmd *cobra.Command, opts agentFillRunOpts) error {
 	}
 	switch {
 	case strings.TrimSpace(opts.AssertURL) != "":
-		res.NextHumanStep = "Login URL matched --assert-url; session complete for automation."
+		res.NextHumanStep = "Login URL matched --success-url; session complete for automation."
 	case opts.KeepOpen:
 		res.NextHumanStep = "Finish 2FA or passkey in the headed window, then: veil agent fill close --session " + session
 	default:
@@ -267,4 +277,33 @@ func pageURLMatchSubstring(raw string) string {
 		return u.Host
 	}
 	return u.Host + path
+}
+
+// agentFillRunMCP runs the laptop fill journey and returns structured output for MCP.
+func agentFillRunMCP(ctx context.Context, item, pageURL, successURL string) (agentFillRunResult, error) {
+	var zero agentFillRunResult
+	cmd := &cobra.Command{}
+	cmd.SetContext(ctx)
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(os.Stderr)
+	agent := strings.TrimSpace(os.Getenv("VEIL_AGENT"))
+	opts := agentFillRunOpts{
+		Agent:        agent,
+		Item:         item,
+		URL:          pageURL,
+		AssertURL:    successURL,
+		EmitJSON:     true,
+		OpenBrowser:  true,
+		WaitApproved: true,
+		VerifyFields: true,
+	}
+	if err := agentFillRun(cmd, opts); err != nil {
+		return zero, err
+	}
+	var res agentFillRunResult
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		return zero, fmt.Errorf("agent fill login: decode result: %w", err)
+	}
+	return res, nil
 }

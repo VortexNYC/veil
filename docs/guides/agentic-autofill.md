@@ -120,7 +120,7 @@ veil agent fill request --item Stripe --url 'https://dashboard.stripe.com/login'
 # stderr: veil request confirm req-…  (y/N in terminal — same decision as tapping Approve in the app)
 ```
 
-Automation that must not bypass the human gate: set `VEIL_AUTO_APPROVE=1` only in CI (calls `veil request approve` directly).
+Automation that must not bypass the human gate: **`VEIL_AUTO_APPROVE=1` is ignored** unless **`VEIL_CI=1`** or **`VEIL_ALLOW_AUTO_APPROVE=1`** (CI only). Do not leave auto-approve set in your shell profile.
 
 Send the human to **`approval_url`** only when none of the above are in reach.
 
@@ -241,7 +241,9 @@ Stdout (agents parse this):
 }
 ```
 
-Post-login automation (after you complete 2FA): add `--assert-url 'https://github.com/'`. Or keep the window: `--keep-open --hold 5m`.
+Post-login automation (after you complete 2FA): add **`--success-url 'https://github.com/'`** (alias: `--assert-url`). Or keep the window: `--keep-open --hold 5m`.
+
+**Cursor (stdio MCP):** call **`agent_fill_login`** with `item` + `url` instead of shell scripts. Cloud MCP: **`request_fill`** → human approves → run `laptop_fill_command` on the dev machine or poll **`approval_status`**.
 
 Orphan sessions: `veil agent fill close --all` or `veil agent fill close --session veil-github`.
 

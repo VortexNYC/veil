@@ -129,13 +129,33 @@ func originMCPServer() *mcp.Server {
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "request_fill",
-		Description: "Ask a human to approve a website login for a granted item. You never receive the password. Poll approval_status; fill runs on the human device via Veil extension.",
+		Description: "Ask a human to approve a website login for a granted item. You never receive the password. After approval on this laptop, call agent_fill_login; otherwise poll approval_status.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpserver.RequestFillIn) (*mcp.CallToolResult, mcpserver.FetchOut, error) {
 		var out mcpserver.FetchOut
 		if err := callOriginMCPTool(ctx, "request_fill", in, &out); err != nil {
 			return nil, mcpserver.FetchOut{}, err
 		}
+		if out.LaptopFillCommand == "" && strings.TrimSpace(in.Item) != "" && strings.TrimSpace(in.URL) != "" {
+			out.LaptopFillCommand = fmt.Sprintf("veil agent fill login --item %q --url %q", in.Item, in.URL)
+		}
 		return nil, out, nil
+	})
+	type agentFillLoginMCPIn struct {
+		Item       string `json:"item" jsonschema:"granted item name or id"`
+		URL        string `json:"url" jsonschema:"HTTPS login page URL"`
+		SuccessURL string `json:"success_url,omitempty" jsonschema:"after fill, wait until tab URL matches (post-2FA proof)"`
+	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "agent_fill_login",
+		Description: "Laptop only: veil agent fill login — open browser, wait for human approval in Veil.app (step 3/4), autofill, verify field lengths, return JSON. Requires fill bridge + extension. Never returns secrets.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in agentFillLoginMCPIn) (*mcp.CallToolResult, agentFillRunResult, error) {
+		item := strings.TrimSpace(in.Item)
+		pageURL := strings.TrimSpace(in.URL)
+		if item == "" || pageURL == "" {
+			return nil, agentFillRunResult{}, fmt.Errorf("agent_fill_login: item and url are required")
+		}
+		out, err := agentFillRunMCP(ctx, item, pageURL, strings.TrimSpace(in.SuccessURL))
+		return nil, out, err
 	})
 	return server
 }

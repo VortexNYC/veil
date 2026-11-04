@@ -1,11 +1,11 @@
 ---
 name: veil
-description: Use Veil MCP (list_items, match_items, check, fetch, request_fill, approval_status) to make authenticated API calls and website login approvals without ever touching plaintext secrets.
+description: Use Veil MCP (list_items, match_items, check, fetch, request_fill, approval_status, agent_fill_login on laptop) to make authenticated API calls and website login without plaintext secrets.
 ---
 
 # Veil — Credential Broker MCP Skill
 
-Veil (`https://veil.nyc/mcp`) is mounted as the `veil` MCP server. **Agents never receive secrets.** Use these **six** MCP tools so the broker injects at the edge or files a human ask.
+Veil (`https://veil.nyc/mcp`) is mounted as the `veil` MCP server. **Agents never receive secrets.** Hosted MCP exposes six tools; **laptop stdio** adds **`agent_fill_login`** (runs `veil agent fill login` locally).
 
 ## Connecting an agent
 
@@ -38,21 +38,24 @@ Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints 
    - Polls the status (`open`, `approved`, `denied`, `expired`). Response includes `action` (`use` vs `fill`). When `action` is `fill` and `status` is `approved`, the human must run browser fill (extension + host) — not another `fetch`.
 6. **`request_fill`** (`mcp__veil__request_fill` / `veil__request_fill`):
    - Input: `{ "item": "airbnb", "url": "https://www.airbnb.com/login" }`
-   - Files a **website login** approval. Returns `decision: need_approval`, `request_id`, `approval_url`, `action: fill`. Poll `approval_status`; execute fill on the browser device (CDP `veilAgentic` — not an MCP tool).
+   - Files a **website login** approval. Returns `decision: need_approval`, `request_id`, `approval_url`, `action: fill`, and **`laptop_fill_command`**. Poll `approval_status` on cloud; on the dev laptop call **`agent_fill_login`** (below).
+7. **`agent_fill_login`** ( **laptop stdio only** — not on `https://veil.nyc/mcp` ):
+   - Input: `{ "item": "github", "url": "https://github.com/login", "success_url": "https://github.com/" }` (optional `success_url`)
+   - Runs the full phased login (browser → approve in Veil.app step 3/4 → autofill → JSON result). Requires fill bridge + extension. Never returns secrets.
 
 ## State machine (Grok / Muse / cloud MCP)
 
 | Intent | Tools | Human | Agent after approve |
 |--------|-------|-------|---------------------|
 | Call an API | `match_items` → `fetch` (or `check` first) | level1: approve at `approval_url` | Retry same `fetch` |
-| Sign into a website | `match_items` → **`request_fill`** | Approve at `approval_url` | Poll `approval_status`; partner runs **fillCredential** in Chromium with Veil extension |
+| Sign into a website | `match_items` → **`request_fill`** or **`agent_fill_login`** (laptop) | Approve at `approval_url` (step 3/4) | **`agent_fill_login`** JSON on laptop; cloud: poll then human runs `laptop_fill_command` |
 | Dry-run API policy | `check` | Same as fetch if `need_approval` | Same |
 
 **Not on MCP (by design):** approve/deny (human only — use **`veil request confirm`** / app / iOS on the human device), passwords/TOTP/passkeys, `execute_fill` (browser CDP only).
 
 ## Browser automation (agent-browser, Browserbase, Playwright)
 
-Website login is **not** `fetch`. After **`request_fill`** → human approve → **`approval_status` === `approved`**:
+Website login is **not** `fetch`. **Preferred on Cursor/laptop:** **`agent_fill_login`**. Manual CDP path after **`request_fill`** → approve → **`approval_status` === `approved`**:
 
 1. Drive a Chromium session with the **Veil MV3 extension** loaded (same profile as `veil fill install` or `--load-extension=apps/fill`).
 2. Native **fill host** must be running with a live human JWT.
