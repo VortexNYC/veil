@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -289,11 +290,11 @@ func matchHTU(htu string, r *http.Request) bool {
 	if scheme != "https" && scheme != "http" {
 		return false
 	}
-	reqHost := r.Host
-	if fwdHost := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); fwdHost != "" {
-		reqHost = strings.TrimSpace(strings.Split(fwdHost, ",")[0])
+	wantScheme, wantHost := requestSchemeHost(r)
+	if !strings.EqualFold(scheme, wantScheme) {
+		return false
 	}
-	if reqHost != "" && !strings.EqualFold(u.Host, reqHost) {
+	if wantHost == "" || !strings.EqualFold(u.Host, wantHost) {
 		return false
 	}
 	uPath := u.Path
@@ -305,6 +306,28 @@ func matchHTU(htu string, r *http.Request) bool {
 		rPath = "/"
 	}
 	return uPath == rPath
+}
+
+// requestSchemeHost is the expected public scheme/host for htu binding.
+// X-Forwarded-* is honored only when CF-Connecting-IP is present (edge-set,
+// same trust model as publicapi clientIP). Direct hits use r.TLS and r.Host.
+func requestSchemeHost(r *http.Request) (scheme, host string) {
+	scheme = "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	host = r.Host
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+		if ip := net.ParseIP(cf); ip != nil {
+			if p := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); p == "http" || p == "https" {
+				scheme = p
+			}
+			if h := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0]); h != "" {
+				host = h
+			}
+		}
+	}
+	return scheme, host
 }
 
 func computeATH(accessToken string) string {

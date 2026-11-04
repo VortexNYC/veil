@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -68,5 +69,67 @@ func TestDPoPVerifyReplayAndKeyPinning(t *testing.T) {
 	req2.Header.Set("DPoP", proof2)
 	if err := v.VerifyRequest(req2, tok); err != nil {
 		t.Fatalf("second proof from key1 rejected: %v", err)
+	}
+}
+
+func TestMatchHTUIgnoresForgedForwardedHostWithoutEdge(t *testing.T) {
+	v := NewVerifier()
+	now := time.Now().UTC().Truncate(time.Second)
+	v.Now = func() time.Time { return now }
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := "plain_bearer_token"
+	proof, err := MintProof(key, "POST", "https://veil.nyc/v1/provision", tok, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("POST", "https://veil.nyc/v1/provision", nil)
+	req.Host = "veil.nyc"
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
+	req.Header.Set("DPoP", proof)
+	if err := v.VerifyRequest(req, tok); err != nil {
+		t.Fatalf("forged X-Forwarded-Host without edge must not break htu: %v", err)
+	}
+
+	v2 := NewVerifier()
+	v2.Now = v.Now
+	tok2 := "plain_bearer_token_2"
+	proofEvil, err := MintProof(key, "POST", "https://attacker.example/v1/provision", tok2, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqEvil := httptest.NewRequest("POST", "https://veil.nyc/v1/provision", nil)
+	reqEvil.Host = "veil.nyc"
+	reqEvil.Header.Set("X-Forwarded-Host", "attacker.example")
+	reqEvil.Header.Set("DPoP", proofEvil)
+	if err := v2.VerifyRequest(reqEvil, tok2); err == nil {
+		t.Fatal("htu bound to attacker host must not verify against veil.nyc request")
+	}
+}
+
+func TestMatchHTURejectsSchemeMismatch(t *testing.T) {
+	v := NewVerifier()
+	now := time.Now().UTC().Truncate(time.Second)
+	v.Now = func() time.Time { return now }
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := "scheme_test"
+	proof, err := MintProof(key, "POST", "http://127.0.0.1:8080/v1/provision", tok, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "https://127.0.0.1:8080/v1/provision", nil)
+	req.Host = "127.0.0.1:8080"
+	req.TLS = &tls.ConnectionState{} // https
+	req.Header.Set("DPoP", proof)
+	if err := v.VerifyRequest(req, tok); err == nil {
+		t.Fatal("http htu must not match https request")
 	}
 }
