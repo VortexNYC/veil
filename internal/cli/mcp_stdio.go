@@ -147,7 +147,7 @@ func originMCPServer() *mcp.Server {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "agent_fill_login",
-		Description: "Laptop only: veil agent fill login — open browser, wait for human approval in Veil.app (step 3/4), autofill, verify field lengths, return JSON. Requires fill bridge + extension. Never returns secrets.",
+		Description: "Laptop only: veil agent fill login — open browser, wait for human approval in Veil.app, autofill, page proof (login_state + screenshot). Vault item must already be correct in Veil. Requires fill bridge + extension. Never returns secrets.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in agentFillLoginMCPIn) (*mcp.CallToolResult, agentFillRunResult, error) {
 		item := strings.TrimSpace(in.Item)
 		pageURL := strings.TrimSpace(in.URL)
@@ -165,14 +165,16 @@ func callOriginMCPTool(ctx context.Context, toolName string, args any, dst any) 
 	if err != nil {
 		return err
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "veil-stdio", Version: "0.1.0"}, nil)
-	tr := &mcp.StreamableClientTransport{
-		Endpoint: originBase() + "/mcp",
-		HTTPClient: &http.Client{
-			Transport: bearerRoundTripper{tok: tok, base: http.DefaultTransport},
-		},
+	sess, err := connectOriginMCP(ctx, tok)
+	if err != nil && agentNameFromJWT(tok) != "" {
+		// Unexpired-but-rejected token (rotated Hydra client). Remint once
+		// and retry — same self-heal as originDo's 401 path.
+		if cred, ok, credErr := originHydraCred(); ok && credErr == nil {
+			if minted, rerr := originRemint(ctx, "", cred); rerr == nil && minted != tok {
+				sess, err = connectOriginMCP(ctx, minted)
+			}
+		}
 	}
-	sess, err := client.Connect(ctx, tr, nil)
 	if err != nil {
 		return err
 	}
@@ -200,6 +202,17 @@ func callOriginMCPTool(ctx context.Context, toolName string, args any, dst any) 
 		}
 	}
 	return fmt.Errorf("mcp %s: empty response", toolName)
+}
+
+func connectOriginMCP(ctx context.Context, tok string) (*mcp.ClientSession, error) {
+	client := mcp.NewClient(&mcp.Implementation{Name: "veil-stdio", Version: "0.1.0"}, nil)
+	tr := &mcp.StreamableClientTransport{
+		Endpoint: originBase() + "/mcp",
+		HTTPClient: &http.Client{
+			Transport: bearerRoundTripper{tok: tok, base: http.DefaultTransport},
+		},
+	}
+	return client.Connect(ctx, tr, nil)
 }
 
 type bearerRoundTripper struct {

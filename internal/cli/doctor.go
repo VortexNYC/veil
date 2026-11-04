@@ -149,6 +149,53 @@ func doctorCmd(home *string, version string) *cobra.Command {
 				record("auth:human-jwt", "warn", "no live human JWT (will auto-remint on next Touch ID / login)")
 			}
 
+			// 6. Agent auth: cred dir, hydra secret, jwt exp, live broker probe.
+			// An unexpired-but-rejected token (rotated client) is the failure
+			// this section exists to name — exp alone is not proof.
+			agent := strings.TrimSpace(os.Getenv("VEIL_AGENT"))
+			if agent == "" {
+				agent = inferCallerAgent()
+			}
+			credDir := filepath.Join(userHome, ".config", "vortex", "veil")
+			if agent == "" {
+				record("auth:agent", "warn", "no VEIL_AGENT and caller not inferable — skipping agent checks")
+			} else {
+				secFile := strings.TrimSpace(os.Getenv("VEIL_HYDRA_SECRET_FILE"))
+				if secFile == "" {
+					secFile = filepath.Join(credDir, agent+".hydra")
+				}
+				tokFile := strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN_FILE"))
+				if tokFile == "" {
+					tokFile = filepath.Join(credDir, agent+".jwt")
+				}
+				remint := fmt.Sprintf("run `veil agent token %s --secret-file %s --out-file %s`", agent, secFile, tokFile)
+				if _, err := os.Stat(secFile); err != nil {
+					record("auth:agent-hydra", "fail", fmt.Sprintf("%s missing — run `veil agent hydra %s --secret-file %s`", secFile, agent, secFile))
+				} else {
+					record("auth:agent-hydra", "ok", secFile)
+				}
+				tok := ""
+				if raw, err := os.ReadFile(tokFile); err != nil {
+					record("auth:agent-jwt", "fail", tokFile+" missing — "+remint)
+				} else {
+					tok = strings.TrimSpace(string(raw))
+					if tok == "" {
+						record("auth:agent-jwt", "fail", tokFile+" empty — "+remint)
+					} else if jwtNeedsRefresh(tok) {
+						record("auth:agent-jwt", "warn", tokFile+" expired/near-expiry — auto-remints on next use if hydra secret is live")
+					}
+				}
+				if tok != "" {
+					if status, _ := probeHTTPAuth(ctx, strings.TrimRight(origin, "/")+"/v1/items", tok); status == http.StatusOK {
+						record("auth:agent-probe", "ok", "GET /v1/items 200 — broker accepts this agent token")
+					} else if status == http.StatusUnauthorized {
+						record("auth:agent-probe", "fail", fmt.Sprintf("GET /v1/items 401 — token rejected despite valid exp — %s", remint))
+					} else {
+						record("auth:agent-probe", "warn", fmt.Sprintf("GET /v1/items -> %d", status))
+					}
+				}
+			}
+
 			status := "ok"
 			if !allOK {
 				status = "drift_or_failure"
@@ -238,9 +285,16 @@ func probeUnixSocket(path string) bool {
 }
 
 func probeHTTP(ctx context.Context, url string) (int, string) {
+	return probeHTTPAuth(ctx, url, "")
+}
+
+func probeHTTPAuth(ctx context.Context, url, token string) (int, string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, ""
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

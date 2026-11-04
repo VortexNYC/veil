@@ -240,9 +240,39 @@ func agentNameFromJWT(tok string) string {
 }
 
 func originDo(ctx context.Context, method, path, token string, body []byte) ([]byte, error) {
+	raw, status, err := originDoOnce(ctx, method, path, token, body)
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusUnauthorized && agentNameFromJWT(token) != "" {
+		// Unexpired-but-rejected agent token (rotated Hydra client, revoked
+		// session). Remint once and retry — the broker's word beats local exp.
+		if cred, ok, credErr := originHydraCred(); ok && credErr == nil {
+			if minted, rerr := originRemint(ctx, "", cred); rerr == nil && minted != token {
+				raw, status, err = originDoOnce(ctx, method, path, minted, body)
+			}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		msg := strings.TrimSpace(string(raw))
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		if msg != "" {
+			return raw, fmt.Errorf("origin %s %s: http %d: %s", method, path, status, msg)
+		}
+		return raw, fmt.Errorf("origin %s %s: http %d", method, path, status)
+	}
+	return raw, nil
+}
+
+func originDoOnce(ctx context.Context, method, path, token string, body []byte) ([]byte, int, error) {
 	base := originBase()
 	if base == "" {
-		return nil, fmt.Errorf("origin: VEIL_ORIGIN is empty")
+		return nil, 0, fmt.Errorf("origin: VEIL_ORIGIN is empty")
 	}
 	var rdr io.Reader
 	if len(body) > 0 {
@@ -250,34 +280,24 @@ func originDo(ctx context.Context, method, path, token string, body []byte) ([]b
 	}
 	req, err := http.NewRequestWithContext(ctx, method, base+path, rdr)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := originAttachAuth(req, token); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return nil, err
+		return nil, res.StatusCode, err
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		msg := strings.TrimSpace(string(raw))
-		if len(msg) > 200 {
-			msg = msg[:200]
-		}
-		if msg != "" {
-			return raw, fmt.Errorf("origin %s %s: http %d: %s", method, path, res.StatusCode, msg)
-		}
-		return raw, fmt.Errorf("origin %s %s: http %d", method, path, res.StatusCode)
-	}
-	return raw, nil
+	return raw, res.StatusCode, nil
 }
 
 func originUse(cmd *cobra.Command, tokenFile, item, rawURL, method string, headers []string, bodyFile string) error {
