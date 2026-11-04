@@ -561,7 +561,7 @@ func (s *Server) listItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createItem(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}
@@ -2614,7 +2614,7 @@ func (s *Server) requireHuman(w http.ResponseWriter, r *http.Request) (protocol.
 	return p, true
 }
 
-func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
+func (s *Server) requireHumanMFA(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
 	p, ok := s.requireHuman(w, r)
 	if !ok {
 		return protocol.Principal{}, false
@@ -2622,6 +2622,14 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request) (protocol.
 	raw := bearer(r.Header.Get("Authorization"))
 	if err := human.RequireMFA(raw); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return protocol.Principal{}, false
+	}
+	return p, true
+}
+
+func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
+	p, ok := s.requireHumanMFA(w, r)
+	if !ok {
 		return protocol.Principal{}, false
 	}
 	ok, err := s.App.OwnsVault(p)
@@ -2633,7 +2641,7 @@ func (s *Server) requireOwner(w http.ResponseWriter, r *http.Request) (protocol.
 }
 
 func (s *Server) requireItemWrite(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return protocol.Principal{}, false
 	}
