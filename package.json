@@ -14,6 +14,7 @@
     "sdk:generate": "pnpm exec tsx scripts/generate-sdks.ts",
     "docs:dev": "pnpm --filter @vortex-api/veil-docs dev",
     "docs:build": "pnpm --filter @vortex-api/veil-docs build",
+    "docs:deploy": "pnpm run docs:build && pnpm --filter @vortex-api/veil-docs exec wrangler deploy --config dist/server/wrangler.json",
     "prove:cli-golden-flow": "go test ./internal/cli ./internal/mcpserver ./internal/publicapi -count=1",
     "prepare": "vp config"
   },
