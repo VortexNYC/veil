@@ -2159,6 +2159,7 @@ func (p *Postgres) PutDeviceLink(ctx context.Context, l protocol.DeviceLink) err
 		(token, org_id, human_id, label, pubkey, sealed, approved_by, created_at, expires_at, consumed_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		ON CONFLICT (token) DO UPDATE SET
+		  org_id=EXCLUDED.org_id, human_id=EXCLUDED.human_id,
 		  sealed=EXCLUDED.sealed, approved_by=EXCLUDED.approved_by, consumed_at=EXCLUDED.consumed_at`,
 		l.Token, l.OrgID, l.HumanID, l.Label, l.Pubkey, l.Sealed, l.ApprovedBy, l.CreatedAt, l.ExpiresAt, l.ConsumedAt)
 	return err

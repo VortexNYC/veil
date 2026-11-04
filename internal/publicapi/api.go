@@ -2597,6 +2597,24 @@ func (s *Server) requireHuman(w http.ResponseWriter, r *http.Request) (protocol.
 	return p, true
 }
 
+// humanOwnsFillDevice is true when this human filed or owns the device id
+// stored on a fill approval row (AgentID is the asking device, not org RBAC).
+func (s *Server) humanOwnsFillDevice(ctx context.Context, p protocol.Principal, deviceID string) bool {
+	if deviceID == p.ID {
+		return true
+	}
+	devs, err := s.App.Store.Devices(p.OrgID, p.ID)
+	if err != nil {
+		return false
+	}
+	for _, d := range devs {
+		if d.ID == deviceID {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) requireHumanMFA(w http.ResponseWriter, r *http.Request) (protocol.Principal, bool) {
 	p, ok := s.requireHuman(w, r)
 	if !ok {
@@ -2762,6 +2780,10 @@ func (s *Server) fillRequestStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	if req.Action == protocol.ActionFill && !s.humanOwnsFillDevice(r.Context(), p, req.AgentID) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	writeJSON(w, FillRequestOut{RequestID: req.ID, Status: req.Status, ExpiresAt: req.ExpiresAt})
 }
 
@@ -2913,11 +2935,17 @@ func (s *Server) createDeviceLink(w http.ResponseWriter, r *http.Request) {
 // GET /v1/device-links/{token} — the approver reads the link's pubkey +
 // label before sealing. Sealed blob never leaves until claim.
 func (s *Server) getDeviceLink(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireHuman(w, r); !ok {
+	h, ok := s.requireHuman(w, r)
+	if !ok {
 		return
 	}
 	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
 	if err != nil || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+		http.Error(w, "link invalid", http.StatusBadRequest)
+		return
+	}
+	// Pending links are org-agnostic; once approved, only the approver reads metadata.
+	if l.OrgID != "" && (l.OrgID != h.OrgID || l.HumanID != h.ID) {
 		http.Error(w, "link invalid", http.StatusBadRequest)
 		return
 	}
@@ -2939,6 +2967,10 @@ func (s *Server) approveDeviceLink(w http.ResponseWriter, r *http.Request) {
 	}
 	l, err := s.App.Store.DeviceLink(r.Context(), r.PathValue("token"))
 	if err != nil || l.ConsumedAt != nil || time.Now().After(l.ExpiresAt) {
+		http.Error(w, "link invalid", http.StatusBadRequest)
+		return
+	}
+	if l.OrgID != "" && (l.OrgID != h.OrgID || l.HumanID != h.ID) {
 		http.Error(w, "link invalid", http.StatusBadRequest)
 		return
 	}

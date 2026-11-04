@@ -2124,6 +2124,13 @@ func TestFillRequestLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	now := time.Now()
+	if err := a.Store.PutDevice(protocol.Device{
+		ID: "mini", OrgID: protocol.LocalOrgID, HumanID: "self",
+		CreatedAt: now, LastSeenAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	srv := apiServer(t, a)
 
 	// Agents cannot file — fill approval is a human device surface.
@@ -2160,6 +2167,11 @@ func TestFillRequestLifecycle(t *testing.T) {
 	var st FillRequestOut
 	if json.Unmarshal(raw, &st) != nil || st.Status != protocol.RequestApproved {
 		t.Fatalf("status %s", raw)
+	}
+
+	code, _ = doJSON(t, srv, http.MethodGet, "/v1/fill/request/"+filed.RequestID, "member", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("other member poll %d", code)
 	}
 }
 
