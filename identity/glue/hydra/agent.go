@@ -98,7 +98,22 @@ func (c *Client) EnsureAgent(ctx context.Context, ac AgentClient) (AgentCred, er
 	}, nil
 }
 
+// TokenURL is Hydra's OAuth2 token endpoint for issuer.
+func TokenURL(issuer string) (string, error) {
+	iss, err := absurl.Parse(issuer)
+	if err != nil {
+		return "", fmt.Errorf("hydra: issuer: %w", err)
+	}
+	return strings.TrimRight(iss, "/") + "/oauth2/token", nil
+}
+
 func ClientCredentials(ctx context.Context, issuer, clientID, secret, audience string) (string, error) {
+	return ClientCredentialsWithHTTPClient(ctx, issuer, clientID, secret, audience, nil)
+}
+
+// ClientCredentialsWithHTTPClient mints a JWT access token via client_credentials.
+// When httpClient is non-nil it is used for the token request (oauth2.HTTPClient).
+func ClientCredentialsWithHTTPClient(ctx context.Context, issuer, clientID, secret, audience string, httpClient *http.Client) (string, error) {
 	iss, err := absurl.Parse(issuer)
 	if err != nil {
 		return "", fmt.Errorf("hydra: issuer: %w", err)
@@ -110,6 +125,9 @@ func ClientCredentials(ctx context.Context, issuer, clientID, secret, audience s
 	}
 	if audience == "" {
 		audience = DefaultClientID
+	}
+	if httpClient != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 	}
 	cfg := clientcredentials.Config{
 		ClientID:     clientID,

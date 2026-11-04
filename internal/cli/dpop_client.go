@@ -105,3 +105,21 @@ func originAttachAuth(req *http.Request, token string) error {
 	req.Header.Set("DPoP", proof)
 	return nil
 }
+
+// ensureAgentDPoPKeyFile creates the persistent DPoP key beside the agent JWT
+// file after Hydra bootstrap so the first remint/origin call is already keyed.
+func ensureAgentDPoPKeyFile(agentName, secretFile string) error {
+	if !originDPoPEnabled() {
+		return nil
+	}
+	jwtPath := strings.TrimSpace(os.Getenv("VEIL_OIDC_TOKEN_FILE"))
+	if jwtPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		jwtPath = filepath.Join(home, ".config", "vortex", "veil", strings.TrimSpace(agentName)+".jwt")
+	}
+	_, err := dpop.LoadOrGenerateKey(dpopKeySiblingPath(jwtPath))
+	return err
+}

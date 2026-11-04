@@ -183,7 +183,21 @@ func originRemint(ctx context.Context, tokenFile string, cred hydraCred) (string
 	if env := os.Getenv("VEIL_HYDRA_CLIENT_ID"); env != "" {
 		audience = env
 	}
-	raw, err := glue.ClientCredentials(ctx, issuer, glue.AgentClientID(agentName), cred.Secret, audience)
+	var httpClient *http.Client
+	if originDPoPEnabled() {
+		key, kerr := originDPoPPrivateKey()
+		if kerr != nil {
+			return "", kerr
+		}
+		if key != nil {
+			tokenURL, uerr := glue.HydraTokenURL(issuer)
+			if uerr != nil {
+				return "", uerr
+			}
+			httpClient = hydraTokenDPoPHTTPClient(key, tokenURL)
+		}
+	}
+	raw, err := glue.ClientCredentialsWithHTTPClient(ctx, issuer, glue.AgentClientID(agentName), cred.Secret, audience, httpClient)
 	if err != nil {
 		return "", err
 	}
@@ -1113,6 +1127,9 @@ func originAgentHydra(cmd *cobra.Command, name, issuer, clientID, audience, secr
 		if err := writeHydraCred(secretFile, existing); err != nil {
 			return err
 		}
+		if err := ensureAgentDPoPKeyFile(name, secretFile); err != nil {
+			return err
+		}
 		return encode(cmd, hydraAgentDTO{
 			AgentID:  name,
 			ClientID: clientID,
@@ -1137,6 +1154,9 @@ func originAgentHydra(cmd *cobra.Command, name, issuer, clientID, audience, secr
 	existing.Audience = out.Audience
 	existing.Issuer = out.Issuer
 	if err := writeHydraCred(secretFile, existing); err != nil {
+		return err
+	}
+	if err := ensureAgentDPoPKeyFile(name, secretFile); err != nil {
 		return err
 	}
 	return encode(cmd, hydraAgentDTO{
