@@ -145,6 +145,22 @@ func agentFillRun(cmd *cobra.Command, opts agentFillRunOpts) error {
 		time.Sleep(2 * time.Second)
 	}
 
+	if err := originAgentFillRequireItemLogin(cmd, agentName, itemRef); err != nil {
+		if opts.JourneyProof {
+			proof := agentFillCapturePageProof(cmd, vaultHome, session, pageURL, nil)
+			proof.State = "vault_missing_username"
+			proof.Summary = err.Error()
+			if opts.EmitJSON {
+				res := agentFillRunResult{
+					OK: false, LoginState: proof.State, Item: itemRef, URL: pageURL, Session: session,
+					Proof: &proof, KeepOpen: opts.KeepOpen, NextHumanStep: nextStepForLoginState(proof.State, session),
+				}
+				_ = agentFillEmitResult(cmd, res)
+			}
+		}
+		return err
+	}
+
 	out, err := originAgentFillRequestJSON(cmd, agentName, itemRef, pageURL)
 	if err != nil {
 		return err
@@ -195,15 +211,31 @@ func agentFillRun(cmd *cobra.Command, opts agentFillRunOpts) error {
 	if opts.VerifyFields {
 		run.Env = append(run.Env, "VEIL_VERIFY_FIELDS=1")
 	}
-	if err := run.Run(); err != nil {
-		return fmt.Errorf("worker fill: %w", err)
-	}
+	var workerErr error
+	workerErr = run.Run()
 	verify := parseWorkerVeilResult(workerLog.String())
-	if opts.VerifyFields {
+	if workerErr != nil {
+		if opts.JourneyProof {
+			proof := agentFillCapturePageProof(cmd, vaultHome, session, pageURL, verify)
+			if !loginOutcomeOK(proof.State) {
+				return fmt.Errorf("%w (login_state=%s screenshot=%s)", workerErr, proof.State, proof.Screenshot)
+			}
+			workerErr = nil
+		} else {
+			return fmt.Errorf("worker fill: %w", workerErr)
+		}
+	}
+	if opts.VerifyFields && !opts.JourneyProof {
 		if verify == nil {
 			return fmt.Errorf("worker fill: --verify-fields set but worker did not emit VEIL_RESULT")
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "fill proof passed (user_len=%d pass_len=%d)\n", verify.UserLen, verify.PassLen)
+	}
+
+	var proof *agentFillPageProof
+	if opts.JourneyProof {
+		p := agentFillCapturePageProof(cmd, vaultHome, session, pageURL, verify)
+		proof = &p
 	}
 
 	if strings.TrimSpace(opts.AssertURL) != "" {
@@ -235,36 +267,58 @@ func agentFillRun(cmd *cobra.Command, opts agentFillRunOpts) error {
 	}
 
 	res := agentFillRunResult{
-		OK:            true,
 		RequestID:     requestID,
 		Item:          itemRef,
 		ItemID:        itemID,
 		URL:           pageURL,
 		Session:       session,
 		Verify:        verify,
+		Proof:         proof,
 		KeepOpen:      opts.KeepOpen,
 		SessionClosed: sessionClosed,
 	}
-	switch {
-	case strings.TrimSpace(opts.AssertURL) != "":
-		res.NextHumanStep = "Login URL matched --success-url; session complete for automation."
-	case opts.KeepOpen:
-		res.NextHumanStep = "Finish 2FA or passkey in the headed window, then: veil agent fill close --session " + session
-	default:
-		res.NextHumanStep = "Fields filled on the login page; submit or complete 2FA if the site still requires it."
+	if proof != nil {
+		res.LoginState = proof.State
+		res.OK = loginOutcomeOK(proof.State)
+		res.NextHumanStep = nextStepForLoginState(proof.State, session)
+	} else {
+		res.OK = true
+		switch {
+		case strings.TrimSpace(opts.AssertURL) != "":
+			res.NextHumanStep = "Login URL matched --success-url; session complete for automation."
+		case opts.KeepOpen:
+			res.NextHumanStep = "Finish 2FA or passkey in the headed window, then: veil agent fill close --session " + session
+		default:
+			res.NextHumanStep = "Login form submitted — complete 2FA or passkey in the headed window if GitHub prompts, then: veil agent fill close --session " + session
+		}
 	}
 	closeSession()
+	if opts.KeepOpen {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+			"headed Chrome still open (session %q) — finish login / 2FA in the window, then: veil agent fill close --session %s\n",
+			session, session,
+		)
+	}
 	if opts.EmitJSON {
 		res.SessionClosed = sessionClosed
-		return agentFillEmitResult(cmd, res)
+		if err := agentFillEmitResult(cmd, res); err != nil {
+			return err
+		}
+		if proof != nil && !res.OK {
+			return fmt.Errorf("login incomplete: %s — %s", res.LoginState, res.NextHumanStep)
+		}
+		return nil
+	}
+	if proof != nil && !res.OK {
+		return fmt.Errorf("login incomplete: %s", res.NextHumanStep)
 	}
 	return nil
 }
 
 type agentFillRunOpts struct {
-	Agent, Item, URL, Session, Profile, Extension, VaultHome, AssertURL            string
-	OpenBrowser, Confirm, WaitApproved, Snapshot, VerifyFields, KeepOpen, EmitJSON bool
-	ApprovalTimeout, AssertTimeout, Hold                                           time.Duration
+	Agent, Item, URL, Session, Profile, Extension, VaultHome, AssertURL                          string
+	OpenBrowser, Confirm, WaitApproved, Snapshot, VerifyFields, KeepOpen, EmitJSON, JourneyProof bool
+	ApprovalTimeout, AssertTimeout, Hold                                                         time.Duration
 }
 
 func pageURLMatchSubstring(raw string) string {
@@ -297,6 +351,8 @@ func agentFillRunMCP(ctx context.Context, item, pageURL, successURL string) (age
 		OpenBrowser:  true,
 		WaitApproved: true,
 		VerifyFields: true,
+		KeepOpen:     true,
+		JourneyProof: true,
 	}
 	if err := agentFillRun(cmd, opts); err != nil {
 		return zero, err

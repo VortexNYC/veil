@@ -180,6 +180,34 @@ func originGrantResolve(cmd *cobra.Command, agentName, itemRef string, requireGr
 	return encode(cmd, map[string]string{"item_id": id, "item": itemRef})
 }
 
+func originAgentFillRequireItemLogin(cmd *cobra.Command, agentName, itemRef string) error {
+	tok, err := originAgentCLI(cmd.Context(), agentName)
+	if err != nil {
+		return err
+	}
+	itemRef = strings.TrimSpace(itemRef)
+	raw, err := originDo(cmd.Context(), http.MethodGet, "/v1/items", tok, nil)
+	if err != nil {
+		return err
+	}
+	var out publicapi.ItemsResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	for _, it := range out.Items {
+		if it.ID == itemRef || strings.EqualFold(it.Name, itemRef) {
+			if strings.TrimSpace(it.Login) == "" {
+				return fmt.Errorf(
+					"agent fill: item %q has no username/email in the vault — edit it at app.veil.nyc (GitHub sign-in needs your username or email, not password alone)",
+					itemRef,
+				)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("agent fill: unknown item %q", itemRef)
+}
+
 func originGrantResolveItemID(cmd *cobra.Command, agentName, itemRef string, requireGrant bool) (string, error) {
 	tok, err := originHumanCLI(cmd.Context())
 	if err != nil {

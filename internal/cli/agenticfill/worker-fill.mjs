@@ -128,11 +128,16 @@ export async function verifyLoginFields({ pageMatch }) {
         }
       });
       if (!page) continue;
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(2500);
       const st = await loginSurfaceState(page);
+      const offLogin = !/\/login(\?|$|\/)/i.test(st.url) && !st.url.includes("session");
       console.error(
         `verify-fields url=${st.url} hasUser=${st.hasUser} userLen=${st.userLen} hasPassword=${st.hasPassword} passLen=${st.passwordLen}`,
       );
+      if (offLogin && st.passwordLen === 0 && st.userLen === 0) {
+        console.error("verify-fields ok (left login URL)");
+        return { ...st, loggedIn: true };
+      }
       if (!st.hasPassword && !st.hasUser) {
         throw new Error("verify-fields: no login form on page (wrong tab or site redirected)");
       }
@@ -140,7 +145,10 @@ export async function verifyLoginFields({ pageMatch }) {
         throw new Error("verify-fields: fill reported ok but credential fields are empty");
       }
       if (st.hasPassword && st.passwordLen === 0) {
-        throw new Error("verify-fields: password field empty");
+        throw new Error("verify-fields: password field empty after fill+submit — check item login/username");
+      }
+      if (st.hasUser && st.userLen === 0) {
+        throw new Error("verify-fields: username/login field empty after fill+submit — check github item login value");
       }
       console.error("verify-fields ok");
       return st;
@@ -178,24 +186,65 @@ export async function workerFill({ itemId, requestId, pageMatch }) {
       return hit.id;
     }, pageMatch || PAGE_MATCH);
 
-    const submit = process.env.VEIL_VERIFY_FIELDS !== "1";
-    const result = await worker.evaluate(
-      async ({ tabId, requestId, itemId, submit }) => {
-        const s = await veilAgentic.v1.initialization.whenSettled();
-        if (s !== "ready") return { ok: false, code: s };
-        await veilAgentic.v1.agenticMode.enable({ tabId });
-        return veilAgentic.v1.autofill.fillCredential({
-          tabId,
-          requestId,
-          itemId,
-          submit,
-        });
-      },
-      { tabId, requestId, itemId, submit },
-    );
+    const submit = process.env.VEIL_AGENTIC_NO_SUBMIT !== "1";
+
+    async function runFill(submitForm) {
+      return worker.evaluate(
+        async ({ tabId, requestId, itemId, submitForm }) => {
+          const s = await veilAgentic.v1.initialization.whenSettled();
+          if (s !== "ready") return { ok: false, code: s };
+          await veilAgentic.v1.agenticMode.enable({ tabId });
+          return veilAgentic.v1.autofill.fillCredential({
+            tabId,
+            requestId,
+            itemId,
+            submit: submitForm,
+          });
+        },
+        { tabId, requestId, itemId, submitForm },
+      );
+    }
+
+    let result = await runFill(submit);
     if (!result?.success) {
       throw new Error(result?.error?.code || "fill failed");
     }
+
+    // Multi-step logins (GitHub: username → password): refill until both fields set or URL moves.
+    for (let step = 0; step < 3; step++) {
+      await new Promise((r) => setTimeout(r, 2200));
+      const pages = browser.contexts().flatMap((c) => c.pages());
+      const page = pages.find((p) => {
+        try {
+          return p.url().includes(hostPrefix(pageMatch));
+        } catch {
+          return false;
+        }
+      });
+      if (!page) break;
+      const st = await loginSurfaceState(page);
+      if (!/\/login(\?|$|\/)/i.test(st.url) && !st.url.includes("/session")) {
+        break;
+      }
+      const needsUser = st.hasUser && st.userLen === 0;
+      const needsPass = st.hasPassword && st.passwordLen === 0;
+      const onSession = /\/session/i.test(st.url);
+      if (!needsUser && !needsPass && !onSession) {
+        break;
+      }
+      if (onSession && st.passwordLen === 0) {
+        result = await runFill(submit);
+        if (!result?.success) {
+          throw new Error(result?.error?.code || "fill failed (session step)");
+        }
+        continue;
+      }
+      result = await runFill(submit);
+      if (!result?.success) {
+        throw new Error(result?.error?.code || "fill failed (step " + (step + 2) + ")");
+      }
+    }
+
     console.error(`worker fill ok page=${pageUrl} request=${requestId}`);
     return { pageUrl, tabId };
   } finally {

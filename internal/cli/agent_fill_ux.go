@@ -54,16 +54,18 @@ func agentFillDefaultSession(itemRef string) string {
 }
 
 type agentFillRunResult struct {
-	OK            bool             `json:"ok"`
-	RequestID     string           `json:"request_id,omitempty"`
-	Item          string           `json:"item,omitempty"`
-	ItemID        string           `json:"item_id,omitempty"`
-	URL           string           `json:"url,omitempty"`
-	Session       string           `json:"session,omitempty"`
-	Verify        *agentFillVerify `json:"verify,omitempty"`
-	SessionClosed bool             `json:"session_closed"`
-	KeepOpen      bool             `json:"keep_open,omitempty"`
-	NextHumanStep string           `json:"next_human_step,omitempty"`
+	OK            bool                `json:"ok"`
+	LoginState    string              `json:"login_state,omitempty"`
+	RequestID     string              `json:"request_id,omitempty"`
+	Item          string              `json:"item,omitempty"`
+	ItemID        string              `json:"item_id,omitempty"`
+	URL           string              `json:"url,omitempty"`
+	Session       string              `json:"session,omitempty"`
+	Verify        *agentFillVerify    `json:"verify,omitempty"`
+	Proof         *agentFillPageProof `json:"proof,omitempty"`
+	SessionClosed bool                `json:"session_closed"`
+	KeepOpen      bool                `json:"keep_open,omitempty"`
+	NextHumanStep string              `json:"next_human_step,omitempty"`
 }
 
 type agentFillVerify struct {

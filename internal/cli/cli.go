@@ -1857,6 +1857,7 @@ func agentCmd(home *string) *cobra.Command {
 
 	var loginOpts agentFillRunOpts
 	var loginSkipVerify bool
+	var loginCloseWhenDone bool
 	fillLogin := &cobra.Command{
 		Use:   "login",
 		Short: "Agent login journey: check → open → approve in app → fill (JSON result on stdout)",
@@ -1868,6 +1869,8 @@ func agentCmd(home *string) *cobra.Command {
 			loginOpts.OpenBrowser = true
 			loginOpts.WaitApproved = true
 			loginOpts.VerifyFields = !loginSkipVerify
+			loginOpts.KeepOpen = !loginCloseWhenDone
+			loginOpts.JourneyProof = true
 			if strings.TrimSpace(loginOpts.Session) == "" && strings.TrimSpace(fillItem) != "" {
 				loginOpts.Session = agentFillDefaultSession(fillItem)
 			}
@@ -1883,7 +1886,7 @@ func agentCmd(home *string) *cobra.Command {
 	fillLogin.Flags().DurationVar(&loginOpts.AssertTimeout, "assert-timeout", 2*time.Minute, "with --success-url")
 	fillLogin.Flags().DurationVar(&loginOpts.ApprovalTimeout, "approval-timeout", 5*time.Minute, "max wait for human approval")
 	fillLogin.Flags().DurationVar(&loginOpts.Hold, "hold", 0, "keep process alive after fill (e.g. 3m for 2FA)")
-	fillLogin.Flags().BoolVar(&loginOpts.KeepOpen, "keep-open", false, "leave headed Chrome up after success")
+	fillLogin.Flags().BoolVar(&loginCloseWhenDone, "close", false, "close headed Chrome when the command exits (CI/agents; default leaves the window up)")
 	fillLogin.Flags().BoolVar(&loginSkipVerify, "skip-verify-fields", false, "skip CDP field-length proof")
 	_ = fillLogin.MarkFlagRequired("item")
 	_ = fillLogin.MarkFlagRequired("url")

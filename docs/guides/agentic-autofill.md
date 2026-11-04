@@ -226,7 +226,7 @@ veil agent fill login \
 | **1/4 Prepare** | Profile + native host + fill bridge |
 | **2/4 Open** | Headed Chrome (`veil-github` session by default) on the login URL |
 | **3/4 Approve** | macOS opens `app.veil.nyc/requests` — tap Approve (same `request_id` as stderr) |
-| **4/4 Autofill** | CDP fill + field-length proof — Chrome closes unless `--keep-open` |
+| **4/4 Autofill** | CDP fill + field-length proof — **Chrome stays open** so you can submit / 2FA (use `--close` for CI) |
 
 Stdout (agents parse this):
 
@@ -236,12 +236,12 @@ Stdout (agents parse this):
   "request_id": "req_…",
   "item": "github",
   "verify": { "user_len": 12, "pass_len": 40, "has_password": true },
-  "session_closed": true,
-  "next_human_step": "Fields filled on the login page; submit or complete 2FA if the site still requires it."
+  "session_closed": false,
+  "next_human_step": "Finish 2FA or passkey in the headed window, then: veil agent fill close --session veil-github"
 }
 ```
 
-Post-login automation (after you complete 2FA): add **`--success-url 'https://github.com/'`** (alias: `--assert-url`). Or keep the window: `--keep-open --hold 5m`.
+Post-login automation (after you complete 2FA): add **`--success-url 'https://github.com/'`**. Tear down when done: **`veil agent fill close --session veil-github`** or **`--close`** on the CLI for headless CI.
 
 **Cursor (stdio MCP):** call **`agent_fill_login`** with `item` + `url` instead of shell scripts. Cloud MCP: **`request_fill`** → human approves → run `laptop_fill_command` on the dev machine or poll **`approval_status`**.
 
