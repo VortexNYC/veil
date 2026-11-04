@@ -2327,7 +2327,7 @@ func (s *Server) auditFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fillLogins(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}
@@ -2371,7 +2371,7 @@ func (s *Server) fillLogins(w http.ResponseWriter, r *http.Request) {
 // and `veil item reveal`. Body may carry {"mint_totp": true} to also mint the
 // current TOTP code. Agents and sessions are 403.
 func (s *Server) revealItem(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}
@@ -2440,7 +2440,7 @@ func (s *Server) fillEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fillTOTP(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}
@@ -2458,7 +2458,7 @@ func (s *Server) fillTOTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fillTOTPEnroll(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}
@@ -2480,7 +2480,7 @@ func (s *Server) fillTOTPEnroll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fillSync(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}
@@ -2512,7 +2512,7 @@ func (s *Server) fillPasskeyGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fillPasskey(w http.ResponseWriter, r *http.Request, register bool) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireHumanMFA(w, r)
 	if !ok {
 		return
 	}

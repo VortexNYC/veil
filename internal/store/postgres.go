@@ -1700,6 +1700,19 @@ func EnsurePostgresSchema(ctx context.Context, pool *pgxpool.Pool) error {
 			reported BIGINT NOT NULL DEFAULT 0,
 			PRIMARY KEY (org_id, window_start)
 		)`,
+		`CREATE TABLE IF NOT EXISTS dpop_pins (
+			token_hash TEXT PRIMARY KEY,
+			jkt TEXT NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS dpop_jtis (
+			token_hash TEXT NOT NULL,
+			jti TEXT NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (token_hash, jti)
+		)`,
+		`CREATE INDEX IF NOT EXISTS dpop_pins_expires_at ON dpop_pins (expires_at)`,
+		`CREATE INDEX IF NOT EXISTS dpop_jtis_expires_at ON dpop_jtis (expires_at)`,
 	} {
 		if _, err := pool.Exec(ctx, q); err != nil {
 			return err
@@ -2186,4 +2199,9 @@ func (p *Postgres) ConsumeDeviceLink(ctx context.Context, token string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Pool is the primary pgx pool — auxiliary origin services (DPoP pin store) share it.
+func (p *Postgres) Pool() *pgxpool.Pool {
+	return p.pool
 }

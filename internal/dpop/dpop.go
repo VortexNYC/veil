@@ -187,6 +187,9 @@ func (v *Verifier) VerifyRequest(r *http.Request, accessToken string) error {
 }
 
 func (v *Verifier) pinnedJKT(tokHash string, now time.Time) string {
+	if c := activeCoordinator(); c != nil {
+		return c.PinnedJKT(tokHash, now)
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	p, ok := v.pins[tokHash]
@@ -201,6 +204,9 @@ func (v *Verifier) pinnedJKT(tokHash string, now time.Time) string {
 }
 
 func (v *Verifier) recordAndPin(jti, tokHash, jkt string, now time.Time) error {
+	if c := activeCoordinator(); c != nil {
+		return c.RecordProof(tokHash, jti, jkt, now)
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
