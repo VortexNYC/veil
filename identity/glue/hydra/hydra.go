@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	ory "github.com/ory/hydra-client-go/v26"
 
@@ -19,6 +20,9 @@ import (
 var ErrChallenge = errors.New("glue: consent challenge")
 
 var ErrLogoutChallenge = errors.New("glue: logout challenge")
+
+// ErrConsentClient is returned when a consent/logout hop targets a non-human client.
+var ErrConsentClient = errors.New("glue: consent client not allowed")
 
 const DefaultClientID = "veil" // first-party Hydra client ID + default audience
 
@@ -36,6 +40,17 @@ func New(adminURL string) (*Client, error) {
 	return &Client{admin: ory.NewAPIClient(cfg)}, nil
 }
 
+func allowedConsentClientID(clientID string) bool {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return false
+	}
+	if strings.HasPrefix(clientID, AgentClientPrefix) {
+		return false
+	}
+	return clientID == DefaultClientID
+}
+
 func (c *Client) AcceptConsent(ctx context.Context, challenge string) (string, error) {
 	if c == nil || c.admin == nil {
 		return "", fmt.Errorf("hydra: admin not configured")
@@ -48,6 +63,10 @@ func (c *Client) AcceptConsent(ctx context.Context, challenge string) (string, e
 		return "", fmt.Errorf("%w: %w", ErrChallenge, err)
 	}
 	_ = resp
+	cl, ok := req.GetClientOk()
+	if !ok || cl == nil || !allowedConsentClientID(cl.GetClientId()) {
+		return "", ErrConsentClient
+	}
 	body := ory.NewAcceptOAuth2ConsentRequest()
 	body.SetGrantScope(req.GetRequestedScope())
 	body.SetGrantAccessTokenAudience(req.GetRequestedAccessTokenAudience())
@@ -78,10 +97,14 @@ func (c *Client) AcceptLogout(ctx context.Context, challenge string) (string, er
 	if challenge == "" {
 		return "", ErrLogoutChallenge
 	}
-	if _, resp, err := c.admin.OAuth2API.GetOAuth2LogoutRequest(ctx).LogoutChallenge(challenge).Execute(); err != nil {
+	lr, resp, err := c.admin.OAuth2API.GetOAuth2LogoutRequest(ctx).LogoutChallenge(challenge).Execute()
+	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrLogoutChallenge, err)
-	} else {
-		_ = resp
+	}
+	_ = resp
+	cl, ok := lr.GetClientOk()
+	if !ok || cl == nil || !allowedConsentClientID(cl.GetClientId()) {
+		return "", ErrConsentClient
 	}
 	accepted, resp, err := c.admin.OAuth2API.AcceptOAuth2LogoutRequest(ctx).
 		LogoutChallenge(challenge).

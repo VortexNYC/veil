@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	ory "github.com/ory/keto-client-go/v26"
 
@@ -21,6 +22,8 @@ const (
 	RelMembers = "members"
 	nsOrg      = "Organization"
 )
+
+var orgBootstrapMu sync.Map // orgID -> *sync.Mutex
 
 type Client struct {
 	read  *ory.APIClient
@@ -175,7 +178,17 @@ func (c *Client) HasOwners(ctx context.Context) (bool, error) {
 	return got != nil && len(got.GetRelationTuples()) > 0, nil
 }
 
+func (c *Client) orgBootstrapLock() func() {
+	key := c.Org()
+	v, _ := orgBootstrapMu.LoadOrStore(key, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
 func (c *Client) AddMember(ctx context.Context, identityID string) error {
+	unlock := c.orgBootstrapLock()
+	defer unlock()
 	if err := c.writeRelation(ctx, RelMembers, identityID); err != nil {
 		return err
 	}
