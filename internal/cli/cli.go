@@ -2224,7 +2224,7 @@ func requestCmd(home *string) *cobra.Command {
 	var ttl time.Duration
 	c := &cobra.Command{
 		Use:   "request",
-		Short: "Approval requests filed by level-1 agents",
+		Short: "Human answers to agent approval asks (list, confirm, approve, deny, watch)",
 	}
 	list := &cobra.Command{
 		Use:   "list",
@@ -2310,7 +2310,22 @@ func requestCmd(home *string) *cobra.Command {
 		},
 	}
 	watch.Flags().DurationVar(&watchTimeout, "timeout", time.Hour, "max wait")
-	c.AddCommand(list, approve, deny, watch)
+	var confirmYes, confirmDeny bool
+	confirm := &cobra.Command{
+		Use:   "confirm REQUEST_ID",
+		Short: "Interactive approve/deny in the terminal (same human gate as Veil.app / iOS)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() == "" {
+				return fmt.Errorf("request confirm: VEIL_ORIGIN is required")
+			}
+			return originRequestConfirm(cmd, args[0], confirmYes, confirmDeny, ttl)
+		},
+	}
+	confirm.Flags().BoolVar(&confirmYes, "yes", false, "approve without prompting (non-interactive scripts only)")
+	confirm.Flags().BoolVar(&confirmDeny, "deny", false, "deny without prompting")
+	confirm.Flags().DurationVar(&ttl, "ttl", 15*time.Minute, "approval lifetime when approving")
+	c.AddCommand(list, approve, deny, watch, confirm)
 	return c
 }
 

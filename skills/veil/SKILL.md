@@ -48,7 +48,7 @@ Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints 
 | Sign into a website | `match_items` → **`request_fill`** | Approve at `approval_url` | Poll `approval_status`; partner runs **fillCredential** in Chromium with Veil extension |
 | Dry-run API policy | `check` | Same as fetch if `need_approval` | Same |
 
-**Not on MCP (by design):** approve/deny (human only), passwords/TOTP/passkeys, `execute_fill` (browser CDP only).
+**Not on MCP (by design):** approve/deny (human only — use **`veil request confirm`** / app / iOS on the human device), passwords/TOTP/passkeys, `execute_fill` (browser CDP only).
 
 ## Browser automation (agent-browser, Browserbase, Playwright)
 

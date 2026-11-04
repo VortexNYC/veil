@@ -63,8 +63,12 @@ if [[ -z "$REQUEST_ID" || "$REQUEST_ID" == "null" ]]; then
   echo "fill request failed: $FILED" >&2
   exit 1
 fi
-echo "approve: $REQUEST_ID (app.veil.nyc/requests or CLI)" >&2
-VEIL_OIDC_TOKEN_FILE="$HUMAN_JWT" veil request approve "$REQUEST_ID"
+echo "approve: $REQUEST_ID (Veil.app / iOS / CLI confirm — not auto)" >&2
+if [[ "${VEIL_AUTO_APPROVE:-}" == "1" ]]; then
+  VEIL_OIDC_TOKEN_FILE="$HUMAN_JWT" veil request approve "$REQUEST_ID"
+else
+  VEIL_OIDC_TOKEN_FILE="$HUMAN_JWT" veil request confirm "$REQUEST_ID"
+fi
 
 PAGE_MATCH="$(python3 -c "from urllib.parse import urlparse; u=urlparse('$LOGIN_URL'); print(u.netloc+u.path.rstrip('/'))")"
 export REQUEST_ID VEIL_ITEM_ID="$ITEM_ID" PAGE_URL_SUBSTR="${PAGE_MATCH}"

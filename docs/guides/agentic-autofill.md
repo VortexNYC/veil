@@ -107,7 +107,7 @@ Owners resolve asks on any connected surface — pick what matches where you are
 
 | Surface | Command / action |
 |---------|------------------|
-| **CLI (beside the agent)** | `veil request list` · `veil request approve REQUEST_ID` · **`veil request watch REQUEST_ID`** (blocks until approved/denied) |
+| **CLI (beside the agent)** | **`veil request confirm REQUEST_ID`** (interactive — same gate as the app) · `veil request list` · `veil request approve` / `deny` · **`veil request watch`** (block until resolved; use in a second terminal while the agent waits) |
 | **Vault** | [app.veil.nyc/requests](https://app.veil.nyc/requests) — enable **Agent approval alerts** in Settings for browser notifications |
 | **iPhone** | Veil app → **Requests** (push when `/v1/devices` is registered and APNs is configured) |
 | **Mac `Veil.app`** | macOS notification → opens embedded vault at `/requests` (SSE + poll on the requests stream) |
@@ -117,8 +117,10 @@ File from the agent laptop:
 
 ```bash
 veil agent fill request --item Stripe --url 'https://dashboard.stripe.com/login'
-# stderr prints: veil request watch req-…
+# stderr: veil request confirm req-…  (y/N in terminal — same decision as tapping Approve in the app)
 ```
+
+Automation that must not bypass the human gate: set `VEIL_AUTO_APPROVE=1` only in CI (calls `veil request approve` directly).
 
 Send the human to **`approval_url`** only when none of the above are in reach.
 

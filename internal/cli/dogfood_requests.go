@@ -94,8 +94,8 @@ func originAgentFillRequest(cmd *cobra.Command, agentName, itemRef, pageURL stri
 		return err
 	}
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-		"Approve: %s\nHuman CLI: veil request approve %s\nHuman watch: veil request watch %s\n",
-		out.ApprovalURL, out.RequestID, out.RequestID,
+		"Approve: %s\nHuman CLI: veil request confirm %s\n             veil request approve %s\n             veil request watch %s\n",
+		out.ApprovalURL, out.RequestID, out.RequestID, out.RequestID,
 	)
 	return encode(cmd, out)
 }
@@ -295,4 +295,59 @@ func originRequestStreamUntil(ctx context.Context, tok string, max int) error {
 		}
 	}
 	return sc.Err()
+}
+
+func stdinIsTTY() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+func originRequestConfirm(cmd *cobra.Command, requestID string, autoYes, autoDeny bool, ttl time.Duration) error {
+	if autoYes && autoDeny {
+		return fmt.Errorf("request confirm: use only one of --yes or --deny")
+	}
+	tok, err := originHumanCLI(cmd.Context())
+	if err != nil {
+		return err
+	}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return fmt.Errorf("request confirm: REQUEST_ID is required")
+	}
+	view, st, err := originRequestFind(cmd.Context(), tok, requestID)
+	if err != nil {
+		return err
+	}
+	if st != protocol.RequestOpen {
+		return fmt.Errorf("request %s is already %s", requestID, st)
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+		"Agent %q → %s item %q (expires %s)\nSame ask as Veil.app / iOS / app.veil.nyc/requests.\n",
+		view.AgentID, view.Action, view.ItemID, view.ExpiresAt.UTC().Format(time.RFC3339),
+	)
+	if autoDeny {
+		return originRequestResolve(cmd, requestID, "deny", 0)
+	}
+	if autoYes {
+		return originRequestResolve(cmd, requestID, "approve", ttl)
+	}
+	if !stdinIsTTY() {
+		return fmt.Errorf("request confirm: stdin is not a terminal — use veil request approve %s, --yes, or run watch in another shell", requestID)
+	}
+	_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Approve? [y/N/deny] ")
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return originRequestResolve(cmd, requestID, "approve", ttl)
+	case "d", "deny", "n", "no":
+		return originRequestResolve(cmd, requestID, "deny", 0)
+	default:
+		return fmt.Errorf("request confirm: declined (not approved)")
+	}
 }

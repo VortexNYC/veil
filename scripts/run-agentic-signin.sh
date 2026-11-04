@@ -57,19 +57,20 @@ node <<'NODE'
 import { execFileSync } from "node:child_process";
 import { signIn } from "./signin.mjs";
 
-const humanJwt = process.env.VEIL_OIDC_TOKEN_FILE || `${process.env.HOME}/.config/veil/human.jwt`;
-
 await signIn({
   showApproval: async (_url, requestId) => {
     if (!requestId) throw new Error("missing request_id from origin");
-    execFileSync("veil", ["request", "approve", requestId], {
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        VEIL_ORIGIN: process.env.VEIL_ORIGIN,
-        VEIL_OIDC_TOKEN_FILE: humanJwt,
-      },
-    });
+    const humanJwt = process.env.VEIL_OIDC_TOKEN_FILE || `${process.env.HOME}/.config/veil/human.jwt`;
+    const env = {
+      ...process.env,
+      VEIL_ORIGIN: process.env.VEIL_ORIGIN,
+      VEIL_OIDC_TOKEN_FILE: humanJwt,
+    };
+    if (process.env.VEIL_AUTO_APPROVE === "1") {
+      execFileSync("veil", ["request", "approve", requestId], { stdio: "inherit", env });
+      return;
+    }
+    execFileSync("veil", ["request", "confirm", requestId], { stdio: "inherit", env });
   },
 });
 console.error("agentic sign-in finished");
