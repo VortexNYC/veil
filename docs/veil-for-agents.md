@@ -52,7 +52,8 @@ Cloud-only agents without a local browser still get **API** lane only.
 | GitHub Actions `op` | `veil agent bind --preset github-actions` |
 | NVIDIA OpenShell | `veil session` + MCP in sandbox |
 | Anchor Browser | MCP for API steps + fill for login forms |
-| **[Sandchest](https://github.com/CapSoftware/Sandchest)** (security) | MCP at `sandchest.com/api/mcp`; store `sck_` in Veil; scan auth paths — [`sandchest.md`](./sandchest.md) |
+| **OSS security (default)** | `make security-fast` — secretlint, govulncheck, Semgrep — [`oss-security` guide](https://veil.nyc/docs/guides/oss-security) |
+| **[Sandchest](https://github.com/CapSoftware/Sandchest)** (optional paid) | MCP at `sandchest.com/api/mcp`; Stripe credits — [`sandchest`](https://veil.nyc/docs/guides/sandchest) |
 
 ## What still needs a partnership
 

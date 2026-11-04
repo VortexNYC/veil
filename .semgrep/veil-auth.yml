@@ -1,0 +1,72 @@
+# Veil auth-plane guards — run via `make security-semgrep` / `make security-fast`.
+# OSS only; no Semgrep Cloud login required for these rules + p/golang.
+rules:
+  - id: veil-create-item-requires-mfa-gate
+    message: >-
+      createItem must call requireHumanMFA (password-only JWTs must not create secrets).
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) createItem($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)
+
+  - id: veil-create-session-requires-owner
+    message: >-
+      createSession must call requireOwner (vault owner + aal2 at the HTTP edge).
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) createSession($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)
+
+  - id: veil-list-sessions-requires-owner
+    message: >-
+      listSessions must call requireOwner (ses_ leases are owner-visible).
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) listSessions($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)
+
+  - id: veil-require-owner-uses-mfa-helper
+    message: >-
+      requireOwner must delegate to requireHumanMFA, not requireHuman alone.
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) requireOwner($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)
+
+  - id: veil-item-write-requires-mfa-gate
+    message: >-
+      requireItemWrite must call requireHumanMFA first.
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) requireItemWrite($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)
+
+  - id: veil-grant-admin-requires-owner
+    message: >-
+      createGrant must call requireOwner (grants are owner-administered).
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) createGrant($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)
+
+  - id: veil-list-grants-requires-owner
+    message: >-
+      listGrants must call requireOwner (members must not list raw grants).
+    severity: ERROR
+    languages: [go]
+    patterns:
+      - pattern-inside: |
+          func (s *Server) listGrants($W, $R) { ... }
+      - pattern: s.requireHuman($W, $R)

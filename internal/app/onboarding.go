@@ -79,6 +79,7 @@ func onboardingDocs() map[string]string {
 		"veil_for_agents":     "https://veil.nyc/docs/guides/veil-for-agents",
 		"agents":              "https://veil.nyc/docs/guides/agents",
 		"sandchest":           "https://veil.nyc/docs/guides/sandchest",
+		"oss-security":        "https://veil.nyc/docs/guides/oss-security",
 	}
 }
 
@@ -126,13 +127,23 @@ func (a *App) OnboardingFor(p protocol.Principal) (OnboardingView, error) {
 				},
 			},
 			{
-				ID:    "sandchest_security",
-				Title: "Sandchest — scan Veil auth (Cap)",
+				ID:    "oss_security",
+				Title: "OSS security scan (coding agents)",
 				Steps: []string{
-					"Install Sandchest GitHub App on github.com/VortexNYC/veil (or your fork). See https://www.sandchest.com/docs/agents.",
-					"Add MCP https://www.sandchest.com/api/mcp (OAuth) or device-flow API key → Veil item `sandchest` + grant agent fetch to sandchest.com.",
-					"Run deep scan; prioritize internal/publicapi, internal/human, identity/glue, internal/dpop, apps/vault/src/auth.ts — docs/guides/sandchest.",
-					"Fix findings with a coding agent using Veil MCP for GitHub — never paste sck_ or Hydra secrets into the model.",
+					"From repo root: `make security-fast` (secretlint, govulncheck, Semgrep auth rules).",
+					"Install Semgrep if missing: brew install semgrep. No Semgrep Cloud required.",
+					"Prioritize internal/publicapi, internal/human, identity/glue, internal/dpop, apps/vault/src — see docs/guides/oss-security.",
+					"Findings → Pile; fixes via normal PRs. Optional: gosec, osv-scanner, pnpm audit (same doc).",
+				},
+			},
+			{
+				ID:    "sandchest_security",
+				Title: "Sandchest — optional paid deep scan (Cap)",
+				Steps: []string{
+					"Optional: separate Stripe credits — not Devin, not included in Veil. Prefer make security-fast first.",
+					"Install Sandchest GitHub App on github.com/VortexNYC/veil if you want Cap-hosted offensive scans.",
+					"MCP https://www.sandchest.com/api/mcp or device-flow key → Veil item `sandchest` + grant fetch to sandchest.com.",
+					"See docs/guides/sandchest for auth path focus; never paste sck_ into chat.",
 				},
 			},
 			{
