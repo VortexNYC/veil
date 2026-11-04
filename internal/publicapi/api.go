@@ -1338,9 +1338,8 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 // ProvisionHuman — there is no member check because this call is what creates
 // the membership. Idempotent; safe to retry.
 func (s *Server) provision(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	var in ProvisionRequest
@@ -1412,9 +1411,8 @@ func recoveryStatus(err error) int {
 // GET /v1/recovery/share — the caller's own enrollment state: enrolled
 // flag, pubkey, and the 80-byte sealed blob. Never the plaintext master.
 func (s *Server) getRecoveryShare(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	v, err := s.App.GetRecoveryShare(r.Context(), raw)
@@ -1428,9 +1426,8 @@ func (s *Server) getRecoveryShare(w http.ResponseWriter, r *http.Request) {
 // POST /v1/recovery/enroll — first enrollment only: a member's pubkey never
 // rotates outside the ceremony, so an existing share is a 409.
 func (s *Server) enrollRecovery(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	var in EnrollRecoveryRequest
@@ -1458,9 +1455,8 @@ func (s *Server) enrollRecovery(w http.ResponseWriter, r *http.Request) {
 // POST /v1/recovery/realign-custodian — re-wrap the caller's share under a
 // new recovery/custodian pubkey without rotating the org master.
 func (s *Server) realignRecoveryCustodian(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	var in EnrollRecoveryRequest
@@ -1484,9 +1480,8 @@ func (s *Server) realignRecoveryCustodian(w http.ResponseWriter, r *http.Request
 // POST /v1/recovery/start — files (or returns the existing open) request.
 // Self-start needs no aal2: the locked-out member may hold only aal1.
 func (s *Server) startRecovery(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	var in StartRecoveryRequest
@@ -1516,9 +1511,8 @@ func (s *Server) startRecovery(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/recovery — owner-only list filtered by ?status (default open).
 func (s *Server) listRecoveries(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	status := protocol.RecoveryStatus(r.URL.Query().Get("status"))
@@ -1543,9 +1537,8 @@ func (s *Server) listRecoveries(w http.ResponseWriter, r *http.Request) {
 // GET /v1/recovery/{id} — owners get the confirmer view (member email,
 // epoch, own wrapped share); the initiator/target member gets the bare row.
 func (s *Server) getRecovery(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	v, err := s.App.GetRecovery(r.Context(), raw, r.PathValue("id"))
@@ -1560,9 +1553,8 @@ func (s *Server) getRecovery(w http.ResponseWriter, r *http.Request) {
 // master to the staged pubkey, rotates owner DEKs, and fires the Kratos MFA
 // reset when reset_mfa was filed. The reset code never rides the response.
 func (s *Server) completeRecovery(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	var in CompleteRecoveryRequest
@@ -1589,9 +1581,8 @@ func (s *Server) completeRecovery(w http.ResponseWriter, r *http.Request) {
 // POST /v1/recovery/{id}/deny — an owner denies (aal2); the initiator or
 // target member cancels at any aal.
 func (s *Server) denyRecovery(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	req, err := s.App.DenyRecovery(r.Context(), raw, r.PathValue("id"))
@@ -1612,9 +1603,8 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	inv, err := s.App.InviteHuman(r.Context(), raw, in.Email)
@@ -1637,9 +1627,8 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 // Kratos second factors and mails a re-enrollment link to their address.
 // The recovery code never leaves the identity plane.
 func (s *Server) resetHumanMFA(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	if err := s.App.ResetHumanMFA(r.Context(), raw, r.PathValue("id")); err != nil {
@@ -1806,9 +1795,8 @@ func lifecycleStatus(err error) int {
 
 // DELETE /v1/members/{id} — owner offboards a member: tuple + humans row.
 func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	if err := s.App.RemoveMember(r.Context(), raw, r.PathValue("id")); err != nil {
@@ -1820,9 +1808,8 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
 
 // POST /v1/members/{id}/owner — owner promotes a member to co-owner.
 func (s *Server) promoteOwner(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	if err := s.App.PromoteOwner(r.Context(), raw, r.PathValue("id")); err != nil {
@@ -1835,9 +1822,8 @@ func (s *Server) promoteOwner(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/members/{id}/owner — owner demotes a co-owner; the last owner
 // cannot be demoted.
 func (s *Server) demoteOwner(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	if err := s.App.DemoteOwner(r.Context(), raw, r.PathValue("id")); err != nil {
@@ -1850,9 +1836,8 @@ func (s *Server) demoteOwner(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/me — the human kill-switch: tuples and the humans row die, the
 // token resolves nothing afterward. Sole owners are refused.
 func (s *Server) deleteMe(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	if err := s.App.DeleteMe(r.Context(), raw); err != nil {
@@ -1865,9 +1850,8 @@ func (s *Server) deleteMe(w http.ResponseWriter, r *http.Request) {
 // DELETE /v1/org — owner teardown: tuples die, then every vault row for the
 // org in one transaction. Audit rows survive for the record.
 func (s *Server) deleteOrg(w http.ResponseWriter, r *http.Request) {
-	raw := bearer(r.Header.Get("Authorization"))
-	if raw == "" || app.IsSessionToken(raw) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	raw, ok := s.rawHumanBearer(w, r)
+	if !ok {
 		return
 	}
 	rep, err := s.App.DeleteOrg(r.Context(), raw)
@@ -2668,6 +2652,19 @@ func grantView(g protocol.Grant) GrantView {
 		Level:       string(g.Level),
 		ExpiresAt:   g.ExpiresAt,
 	}
+}
+
+func (s *Server) rawHumanBearer(w http.ResponseWriter, r *http.Request) (string, bool) {
+	raw := bearer(r.Header.Get("Authorization"))
+	if raw == "" || app.IsSessionToken(raw) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+	if err := dpop.VerifyRequest(r, raw); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+	return raw, true
 }
 
 func bearer(h string) string {
