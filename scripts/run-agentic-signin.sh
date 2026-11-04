@@ -24,7 +24,12 @@ else
   pnpm exec --dir "$EXAMPLE" playwright-core install chromium
 fi
 
-ITEM_ID="$(VEIL_ORIGIN="$ORIGIN" veil item list | jq -r --arg n "$ITEM" '.[] | select(.name==$n) | .id' | head -1)"
+GRANT_IDS="$(VEIL_ORIGIN="$ORIGIN" veil grant list | jq -r --arg a "$AGENT" '.[] | select(.agent_id==$a) | .item_id')"
+ITEM_ID="$(VEIL_ORIGIN="$ORIGIN" veil item list | jq -r --arg n "$ITEM" --arg ids "$GRANT_IDS" '
+  [.[] | select(.name==$n) | .id] as $candidates
+  | ($ids | split("\n") | map(select(length>0))) as $granted
+  | ([$candidates[] | select(. as $i | $granted | index($i))] | .[0]) // $candidates[0] // empty
+')"
 if [[ -z "$ITEM_ID" ]]; then
   echo "unknown item: $ITEM" >&2
   exit 1
