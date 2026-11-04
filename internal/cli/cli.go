@@ -1699,6 +1699,9 @@ func agentCmd(home *string) *cobra.Command {
 			if err := writeHydraCred(secretFile, existing); err != nil {
 				return err
 			}
+			if err := ensureAgentDPoPKeyFile(name, secretFile); err != nil {
+				return err
+			}
 			w, err := a.BindWorkload(name, issuer, cred.ID, cred.Audience)
 			if err != nil {
 				return err
@@ -2982,6 +2985,7 @@ func mcpCmd(home *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Note: hosted HTTP MCP uses a static Bearer header — no per-request DPoP. Prefer `veil mcp stdio` / `veil mcp laptop` on your Mac for DPoP-bound agent tokens; cloud hosts stay replayable until they send DPoP proofs.")
 			return encode(cmd, cfg)
 		},
 	})

@@ -169,6 +169,14 @@ func ClientCredentials(ctx context.Context, issuer, clientID, secret, audience s
 	return hydra.ClientCredentials(ctx, issuer, clientID, secret, audience)
 }
 
+func ClientCredentialsWithHTTPClient(ctx context.Context, issuer, clientID, secret, audience string, httpClient *http.Client) (string, error) {
+	return hydra.ClientCredentialsWithHTTPClient(ctx, issuer, clientID, secret, audience, httpClient)
+}
+
+func HydraTokenURL(issuer string) (string, error) {
+	return hydra.TokenURL(issuer)
+}
+
 func AgentClientID(agentID string) string {
 	return hydra.AgentClientID(agentID)
 }

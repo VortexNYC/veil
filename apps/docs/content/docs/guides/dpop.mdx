@@ -35,7 +35,9 @@ Every **`VEIL_ORIGIN`** HTTP call from the Go CLI (`veil use`, `veil mcp stdio`,
 
 After the first successful DPoP request, origin **bind-on-first-use** pins that JWT to the key in `*.dpop`. Keep the pair together; deleting only the `.dpop` file while the token is pinned causes `401` until the pin expires or you remint the agent JWT.
 
-**Cloud MCP** (`https://veil.nyc/mcp` with a static Bearer header) does not use the CLI key file today — proofs must come from the host that holds the token. Laptop **`veil mcp stdio`** and **`veil use`** against `VEIL_ORIGIN` are DPoP-by-default. Mint-time `cnf.jkt` in Hydra tokens (fail-closed before first use) is on the roadmap.
+**Hydra remint:** When `VEIL_DPOP` is on (default), `originRemint` also sends a **DPoP proof on `POST /oauth2/token`** (no `ath` yet). Production Hydra does not yet stamp `cnf.jkt` into the JWT — bind-on-first-use at Veil origin still applies. Mint-time `cnf.jkt` is tracked as issuer work (Ory DPoP / JWT mutator).
+
+**Cloud MCP** (`https://veil.nyc/mcp` with a static Bearer header) does not use the CLI key file today — proofs must come from the host that holds the token. Laptop **`veil mcp stdio`** and **`veil use`** against `VEIL_ORIGIN` are DPoP-by-default. `veil mcp http` prints a stderr note about this tradeoff.
 
 ## Sending DPoP Proofs from TypeScript (`@vortex-api/veil`)
 
