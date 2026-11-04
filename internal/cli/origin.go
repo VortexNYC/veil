@@ -238,7 +238,9 @@ func originDo(ctx context.Context, method, path, token string, body []byte) ([]b
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	if err := originAttachAuth(req, token); err != nil {
+		return nil, err
+	}
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -431,7 +433,9 @@ func originDoFile(ctx context.Context, path, token string, body []byte) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	if err := originAttachAuth(req, token); err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

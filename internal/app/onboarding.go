@@ -99,7 +99,8 @@ func (a *App) OnboardingFor(p protocol.Principal) (OnboardingView, error) {
 					"Owner creates agent + grant in Vault → Agents / Grants (or `veil agent` + `veil grant add`).",
 					"Owner runs `veil agent hydra AGENT --secret-file ~/.config/vortex/veil/AGENT.hydra` (never paste secret into chat).",
 					"Point MCP at `veil mcp stdio` or `veil mcp laptop` with VEIL_ORIGIN=https://veil.nyc.",
-					"Agent MCP tools: list_items, match_items, check, fetch, approval_status — human owns import, invite, agents.",
+					"CLI sends RFC 9449 DPoP by default (`AGENT.dpop` beside `AGENT.jwt`; `VEIL_DPOP=0` only to debug).",
+					"Agent MCP tools: list_items, match_items, check, fetch, request_fill, approval_status — human owns import, invite, agents.",
 				},
 			},
 			{
@@ -255,7 +256,7 @@ func (a *App) ownerOnboarding(p protocol.Principal, view OnboardingView) (Onboar
 			ID:          "mcp",
 			Title:       "Wire MCP (Cursor, Grok, Devin, …)",
 			Done:        allAgentsGranted && hasAgent && hasItems,
-			Detail:      "Five tools: " + strings.Join(mcpToolNames, ", ") + ". Cloud: " + view.McpURL,
+			Detail:      "Six tools: " + strings.Join(mcpToolNames, ", ") + ". Cloud: " + view.McpURL,
 			HumanAction: "Grok: `VEIL_AGENT=grok veil mcp http` → grok.com/connectors Custom. Laptop: `veil mcp laptop`. Docs: " + view.Docs["grok"],
 			AgentHint:   "After grants, list_items → match_items → fetch. check files level1 asks; approval_status polls Requests.",
 			Href:        "/agents",

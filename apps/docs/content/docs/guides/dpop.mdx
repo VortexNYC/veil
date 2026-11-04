@@ -25,6 +25,18 @@ When an agent sends a `DPoP: <proof-jwt>` header (with `Authorization: DPoP <tok
    - If the JWT access token carries a `cnf.jkt` claim from the issuer, `jkt` must match `cnf.jkt`.
    - For tokens whose issuer does not embed `cnf.jkt` at mint time, Veil enforces **bind-on-first-use**: the first verified `DPoP` proof pins `sha256(access_token) -> jkt` in memory. Any subsequent request with that token that omits the `DPoP` header (downgrade attempt) or signs with a different key is rejected with `401 Unauthorized`.
 
+## Sending DPoP Proofs from the Veil CLI
+
+Every **`VEIL_ORIGIN`** HTTP call from the Go CLI (`veil use`, `veil mcp stdio`, owner routes, and the stdio MCP adapter’s `/mcp` transport) sends **RFC 9449 DPoP by default**:
+
+- **`Authorization: DPoP <token>`** plus a fresh **`DPoP:`** proof on each request.
+- A persistent **P-256 key file** is created mode `600` next to your token file (for example `~/.config/vortex/veil/cursor.jwt` → `cursor.dpop`). Override with **`VEIL_DPOP_KEY_FILE`**.
+- Disable with **`VEIL_DPOP=0`** (legacy scripts or debugging plain Bearer).
+
+After the first successful DPoP request, origin **bind-on-first-use** pins that JWT to the key in `*.dpop`. Keep the pair together; deleting only the `.dpop` file while the token is pinned causes `401` until the pin expires or you remint the agent JWT.
+
+**Cloud MCP** (`https://veil.nyc/mcp` with a static Bearer header) does not use the CLI key file today — proofs must come from the host that holds the token. Laptop **`veil mcp stdio`** and **`veil use`** against `VEIL_ORIGIN` are DPoP-by-default. Mint-time `cnf.jkt` in Hydra tokens (fail-closed before first use) is on the roadmap.
+
 ## Sending DPoP Proofs from TypeScript (`@vortex-api/veil`)
 
 `@vortex-api/veil` includes built-in Web Crypto ES256 DPoP helpers (`createAmbientClient({ dpop: true })`, `generateDPoPKeyPair`, and `signDPoPProof`):

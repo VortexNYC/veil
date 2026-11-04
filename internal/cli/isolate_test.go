@@ -20,5 +20,6 @@ func TestMain(m *testing.M) {
 	_ = os.Unsetenv("VEIL_KRATOS_PASSWORD_FILE")
 	_ = os.Unsetenv("VEIL_KRATOS_TOTP_FILE")
 	_ = os.Setenv("VEIL_FILL_TOUCHID", "0")
+	_ = os.Setenv("VEIL_DPOP", "0")
 	os.Exit(m.Run())
 }
