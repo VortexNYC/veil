@@ -4,6 +4,7 @@
 if (typeof importScripts === "function") {
   importScripts("tab.js");
   importScripts("report.js");
+  importScripts("agentic.js");
 }
 
 const HOST = "nyc.veil.fill";

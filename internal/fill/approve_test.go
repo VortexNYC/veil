@@ -89,3 +89,24 @@ func TestRemoteGate(t *testing.T) {
 		}
 	}
 }
+
+func TestAgenticApproveApproved(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/fill/agent-request/req-agent" {
+			t.Fatalf("unexpected %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"request_id": "req-agent",
+			"status":     "approved",
+			"item_id":    "it-1",
+		})
+	}))
+	defer srv.Close()
+
+	h := &Host{Origin: srv.URL, Token: "t", ConfirmTTL: time.Minute}
+	item := protocol.Item{ID: "it-1", Name: "github", URIs: []string{"https://github.com"}}
+	peer := &Peer{PID: 1, Path: "/Applications/Veil.app/Contents/MacOS/Veil"}
+	if err := h.agenticApprove(item, "req-agent", "https://github.com/login", peer); err != nil {
+		t.Fatal(err)
+	}
+}

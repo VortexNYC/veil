@@ -541,6 +541,9 @@ func (s *Server) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/fill/sync", s.fillSync)
 	mux.HandleFunc("POST /v1/fill/request", s.fillRequest)
 	mux.HandleFunc("GET /v1/fill/request/{id}", s.fillRequestStatus)
+	mux.HandleFunc("GET /v1/fill/agent-request/{id}", s.agentFillRequestStatusForHost)
+	mux.HandleFunc("POST /v1/agent/fill/request", s.agentFillRequest)
+	mux.HandleFunc("GET /v1/agent/fill/request/{id}", s.agentFillRequestStatus)
 }
 
 func (s *Server) listItems(w http.ResponseWriter, r *http.Request) {
@@ -2789,6 +2792,114 @@ func (s *Server) fillRequestStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, FillRequestOut{RequestID: req.ID, Status: req.Status, ExpiresAt: req.ExpiresAt})
+}
+
+type AgentFillRequestIn struct {
+	ItemID string `json:"item_id"`
+	URL    string `json:"url"`
+}
+
+// agentFillRequest files a website-login ask for a granted item — the HTTP
+// partner surface for browser automation (Browserbase / agent-browser shape).
+// Same row MCP request_fill creates; agents poll GET …/agent/fill/request/{id}.
+func (s *Server) agentFillRequest(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireAgent(w, r)
+	if !ok {
+		return
+	}
+	var in AgentFillRequestIn
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	req, err := s.App.RequestAgentFill(r.Context(), p.ID, in.ItemID, in.URL)
+	if err != nil {
+		if strings.Contains(err.Error(), "not granted") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "url does not match") {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "request failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, AgentFillRequestOut{
+		RequestID:   req.ID,
+		Status:      req.Status,
+		ItemID:      req.ItemID,
+		ExpiresAt:   req.ExpiresAt,
+		ApprovalURL: "https://app.veil.nyc/requests",
+	})
+}
+
+type AgentFillRequestOut struct {
+	RequestID   string                 `json:"request_id"`
+	Status      protocol.RequestStatus `json:"status"`
+	ItemID      string                 `json:"item_id"`
+	ExpiresAt   time.Time              `json:"expires_at"`
+	ApprovalURL string                 `json:"approval_url"`
+}
+
+func (s *Server) agentFillRequestStatus(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireAgent(w, r)
+	if !ok {
+		return
+	}
+	out, ok := s.agentFillRequestView(w, p.ID, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	writeJSON(w, out)
+}
+
+// agentFillRequestStatusForHost lets the fill host poll an agent's approved ask
+// after the human resolved it on another device — the Veil extension never
+// holds an agent bearer.
+func (s *Server) agentFillRequestStatusForHost(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.requireHuman(w, r)
+	if !ok {
+		return
+	}
+	req, err := s.App.Store.Request(r.PathValue("id"))
+	if err != nil || req.OrgID != p.OrgID || req.Action != protocol.ActionFill {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if _, err := s.App.Store.Agent(req.AgentID); err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	status := req.Status
+	if status == protocol.RequestOpen && !time.Now().Before(req.ExpiresAt) {
+		status = protocol.RequestExpired
+	}
+	writeJSON(w, AgentFillRequestOut{
+		RequestID: req.ID,
+		Status:    status,
+		ItemID:    req.ItemID,
+		ExpiresAt: req.ExpiresAt,
+	})
+}
+
+func (s *Server) agentFillRequestView(w http.ResponseWriter, agentID, reqID string) (AgentFillRequestOut, bool) {
+	req, err := s.App.Store.Request(strings.TrimSpace(reqID))
+	if err != nil || req.AgentID != agentID || req.Action != protocol.ActionFill {
+		http.Error(w, "not found", http.StatusNotFound)
+		return AgentFillRequestOut{}, false
+	}
+	status := req.Status
+	if status == protocol.RequestOpen && !time.Now().Before(req.ExpiresAt) {
+		status = protocol.RequestExpired
+	}
+	return AgentFillRequestOut{
+		RequestID:   req.ID,
+		Status:      status,
+		ItemID:      req.ItemID,
+		ExpiresAt:   req.ExpiresAt,
+		ApprovalURL: "https://app.veil.nyc/requests",
+	}, true
 }
 
 type registerDeviceRequest struct {

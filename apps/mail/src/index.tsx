@@ -88,16 +88,26 @@ function templateFor(req: SendRequest): Rendered | null {
 	if (req.kind === "request") {
 		const agent = str(d.agent);
 		const item = str(d.item);
-		const action = str(d.action) || "use";
+		const rawAction = str(d.action) || "use";
+		const action =
+			rawAction === "fill"
+				? "sign in on a website using"
+				: rawAction === "use"
+					? "use"
+					: rawAction;
 		const expires = str(d.expires);
+		const review = str(d.url) || "https://app.veil.nyc/requests";
 		return {
-			subject: `Veil: ${agent} asks to ${action} ${item}`,
+			subject:
+				rawAction === "fill"
+					? `Veil: ${agent} requests website sign-in for ${item}`
+					: `Veil: ${agent} asks to ${action} ${item}`,
 			element: (
 				<LinkEmail
 					action="Approval requested"
-					body={`Agent "${agent}" asked to ${action} "${item}".${expires ? ` The request expires at ${expires}.` : ""} Approving requires your owner session — this email cannot approve it.`}
-					button="Review in Veil"
-					url={str(d.url) || "https://app.veil.nyc/"}
+					body={`Agent "${agent}" asked to ${action} "${item}".${expires ? ` The request expires at ${expires}.` : ""} Approving requires your owner session in the vault — this email cannot approve it.`}
+					button="Review in Requests"
+					url={review}
 				/>
 			),
 		};

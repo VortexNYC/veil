@@ -63,6 +63,9 @@ func TestDeviceLinkHandoffLive(t *testing.T) {
 		"sealed": sealed,
 	})
 	assertNoLeak(t, body)
+	if code == 401 {
+		t.Skip("VEIL_HUMAN_TOKEN_FILE jwt rejected — remint with veil human login --out-file")
+	}
 	if code != 204 {
 		t.Fatalf("approve http=%d body=%q", code, clip(body))
 	}

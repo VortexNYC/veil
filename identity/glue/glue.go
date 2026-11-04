@@ -409,7 +409,7 @@ func (g *Glue) NotifyRequest(ctx context.Context, req protocol.ApprovalRequest) 
 		"item":    req.ItemID,
 		"action":  string(req.Action),
 		"expires": req.ExpiresAt.Format(time.RFC3339),
-		"url":     g.appURL,
+		"url":     g.appURL + "/requests",
 	}
 	for _, to := range emails {
 		if err := g.mail.send(ctx, to, "request", data); err != nil {

@@ -38,7 +38,17 @@ Laptop stdio shim (when the client can't set headers): `veil mcp laptop` prints 
    - Polls the status (`open`, `approved`, `denied`, `expired`) of a level1 or **fill** approval request. Once `status === "approved"`, retry `fetch` or continue the browser task after local fill.
 6. **`request_fill`** (`mcp__veil__request_fill` / `veil__request_fill`):
    - Input: `{ "item": "airbnb", "url": "https://www.airbnb.com/login" }`
-   - Files a **website login** approval (1Password for Agents shape). You never receive the password. Human approves at app.veil.nyc/requests; fill runs on their device via Veil extension + host.
+   - Files a **website login** approval (1Password for Agents shape). You never receive the password. Human approves at app.veil.nyc/requests; fill runs in a browser that has the Veil extension + native host (see **Browser automation** below).
+
+## Browser automation (agent-browser, Browserbase, Playwright)
+
+Website login is **not** `fetch`. After **`request_fill`** → human approve → **`approval_status` === `approved`**:
+
+1. Drive a Chromium session with the **Veil MV3 extension** loaded (same profile as `veil fill install` or `--load-extension=apps/fill`).
+2. Native **fill host** must be running with a live human JWT.
+3. Partner/orchestrator calls **`globalThis.veilAgentic.v1`** on the extension service worker over CDP: `agenticMode.enable({ tabId })`, then `autofill.fillCredential({ tabId, requestId, itemId })`.
+
+HTTP equivalent of `request_fill` for your backend: `POST /v1/agent/fill/request` with agent bearer; poll `GET /v1/agent/fill/request/{id}`. Full Browserbase-shaped doc: repo `docs/guides/agentic-autofill.md`.
 
 ## Grok (grok.com + Grok Bot)
 
