@@ -78,6 +78,7 @@ func onboardingDocs() map[string]string {
 		"1p_agents_landscape": "https://veil.nyc/docs/guides/1password-for-agents-landscape",
 		"veil_for_agents":     "https://veil.nyc/docs/guides/veil-for-agents",
 		"agents":              "https://veil.nyc/docs/guides/agents",
+		"sandchest":           "https://veil.nyc/docs/guides/sandchest",
 	}
 }
 
@@ -122,6 +123,16 @@ func (a *App) OnboardingFor(p protocol.Principal) (OnboardingView, error) {
 					"If Grok spawns local MCP: `veil mcp laptop` with grok.hydra on PATH — parent must be Grok or set VEIL_AGENT=grok.",
 					"Website tasks (Airbnb, …): install Veil fill on the device Grok’s browser uses — MCP fetch does not fill login forms.",
 					"Disconnect 1Password from Grok Bot after migrating if Veil is the only store you want agents to use.",
+				},
+			},
+			{
+				ID:    "sandchest_security",
+				Title: "Sandchest — scan Veil auth (Cap)",
+				Steps: []string{
+					"Install Sandchest GitHub App on github.com/VortexNYC/veil (or your fork). See https://www.sandchest.com/docs/agents.",
+					"Add MCP https://www.sandchest.com/api/mcp (OAuth) or device-flow API key → Veil item `sandchest` + grant agent fetch to sandchest.com.",
+					"Run deep scan; prioritize internal/publicapi, internal/human, identity/glue, internal/dpop, apps/vault/src/auth.ts — docs/guides/sandchest.",
+					"Fix findings with a coding agent using Veil MCP for GitHub — never paste sck_ or Hydra secrets into the model.",
 				},
 			},
 			{
