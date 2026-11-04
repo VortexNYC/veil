@@ -81,6 +81,7 @@ type jsonRequest struct {
 	Origin         string          `json:"origin"`
 	PublicKey      json.RawMessage `json:"publicKey"`
 	RelatedOrigins []string        `json:"relatedOrigins"`
+	RequestID      string          `json:"request_id"`
 	// ReqID correlates replies to requests on the browser side — a late
 	// reply must never resolve a newer request. Optional: native clients
 	// read synchronously and leave it empty.
@@ -189,6 +190,21 @@ func (h *Host) dispatchJSON(in jsonRequest) []byte {
 		return h.jsonPasskeyCreate(in.Origin, in.PublicKey, in.RelatedOrigins, in.peer)
 	case "passkeyGet":
 		return h.jsonPasskeyGet(in.Origin, in.PublicKey, in.peer)
+	case "agenticStatus":
+		return h.jsonAgenticStatus(in.RequestID)
+	case "agenticFill":
+		entries := h.jsonAgenticFill(in.URL, in.UUID, in.RequestID, in.peer)
+		err := ""
+		if len(entries) == 0 {
+			if h.loginNeeded() {
+				err = "need_login"
+			} else if strings.TrimSpace(in.RequestID) == "" || strings.TrimSpace(in.UUID) == "" {
+				err = "empty"
+			} else {
+				err = "denied"
+			}
+		}
+		return jsonFillReply(entries, err)
 	case "relock":
 		h.InvalidateConfirm()
 		h.ReloadConfig()
@@ -1116,6 +1132,39 @@ func jsonEcho(reqID string, raw []byte) []byte {
 		return raw
 	}
 	return out
+}
+
+func (h *Host) jsonAgenticStatus(requestID string) []byte {
+	out := struct {
+		Status string `json:"status"`
+		ItemID string `json:"item_id,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}{}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		out.Error = "empty"
+		return jsonBytes(out)
+	}
+	raw, err := h.originGET("/v1/fill/agent-request/" + requestID)
+	if err != nil {
+		out.Error = "origin"
+		return jsonBytes(out)
+	}
+	_ = json.Unmarshal(raw, &out)
+	return jsonBytes(out)
+}
+
+func (h *Host) jsonAgenticFill(rawURL, uuid, requestID string, peer *Peer) []jsonFillEntry {
+	uuid = strings.TrimSpace(uuid)
+	item, ok := h.indexItem(uuid)
+	if !ok {
+		return nil
+	}
+	if err := h.agenticApprove(item, requestID, rawURL, peer); err != nil {
+		fillDebug(err.Error())
+		return nil
+	}
+	return h.jsonFill(rawURL, uuid, peer)
 }
 
 func jsonBytes(v any) []byte {

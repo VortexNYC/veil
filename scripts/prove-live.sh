@@ -13,8 +13,9 @@ SECRET="${VEIL_LIVE_SECRET:-${VEIL_HYDRA_SECRET_FILE:-$HOME/.config/vortex/veil/
 AGENT="${VEIL_LIVE_AGENT:-cursor}"
 JWT_FILE="$(mktemp)"
 CLI_OUT="$(mktemp)"
+GROK_JWT=""
 chmod 600 "$JWT_FILE" "$CLI_OUT"
-cleanup() { rm -f "$JWT_FILE" "$CLI_OUT"; }
+cleanup() { rm -f "$JWT_FILE" "$CLI_OUT" "$GROK_JWT"; }
 trap cleanup EXIT
 
 if [ -n "${VEIL_LIVE_SSH:-}" ]; then
@@ -32,9 +33,31 @@ VEIL_ORIGIN="$ORIGIN" VEIL_HYDRA_ISSUER="$ISSUER" \
 	"$VEIL_BIN" agent token "$AGENT" --secret-file "$SECRET" --out-file "$JWT_FILE" >/dev/null
 test -s "$JWT_FILE"
 
+GROK_JWT="$(mktemp)"
+chmod 600 "$GROK_JWT"
+GROK_SECRET="${VEIL_LIVE_GROK_SECRET:-$HOME/.config/vortex/veil/grok.hydra}"
+if [ -f "$GROK_SECRET" ]; then
+	echo "== mint grok (jwt not printed)"
+	VEIL_ORIGIN="$ORIGIN" VEIL_HYDRA_ISSUER="$ISSUER" \
+		"$VEIL_BIN" agent token grok --secret-file "$GROK_SECRET" --out-file "$GROK_JWT" >/dev/null
+fi
+
 echo "== go test liveorigin"
-VEIL_ORIGIN="$ORIGIN" VEIL_LIVE_JWT_FILE="$JWT_FILE" \
-	go test -tags liveorigin ./internal/livetest -count=1 -timeout 5m
+LIVE_ENV=(VEIL_ORIGIN="$ORIGIN" VEIL_LIVE_JWT_FILE="$JWT_FILE" VEIL_LIVE_JWT_FILE_GROK="$GROK_JWT")
+HUMAN_TOK="${VEIL_HUMAN_TOKEN_FILE:-}"
+for candidate in \
+	"$HOME/.config/vortex/veil/human.jwt" \
+	"$HOME/.config/veil/human.jwt" \
+	"$HOME/.veil/human.jwt"; do
+	if [ -z "$HUMAN_TOK" ] && [ -f "$candidate" ]; then
+		HUMAN_TOK="$candidate"
+	fi
+done
+if [ -f "$HUMAN_TOK" ]; then
+	LIVE_ENV+=(VEIL_HUMAN_TOKEN_FILE="$HUMAN_TOK")
+fi
+env "${LIVE_ENV[@]}" \
+	go test -tags liveorigin ./internal/livetest -count=1 -timeout 8m
 
 echo "== CLI use github (VEIL_ORIGIN HTTP)"
 export VEIL_ORIGIN

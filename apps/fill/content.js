@@ -562,6 +562,19 @@
       sendResponse(typed());
       return true;
     }
+    if (msg.type === "agentic-submit") {
+      const form = document.querySelector("form");
+      const btn =
+        (form && form.querySelector('button[type="submit"], input[type="submit"]')) ||
+        document.querySelector('button[type="submit"], input[type="submit"]');
+      if (btn && typeof btn.click === "function") {
+        btn.click();
+      } else if (form && typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg.type === "otpauth") {
       sendResponse({ otpauth: lastOTPAuth || veilFields.findOTPAuth(document) || "" });
       return true;

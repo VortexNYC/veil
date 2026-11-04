@@ -55,7 +55,7 @@ These are **developer / env** paths on the marketplace — **not** the Grok-styl
 |-------------|-----------------|------------|
 | **Personal assistant** (Muse, Town, Instinct, Grok errands) | Native OAuth + in-app approval + form autofill | **`request_fill`** MCP + Requests + fill execute on device |
 | **Coding / API** (Cursor, Codex, Devin, cloud MCP) | Environments MCP (env files) or manual | **Five-tool MCP**, grants, audit, honey, sessions, WIF |
-| **Browser automation** (Browserbase, Anchor) | Partner inject into browser session | MCP for API + fill for login forms |
+| **Browser automation** (Browserbase, Anchor) | Partner inject into browser session | MCP for API + **`docs/guides/agentic-autofill.md`** (extension in session + `POST /v1/agent/fill/request` + CDP `veilAgentic`) |
 
 We do not need a marketplace listing per competitor to win **developers and small teams** — we need import, onboarding, MCP, and honest docs per host ([grok.md](./grok.md), [onboarding.md](./onboarding.md)).
 

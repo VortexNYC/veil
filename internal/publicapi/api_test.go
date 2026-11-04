@@ -2349,3 +2349,62 @@ func TestBindWorkloadAPI(t *testing.T) {
 		t.Fatalf("cross-org PutWorkload want ErrDenied, got %v", err)
 	}
 }
+
+func TestAgentFillRequestHTTP(t *testing.T) {
+	a := testApp(t)
+	item, err := a.AddItem("github", "https://github.com", []byte(secret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddAgent("claude"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddGrant("claude", "github", protocol.Level1); err != nil {
+		t.Fatal(err)
+	}
+	srv := apiServer(t, a)
+
+	code, raw := doJSON(t, srv, http.MethodPost, "/v1/agent/fill/request", "agent-claude", AgentFillRequestIn{
+		ItemID: "github",
+		URL:    "https://github.com/login",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("file %d %s", code, raw)
+	}
+	var filed AgentFillRequestOut
+	if json.Unmarshal(raw, &filed) != nil || filed.Status != protocol.RequestOpen || filed.ItemID != item.ID {
+		t.Fatalf("filed %s", raw)
+	}
+	if filed.ApprovalURL == "" {
+		t.Fatal("missing approval_url")
+	}
+
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/agent/fill/request/"+filed.RequestID, "agent-cursor", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("other agent poll %d", code)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/agent/fill/request/"+filed.RequestID, "agent-claude", nil)
+	if code != http.StatusOK || !strings.Contains(string(raw), `"open"`) {
+		t.Fatalf("poll %d %s", code, raw)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodPost, "/v1/requests/"+filed.RequestID+"/approve", "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("approve %d %s", code, raw)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/fill/agent-request/"+filed.RequestID, "human", nil)
+	if code != http.StatusOK {
+		t.Fatalf("host poll %d %s", code, raw)
+	}
+	var hostSt AgentFillRequestOut
+	if json.Unmarshal(raw, &hostSt) != nil || hostSt.Status != protocol.RequestApproved {
+		t.Fatalf("host status %s", raw)
+	}
+
+	code, raw = doJSON(t, srv, http.MethodGet, "/v1/agent/fill/request/"+filed.RequestID, "agent-claude", nil)
+	if code != http.StatusOK {
+		t.Fatalf("agent poll approved %d %s", code, raw)
+	}
+}

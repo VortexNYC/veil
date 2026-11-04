@@ -38,10 +38,10 @@ Wire any host: [`grok.md`](./grok.md) · [`onboarding.md`](./onboarding.md) · `
 1. Human: import, agent, **grant** on the site login item.
 2. Agent: `match_items` with page URL → `request_fill` with item + URL.
 3. Human: **app.veil.nyc/requests** (or push if enabled) → Approve.
-4. Agent: poll `approval_status` → continue browser automation.
-5. On the **same machine** as the browser: Veil **extension + host** execute-fill (agent moves cursor; secret never on MCP).
+4. Agent: poll `approval_status` (or backend `GET /v1/agent/fill/request/{id}`).
+5. Browser automation partner: load Veil extension in the agent’s Chromium, CDP **`veilAgentic.v1.autofill.fillCredential`** — [`guides/agentic-autofill.md`](./guides/agentic-autofill.md) (Browserbase-shaped). Local `agent-browser` / `vb`: persistent profile + `--load-extension`.
 
-Cloud-only agents without a local browser still get **API** lane only.
+Cloud-only agents without a browser that loads the extension still get the **API** lane only.
 
 ## Match 1Password’s dev integrations
 
@@ -51,7 +51,7 @@ Cloud-only agents without a local browser still get **API** lane only.
 | Copilot agent hook | `veil agent` + MCP / `agent bind` |
 | GitHub Actions `op` | `veil agent bind --preset github-actions` |
 | NVIDIA OpenShell | `veil session` + MCP in sandbox |
-| Anchor Browser | MCP for API steps + fill for login forms |
+| Anchor Browser | MCP for API steps + [`agentic-autofill`](./guides/agentic-autofill.md) for login forms |
 | **OSS security (default)** | `make security-fast` — secretlint, govulncheck, Semgrep — [`oss-security` guide](https://veil.nyc/docs/guides/oss-security) |
 | **[Sandchest](https://github.com/CapSoftware/Sandchest)** (optional paid) | MCP at `sandchest.com/api/mcp`; Stripe credits — [`sandchest`](https://veil.nyc/docs/guides/sandchest) |
 

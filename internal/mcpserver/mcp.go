@@ -159,7 +159,7 @@ func New(a *app.App) *mcp.Server {
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "request_fill",
-		Description: "Ask a human to approve a website login for this granted item — 1Password for Agents shape. You never receive the password. After approval, the human's Veil fill extension writes fields on their device; poll approval_status then continue the browser task.",
+		Description: "Ask a human to approve a website login for this granted item — 1Password for Agents shape. You never receive the password. After approval, call veilAgentic autofill in the browser session (docs/guides/agentic-autofill.md) or continue a non-login task; poll approval_status until approved.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in RequestFillIn) (*mcp.CallToolResult, FetchOut, error) {
 		agentID, err := principal(req)
 		if err != nil {

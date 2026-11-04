@@ -3,8 +3,10 @@ package fill
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/VortexNYC/veil/internal/grant"
 	"github.com/VortexNYC/veil/internal/protocol"
 )
 
@@ -86,4 +88,60 @@ func (h *Host) remoteApprove(item protocol.Item, scope string, peer *Peer) error
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("fill: remote approve timeout")
+}
+
+// agenticApprove is the browser-automation gate: an agent filed the ask
+// (MCP or POST /v1/agent/fill/request), a human approved it in the vault,
+// and the extension host polls until the row is approved — then arms the
+// same reuse window remoteApprove uses so jsonFill does not re-prompt Touch ID
+// for the immediate write.
+func (h *Host) agenticApprove(item protocol.Item, requestID, pageURL string, peer *Peer) error {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return fmt.Errorf("fill: agentic approve: missing request")
+	}
+	pageURL = strings.TrimSpace(pageURL)
+	if pageURL != "" && !grant.HostAllowed(item, pageURL) {
+		return fmt.Errorf("fill: agentic approve: url mismatch")
+	}
+	scope := grant.Registrable(pageURL)
+	if scope == "" {
+		scope = "veil.nyc"
+	}
+	deadline := time.Now().Add(125 * time.Second)
+	for time.Now().Before(deadline) {
+		raw, err := h.originGET("/v1/fill/agent-request/" + requestID)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		var st struct {
+			Status string `json:"status"`
+			ItemID string `json:"item_id"`
+		}
+		if err := json.Unmarshal(raw, &st); err != nil {
+			return fmt.Errorf("fill: agentic approve: bad reply")
+		}
+		if st.ItemID != "" && st.ItemID != item.ID {
+			return fmt.Errorf("fill: agentic approve: item mismatch")
+		}
+		switch st.Status {
+		case "approved":
+			h.mu.Lock()
+			ttl := h.ConfirmTTL
+			if ttl <= 0 {
+				ttl = confirmReuse
+			}
+			h.confirmUntil = time.Now().Add(ttl)
+			h.confirmScope = scope
+			h.confirmPeer = peer.key()
+			h.mu.Unlock()
+			fillDebug("agentic approve ok " + requestID)
+			return nil
+		case "denied", "expired", "cancelled":
+			return fmt.Errorf("fill: agentic approve %s", st.Status)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("fill: agentic approve timeout")
 }
