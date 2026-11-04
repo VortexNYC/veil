@@ -200,12 +200,23 @@ Navigate or assert the post-login URL yourself (`successUrl` pattern in Browserb
 
 ## agent-browser / `vb`
 
-Use a **persistent profile** with the extension pre-loaded (see above). Your coding agent should:
+Use **`vb`** (agent-browser) for navigation, snapshots, and screenshots — not the Playwright `run-agentic-signin.sh` runner.
 
-1. MCP **`request_fill`** *or* your backend **`POST /v1/agent/fill/request`**
-2. Human approves
-3. MCP **`approval_status`** *or* backend poll
-4. Your automation driver calls **`veilAgentic.v1.autofill.fillCredential`** on the same browser that loaded the extension
+1. **Chrome for Testing** — set `AGENT_BROWSER_EXECUTABLE_PATH` to agent-browser’s bundled CfT (branded `Google Chrome.app` loads the extension but **does not expose the Veil service worker to CDP**, so agentic fill cannot run).
+2. Persistent **`--profile ~/.veil/agent-browser-profile`** + **`--extension ~/.veil/extension`**, with `NativeMessagingHosts/nyc.veil.fill.json` copied into that profile.
+3. **`veil agent fill request`** → human approve (`veil request approve` or app.veil.nyc/requests).
+4. **`node examples/agentic-autofill/worker-fill.mjs`** (CDP `veilAgentic` on the extension worker) — or **`bash scripts/vb-agentic-login.sh ITEM URL`** which wires steps 1–4 and leaves the window open.
+
+```bash
+export AGENT_BROWSER_SESSION=veil-live
+export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.agent-browser/browsers/chrome-154.0.8037.57/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+vb veil-live --headed --extension "$HOME/.veil/extension" --profile "$HOME/.veil/agent-browser-profile" open 'https://github.com/login'
+# … approve fill request …
+REQUEST_ID=req-… VEIL_ITEM_ID=github PAGE_URL_SUBSTR=github.com node examples/agentic-autofill/worker-fill.mjs
+agent-browser snapshot -i -c
+```
+
+Fill injects credentials; **you** finish 2FA/passkey in the headed window. `agent-browser eval` can check field lengths without printing secrets.
 
 Default isolated `vb` sessions without the extension will never fill — that is expected.
 
