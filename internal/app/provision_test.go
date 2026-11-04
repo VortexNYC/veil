@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,9 +13,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/VortexNYC/veil/internal/billing"
 	"github.com/VortexNYC/veil/internal/crypto"
+	"github.com/VortexNYC/veil/internal/human"
 	"github.com/VortexNYC/veil/internal/protocol"
 	"github.com/VortexNYC/veil/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -516,5 +519,67 @@ func TestProvisionSurvivesBillingOutage(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("billing provision failure not audited")
+	}
+}
+
+func TestProvisionHumanRejectsAgentCredentialBearer(t *testing.T) {
+	iss := newCredTestIssuer(t)
+	a := newCredTestApp(t, iss.URL)
+	if err := a.Store.PutAgent(protocol.Principal{Kind: protocol.PrincipalAgent, ID: "grok", OrgID: a.OrgID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.PutWorkload(protocol.Workload{
+		AgentID: "grok", OrgID: a.OrgID, Issuer: iss.URL, Subject: "agent-grok", Audience: "veil",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.Human = fakeVerifier{sub: "should-not-run"}
+	if _, err := a.ProvisionHuman(context.Background(), "agent-grok:topsecret"); err == nil {
+		t.Fatal("agent credential bearer provisioned")
+	} else if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("want forbidden, got %v", err)
+	}
+}
+
+func TestProvisionHumanRejectsHydraAgentJWT(t *testing.T) {
+	iss := newCredTestIssuer(t)
+	a, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if _, err := a.AddAgent("grok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.BindWorkload("grok", iss.URL, "agent-grok", "veil"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := human.New(human.Config{Issuer: iss.URL, Audience: "veil"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Human = v
+	a.Provision = &fakeProvision{}
+	a.Members = orgMembers{}
+	raw := iss.token(t, "agent-grok", "veil", time.Now().Add(time.Hour))
+	if _, err := a.ProvisionHuman(context.Background(), raw); err == nil {
+		t.Fatal("agent jwt provisioned")
+	} else if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("want forbidden, got %v", err)
+	}
+}
+
+func TestProvisionHumanRejectsAgentSubjectPrefixWithoutBind(t *testing.T) {
+	a, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.Human = fakeVerifier{sub: "agent-cursor"}
+	a.Provision = &fakeProvision{}
+	if _, err := a.ProvisionHuman(context.Background(), "tok"); err == nil {
+		t.Fatal("agent-shaped subject provisioned")
+	} else if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("want forbidden, got %v", err)
 	}
 }

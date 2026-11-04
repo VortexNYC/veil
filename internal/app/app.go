@@ -44,6 +44,10 @@ const (
 	DefaultHuman = "self"
 	dbFile       = "vault.db"
 	cfgFile      = "config.json"
+
+	// hydraAgentSubjectPrefix matches identity/glue/hydra AgentClientPrefix.
+	// Client-credentials JWTs use the OAuth client id as sub (agent-<name>).
+	hydraAgentSubjectPrefix = "agent-"
 )
 
 // MemberCheck is identity-plane owner/member. Keto via glue. Not grants.
@@ -1510,6 +1514,26 @@ func (a *App) AgentFromOIDC(ctx context.Context, rawToken string) (protocol.Prin
 	return w.Agent(ctx, rawToken)
 }
 
+// humanSubjectForAdmin resolves a Hydra ID token for human-only admin verbs
+// (provision, invite, ApproveOIDC). Agent credentials and agent-shaped subjects
+// are rejected even when workload binding is missing.
+func (a *App) humanSubjectForAdmin(ctx context.Context, rawToken string) (string, error) {
+	if _, err := a.AgentFromOIDC(ctx, rawToken); err == nil {
+		return "", fmt.Errorf("%w: agent token not allowed", ErrForbidden)
+	}
+	if a.Human == nil {
+		return "", fmt.Errorf("app: human verifier not configured")
+	}
+	sub, err := a.Human.Subject(ctx, rawToken)
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(sub, hydraAgentSubjectPrefix) {
+		return "", fmt.Errorf("%w: agent subject not allowed", ErrForbidden)
+	}
+	return sub, nil
+}
+
 // PrincipalFromOIDC is origin identity. Session lease first. Bound agent
 // next. Else Hydra human plus Keto membership. Grants stay in the vault.
 func (a *App) PrincipalFromOIDC(ctx context.Context, rawToken string) (protocol.Principal, error) {
@@ -1565,7 +1589,7 @@ func (a *App) ProvisionHuman(ctx context.Context, rawToken string, recoveryPubke
 	if a.Human == nil {
 		return protocol.Principal{}, fmt.Errorf("app: human verifier not configured")
 	}
-	sub, err := a.Human.Subject(ctx, rawToken)
+	sub, err := a.humanSubjectForAdmin(ctx, rawToken)
 	if err != nil {
 		return protocol.Principal{}, err
 	}
@@ -1783,7 +1807,7 @@ func (a *App) InviteHuman(ctx context.Context, rawToken, email string) (InviteRe
 	if a.Invites == nil {
 		return InviteResult{}, fmt.Errorf("app: invites not configured")
 	}
-	sub, err := a.Human.Subject(ctx, rawToken)
+	sub, err := a.humanSubjectForAdmin(ctx, rawToken)
 	if err != nil {
 		return InviteResult{}, err
 	}
@@ -3180,7 +3204,7 @@ func (a *App) ApproveOIDC(ctx context.Context, grantID, rawToken string, ttl tim
 	if a.Members == nil {
 		return protocol.Approval{}, fmt.Errorf("app: not a member")
 	}
-	sub, err := a.Human.Subject(ctx, rawToken)
+	sub, err := a.humanSubjectForAdmin(ctx, rawToken)
 	if err != nil {
 		return protocol.Approval{}, err
 	}

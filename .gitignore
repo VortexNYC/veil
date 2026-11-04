@@ -22,6 +22,7 @@ apps/vault/.wrangler/
 .blume/
 .tmp/
 tests/load/k6/out/
+strix_runs/
 
 loadtest
 infra/alchemy/.alchemy/
