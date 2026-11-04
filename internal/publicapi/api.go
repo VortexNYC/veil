@@ -1284,7 +1284,7 @@ func (s *Server) revokeAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireOwner(w, r)
 	if !ok {
 		return
 	}
@@ -1304,7 +1304,7 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.requireHuman(w, r)
+	p, ok := s.requireOwner(w, r)
 	if !ok {
 		return
 	}
