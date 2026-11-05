@@ -71,7 +71,7 @@ func Handler(a *app.App, publicURL string) http.Handler {
 	if publicURL != "" {
 		opts.ResourceMetadataURL = wellKnownURL(publicURL)
 	}
-	return auth.RequireBearerToken(func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
+	authed := auth.RequireBearerToken(func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
 		if err := dpop.VerifyRequest(req, token); err != nil {
 			return nil, fmt.Errorf("%w", auth.ErrInvalidToken)
 		}
@@ -81,6 +81,15 @@ func Handler(a *app.App, publicURL string) http.Handler {
 		}
 		return &auth.TokenInfo{UserID: agent.ID, Scopes: []string{"mcp"}}, nil
 	}, opts)(stream)
+	// The SDK's bearer middleware accepts only the "Bearer" scheme; DPoP-bound
+	// agents send "DPoP <token>" per RFC 9449. Normalize the scheme when a
+	// proof header rides along — dpop.VerifyRequest above still enforces it.
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "DPoP ") && r.Header.Get("DPoP") != "" {
+			r.Header.Set("Authorization", "Bearer "+strings.TrimPrefix(h, "DPoP "))
+		}
+		authed.ServeHTTP(w, r)
+	})
 }
 
 // errWindow counts 5xx responses over a rolling window — the signal the

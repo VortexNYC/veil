@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -32,6 +33,12 @@ func originHumanToken() (string, error) {
 	}
 	if t := strings.TrimSpace(os.Getenv("VEIL_HUMAN_TOKEN")); t != "" {
 		return t, nil
+	}
+	// Canonical login path — `veil human login --out-file` lands here.
+	if home, herr := os.UserHomeDir(); herr == nil {
+		if b, rerr := readFileMaterial(filepath.Join(home, ".config", "veil", "human.jwt")); rerr == nil && len(b) > 0 {
+			return string(b), nil
+		}
 	}
 	return "", fmt.Errorf("origin: VEIL_HUMAN_TOKEN_FILE or VEIL_HUMAN_TOKEN is required")
 }

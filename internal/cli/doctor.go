@@ -75,10 +75,14 @@ func doctorCmd(home *string, version string) *cobra.Command {
 			}
 			for _, bp := range binPaths {
 				sum := fileSHA256Short(bp.path)
+				remedy := "run `veil doctor --fix`"
+				if bp.label == "Veil.app/veil-bin" {
+					remedy = "rebuild with `make macos-app`"
+				}
 				if sum == "" {
 					record("binary:"+bp.label, "warn", bp.path+" not present")
 				} else if selfSum != "" && sum != selfSum {
-					record("binary:"+bp.label, "drift", fmt.Sprintf("sha256=%s (running veil=%s) — run `veil doctor --fix`", sum, selfSum))
+					record("binary:"+bp.label, "drift", fmt.Sprintf("sha256=%s (running veil=%s) — %s", sum, selfSum, remedy))
 				} else {
 					record("binary:"+bp.label, "ok", fmt.Sprintf("sha256=%s (%s)", sum, bp.path))
 				}

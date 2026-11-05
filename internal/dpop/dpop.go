@@ -14,6 +14,7 @@
 package dpop
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -96,6 +97,8 @@ func VerifyRequest(r *http.Request, accessToken string) error {
 	return defaultVerifier.VerifyRequest(r, accessToken)
 }
 
+type verifiedContextKey struct{}
+
 func (v *Verifier) VerifyRequest(r *http.Request, accessToken string) error {
 	if r == nil {
 		return nil
@@ -104,9 +107,22 @@ func (v *Verifier) VerifyRequest(r *http.Request, accessToken string) error {
 	if accessToken == "" {
 		return nil
 	}
+	// Handlers resolve the principal after their own VerifyRequest call, and
+	// resolve() verifies again — the second pass must not count as a replay.
+	tokHash := tokenDigest(accessToken)
+	if h, ok := r.Context().Value(verifiedContextKey{}).(string); ok && h == tokHash {
+		return nil
+	}
+	if err := v.verifyRequest(r, accessToken, tokHash); err != nil {
+		return err
+	}
+	*r = *r.WithContext(context.WithValue(r.Context(), verifiedContextKey{}, tokHash))
+	return nil
+}
+
+func (v *Verifier) verifyRequest(r *http.Request, accessToken, tokHash string) error {
 	now := v.Now().UTC()
 	proof := strings.TrimSpace(r.Header.Get("DPoP"))
-	tokHash := tokenDigest(accessToken)
 	cnfJKT := extractTokenCnfJKT(accessToken)
 
 	if proof == "" {
