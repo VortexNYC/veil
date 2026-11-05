@@ -87,8 +87,8 @@ func (p *Pusher) NotifyRequest(ctx context.Context, req protocol.ApprovalRequest
 			"type": "approve_request",
 			"id":   req.ID,
 		}
-		if err := p.sender.Send(ctx, d, "Veil approval request",
-			"An agent is asking to use a credential — open Veil to approve", data); err != nil {
+		title, body := ApprovalNotifyCopy(req)
+		if err := p.sender.Send(ctx, d, title, body, data); err != nil {
 			// A non-Unregistered failure is a real outage (bad key, APNs
 			// down, topic mismatch) — silent sends mean silent misses.
 			if !IsUnregistered(err) {

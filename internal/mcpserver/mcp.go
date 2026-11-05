@@ -49,6 +49,8 @@ type FetchOut struct {
 	ApprovalURL string `json:"approval_url,omitempty"`
 	// Action distinguishes API Use asks from website fill asks once filed.
 	Action string `json:"action,omitempty"`
+	// LaptopFillCommand is the local CLI to run after approval (stdio / dev laptop).
+	LaptopFillCommand string `json:"laptop_fill_command,omitempty"`
 }
 
 type ListOut struct {
@@ -165,7 +167,7 @@ func New(a *app.App) *mcp.Server {
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "request_fill",
-		Description: "Ask a human to approve a website login for this granted item — 1Password for Agents shape. You never receive the password. After approval, call veilAgentic autofill in the browser session (docs/guides/agentic-autofill.md) or continue a non-login task; poll approval_status until approved.",
+		Description: "Ask a human to approve a website login for this granted item — 1Password for Agents shape. You never receive the password. On a laptop with Veil fill installed, call agent_fill_login (stdio MCP) or run laptop_fill_command after approval; cloud agents poll approval_status only.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in RequestFillIn) (*mcp.CallToolResult, FetchOut, error) {
 		agentID, err := principal(req)
 		if err != nil {
@@ -177,12 +179,13 @@ func New(a *app.App) *mcp.Server {
 		}
 		exp := filed.ExpiresAt
 		return nil, FetchOut{
-			Decision:         string(protocol.DecisionNeedApproval),
-			Reason:           "fill approval required",
-			RequestID:        filed.ID,
-			RequestExpiresAt: &exp,
-			ApprovalURL:      "https://app.veil.nyc/requests",
-			Action:           string(filed.Action),
+			Decision:          string(protocol.DecisionNeedApproval),
+			Reason:            "fill approval required",
+			RequestID:         filed.ID,
+			RequestExpiresAt:  &exp,
+			ApprovalURL:       "https://app.veil.nyc/requests",
+			Action:            string(filed.Action),
+			LaptopFillCommand: laptopFillCommand(in.Item, in.URL),
 		}, nil
 	})
 	return server
@@ -273,4 +276,13 @@ func approvalStatus(a *app.App, agentID, requestID string) (ApprovalStatusOut, e
 		ExpiresAt:  req.ExpiresAt,
 		ResolvedAt: req.ResolvedAt,
 	}, nil
+}
+
+func laptopFillCommand(item, pageURL string) string {
+	item = strings.TrimSpace(item)
+	pageURL = strings.TrimSpace(pageURL)
+	if item == "" || pageURL == "" {
+		return "veil agent fill login --item ITEM --url URL"
+	}
+	return fmt.Sprintf("veil agent fill login --item %q --url %q", item, pageURL)
 }

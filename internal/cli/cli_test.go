@@ -1866,6 +1866,88 @@ func TestOriginRemintsExpiredJWT(t *testing.T) {
 	}
 }
 
+// A stored JWT can carry a valid exp and still be rejected — rotated Hydra
+// client, revoked session. originDo must remint once on 401 and retry.
+func TestOriginRemintsOn401(t *testing.T) {
+	const hydraSecret = "hydra-agent-secret"
+	fresh := testJWT("agent-cursor", time.Now().Add(time.Hour))
+	var minted int
+	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/token" {
+			http.NotFound(w, r)
+			return
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "agent-cursor" || pass != hydraSecret {
+			http.Error(w, "auth", http.StatusUnauthorized)
+			return
+		}
+		minted++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": fresh,
+			"token_type":   "bearer",
+			"expires_in":   3600,
+		})
+	}))
+	t.Cleanup(hydra.Close)
+	var calls int
+	var sawAuth string
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/use" {
+			http.Error(w, "nope", http.StatusNotFound)
+			return
+		}
+		calls++
+		sawAuth = r.Header.Get("Authorization")
+		if sawAuth != "Bearer "+fresh {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"decision":"allow","status":200,"body":"ok"}`)
+	}))
+	t.Cleanup(origin.Close)
+
+	dir := t.TempDir()
+	tok := filepath.Join(dir, "cursor.jwt")
+	sec := filepath.Join(dir, "cursor.hydra")
+	stale := testJWT("agent-cursor", time.Now().Add(2*time.Hour)) // valid exp, broker will still 401
+	if err := os.WriteFile(tok, []byte(stale+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sec, []byte(hydraSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VEIL_ORIGIN", origin.URL)
+	t.Setenv("VEIL_HYDRA_ISSUER", hydra.URL)
+	t.Setenv("VEIL_HYDRA_SECRET_FILE", sec)
+	t.Setenv("VEIL_AGENT", "cursor")
+	t.Setenv("VEIL_OIDC_TOKEN_FILE", tok)
+	t.Setenv("VEIL_OIDC_TOKEN", "")
+
+	out, err := run(t, t.TempDir(), "", "use", "--item", "github", "--url", "https://api.github.com/user")
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if minted != 1 {
+		t.Fatalf("minted %d", minted)
+	}
+	if calls != 2 {
+		t.Fatalf("origin calls %d", calls)
+	}
+	if sawAuth != "Bearer "+fresh {
+		t.Fatalf("auth %q", sawAuth)
+	}
+	got, err := os.ReadFile(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(got)) != fresh {
+		t.Fatal("did not persist reminted jwt")
+	}
+}
+
 func TestOriginDoesNotRemintFreshJWT(t *testing.T) {
 	fresh := testJWT("agent-cursor", time.Now().Add(time.Hour))
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

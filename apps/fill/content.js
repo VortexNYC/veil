@@ -565,6 +565,9 @@
     if (msg.type === "agentic-submit") {
       const form = document.querySelector("form");
       const btn =
+        document.querySelector(
+          'input[type="submit"][name="commit"], button[data-signin-button], input.btn-primary[type="submit"]',
+        ) ||
         (form && form.querySelector('button[type="submit"], input[type="submit"]')) ||
         document.querySelector('button[type="submit"], input[type="submit"]');
       if (btn && typeof btn.click === "function") {

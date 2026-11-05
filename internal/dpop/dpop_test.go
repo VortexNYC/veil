@@ -72,6 +72,39 @@ func TestDPoPVerifyReplayAndKeyPinning(t *testing.T) {
 	}
 }
 
+// Handlers verify, then resolve() verifies the same request again. The second
+// pass is the same request, not a replay.
+func TestDPoPVerifySameRequestTwice(t *testing.T) {
+	v := NewVerifier()
+	now := time.Now().UTC().Truncate(time.Second)
+	v.Now = func() time.Time { return now }
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := "ses_test_token_double"
+	proof, err := MintProof(key, "POST", "https://veil.nyc/v1/use", tok, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "https://veil.nyc/v1/use", nil)
+	req.Header.Set("DPoP", proof)
+	if err := v.VerifyRequest(req, tok); err != nil {
+		t.Fatalf("first verify rejected: %v", err)
+	}
+	if err := v.VerifyRequest(req, tok); err != nil {
+		t.Fatalf("second verify on same request rejected: %v", err)
+	}
+
+	// The same proof on a different request is still a replay.
+	other := httptest.NewRequest("POST", "https://veil.nyc/v1/use", nil)
+	other.Header.Set("DPoP", proof)
+	if err := v.VerifyRequest(other, tok); err == nil {
+		t.Fatal("replayed jti on a different request should be rejected")
+	}
+}
+
 func TestMatchHTUIgnoresForgedForwardedHostWithoutEdge(t *testing.T) {
 	v := NewVerifier()
 	now := time.Now().UTC().Truncate(time.Second)

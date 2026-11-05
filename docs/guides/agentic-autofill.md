@@ -107,7 +107,7 @@ Owners resolve asks on any connected surface — pick what matches where you are
 
 | Surface | Command / action |
 |---------|------------------|
-| **CLI (beside the agent)** | `veil request list` · `veil request approve REQUEST_ID` · **`veil request watch REQUEST_ID`** (blocks until approved/denied) |
+| **CLI (beside the agent)** | **`veil request confirm REQUEST_ID`** (interactive — same gate as the app) · `veil request list` · `veil request approve` / `deny` · **`veil request watch`** (block until resolved; use in a second terminal while the agent waits) |
 | **Vault** | [app.veil.nyc/requests](https://app.veil.nyc/requests) — enable **Agent approval alerts** in Settings for browser notifications |
 | **iPhone** | Veil app → **Requests** (push when `/v1/devices` is registered and APNs is configured) |
 | **Mac `Veil.app`** | macOS notification → opens embedded vault at `/requests` (SSE + poll on the requests stream) |
@@ -117,8 +117,10 @@ File from the agent laptop:
 
 ```bash
 veil agent fill request --item Stripe --url 'https://dashboard.stripe.com/login'
-# stderr prints: veil request watch req-…
+# stderr: veil request confirm req-…  (y/N in terminal — same decision as tapping Approve in the app)
 ```
+
+Automation that must not bypass the human gate: **`VEIL_AUTO_APPROVE=1` is ignored** unless **`VEIL_CI=1`** or **`VEIL_ALLOW_AUTO_APPROVE=1`** (CI only). Do not leave auto-approve set in your shell profile.
 
 Send the human to **`approval_url`** only when none of the above are in reach.
 
@@ -200,18 +202,100 @@ Navigate or assert the post-login URL yourself (`successUrl` pattern in Browserb
 
 ## agent-browser / `vb`
 
-Use a **persistent profile** with the extension pre-loaded (see above). Your coding agent should:
+`veil agent fill run` invokes **`vb`** internally (`--open`). For snapshots after fill, use **`--snapshot`** (wraps `agent-browser`). Manual `vb` is optional debugging only.
 
-1. MCP **`request_fill`** *or* your backend **`POST /v1/agent/fill/request`**
-2. Human approves
-3. MCP **`approval_status`** *or* backend poll
-4. Your automation driver calls **`veilAgentic.v1.autofill.fillCredential`** on the same browser that loaded the extension
+## Cursor / agent CLI
+
+No bash scripts for dogfood or proof — only the CLI.
+
+**Preferred entry:** one command, phased stderr, JSON on stdout when done.
+
+```bash
+export VEIL_ORIGIN=https://veil.nyc
+export VEIL_AGENT=cursor
+export VEIL_OIDC_TOKEN_FILE=$HOME/.config/veil/human.jwt   # optional: CLI watch SSE
+
+veil agent fill check --agent cursor
+veil agent fill login \
+  --item github \
+  --url 'https://github.com/login'
+```
+
+| Step | What you see |
+|------|----------------|
+| **1/4 Prepare** | Profile + native host + fill bridge |
+| **2/4 Open** | Headed Chrome (`veil-github` session by default) on the login URL |
+| **3/4 Approve** | macOS opens `app.veil.nyc/requests` — tap Approve (same `request_id` as stderr) |
+| **4/4 Autofill** | CDP fill + field-length proof — **Chrome stays open** so you can submit / 2FA (use `--close` for CI) |
+
+Stdout (agents parse this):
+
+```json
+{
+  "ok": true,
+  "request_id": "req_…",
+  "item": "github",
+  "verify": { "user_len": 12, "pass_len": 40, "has_password": true },
+  "session_closed": false,
+  "next_human_step": "Finish 2FA or passkey in the headed window, then: veil agent fill close --session veil-github"
+}
+```
+
+Post-login automation (after you complete 2FA): add **`--success-url 'https://github.com/'`**. Tear down when done: **`veil agent fill close --session veil-github`** or **`--close`** on the CLI for headless CI.
+
+**Cursor (stdio MCP):** call **`agent_fill_login`** with `item` + `url` instead of shell scripts. Cloud MCP: **`request_fill`** → human approves → run `laptop_fill_command` on the dev machine or poll **`approval_status`**.
+
+Orphan sessions: `veil agent fill close --all` or `veil agent fill close --session veil-github`.
+
+Lower-level control (same engine):
+
+```bash
+veil agent fill run --item github --url 'https://github.com/login' --json
+```
+
+| Command | Purpose |
+|---------|---------|
+| `veil fill install --profile DIR` | Native host manifest in Chrome user-data-dir |
+| `veil grant resolve --agent A --item NAME` | Granted item id |
+| `veil agent fill check` | Preflight |
+| `veil agent fill login` | Opinionated journey + JSON result |
+| `veil agent fill run` | Full path with extra flags (`--snapshot`, `--assert-url`, …) |
+| `veil agent fill close` | Tear down agent-browser sessions |
+
+### Migration inventory (run each with `veil agent fill run`)
+
+| Item | Login URL |
+|------|-----------|
+| Stripe | `https://dashboard.stripe.com/login` |
+| github | `https://github.com/login` |
+| Google (Personal) | `https://accounts.google.com` |
+| cloudflare-login | `https://dash.cloudflare.com/login` |
+| LinkedIn | `https://www.linkedin.com/login` |
+| X (twitter) | `https://x.com/i/flow/login` |
+| Apple ID | `https://appleid.apple.com` |
+
+Pass per site: approve → `worker fill ok` → **`verify-fields ok`** (field lengths only) → you finish 2FA → optional `--assert-url`.
+
+### Debug (split steps)
+
+```bash
+veil agent fill request --item github --url 'https://github.com/login' --wait-approved
+veil request watch REQUEST_ID
+# after approved, if browser already open with extension:
+# only for engineering — prefer fill run
+```
+
+Fill injects credentials; **you** finish 2FA/passkey in the headed window. `agent-browser eval` can check field lengths without printing secrets.
 
 Default isolated `vb` sessions without the extension will never fill — that is expected.
 
-## Example
+### Playwright persistent profile (Chrome for Testing)
 
-See [`examples/agentic-autofill/signin.mjs`](../../examples/agentic-autofill/signin.mjs) for a minimal Playwright + CDP sketch (env: `VEIL_AGENT_TOKEN`, extension path, login URLs).
+Use **`playwright-core`** with a **persistent user-data dir**, not default Playwright Chromium alone: load the unpacked extension (`--load-extension`, `--disable-extensions-except`), set `ignoreDefaultArgs: ['--disable-extensions']`, and point at **Chrome for Testing** via `VEIL_CHROMIUM_EXECUTABLE` if Playwright’s bundled browser is missing or corrupt.
+
+Chromium resolves native messaging hosts from the **profile** directory. Use **`veil fill install --profile $PROFILE`** or let **`veil agent fill run`** install into the profile automatically.
+
+Partner reference implementation: [`examples/agentic-autofill/signin.mjs`](../../examples/agentic-autofill/signin.mjs) (Playwright sketch only — not the dogfood path).
 
 ## Related
 

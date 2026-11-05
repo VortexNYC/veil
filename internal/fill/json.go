@@ -362,6 +362,13 @@ func fillPrompt(verb, fallback string, hit *jsonMatchEntry) string {
 }
 
 func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
+	return h.jsonFillOpts(rawURL, uuid, peer, false)
+}
+
+// jsonFillOpts releases credentials into the page. When agenticGate is true,
+// remote-approve was already satisfied by agenticApprove — do not file a
+// second /v1/fill/request.
+func (h *Host) jsonFillOpts(rawURL, uuid string, peer *Peer, agenticGate bool) []jsonFillEntry {
 	empty := []jsonFillEntry{}
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -408,8 +415,10 @@ func (h *Host) jsonFill(rawURL, uuid string, peer *Peer) []jsonFillEntry {
 	// Remote-approve posture: the gate is another device's human, not a
 	// local eval — file the ask, poll for the resolution, then release.
 	gate := func(reason string, reuse bool) error {
-		if item, ok := h.indexItem(hit.UUID); ok && h.remoteGate(item) {
-			return h.remoteApprove(item, scope, peer)
+		if !agenticGate {
+			if item, ok := h.indexItem(hit.UUID); ok && h.remoteGate(item) {
+				return h.remoteApprove(item, scope, peer)
+			}
 		}
 		return h.confirm(reason, scope, reuse, peer)
 	}
@@ -1164,7 +1173,7 @@ func (h *Host) jsonAgenticFill(rawURL, uuid, requestID string, peer *Peer) []jso
 		fillDebug(err.Error())
 		return nil
 	}
-	return h.jsonFill(rawURL, uuid, peer)
+	return h.jsonFillOpts(rawURL, uuid, peer, true)
 }
 
 func jsonBytes(v any) []byte {

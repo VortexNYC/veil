@@ -1776,6 +1776,8 @@ func agentCmd(home *string) *cobra.Command {
 
 	fill := &cobra.Command{Use: "fill", Short: "Website login asks for agentic autofill (Browserbase shape)"}
 	var fillItem, fillURL, fillAgent string
+	var fillWaitApproved bool
+	var fillApprovalTimeout time.Duration
 	fillReq := &cobra.Command{
 		Use:   "request",
 		Short: "File a fill approval for a granted item + login URL",
@@ -1783,15 +1785,113 @@ func agentCmd(home *string) *cobra.Command {
 			if originBase() == "" {
 				return fmt.Errorf("agent fill request: VEIL_ORIGIN is required")
 			}
-			return originAgentFillRequest(cmd, fillAgent, fillItem, fillURL)
+			return originAgentFillRequest(cmd, fillAgent, fillItem, fillURL, fillWaitApproved, fillApprovalTimeout)
 		},
 	}
 	fillReq.Flags().StringVar(&fillAgent, "agent", "", "agent id (default VEIL_AGENT)")
 	fillReq.Flags().StringVar(&fillItem, "item", "", "granted item name or id")
 	fillReq.Flags().StringVar(&fillURL, "url", "", "HTTPS login page URL")
+	fillReq.Flags().BoolVar(&fillWaitApproved, "wait-approved", false, "poll until the human approves (agent bearer)")
+	fillReq.Flags().DurationVar(&fillApprovalTimeout, "approval-timeout", 2*time.Minute, "with --wait-approved")
 	_ = fillReq.MarkFlagRequired("item")
 	_ = fillReq.MarkFlagRequired("url")
-	fill.AddCommand(fillReq)
+
+	var runOpts agentFillRunOpts
+	var skipVerifyFields bool
+	fillCheck := &cobra.Command{
+		Use:   "check",
+		Short: "Preflight agentic fill (run from Cursor — not bash scripts)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return agentFillCheck(cmd, fillAgent)
+		},
+	}
+	fillCheck.Flags().StringVar(&fillAgent, "agent", "", "agent id (default VEIL_AGENT)")
+
+	fillRun := &cobra.Command{
+		Use:   "run",
+		Short: "File fill request, wait for human approval (app or watch), CDP autofill",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runOpts.Agent = fillAgent
+			runOpts.Item = fillItem
+			runOpts.URL = fillURL
+			if skipVerifyFields {
+				runOpts.VerifyFields = false
+			}
+			return agentFillRun(cmd, runOpts)
+		},
+	}
+	fillRun.Flags().StringVar(&fillAgent, "agent", "", "agent id (default VEIL_AGENT)")
+	fillRun.Flags().StringVar(&fillItem, "item", "", "granted item name or id")
+	fillRun.Flags().StringVar(&fillURL, "url", "", "HTTPS login page URL")
+	fillRun.Flags().StringVar(&runOpts.Session, "session", "", "agent-browser session (default veil-<item>)")
+	fillRun.Flags().StringVar(&runOpts.Profile, "profile", "", "Chrome user-data-dir (default ~/.veil/profiles/<session>)")
+	fillRun.Flags().StringVar(&runOpts.Extension, "extension", "", "unpacked MV3 dir (default ~/.veil/extension)")
+	fillRun.Flags().StringVar(&runOpts.VaultHome, "vault-home", "", "veil home (default ~/.veil)")
+	fillRun.Flags().StringVar(&runOpts.AssertURL, "assert-url", "", "after fill, wait until the tab URL matches (origin+path prefix)")
+	fillRun.Flags().StringVar(&runOpts.AssertURL, "success-url", "", "alias for --assert-url (post-login proof after 2FA)")
+	fillRun.Flags().DurationVar(&runOpts.AssertTimeout, "assert-timeout", 2*time.Minute, "with --assert-url / --success-url")
+	fillRun.Flags().BoolVar(&runOpts.OpenBrowser, "open", true, "vb open login URL before fill")
+	fillRun.Flags().BoolVar(&runOpts.Confirm, "confirm", false, "with VEIL_AGENTIC_INTERACTIVE=1: [y/N] in a human terminal")
+	fillRun.Flags().BoolVar(&runOpts.WaitApproved, "wait-approved", true, "block until approved (Veil.app / iOS / request watch)")
+	fillRun.Flags().DurationVar(&runOpts.ApprovalTimeout, "approval-timeout", 5*time.Minute, "max wait for human approval")
+	fillRun.Flags().DurationVar(&runOpts.Hold, "hold", 0, "keep process alive after fill (e.g. 3m for 2FA)")
+	fillRun.Flags().BoolVar(&runOpts.Snapshot, "snapshot", false, "agent-browser snapshot after fill")
+	fillRun.Flags().BoolVar(&runOpts.VerifyFields, "verify-fields", true, "CDP check: login fields non-empty after fill (lengths only, no secrets)")
+	fillRun.Flags().BoolVar(&skipVerifyFields, "skip-verify-fields", false, "skip --verify-fields")
+	fillRun.Flags().BoolVar(&runOpts.KeepOpen, "keep-open", false, "leave headed Chrome up (for 2FA); default closes session when run exits")
+	fillRun.Flags().BoolVar(&runOpts.EmitJSON, "json", false, "print structured result on stdout when fill succeeds")
+	_ = fillRun.MarkFlagRequired("item")
+	_ = fillRun.MarkFlagRequired("url")
+
+	var fillCloseSession string
+	var fillCloseAll bool
+	fillClose := &cobra.Command{
+		Use:   "close",
+		Short: "Close agent-browser session(s) opened for agentic fill",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return agentFillClose(cmd, fillCloseSession, fillCloseAll)
+		},
+	}
+	fillClose.Flags().StringVar(&fillCloseSession, "session", "", "session name (default: close current AGENT_BROWSER_SESSION)")
+	fillClose.Flags().BoolVar(&fillCloseAll, "all", false, "close every agent-browser session")
+
+	var loginOpts agentFillRunOpts
+	var loginSkipVerify bool
+	var loginCloseWhenDone bool
+	fillLogin := &cobra.Command{
+		Use:   "login",
+		Short: "Agent login journey: check → open → approve in app → fill (JSON result on stdout)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			loginOpts.Agent = fillAgent
+			loginOpts.Item = fillItem
+			loginOpts.URL = fillURL
+			loginOpts.EmitJSON = true
+			loginOpts.OpenBrowser = true
+			loginOpts.WaitApproved = true
+			loginOpts.VerifyFields = !loginSkipVerify
+			loginOpts.KeepOpen = !loginCloseWhenDone
+			loginOpts.JourneyProof = true
+			if strings.TrimSpace(loginOpts.Session) == "" && strings.TrimSpace(fillItem) != "" {
+				loginOpts.Session = agentFillDefaultSession(fillItem)
+			}
+			return agentFillRun(cmd, loginOpts)
+		},
+	}
+	fillLogin.Flags().StringVar(&fillAgent, "agent", "", "agent id (default VEIL_AGENT)")
+	fillLogin.Flags().StringVar(&fillItem, "item", "", "granted item name or id")
+	fillLogin.Flags().StringVar(&fillURL, "url", "", "HTTPS login page URL")
+	fillLogin.Flags().StringVar(&loginOpts.Session, "session", "", "agent-browser session (default veil-<item>)")
+	fillLogin.Flags().StringVar(&loginOpts.AssertURL, "assert-url", "", "after fill, wait until tab URL matches (post-2FA proof)")
+	fillLogin.Flags().StringVar(&loginOpts.AssertURL, "success-url", "", "alias for --assert-url")
+	fillLogin.Flags().DurationVar(&loginOpts.AssertTimeout, "assert-timeout", 2*time.Minute, "with --success-url")
+	fillLogin.Flags().DurationVar(&loginOpts.ApprovalTimeout, "approval-timeout", 5*time.Minute, "max wait for human approval")
+	fillLogin.Flags().DurationVar(&loginOpts.Hold, "hold", 0, "keep process alive after fill (e.g. 3m for 2FA)")
+	fillLogin.Flags().BoolVar(&loginCloseWhenDone, "close", false, "close headed Chrome when the command exits (CI/agents; default leaves the window up)")
+	fillLogin.Flags().BoolVar(&loginSkipVerify, "skip-verify-fields", false, "skip CDP field-length proof")
+	_ = fillLogin.MarkFlagRequired("item")
+	_ = fillLogin.MarkFlagRequired("url")
+
+	fill.AddCommand(fillReq, fillCheck, fillRun, fillLogin, fillClose)
 	c.AddCommand(fill)
 	return c
 }
@@ -1977,7 +2077,20 @@ func grantCmd(home *string) *cobra.Command {
 			return encode(cmd, grants)
 		},
 	}
-	c.AddCommand(add, list)
+	resolve := &cobra.Command{
+		Use:   "resolve",
+		Short: "Resolve a granted item name to id for an agent",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() == "" {
+				return fmt.Errorf("grant resolve: VEIL_ORIGIN is required")
+			}
+			return originGrantResolve(cmd, agentName, itemName, true)
+		},
+	}
+	resolve.Flags().StringVar(&agentName, "agent", "", "agent id (default VEIL_AGENT)")
+	resolve.Flags().StringVar(&itemName, "item", "", "item name or id")
+	_ = resolve.MarkFlagRequired("item")
+	c.AddCommand(add, list, resolve)
 	return c
 }
 
@@ -2224,7 +2337,7 @@ func requestCmd(home *string) *cobra.Command {
 	var ttl time.Duration
 	c := &cobra.Command{
 		Use:   "request",
-		Short: "Approval requests filed by level-1 agents",
+		Short: "Human answers to agent approval asks (list, confirm, approve, deny, watch)",
 	}
 	list := &cobra.Command{
 		Use:   "list",
@@ -2310,7 +2423,22 @@ func requestCmd(home *string) *cobra.Command {
 		},
 	}
 	watch.Flags().DurationVar(&watchTimeout, "timeout", time.Hour, "max wait")
-	c.AddCommand(list, approve, deny, watch)
+	var confirmYes, confirmDeny bool
+	confirm := &cobra.Command{
+		Use:   "confirm REQUEST_ID",
+		Short: "Interactive approve/deny in the terminal (same human gate as Veil.app / iOS)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if originBase() == "" {
+				return fmt.Errorf("request confirm: VEIL_ORIGIN is required")
+			}
+			return originRequestConfirm(cmd, args[0], confirmYes, confirmDeny, ttl)
+		},
+	}
+	confirm.Flags().BoolVar(&confirmYes, "yes", false, "approve without prompting (non-interactive scripts only)")
+	confirm.Flags().BoolVar(&confirmDeny, "deny", false, "deny without prompting")
+	confirm.Flags().DurationVar(&ttl, "ttl", 15*time.Minute, "approval lifetime when approving")
+	c.AddCommand(list, approve, deny, watch, confirm)
 	return c
 }
 
@@ -2810,7 +2938,8 @@ func fillCmd(home *string) *cobra.Command {
 	}
 	pol.Flags().StringVar(&remoteApprove, "remote", "", "gate fills behind another device's approval: all|tagged|off")
 	c.AddCommand(pol)
-	c.AddCommand(&cobra.Command{
+	var installProfile string
+	install := &cobra.Command{
 		Use:   "install",
 		Short: "Install the nyc.veil.fill native messaging host. Does not copy the extension.",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -2858,9 +2987,20 @@ func fillCmd(home *string) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "extension: %s — load unpacked at chrome://extensions (Developer mode)\n", extDir)
 			fmt.Fprintf(cmd.OutOrStdout(), "extension-firefox: %s — load at about:debugging → This Firefox → Load Temporary Add-on (manifest.json)\n", ffDir)
 			fmt.Fprintln(cmd.OutOrStdout(), "safari: make fill-safari builds Veil.app — enable the extension in Safari → Settings → Extensions")
+			if installProfile != "" {
+				if err := fill.InstallNativeMessagingProfile(dir, installProfile); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "profile native host: %s/NativeMessagingHosts/%s.json\n", installProfile, fill.JSONHostName)
+			}
+			if cf := fill.DefaultAgentBrowserChrome(user); cf != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "agent-browser: set AGENT_BROWSER_EXECUTABLE_PATH=%q for CDP worker fill\n", cf)
+			}
 			return nil
 		},
-	})
+	}
+	install.Flags().StringVar(&installProfile, "profile", "", "also install native host manifest into this Chrome user-data-dir")
+	c.AddCommand(install)
 	return c
 }
 

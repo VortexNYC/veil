@@ -34,7 +34,12 @@ export async function ensureNotificationPermission(): Promise<
 }
 
 /** Notify when a new open agent approval request appears (owner org). */
-export function notifyAgentApprovalRequest(agentId: string, itemId: string): void {
+export function notifyAgentApprovalRequest(
+  requestId: string,
+  agentId: string,
+  itemId: string,
+  action?: string,
+): void {
   if (!agentApprovalAlertsEnabled()) {
     return;
   }
@@ -47,10 +52,18 @@ export function notifyAgentApprovalRequest(agentId: string, itemId: string): voi
   if (document.visibilityState === "visible" && window.location.pathname.startsWith("/requests")) {
     return;
   }
-  const body = itemId ? `Item ${itemId}` : "Open Veil → Requests to approve or deny.";
-  const n = new Notification("Veil — agent approval", {
-    body: agentId ? `Agent ${agentId} · ${body}` : body,
-    tag: "veil-agent-approval",
+  const isFill = action === "fill";
+  const title = isFill ? "Veil login · approve (3/4)" : "Veil — agent approval";
+  const who = agentId ? `Agent ${agentId}` : "An agent";
+  const item = itemId ? `item ${itemId}` : "a credential";
+  const body = isFill
+    ? `${who} → ${item} · ${requestId}`
+    : itemId
+      ? `${who} · ${item}`
+      : "Open Veil → Requests to approve or deny.";
+  const n = new Notification(title, {
+    body,
+    tag: requestId || "veil-agent-approval",
   });
   n.onclick = () => {
     window.focus();
